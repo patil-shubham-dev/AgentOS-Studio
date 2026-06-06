@@ -1,10 +1,12 @@
 import { useState, useCallback, useMemo, useImperativeHandle, forwardRef, useRef, useEffect, type MouseEvent, type KeyboardEvent, type DragEvent } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useAgentStore } from "@/stores/agent-store"
+import { getAgentLabel } from "@/components/workspace/agent-visibility/AgentActivityMapper"
 import { readFile, sanitizeFilename, loadFileTree } from "@/lib/workspace"
 import type { FileEntry } from "@/types"
 import {
-  File, Folder, FolderOpen, ChevronRight, ChevronDown,
+  Bot, File, Folder, FolderOpen, ChevronRight, ChevronDown,
   Sparkles, Clock, Star,
   Trash2, Edit3, FilePlus, FolderPlus,
   Copy, ClipboardPaste, Scissors,
@@ -300,6 +302,26 @@ function TreeNode({
   const isCreatingHere = creatingParent === entry.path && creatingType !== null
   const isCreatingLocally = createLocally?.parent === entry.path
   const isRenaming = renamingPath === entry.path
+  const fileActivities = useAgentStore((s) => s.fileActivities)
+
+  const activityLabels: Record<string, string> = {
+    editing: "Editing",
+    reading: "Reading",
+    reviewing: "Reviewing",
+    referencing: "In Context",
+  }
+
+  const fileActivityInfo = useMemo(() => {
+    if (entry.is_dir || !fileActivities || fileActivities.length === 0) return null
+    const normPath = entry.path.replace(/\\/g, "/")
+    const fa = fileActivities.find((a) => a.path.includes(normPath) || normPath.includes(a.path))
+    if (!fa) return null
+    return {
+      activity: fa.activity,
+      agentRole: fa.agentRole,
+      label: activityLabels[fa.activity] ?? "In Context",
+    }
+  }, [entry.path, fileActivities])
 
   async function handleClick(e: MouseEvent) {
     e.stopPropagation()
@@ -412,6 +434,10 @@ function TreeNode({
           !isSelected && "hover:bg-white/[0.03]",
           isDropTarget && "bg-blue-500/[0.12]",
           focusedPath === entry.path && "outline-1 outline-white/[0.12]",
+          fileActivityInfo?.activity === "editing" && "bg-amber-500/[0.04] border-l-[3px] border-amber-500",
+          fileActivityInfo?.activity === "reading" && "bg-blue-500/[0.04] border-l-[3px] border-blue-500",
+          fileActivityInfo?.activity === "reviewing" && "bg-cyan-500/[0.04] border-l-[3px] border-cyan-500",
+          fileActivityInfo?.activity === "referencing" && "bg-purple-500/[0.04] border-l-[3px] border-purple-500",
         )}
         style={{ paddingLeft: `${10 + depth * 14}px` }}
       >
@@ -439,6 +465,15 @@ function TreeNode({
           />
         ) : (
           <span className={cn("truncate flex-1 text-xs", inAiContext && "text-blue-400")}>{entry.name}</span>
+        )}
+        {fileActivityInfo && (
+          <span className="flex items-center gap-0.5 text-[9px] shrink-0 font-medium text-white/60">
+            {fileActivityInfo.activity === "referencing" ? (
+              <><span className="text-purple-400">→</span> In Context</>
+            ) : (
+              <><Bot className="h-2.5 w-2.5 shrink-0" /> {getAgentLabel(fileActivityInfo.agentRole)} {fileActivityInfo.label}</>
+            )}
+          </span>
         )}
         {isActive && <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500 rounded-full" />}
         {isChanged && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />}
@@ -574,6 +609,13 @@ function flattenTree(entries: FileEntry[], expandedPaths: Set<string>, depth = 0
   return result
 }
 
+function findEntry(flatTree: FlatNode[], path: string): FileEntry | undefined {
+  for (const node of flatTree) {
+    if (node.entry.path === path) return node.entry
+  }
+  return undefined
+}
+
 // ── Props & Component ──
 
 export interface FileTreeProps {
@@ -593,6 +635,7 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
   const fileTree = useWorkspaceStore((s) => s.fileTree)
   const rootPath = useWorkspaceStore((s) => s.rootPath)
   const isLoading = useWorkspaceStore((s) => s.isLoading)
+  const loadDirectory = useWorkspaceStore((s) => s.loadDirectory)
   const aiContextFiles = useWorkspaceStore((s) => s.aiContextFiles)
   const suggestedFiles = useWorkspaceStore((s) => s.suggestedFiles)
   const activeFilePath = useWorkspaceStore((s) => s.activeFilePath)
@@ -641,14 +684,20 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
     },
   }), [selectedPaths])
 
-  const handleToggle = useCallback((path: string) => {
+  const flatTree = useMemo(() => flattenTree(fileTree, expandedPaths), [fileTree, expandedPaths])
+
+  const handleToggle = useCallback(async (path: string) => {
+    const entry = findEntry(flatTree, path)
+    if (entry && entry.is_dir && entry.children.length === 0) {
+      await loadDirectory(path)
+    }
     setExpandedPaths((prev) => {
       const next = new Set(prev)
       if (next.has(path)) next.delete(path)
       else next.add(path)
       return next
     })
-  }, [])
+  }, [loadDirectory, flatTree])
 
   const handleToggleSelect = useCallback((path: string, meta: boolean, shift: boolean) => {
     setSelectedPaths((prev) => {
@@ -824,13 +873,12 @@ const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
     setRenamingPath(null)
   }, [])
 
-  const flatTree = useMemo(() => flattenTree(fileTree, expandedPaths), [fileTree, expandedPaths])
-
   const virtualizer = useVirtualizer({
     count: flatTree.length,
     getScrollElement: () => treeRef.current,
     estimateSize: () => 28,
-    overscan: 10,
+    overscan: 20,
+    measureElement: (el) => el.getBoundingClientRect().height,
   })
 
   if (!rootPath) return <EmptyState onOpenWorkspace={onOpenWorkspace} />

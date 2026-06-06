@@ -1,24 +1,13 @@
-import { useState, useEffect, useRef } from "react"
-import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
+import { useState } from "react"
 import { useAgentStore } from "@/stores/agent-store"
-import { AgentStatusPanel } from "./AgentStatusPanel"
-import { ToolTimeline } from "./ToolTimeline"
 import { AgentHandoff } from "./AgentHandoff"
-import { ChevronDown, ChevronRight, Activity, GitBranch, Users, PanelRight } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { ChevronDown, ChevronRight, Users } from "lucide-react"
 
-function CollapsibleSection({
-  title,
-  icon: Icon,
-  defaultOpen,
-  children,
-}: {
-  title: string
-  icon: typeof Activity
-  defaultOpen?: boolean
-  children: React.ReactNode
-}) {
-  const [open, setOpen] = useState(defaultOpen ?? false)
+export function AgentActivityPanel() {
+  const orchestrationSteps = useAgentStore((s) => s.orchestrationSteps)
+  const [open, setOpen] = useState(true)
+
+  if (orchestrationSteps.length === 0) return null
 
   return (
     <div className="border-b border-white/[0.06]">
@@ -27,42 +16,17 @@ function CollapsibleSection({
         className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium text-white/20 uppercase tracking-wider hover:text-white/40 transition-colors"
       >
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        <Icon className="h-3 w-3" />
-        <span>{title}</span>
+        <Users className="h-3 w-3" />
+        <span>Delegation</span>
+        <span className="text-[10px] text-white/15 font-normal normal-case ml-1">
+          {orchestrationSteps.length} step{orchestrationSteps.length !== 1 ? "s" : ""}
+        </span>
       </button>
-      {open && <div className="pb-1">{children}</div>}
-    </div>
-  )
-}
-
-export function AgentActivityPanel() {
-  const agentStatuses = useAgentStore((s) => s.agentStatuses)
-  const orchestrationSteps = useAgentStore((s) => s.orchestrationSteps)
-  const sessions = useTimelineStore((s) => s.agentSessions)
-  const hasActivity = Object.keys(agentStatuses).length > 0
-
-  const hasRunning = Object.values(agentStatuses).some(
-    (a) => a.state !== "idle" && a.state !== "complete" && a.state !== "failed",
-  )
-
-  if (!hasActivity && orchestrationSteps.length === 0) return null
-
-  return (
-    <div className="border-b border-white/[0.06]">
-      {/* Live agent status — always shown when active */}
-      <AgentStatusPanel />
-
-      {/* Delegation chain — shown when agents hand off */}
-      {orchestrationSteps.length > 0 && (
-        <CollapsibleSection title="Delegation" icon={Users} defaultOpen={true}>
+      {open && (
+        <div className="pb-1">
           <AgentHandoff />
-        </CollapsibleSection>
+        </div>
       )}
-
-      {/* Tool activity timeline */}
-      <CollapsibleSection title="Activity Log" icon={Activity} defaultOpen={hasRunning}>
-        <ToolTimeline maxHeight={160} />
-      </CollapsibleSection>
     </div>
   )
 }

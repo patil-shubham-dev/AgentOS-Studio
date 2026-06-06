@@ -38,6 +38,11 @@ export function BrowserWorkspace() {
   const removeSession = useBrowserStore((s) => s.removeSession)
   const setActiveSession = useBrowserStore((s) => s.setActiveSession)
   const updateSession = useBrowserStore((s) => s.updateSession)
+  const addTab = useBrowserStore((s) => s.addTab)
+  const removeTab = useBrowserStore((s) => s.removeTab)
+  const setActiveTab = useBrowserStore((s) => s.setActiveTab)
+  const updateTab = useBrowserStore((s) => s.updateTab)
+  const navigateTab = useBrowserStore((s) => s.navigateTab)
   const setLaunching = useBrowserStore((s) => s.setLaunching)
 
   const [url, setUrl] = useState("http://localhost:5173")
@@ -61,6 +66,7 @@ export function BrowserWorkspace() {
   const selectorRef = useRef<HTMLInputElement>(null)
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
+  const activeTab = activeSession?.tabs.find((t) => t.id === activeSession.activeTabId) ?? activeSession?.tabs[0] ?? null
 
   // ── Keyboard shortcut for selector input submit
   useEffect(() => {
@@ -163,7 +169,8 @@ export function BrowserWorkspace() {
     setLaunching(true)
     try {
       const { sessionId, step } = await launchSession(url, trackStep)
-      addSession({ id: sessionId, url, title: "", screenshot: null, logs: [] })
+      const tabId = `tab_${Date.now()}`
+      addSession({ id: sessionId, name: "", tabs: [{ id: tabId, url, title: "", history: [url], historyIndex: 0 }], activeTabId: tabId, screenshot: null, logs: [], createdAt: Date.now() })
       const screenshot = await takeScreenshot(sessionId, trackStep)
       updateSession(sessionId, { screenshot: screenshot.base64 })
       setAutomationSteps((prev) => [step, ...prev])
@@ -178,7 +185,10 @@ export function BrowserWorkspace() {
     const step = await navigate(activeSessionId, url, trackStep)
     setAutomationSteps((prev) => [step, ...prev])
     const title = await getSessionTitle(activeSessionId)
-    updateSession(activeSessionId, { url, title })
+    if (activeTab) {
+      updateTab(activeSessionId, activeTab.id, { url, title })
+      navigateTab(activeSessionId, activeTab.id, url)
+    }
     await refreshScreenshot()
   }
 
@@ -329,7 +339,7 @@ export function BrowserWorkspace() {
               key={s.id}
               role="tab"
               aria-selected={activeSessionId === s.id}
-              aria-label={`Session: ${s.title || s.url}`}
+              aria-label={`Session: ${s.tabs[0]?.title || s.tabs[0]?.url || s.name}`}
               tabIndex={activeSessionId === s.id ? 0 : -1}
               className={cn(
                 "flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] transition-all cursor-pointer",
@@ -346,14 +356,14 @@ export function BrowserWorkspace() {
               }}
             >
               <Globe className="h-3 w-3 shrink-0" aria-hidden="true" />
-              <span className="truncate max-w-24">{s.title || s.url}</span>
+              <span className="truncate max-w-24">{s.tabs[0]?.title || s.tabs[0]?.url || s.name}</span>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
                   handleClose(s.id)
                 }}
                 className="ml-0.5 rounded p-0.5 hover:bg-white/[0.06] hover:text-white/70 transition-colors"
-                aria-label={`Close ${s.title || s.url}`}
+                aria-label={`Close ${s.tabs[0]?.title || s.tabs[0]?.url || s.name}`}
               >
                 <X className="h-2.5 w-2.5" />
               </button>
@@ -664,7 +674,7 @@ export function BrowserWorkspace() {
                       >
                         <img
                           src={`data:image/png;base64,${activeSession.screenshot}`}
-                          alt={`Browser screenshot of ${activeSession.title || activeSession.url}`}
+                          alt={`Browser screenshot of ${activeTab?.title || activeTab?.url || activeSession.name}`}
                           className="w-full max-w-4xl rounded-lg border border-white/[0.06] shadow-2xl shadow-black/40"
                           draggable={false}
                         />

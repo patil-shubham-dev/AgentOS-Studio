@@ -13,10 +13,14 @@ import { WorkspaceExplorer, type WorkspaceExplorerHandle } from "@/components/wo
 import { CodeWorkspace } from "@/components/workspace/code-workspace"
 import { ChatPanel } from "@/components/workspace/chat-panel"
 import { BrowserWorkspace } from "@/components/workspace/browser/browser-workspace"
+import { ExecutionTimeline } from "@/components/workspace/execution-timeline/ExecutionTimeline"
+import { AgentStatusBar } from "@/components/workspace/agent-visibility/AgentStatusBar"
 import { AgentActivityPanel } from "@/components/workspace/agent-visibility/AgentActivityPanel"
 import { DesignWorkspace } from "@/components/workspace/design-workspace"
 import { SnapshotBrowser } from "@/components/workspace/snapshot-browser"
+import { ChatHistoryViewer } from "@/components/workspace/chat-history-viewer"
 import { TerminalWorkspace } from "@/components/workspace/terminal-workspace"
+import { AgentWorkspace } from "@/components/workspace/agent-workspace"
 import { GlobalSearch } from "@/components/workspace/global-search"
 import { CommandPalette } from "@/components/workspace/command-palette"
 import { ExecutionDock } from "@/components/runtime/ExecutionDock"
@@ -54,6 +58,7 @@ const WORKSPACE_PANEL_OPTIONS: { id: WorkspacePanel; label: string; icon: typeof
   { id: "design", label: "Design", icon: Palette },
   { id: "history", label: "History", icon: History },
   { id: "terminal", label: "Terminal", icon: Terminal },
+  { id: "agents", label: "Agents", icon: Brain },
 ]
 
 const PANEL_STORAGE_KEY_PREFIX = "aos-panel-"
@@ -620,9 +625,17 @@ export function CodeCanvasPage() {
       case "design":
         return <ErrorBoundary name="DesignWorkspace"><DesignWorkspace /></ErrorBoundary>
       case "history":
-        return <ErrorBoundary name="SnapshotBrowser"><SnapshotBrowser /></ErrorBoundary>
+        return (
+          <ErrorBoundary name="SnapshotBrowser">
+            <div className="flex flex-col h-full">
+              <ChatHistoryViewer />
+            </div>
+          </ErrorBoundary>
+        )
       case "terminal":
         return <ErrorBoundary name="TerminalWorkspace"><TerminalWorkspace /></ErrorBoundary>
+      case "agents":
+        return <ErrorBoundary name="AgentWorkspace"><AgentWorkspace /></ErrorBoundary>
     }
   }
 
@@ -932,7 +945,11 @@ export function CodeCanvasPage() {
             </div>
           </div>
 
-          {/* Agent Activity Panel */}
+          {/* Permanent execution timeline — always visible when active */}
+          <ExecutionTimeline />
+          {/* Permanent agent status bar — always visible when agents active */}
+          <AgentStatusBar />
+          {/* Agent Activity Panel (delegation chain) */}
           <AgentActivityPanel />
 
           {/* Assistant content */}

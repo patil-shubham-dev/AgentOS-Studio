@@ -10,10 +10,15 @@ export interface IndexedFile {
 
 export interface SearchQuery {
   query: string
-  mode: "filename" | "content"
+  mode: "filename" | "content" | "fuzzy" | "path"
   caseSensitive: boolean
   extension?: string
   maxResults?: number
+}
+
+export interface FuzzyScore {
+  score: number
+  matches: number[]
 }
 
 export interface SearchResult {
@@ -21,6 +26,40 @@ export interface SearchResult {
   fileName: string
   matches: Array<{ line: number; lineContent: string; column?: number }>
   matchCount: number
+}
+
+export function fuzzyMatch(query: string, text: string): FuzzyScore | null {
+  const queryLower = query.toLowerCase()
+  const textLower = text.toLowerCase()
+
+  let textIdx = 0
+  let queryIdx = 0
+  const matchPositions: number[] = []
+  let consecutiveBonus = 0
+  let prevMatchEnd = -2
+
+  while (queryIdx < queryLower.length && textIdx < textLower.length) {
+    if (queryLower[queryIdx] === textLower[textIdx]) {
+      matchPositions.push(textIdx)
+      if (textIdx === prevMatchEnd + 1) {
+        consecutiveBonus += 5
+      }
+      prevMatchEnd = textIdx
+      queryIdx++
+    }
+    textIdx++
+  }
+
+  if (queryIdx !== queryLower.length) return null
+
+  const coverage = queryLower.length / textLower.length || 1
+  const nameOnly = text.includes("/") ? 0 : 10
+  const startBonus = matchPositions[0] === 0 ? 15 : 0
+  const positionPenalty = matchPositions.reduce((sum, p) => sum + p, 0) / matchPositions.length
+
+  const score = (consecutiveBonus + nameOnly + startBonus + coverage * 20) / (1 + positionPenalty * 0.1)
+
+  return { score, matches: matchPositions }
 }
 
 const MAX_CACHED_FILE_SIZE = 512 * 1024
@@ -178,6 +217,54 @@ export class SearchIndex {
         }
       }
       return results
+    }
+
+    if (query.mode === "fuzzy") {
+      const q = query.query.trim()
+      const scored: Array<{ result: SearchResult; score: number }> = []
+      for (const file of this.files) {
+        if (query.extension && file.extension !== query.extension) continue
+        let match = fuzzyMatch(q, file.name)
+        if (!match) {
+          match = fuzzyMatch(q, file.path)
+        }
+        if (match) {
+          const nameOnly = !file.path.includes("/") && !file.path.includes("\\") ? 10 : 0
+          scored.push({
+            result: {
+              filePath: file.path,
+              fileName: file.name,
+              matches: [],
+              matchCount: 0,
+            },
+            score: match.score + nameOnly,
+          })
+        }
+      }
+      scored.sort((a, b) => b.score - a.score)
+      return scored.slice(0, maxResults).map((s) => s.result)
+    }
+
+    if (query.mode === "path") {
+      const q = query.query.trim()
+      const scored: Array<{ result: SearchResult; score: number }> = []
+      for (const file of this.files) {
+        if (query.extension && file.extension !== query.extension) continue
+        const match = fuzzyMatch(q, file.path)
+        if (match) {
+          scored.push({
+            result: {
+              filePath: file.path,
+              fileName: file.name,
+              matches: [],
+              matchCount: 0,
+            },
+            score: match.score,
+          })
+        }
+      }
+      scored.sort((a, b) => b.score - a.score)
+      return scored.slice(0, maxResults).map((s) => s.result)
     }
 
     for (const file of this.files) {

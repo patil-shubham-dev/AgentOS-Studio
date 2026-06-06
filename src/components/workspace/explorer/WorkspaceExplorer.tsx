@@ -4,6 +4,7 @@ import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useExplorerStore, type GitBadge } from "@/stores/explorer-store"
 import { useAgentStore } from "@/stores/agent-store"
 import { FileTree, type FileTreeHandle, type FileTreeProps } from "@/components/workspace/file-tree"
+import { ProjectMap } from "./ProjectMap"
 import { workspaceIndex, type SearchResult } from "@/lib/search-index"
 import { cn } from "@/lib/utils"
 import { getAgentLabel } from "@/components/workspace/agent-visibility/AgentActivityMapper"
@@ -65,11 +66,15 @@ function SearchSection({
   results,
   onOpenFile,
   onClose,
+  highlightedIndex,
+  onHighlightChange,
 }: {
   query: string
   results: SearchResult[]
   onOpenFile: (path: string) => void
   onClose: () => void
+  highlightedIndex: number
+  onHighlightChange: (index: number) => void
 }) {
   const parentRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
@@ -78,6 +83,12 @@ function SearchSection({
     estimateSize: () => 28,
     overscan: 5,
   })
+
+  useEffect(() => {
+    if (highlightedIndex >= 0 && highlightedIndex < results.length) {
+      virtualizer.scrollToIndex(highlightedIndex, { align: "center" })
+    }
+  }, [highlightedIndex, virtualizer, results.length])
 
   if (!query) return null
 
@@ -105,7 +116,13 @@ function SearchSection({
                 <button
                   key={result.filePath}
                   onClick={() => onOpenFile(result.filePath)}
-                  className="absolute left-0 right-0 flex items-center gap-2 px-3 py-1 text-[11px] text-white/50 hover:text-white hover:bg-white/[0.04] cursor-pointer truncate"
+                  onMouseEnter={() => onHighlightChange(virtualRow.index)}
+                  className={cn(
+                    "absolute left-0 right-0 flex items-center gap-2 px-3 py-1 text-[11px] cursor-pointer truncate",
+                    virtualRow.index === highlightedIndex
+                      ? "text-white bg-white/[0.08]"
+                      : "text-white/50 hover:text-white hover:bg-white/[0.04]",
+                  )}
                   style={{ transform: `translateY(${virtualRow.start}px)`, height: virtualRow.size }}
                 >
                   <File className="h-3 w-3 shrink-0 text-white/20" />
@@ -289,13 +306,7 @@ function AgentsSection() {
 }
 
 function ProjectMapSection() {
-  return (
-    <div className="px-3 py-4 text-center">
-      <Map className="h-6 w-6 mx-auto mb-1 text-white/10" />
-      <p className="text-[11px] text-white/20">Project map coming soon</p>
-      <p className="text-[10px] text-white/10 mt-0.5">Symbols, dependencies, and call hierarchy</p>
-    </div>
-  )
+  return <ProjectMap />
 }
 
 interface WorkspaceExplorerProps extends FileTreeProps {}
@@ -326,7 +337,11 @@ const WorkspaceExplorer = forwardRef<WorkspaceExplorerHandle, WorkspaceExplorerP
 
     const fileTreeRef = useRef<FileTreeHandle>(null)
     const searchInputRef = useRef<HTMLInputElement>(null)
-    const [showSearch, setShowSearch] = useState(false)
+    const [highlightedIndex, setHighlightedIndex] = useState(-1)
+    const highlightedIndexRef = useRef(highlightedIndex)
+    highlightedIndexRef.current = highlightedIndex
+    const searchResultsRef = useRef(searchResults)
+    searchResultsRef.current = searchResults
 
     useImperativeHandle(ref, () => ({
       collapseAll: () => fileTreeRef.current?.collapseAll(),
@@ -341,36 +356,36 @@ const WorkspaceExplorer = forwardRef<WorkspaceExplorerHandle, WorkspaceExplorerP
       persistState()
     })
 
+    useEffect(() => {
+      const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+        if (e.ctrlKey || e.metaKey || e.altKey) return
+        if (e.key.length !== 1) return
+        if (document.activeElement === searchInputRef.current) return
+        if (
+          document.activeElement instanceof HTMLInputElement ||
+          document.activeElement instanceof HTMLTextAreaElement ||
+          document.activeElement instanceof HTMLSelectElement
+        ) return
+        searchInputRef.current?.focus()
+      }
+      document.addEventListener("keydown", handleKeyDown)
+      return () => document.removeEventListener("keydown", handleKeyDown)
+    }, [])
+
     const handleSearchInput = useCallback(
       (e: React.ChangeEvent<HTMLInputElement>) => {
         const q = e.target.value
         setSearchQuery(q)
+        setHighlightedIndex(-1)
         if (q.length < 2) {
           setSearchResults([])
           return
         }
-        const results = workspaceIndex.search({ query: q, mode: "filename", caseSensitive: false, maxResults: 50 })
+        const results = workspaceIndex.search({ query: q, mode: "fuzzy", caseSensitive: false, maxResults: 50 })
         setSearchResults(results)
       },
-      [setSearchQuery, setSearchResults],
+      [setSearchQuery, setSearchResults, setHighlightedIndex],
     )
-
-    const handleSearchKeyDown = useCallback(
-      (e: KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === "Escape") {
-          setSearchQuery("")
-          setSearchResults([])
-          searchInputRef.current?.blur()
-        }
-      },
-      [setSearchQuery, setSearchResults],
-    )
-
-    const handleSearchClear = useCallback(() => {
-      setSearchQuery("")
-      setSearchResults([])
-      searchInputRef.current?.focus()
-    }, [setSearchQuery, setSearchResults])
 
     const handleOpenSearchFile = useCallback(
       (path: string) => {
@@ -390,6 +405,44 @@ const WorkspaceExplorer = forwardRef<WorkspaceExplorerHandle, WorkspaceExplorerP
       },
       [openFile, setActiveFile],
     )
+
+    const handleSearchKeyDown = useCallback(
+      (e: KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Escape") {
+          setSearchQuery("")
+          setSearchResults([])
+          setHighlightedIndex(-1)
+          searchInputRef.current?.blur()
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault()
+          setHighlightedIndex((prev) => {
+            const max = searchResultsRef.current.length - 1
+            return prev < max ? prev + 1 : 0
+          })
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault()
+          setHighlightedIndex((prev) => {
+            const max = searchResultsRef.current.length - 1
+            return prev > 0 ? prev - 1 : max
+          })
+        } else if (e.key === "Enter") {
+          e.preventDefault()
+          const idx = highlightedIndexRef.current
+          const results = searchResultsRef.current
+          if (idx >= 0 && idx < results.length) {
+            handleOpenSearchFile(results[idx].filePath)
+          }
+        }
+      },
+      [setSearchQuery, setSearchResults, setHighlightedIndex, handleOpenSearchFile],
+    )
+
+    const handleSearchClear = useCallback(() => {
+      setSearchQuery("")
+      setSearchResults([])
+      setHighlightedIndex(-1)
+      searchInputRef.current?.focus()
+    }, [setSearchQuery, setSearchResults, setHighlightedIndex])
 
     const handleRefresh = useCallback(async () => {
       const rp = useWorkspaceStore.getState().rootPath
@@ -432,6 +485,8 @@ const WorkspaceExplorer = forwardRef<WorkspaceExplorerHandle, WorkspaceExplorerP
               results={searchResults}
               onOpenFile={handleOpenSearchFile}
               onClose={handleSearchClear}
+              highlightedIndex={highlightedIndex}
+              onHighlightChange={setHighlightedIndex}
             />
           </div>
         )}

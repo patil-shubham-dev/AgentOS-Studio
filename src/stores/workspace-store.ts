@@ -33,6 +33,7 @@ interface WorkspaceStore {
 
   setRootPath: (path: string | null) => void
   setFileTree: (tree: FileEntry[]) => void
+  loadDirectory: (path: string) => Promise<FileEntry[]>
   setLoading: (loading: boolean) => void
   openFile: (file: OpenFile) => void
   closeFile: (path: string) => void
@@ -274,6 +275,31 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   setFileTree: (tree) => set({ fileTree: tree, isLoading: false }),
+
+  loadDirectory: async (path: string) => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core")
+      const children = await invoke<FileEntry[]>("list_directory", { path })
+      set((state) => {
+        function updateEntry(entries: FileEntry[]): FileEntry[] {
+          return entries.map((entry) => {
+            if (entry.path === path) {
+              return { ...entry, children }
+            }
+            if (entry.is_dir && entry.children.length > 0) {
+              return { ...entry, children: updateEntry(entry.children) }
+            }
+            return entry
+          })
+        }
+        return { fileTree: updateEntry(state.fileTree), isLoading: false }
+      })
+      return children
+    } catch (err) {
+      console.error(`[workspace-store] Failed to load directory: ${path}`, err)
+      return []
+    }
+  },
 
   setLoading: (loading) => {
     set({ isLoading: loading })
