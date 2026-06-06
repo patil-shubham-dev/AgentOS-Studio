@@ -48,6 +48,34 @@ export async function browserGetText(sessionId: string, selector: string): Promi
   return await invoke<string>("browser_get_text", { sessionId, selector })
 }
 
+export async function pressKey(sessionId: string, key: string): Promise<void> {
+  await invoke("browser_press_key", { sessionId, key })
+}
+
+export async function reload(sessionId: string): Promise<void> {
+  await invoke("browser_reload", { sessionId })
+}
+
+export async function newTab(sessionId: string, url: string): Promise<{ tab_id: string; url: string; title: string }> {
+  return await invoke("browser_new_tab", { sessionId, url })
+}
+
+export async function listTabs(sessionId: string): Promise<Array<{ tab_id: string; url: string; title: string }>> {
+  return await invoke("browser_list_tabs", { sessionId })
+}
+
 export async function getConsoleLogs(sessionId: string): Promise<string[]> {
   return await invoke<string[]>("browser_get_console_logs", { sessionId })
+}
+
+export async function detectBrowsers(): Promise<Array<{ name: string; path: string; version: string | null }>> {
+  return await invoke("browser_detect_browsers")
+}
+
+export async function saveBrowserState(path: string): Promise<void> {
+  await invoke("browser_save_state", { path })
+}
+
+export async function loadBrowserState(path: string): Promise<Array<{ session_id: string; tabs: Array<{ url: string; title: string }>; active_index: number }>> {
+  return await invoke("browser_load_state", { path })
 }

@@ -9,10 +9,11 @@ import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { pickWorkspaceFolder, loadFileTree, startWatching, onFileChange, createFile, createFolder, deleteEntry, renameEntry, sanitizeFilename, readFile } from "@/lib/workspace"
 import type { FileEntry } from "@/types"
 import { workspaceIndex } from "@/lib/search-index"
-import { FileTree, type FileTreeHandle } from "@/components/workspace/file-tree"
+import { WorkspaceExplorer, type WorkspaceExplorerHandle } from "@/components/workspace/explorer/WorkspaceExplorer"
 import { CodeWorkspace } from "@/components/workspace/code-workspace"
 import { ChatPanel } from "@/components/workspace/chat-panel"
 import { BrowserWorkspace } from "@/components/workspace/browser/browser-workspace"
+import { AgentActivityPanel } from "@/components/workspace/agent-visibility/AgentActivityPanel"
 import { DesignWorkspace } from "@/components/workspace/design-workspace"
 import { SnapshotBrowser } from "@/components/workspace/snapshot-browser"
 import { TerminalWorkspace } from "@/components/workspace/terminal-workspace"
@@ -187,7 +188,7 @@ export function CodeCanvasPage() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const fileTreeRef = useRef<FileTreeHandle>(null)
+  const fileTreeRef = useRef<WorkspaceExplorerHandle>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const explorerResizingRef = useRef(false)
   const workspaceResizingRef = useRef(false)
@@ -771,9 +772,9 @@ export function CodeCanvasPage() {
             </div>
           </div>
 
-          {/* File tree */}
-          <div className={cn("flex-1 overflow-y-auto min-h-0", explorerOpen ? "opacity-100" : "opacity-0 pointer-events-none")}>
-            <FileTree
+          {/* Explorer */}
+          <div className={cn("flex-1 min-h-0", explorerOpen ? "opacity-100" : "opacity-0 pointer-events-none")}>
+            <WorkspaceExplorer
               ref={fileTreeRef}
               onOpenWorkspace={openWorkspace}
               creatingType={explorerCreating?.type ?? null}
@@ -930,6 +931,9 @@ export function CodeCanvasPage() {
 
             </div>
           </div>
+
+          {/* Agent Activity Panel */}
+          <AgentActivityPanel />
 
           {/* Assistant content */}
           <div className="flex-1 overflow-hidden min-h-0">

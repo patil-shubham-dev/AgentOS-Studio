@@ -94,6 +94,8 @@ interface TimelineState {
 
   addAgentSession: (session: AgentSession, correlationId?: string) => void
   updateAgentSession: (stepId: string, updates: Partial<AgentSession>) => void
+  addOptimisticSession: (stepId: string, correlationId?: string) => void
+  upgradeOptimisticSession: (oldStepId: string, newStepId: string, updates: Partial<AgentSession>) => void
   setStreamState: (stepId: string, state: StreamState) => void
   appendAgentStreamText: (stepId: string, text: string) => void
   /** Fast path: append to streamingTexts only — does NOT touch agentSessions */
@@ -218,6 +220,71 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
         agentSessions: next,
         sessionOrder: [...s.sessionOrder, session.stepId],
         sessionCreatedAtEventCount: [...s.sessionCreatedAtEventCount, s.events.length],
+      }
+    })
+  },
+
+  // Optimistic: creates an assistant session immediately on user send
+  // so the UI shows a thinking state while the agent initializes.
+  // The stepId uses a prefixed format "optimistic_<correlationId>" and is
+  // replaced when the real AGENT_ASSIGNED event arrives.
+  addOptimisticSession: (stepId: string, correlationId?: string) => {
+    set((s) => {
+      if (s.agentSessions.has(stepId)) return s
+      const next = new Map(s.agentSessions)
+      next.set(stepId, {
+        stepId,
+        roleId: "assistant",
+        roleName: "Assistant",
+        status: "running",
+        streamState: "streaming",
+        streamingText: "",
+        toolCalls: [],
+        fileEdits: [],
+        fileOps: [],
+        terminalOutputs: [],
+        startedAt: Date.now(),
+        tokenAppended: 0,
+        currentPhase: "Thinking",
+        phaseHistory: [{ label: "Thinking", timestamp: Date.now() }],
+        correlationId,
+      })
+      return {
+        agentSessions: next,
+        sessionOrder: [...s.sessionOrder, stepId],
+        sessionCreatedAtEventCount: [...s.sessionCreatedAtEventCount, s.events.length],
+      }
+    })
+  },
+
+  // When the real AGENT_ASSIGNED arrives, upgrade the optimistic session in-place
+  // instead of destroying and recreating it. This prevents scroll jumps, flicker,
+  // lost animation state, and timeline reordering.
+  upgradeOptimisticSession: (oldStepId: string, newStepId: string, updates: Partial<AgentSession>) => {
+    set((s) => {
+      const existing = s.agentSessions.get(oldStepId)
+      if (!existing) return s
+      const nextSessions = new Map(s.agentSessions)
+      // Preserve any accumulated state, merge with new data
+      const merged = {
+        ...existing,
+        ...updates,
+        stepId: newStepId,
+        streamingText: s.streamingTexts.get(oldStepId) ?? existing.streamingText,
+      }
+      nextSessions.delete(oldStepId)
+      nextSessions.set(newStepId, merged)
+      const nextStreaming = new Map(s.streamingTexts)
+      const liveText = nextStreaming.get(oldStepId)
+      if (liveText !== undefined) {
+        nextStreaming.set(newStepId, liveText)
+        nextStreaming.delete(oldStepId)
+      }
+      const nextOrder = s.sessionOrder.map(id => id === oldStepId ? newStepId : id)
+      return {
+        agentSessions: nextSessions,
+        streamingTexts: nextStreaming,
+        sessionOrder: nextOrder,
       }
     })
   },

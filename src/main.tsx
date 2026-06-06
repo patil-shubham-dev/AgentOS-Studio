@@ -9,11 +9,12 @@ import { useLedgerStore } from './stores/ledger-store'
 import { useAppStore } from './stores/app-store'
 import { useWorkspaceRuntime } from './runtime/workspace-runtime'
 import { useTimelineStore } from './components/workspace/timeline/timeline-store'
-import { persistChatState, loadPersistedChatState, clearPersistedChatState } from './components/workspace/timeline/chat-persistence'
+import { persistChatState, clearPersistedChatState, saveToHistory } from './components/workspace/timeline/chat-persistence'
 import { cancelPendingRefresh } from './runtime/runtime-coordinator'
 import { bootRuntime, shutdownRuntime, getKernel } from './core/kernel/startup'
 import { isInSafeMode } from './core/crash-handling/safe-mode'
 import { RuntimeCleanupManager } from './runtime/RuntimeCleanupManager'
+import { ExecutionSessionManager } from './runtime/sessions/ExecutionSessionManager'
 import { tauriFetch } from '@agentic-os/providers/http-client'
 import './index.css'
 
@@ -78,13 +79,9 @@ function Root() {
         console.error('[Boot] Kernel boot DEGRADED — some services failed')
       }
 
-      // Phase 3: restore persisted chat state
-      if (!cancelled) {
-        const saved = loadPersistedChatState()
-        if (saved) {
-          useTimelineStore.getState().restoreState(saved)
-        }
-      }
+      // Phase 3: fresh chat on launch — no auto-restore
+      // Previous sessions are preserved in History for manual access
+      useTimelineStore.getState().clear()
 
       // Phase 4: attach subscriptions (only if not cancelled)
       if (!cancelled) {
@@ -127,8 +124,33 @@ function Root() {
       for (const unsub of unsubs) unsub()
       cancelPersist()
       cancelPendingRefresh()
-      // Clear volatile UI state (timeline/streams — ensures fresh chat on next launch)
-      useTimelineStore.getState().clear()
+
+      // Snapshot timeline state BEFORE any cleanup mutation
+      // This ensures history preserves the actual conversation, not post-cleanup state
+      const timeline = useTimelineStore.getState()
+      const hasEvents = timeline.events.length > 0
+      const snapshot = hasEvents ? {
+        events: timeline.events.slice(),
+        agentSessions: new Map(timeline.agentSessions),
+        streamingTexts: new Map(timeline.streamingTexts),
+        sessionOrder: timeline.sessionOrder.slice(),
+        sessionCreatedAtEventCount: timeline.sessionCreatedAtEventCount.slice(),
+        collapsedSections: new Set(timeline.collapsedSections),
+      } : null
+
+      // Step 1: Save snapshot to history (deep-copied via JSON.stringify inside saveToHistory)
+      if (snapshot) {
+        saveToHistory(snapshot.events, snapshot.agentSessions, snapshot.streamingTexts, snapshot.sessionOrder, snapshot.sessionCreatedAtEventCount, snapshot.collapsedSections)
+      }
+
+      // Step 2: Cancel any active execution (mutates store — safe because snapshot already taken)
+      const activeSessions = ExecutionSessionManager.getInstance().getActiveSessions()
+      for (const s of activeSessions) {
+        ExecutionSessionManager.getInstance().cancel(s.id)
+      }
+
+      // Step 3: Clear volatile UI state (ensures fresh chat on next launch)
+      timeline.clear()
       // Graceful shutdown: clean all runtime resources (streams, tasks, sessions, event listeners)
       RuntimeCleanupManager.getInstance().shutdown().catch((err) => {
         console.error('[Cleanup] Shutdown error:', err)

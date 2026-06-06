@@ -13,6 +13,9 @@ use tauri::{
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::UpdaterExt;
 
+mod browser;
+use browser::BrowserManager;
+
 #[derive(Serialize, Deserialize, Clone)]
 struct UpdateStatusPayload {
     status: String,
@@ -709,6 +712,166 @@ fn pty_kill(session_id: String, state: tauri::State<'_, PtyState>) -> Result<(),
     }
 }
 
+// ── Browser Commands ──
+
+#[tauri::command]
+async fn browser_launch(state: tauri::State<'_, BrowserManager>, url: String) -> Result<String, String> {
+    state.launch(&url).await
+}
+
+#[tauri::command]
+async fn browser_close(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<(), String> {
+    state.close_session(&session_id).await
+}
+
+#[tauri::command]
+async fn browser_navigate(state: tauri::State<'_, BrowserManager>, session_id: String, url: String) -> Result<browser::PageInfo, String> {
+    state.navigate(&session_id, &url).await
+}
+
+#[tauri::command]
+async fn browser_reload(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<browser::PageInfo, String> {
+    state.reload(&session_id).await
+}
+
+#[tauri::command]
+async fn browser_new_tab(state: tauri::State<'_, BrowserManager>, session_id: String, url: String) -> Result<browser::TabInfo, String> {
+    state.new_tab(&session_id, &url).await
+}
+
+#[tauri::command]
+async fn browser_close_tab(state: tauri::State<'_, BrowserManager>, session_id: String, tab_id: String) -> Result<(), String> {
+    state.close_tab(&session_id, &tab_id).await
+}
+
+#[tauri::command]
+async fn browser_switch_tab(state: tauri::State<'_, BrowserManager>, session_id: String, tab_id: String) -> Result<browser::PageInfo, String> {
+    state.switch_tab(&session_id, &tab_id).await
+}
+
+#[tauri::command]
+async fn browser_list_tabs(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<Vec<browser::TabInfo>, String> {
+    state.list_tabs(&session_id).await
+}
+
+#[tauri::command]
+async fn browser_click(state: tauri::State<'_, BrowserManager>, session_id: String, selector: String) -> Result<(), String> {
+    state.click(&session_id, &selector).await
+}
+
+#[tauri::command]
+async fn browser_type(state: tauri::State<'_, BrowserManager>, session_id: String, selector: String, text: String) -> Result<(), String> {
+    if !selector.is_empty() {
+        state.click(&session_id, &selector).await?;
+    }
+    state.type_text(&session_id, &text).await
+}
+
+#[tauri::command]
+async fn browser_press_key(state: tauri::State<'_, BrowserManager>, session_id: String, key: String) -> Result<(), String> {
+    state.press_key(&session_id, &key).await
+}
+
+#[tauri::command]
+async fn browser_extract_content(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<String, String> {
+    state.extract_content(&session_id).await
+}
+
+#[tauri::command]
+async fn browser_extract_links(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<Vec<String>, String> {
+    state.extract_links(&session_id).await
+}
+
+#[tauri::command]
+async fn browser_screenshot(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<String, String> {
+    let bytes = state.screenshot(&session_id).await?;
+    Ok(base64_encode(&bytes))
+}
+
+#[tauri::command]
+async fn browser_execute_js(state: tauri::State<'_, BrowserManager>, session_id: String, js: String) -> Result<String, String> {
+    state.execute_js(&session_id, &js).await
+}
+
+#[tauri::command]
+async fn browser_wait_for_element(state: tauri::State<'_, BrowserManager>, session_id: String, selector: String, timeout_ms: u64) -> Result<(), String> {
+    state.wait_for_element(&session_id, &selector, timeout_ms).await
+}
+
+#[tauri::command]
+async fn browser_get_page_info(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<browser::PageInfo, String> {
+    state.get_page_info(&session_id).await
+}
+
+#[tauri::command]
+async fn browser_double_click(state: tauri::State<'_, BrowserManager>, session_id: String, selector: String) -> Result<(), String> {
+    state.double_click(&session_id, &selector).await
+}
+
+#[tauri::command]
+async fn browser_hover(state: tauri::State<'_, BrowserManager>, session_id: String, selector: String) -> Result<(), String> {
+    state.hover(&session_id, &selector).await
+}
+
+#[tauri::command]
+async fn browser_get_url(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<String, String> {
+    state.get_url(&session_id).await
+}
+
+#[tauri::command]
+async fn browser_get_title(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<String, String> {
+    state.get_title(&session_id).await
+}
+
+#[tauri::command]
+async fn browser_get_text(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<String, String> {
+    state.get_text(&session_id).await
+}
+
+#[tauri::command]
+async fn browser_get_console_logs(state: tauri::State<'_, BrowserManager>, session_id: String) -> Result<Vec<String>, String> {
+    state.get_console_logs(&session_id).await
+}
+
+#[tauri::command]
+async fn browser_detect_browsers() -> Vec<browser::BrowserDetectInfo> {
+    browser::detect_browsers()
+}
+
+#[tauri::command]
+async fn browser_save_state(state: tauri::State<'_, BrowserManager>, path: String) -> Result<(), String> {
+    state.save_state_to_file(&path).await
+}
+
+#[tauri::command]
+async fn browser_load_state(state: tauri::State<'_, BrowserManager>, path: String) -> Result<Vec<browser::PersistedSessionData>, String> {
+    state.load_state_from_file(&path).await
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::new();
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        result.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
+        result.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
+        if chunk.len() > 2 {
+            result.push(CHARS[(triple & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
+    }
+    result
+}
+
 pub fn run() {
     // Capture the folder path from command line args (context menu "Open with AgenticOS")
     let initial_path: Option<String> = std::env::args().nth(1);
@@ -734,6 +897,7 @@ pub fn run() {
         .manage(CommandStreamState {
             processes: Mutex::new(HashMap::new()),
         })
+        .manage(BrowserManager::new())
         .setup(move |app| {
             // Emit the initial path to the webview if provided (from context menu)
             if let Some(path) = initial_path {
@@ -928,6 +1092,32 @@ pub fn run() {
             pty_write,
             pty_resize,
             pty_kill,
+            browser_launch,
+            browser_close,
+            browser_navigate,
+            browser_reload,
+            browser_new_tab,
+            browser_close_tab,
+            browser_switch_tab,
+            browser_list_tabs,
+            browser_click,
+            browser_type,
+            browser_press_key,
+            browser_extract_content,
+            browser_extract_links,
+            browser_screenshot,
+            browser_execute_js,
+            browser_wait_for_element,
+            browser_get_page_info,
+            browser_double_click,
+            browser_hover,
+            browser_get_url,
+            browser_get_title,
+            browser_get_text,
+            browser_get_console_logs,
+            browser_detect_browsers,
+            browser_save_state,
+            browser_load_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AgenticOS");

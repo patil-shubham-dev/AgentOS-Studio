@@ -20,3 +20,6 @@ nul
 
 # Tauri
 src-tauri/gen/schemas/
+
+# Heap snapshots
+*.heapsnapshot

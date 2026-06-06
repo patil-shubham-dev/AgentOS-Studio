@@ -3,11 +3,14 @@ import { motion } from "framer-motion"
 import { Loader2 } from "lucide-react"
 import { useTimelineStore } from "../timeline-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useAgentStore } from "@/stores/agent-store"
 import { ResponseStream } from "./response-stream"
 import { TerminalBlock } from "./TerminalBlock"
 import { MultiFileDiffCard, FileCreatedCard, FileDeletedCard, FilePreviewCard } from "./diff"
 import type { AgentSession } from "../timeline-store"
+import type { AgentStatus } from "@/stores/agent-store"
 import { RotateCcw } from "lucide-react"
+import { getAgentLabel, getAgentStateIcon } from "../../agent-visibility/AgentActivityMapper"
 
 const SEARCH_TOOL_NAMES = new Set(["grep", "search", "search_workspace", "grep_files"])
 const WEB_TOOL_NAMES = new Set(["web_search", "web_fetch"])
@@ -36,17 +39,33 @@ const ACTIVITY_LABELS: Record<string, string> = {
 
 function getActivityLabel(session: AgentSession, searchRunning: boolean, webRunning: boolean, hasContent: boolean, hasTerminals: boolean): string | null {
   if (!session || session.streamState === "completed" || session.streamState === "failed") return null
-
   const phase = session.currentPhase
-
   if (searchRunning) return "Let me search through the project"
   if (webRunning) return "Let me look this up"
   if (hasTerminals && session.terminalOutputs.some(t => t.status === "running")) return "Running a quick verification"
   if (phase && ACTIVITY_LABELS[phase]) return ACTIVITY_LABELS[phase]
   if (phase && ACTIVITY_LABELS[phase.toLowerCase()]) return ACTIVITY_LABELS[phase.toLowerCase()]
   if (hasContent) return "Just a moment"
-
   return "Let me think about this"
+}
+
+const AGENT_PRIORITY = ["manager", "research", "browser", "coder", "qa", "memory"]
+
+function getActiveAgentNarrative(agentStatuses: Record<string, AgentStatus>): { icon: string; label: string; task: string } | null {
+  const active = AGENT_PRIORITY
+    .map((role) => agentStatuses[role])
+    .filter((s): s is AgentStatus => s != null && s.state !== "idle" && s.state !== "complete" && s.state !== "failed")
+
+  if (active.length > 0) {
+    const agent = active[0]
+    return {
+      icon: getAgentStateIcon(agent.state),
+      label: getAgentLabel(agent.role),
+      task: agent.currentTask || "Working",
+    }
+  }
+
+  return null
 }
 
 interface AssistantResponseProps {
@@ -130,7 +149,9 @@ export const AssistantResponse = memo(function AssistantResponse({
     }
   }, [session.fileEdits, handleRevert])
 
+  const agentStatuses = useAgentStore((s) => s.agentStatuses)
   const currentActivity = getActivityLabel(session, searchRunning, webRunning, hasContent, hasTerminals)
+  const agentNarrative = isRunning && !hasContent ? getActiveAgentNarrative(agentStatuses) : null
 
   return (
     <motion.div
@@ -139,8 +160,18 @@ export const AssistantResponse = memo(function AssistantResponse({
       transition={{ duration: 0.12, ease: "easeOut" }}
       className="w-full"
     >
-      {/* Single activity indicator */}
-      {isRunning && currentActivity && !hasContent && (
+      {/* Agent-aware activity indicator */}
+      {isRunning && !hasContent && agentNarrative && (
+        <div className="flex items-center gap-2 py-1">
+          <span className="text-[11px] text-white/50">{agentNarrative.icon}</span>
+          <span className="text-xs text-white/40">
+            <span className="text-white/60 font-medium">{agentNarrative.label}</span>
+            <span className="text-white/30"> → {agentNarrative.task}</span>
+          </span>
+        </div>
+      )}
+      {/* Fallback phase-based indicator */}
+      {isRunning && !hasContent && !agentNarrative && currentActivity && (
         <div className="flex items-center gap-2 py-1">
           <Loader2 className="h-3 w-3 animate-spin text-white/30" />
           <span className="text-xs text-white/40 italic">{currentActivity}...</span>

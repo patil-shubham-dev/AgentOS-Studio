@@ -21,6 +21,23 @@ export interface OrchestrationStep {
   timestamp: number
 }
 
+export interface AgentStatus {
+  id: string
+  role: string
+  state: "idle" | "planning" | "researching" | "browsing" | "editing" | "validating" | "complete" | "failed"
+  currentTask: string
+  progress?: number
+  lastAction?: string
+  lastUpdated: number
+}
+
+export interface FileActivity {
+  path: string
+  agentRole: string
+  activity: "editing" | "reading" | "referencing" | "reviewing"
+  timestamp: number
+}
+
 interface AgentConversation {
   role: RuntimeRole
   messages: ChatMessage[]
@@ -36,6 +53,8 @@ export interface AgentStore {
 
   agentAssignments: AgentAssignment[]
   orchestrationSteps: OrchestrationStep[]
+  agentStatuses: Record<string, AgentStatus>
+  fileActivities: FileActivity[]
 
   setActiveRole: (role: RuntimeRole) => void
   getMessages: () => ChatMessage[]
@@ -53,6 +72,12 @@ export interface AgentStore {
   updateOrchestrationStep: (id: string, updates: Partial<OrchestrationStep>) => void
   clearOrchestrationSteps: () => void
   resetOrchestration: () => void
+
+  setAgentStatus: (id: string, status: Partial<AgentStatus>) => void
+  removeAgentStatus: (id: string) => void
+  setFileActivity: (path: string, agentRole: string, activity: FileActivity["activity"]) => void
+  clearFileActivity: (path: string) => void
+  clearAllFileActivities: () => void
 }
 
 function emptyConversation(role: RuntimeRole): AgentConversation {
@@ -76,6 +101,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
   agentAssignments: [],
   orchestrationSteps: [],
+  agentStatuses: {},
+  fileActivities: [],
 
   setActiveRole: (role) => set({ activeRole: role }),
 
@@ -154,4 +181,41 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       agentAssignments: [],
       orchestrationSteps: [],
     }),
+
+  setAgentStatus: (id, status) =>
+    set((s) => ({
+      agentStatuses: {
+        ...s.agentStatuses,
+        [id]: {
+          ...(s.agentStatuses[id] ?? { id, role: id, state: "idle", currentTask: "", lastUpdated: Date.now() }),
+          ...status,
+          lastUpdated: Date.now(),
+        },
+      },
+    })),
+
+  removeAgentStatus: (id) =>
+    set((s) => {
+      const { [id]: _, ...rest } = s.agentStatuses
+      return { agentStatuses: rest }
+    }),
+
+  setFileActivity: (path, agentRole, activity) =>
+    set((s) => {
+      const existing = s.fileActivities.findIndex((f) => f.path === path && f.agentRole === agentRole)
+      const entry: FileActivity = { path, agentRole, activity, timestamp: Date.now() }
+      if (existing >= 0) {
+        const updated = [...s.fileActivities]
+        updated[existing] = entry
+        return { fileActivities: updated }
+      }
+      return { fileActivities: [...s.fileActivities, entry] }
+    }),
+
+  clearFileActivity: (path) =>
+    set((s) => ({
+      fileActivities: s.fileActivities.filter((f) => f.path !== path),
+    })),
+
+  clearAllFileActivities: () => set({ fileActivities: [] }),
 }))

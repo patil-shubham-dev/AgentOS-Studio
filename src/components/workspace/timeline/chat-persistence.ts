@@ -1,4 +1,6 @@
 const STORAGE_KEY = "agentic-chat-state"
+const HISTORY_KEY = "agentic-chat-history"
+const MAX_HISTORY_ENTRIES = 50
 const LOG_PREFIX = "[ChatPersistence]"
 
 export interface PersistedChatState {
@@ -30,6 +32,13 @@ export interface PersistableSession {
   tokenAppended: number
   currentPhase?: string
   phaseHistory?: import("./timeline-store").PhaseEntry[]
+}
+
+export interface HistoryEntry {
+  id: string
+  title: string
+  timestamp: number
+  state: PersistedChatState
 }
 
 export function serializeChatState(
@@ -139,5 +148,73 @@ export function clearPersistedChatState(): void {
     localStorage.removeItem(STORAGE_KEY)
   } catch (err) {
     console.warn("[chat-persistence] Failed to clear persisted chat state:", err)
+  }
+}
+
+/** Generate a title from the first user message */
+function generateTitle(events: import("./types").TimelineEvent[]): string {
+  const firstUserMsg = events.find(e => e.type === "user-message") as any
+  if (firstUserMsg?.content) {
+    const text = firstUserMsg.content
+    return text.length > 60 ? text.slice(0, 57) + "..." : text
+  }
+  return "Chat " + new Date().toLocaleDateString()
+}
+
+/** Save current chat state to history before starting a new chat */
+export function saveToHistory(
+  events: import("./types").TimelineEvent[],
+  agentSessions: Map<string, import("./timeline-store").AgentSession>,
+  streamingTexts: Map<string, string>,
+  sessionOrder: string[],
+  sessionCreatedAtEventCount: number[],
+  collapsedSections: Set<string>,
+): void {
+  if (events.length === 0) return
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY)
+    const history: HistoryEntry[] = raw ? JSON.parse(raw) : []
+    const entry: HistoryEntry = {
+      id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      title: generateTitle(events),
+      timestamp: Date.now(),
+      state: JSON.parse(serializeChatState(events, agentSessions, streamingTexts, sessionOrder, sessionCreatedAtEventCount, collapsedSections)),
+    }
+    history.unshift(entry)
+    if (history.length > MAX_HISTORY_ENTRIES) {
+      history.length = MAX_HISTORY_ENTRIES
+    }
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history))
+  } catch (err) {
+    console.warn(LOG_PREFIX, "Failed to save history:", err)
+  }
+}
+
+/** Load all history entries */
+export function loadHistory(): HistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch (err) {
+    console.warn(LOG_PREFIX, "Failed to load history:", err)
+    return []
+  }
+}
+
+/** Restore a specific history entry */
+export function restoreHistoryEntry(entry: HistoryEntry): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entry.state))
+  } catch (err) {
+    console.warn(LOG_PREFIX, "Failed to restore history entry:", err)
+  }
+}
+
+/** Clear all history entries */
+export function clearHistory(): void {
+  try {
+    localStorage.removeItem(HISTORY_KEY)
+  } catch (err) {
+    console.warn(LOG_PREFIX, "Failed to clear history:", err)
   }
 }

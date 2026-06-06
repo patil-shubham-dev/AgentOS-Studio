@@ -7,6 +7,7 @@ import { StreamManager } from "@/runtime/streaming/StreamManager"
 import type { ToolCallRecord, FileEditRecord, TerminalRecord } from "@/components/workspace/timeline/step-card"
 import { normalizeError } from "@/lib/normalize-error"
 import { emitTelemetry } from "@/lib/telemetry"
+import { getStateForToolCall, getActivityForToolCall, getAgentLabel } from "@/components/workspace/agent-visibility/AgentActivityMapper"
 
 export interface ExecutionSession {
   id: string
@@ -29,9 +30,15 @@ export class ExecutionSessionManager {
   private stepByExecId = new Map<string, string>()
   private initStepIds = new Map<string, string>()
   private sessionToExecId = new Map<string, string>()
+  private execRoleMap = new Map<string, string>()
   private activeSessionId: string | null = null
   private streamManagerFlushSet = false
   private forceStopTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** Max time to wait for first event before auto-cancelling */
+  private static readonly FIRST_EVENT_TIMEOUT_MS = 45_000
+  /** Max total session duration before force-cancel */
+  private static readonly SESSION_MAX_DURATION_MS = 300_000
 
   static getInstance(): ExecutionSessionManager {
     if (!ExecutionSessionManager.instance) {
@@ -81,8 +88,38 @@ export class ExecutionSessionManager {
     try {
       const eventStream = this.orchestrator.execute(options)
 
+      // Stall detection: cancel if no event received within timeout
+      let firstEventReceived = false
+      let stallTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        if (!firstEventReceived) {
+          console.warn(`[SessionManager] No event received within ${ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS}ms — auto-cancelling`)
+          this.orchestrator.cancel()
+        }
+      }, ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS)
+      const sessionStartTime = Date.now()
+
       for await (const event of eventStream) {
+        if (!firstEventReceived) {
+          firstEventReceived = true
+          if (stallTimer !== null) {
+            clearTimeout(stallTimer)
+            stallTimer = null
+          }
+        }
+
+        // Total session duration check
+        if (Date.now() - sessionStartTime > ExecutionSessionManager.SESSION_MAX_DURATION_MS) {
+          console.warn(`[SessionManager] Session exceeded max duration — force-cancelling`)
+          this.orchestrator.cancel()
+          break
+        }
+
         this.handleEvent(event, options)
+      }
+
+      if (stallTimer !== null) {
+        clearTimeout(stallTimer)
+        stallTimer = null
       }
 
       if (session.status !== "cancelled") {
@@ -127,28 +164,53 @@ export class ExecutionSessionManager {
 
     switch (event.type) {
       case "AGENT_ASSIGNED": {
-        const initBeforeReal = this.initStepIds.get(event.executionId)
-        if (initBeforeReal) {
-          timeline.updateAgentSession(initBeforeReal, { status: "complete", streamState: "completed" })
-          this.initStepIds.delete(event.executionId)
+        // Track agent role for this execution
+        this.execRoleMap.set(event.executionId, event.roleId)
+        useAgentStore.getState().setAgentStatus(event.roleId, {
+          id: event.roleId,
+          role: event.roleId,
+          state: "planning",
+          currentTask: getAgentLabel(event.roleId),
+          lastAction: "Assigned to task",
+        })
+
+        // Upgrade optimistic session in-place instead of destroy+recreate
+        // This prevents scroll jumps, flicker, and lost animation state
+        const optimisticStepId = event.correlationId ? `optimistic_${event.correlationId}` : null
+        if (optimisticStepId && timeline.agentSessions.has(optimisticStepId)) {
+          timeline.upgradeOptimisticSession(optimisticStepId, event.stepId, {
+            roleId: event.roleId,
+            roleName: event.roleName,
+            modelName: event.modelName,
+            providerName: event.providerName,
+            currentPhase: undefined,
+            phaseHistory: [{ label: "Thinking", timestamp: Date.now() }, { label: "Connecting", timestamp: Date.now() }],
+          })
+        } else {
+          // No optimistic session — create fresh
+          const initBeforeReal = this.initStepIds.get(event.executionId)
+          if (initBeforeReal) {
+            timeline.updateAgentSession(initBeforeReal, { status: "complete", streamState: "completed" })
+            this.initStepIds.delete(event.executionId)
+          }
+          timeline.addAgentSession({
+            stepId: event.stepId,
+            roleId: event.roleId,
+            roleName: event.roleName,
+            status: "running",
+            streamState: "streaming",
+            streamingText: "",
+            toolCalls: [],
+            fileEdits: [],
+            fileOps: [],
+            terminalOutputs: [],
+            modelName: event.modelName,
+            providerName: event.providerName,
+            startedAt: Date.now(),
+            tokenAppended: 0,
+          }, event.correlationId)
         }
         this.stepByExecId.set(event.executionId, event.stepId)
-        timeline.addAgentSession({
-          stepId: event.stepId,
-          roleId: event.roleId,
-          roleName: event.roleName,
-          status: "running",
-          streamState: "streaming",
-          streamingText: "",
-          toolCalls: [],
-          fileEdits: [],
-          fileOps: [],
-          terminalOutputs: [],
-          modelName: event.modelName,
-          providerName: event.providerName,
-          startedAt: Date.now(),
-          tokenAppended: 0,
-        }, event.correlationId)
         break
       }
 
@@ -164,6 +226,16 @@ export class ExecutionSessionManager {
             timestamp: Date.now(),
           })
         }
+        // Mark agent as complete
+        const role = this.execRoleMap.get(event.executionId)
+        if (role) {
+          useAgentStore.getState().setAgentStatus(role, {
+            state: "complete",
+            currentTask: "Complete",
+            lastAction: "Task finished",
+          })
+          this.execRoleMap.delete(event.executionId)
+        }
         break
       }
 
@@ -178,6 +250,19 @@ export class ExecutionSessionManager {
           status: "running",
         }
         timeline.addToolCallToAgent(stepId, toolCall)
+
+        // Update agent status based on tool being used
+        const role = this.execRoleMap.get(event.executionId)
+        if (role) {
+          const activity = getActivityForToolCall(event.toolName, typeof event.args === 'object' ? event.args as Record<string, unknown> : undefined)
+          useAgentStore.getState().setAgentStatus(role, {
+            id: role,
+            role,
+            state: getStateForToolCall(event.toolName) as any,
+            currentTask: activity.label,
+            lastAction: activity.detail ?? event.toolName,
+          })
+        }
         break
       }
 
@@ -189,6 +274,12 @@ export class ExecutionSessionManager {
           result: event.result,
           durationMs: event.durationMs,
         })
+        const role = this.execRoleMap.get(event.executionId)
+        if (role) {
+          useAgentStore.getState().setAgentStatus(role, {
+            lastAction: `${event.toolName.replace(/_/g, " ")} completed`,
+          })
+        }
         break
       }
 
@@ -200,6 +291,14 @@ export class ExecutionSessionManager {
           result: event.error,
           durationMs: event.durationMs,
         })
+        const role = this.execRoleMap.get(event.executionId)
+        if (role) {
+          useAgentStore.getState().setAgentStatus(role, {
+            state: "validating",
+            currentTask: "Handling error",
+            lastAction: `Error: ${event.error?.slice(0, 80)}`,
+          })
+        }
         break
       }
 
@@ -215,6 +314,19 @@ export class ExecutionSessionManager {
           newContent: event.newContent,
         }
         timeline.addFileEditToAgent(stepId, fileEdit)
+
+        // Update agent status for editing activity + track file activity
+        const role = this.execRoleMap.get(event.executionId)
+        if (role) {
+          useAgentStore.getState().setAgentStatus(role, {
+            id: role,
+            role,
+            state: "editing",
+            currentTask: "Editing files",
+            lastAction: `Editing ${event.path.split("/").pop() ?? event.path}`,
+          })
+          useAgentStore.getState().setFileActivity(event.path, role, "editing")
+        }
         break
       }
 
@@ -227,6 +339,15 @@ export class ExecutionSessionManager {
           status: "running",
         }
         timeline.addTerminalToAgent(cmdStepId, terminal)
+
+        const role = this.execRoleMap.get(event.executionId)
+        if (role) {
+          useAgentStore.getState().setAgentStatus(role, {
+            state: "validating",
+            currentTask: "Running command",
+            lastAction: event.command.slice(0, 60),
+          })
+        }
         break
       }
 
@@ -306,6 +427,16 @@ export class ExecutionSessionManager {
             streamState: wasCancelled ? "cancelled" : "completed",
           })
           this.initStepIds.delete(event.executionId)
+        }
+        // Mark agent as failed
+        const role = this.execRoleMap.get(event.executionId)
+        if (role) {
+          useAgentStore.getState().setAgentStatus(role, {
+            state: wasCancelled ? "complete" : "failed",
+            currentTask: wasCancelled ? "Cancelled" : "Failed",
+            lastAction: wasCancelled ? "Cancelled by user" : `Error: ${event.error?.slice(0, 80)}`,
+          })
+          this.execRoleMap.delete(event.executionId)
         }
         if (!wasCancelled) {
           useAgentStore.getState().addMessage(options.activeRole, {
@@ -440,61 +571,41 @@ export class ExecutionSessionManager {
 
     session.status = "cancelled"
     session.completedAt = Date.now()
-    emitTelemetry({ type: "cancellation", timestamp: Date.now(), durationMs: Date.now() - session.startedAt, metadata: { sessionId, input: session.input.slice(0, 100) } })
 
+    // 1. Stop all streams immediately
+    StreamManager.getInstance().clearAll()
+
+    // 2. Abort the orchestrator
     this.orchestrator.cancel()
 
+    // 3. Finalize all store state immediately
     const timeline = useTimelineStore.getState()
-    const execId = this.sessionToExecId.get(sessionId)
-
-    const finalize = () => {
-      if (execId) {
-        const stepId = this.stepByExecId.get(execId)
-        if (stepId) {
-          StreamManager.getInstance().clearStep(stepId)
-          timeline.commitStreamingText(stepId)
-          timeline.updateAgentSession(stepId, { status: "complete", streamState: "cancelled" })
-          timeline.streamingTexts.delete(stepId)
-          this.stepByExecId.delete(execId)
-        }
-
-        const initStepId = this.initStepIds.get(execId)
-        if (initStepId) {
-          timeline.updateAgentSession(initStepId, { status: "complete", streamState: "cancelled" })
-          this.initStepIds.delete(execId)
-        }
-
-        this.sessionToExecId.delete(sessionId)
-      }
+    for (const [execId, stepId] of this.stepByExecId) {
+      timeline.commitStreamingText(stepId)
+      timeline.updateAgentSession(stepId, { status: "complete", streamState: "cancelled", completedAt: Date.now() })
+      timeline.streamingTexts.delete(stepId)
+    }
+    for (const [execId, initStepId] of this.initStepIds) {
+      timeline.updateAgentSession(initStepId, { status: "complete", streamState: "cancelled", completedAt: Date.now() })
     }
 
-    finalize()
+    this.stepByExecId.clear()
+    this.initStepIds.clear()
+    this.sessionToExecId.delete(sessionId)
+    this.activeSessionId = null
 
-    // Force-stop: if the orchestrator hasn't fully stopped within 5s,
-    // forcefully clean up all remaining sessions
+    // Background safety fallback: only runs if something is genuinely stuck
     this.forceStopTimer = setTimeout(() => {
       for (const [sid, s] of this.sessions) {
-        if (s.status === "running" || s.status === "cancelled") {
-          if (s.status === "running") {
-            s.status = "cancelled"
-            s.completedAt = Date.now()
-          }
-          const eid = this.sessionToExecId.get(sid)
-          if (eid) {
-            const fsStepId = this.stepByExecId.get(eid)
-            if (fsStepId) {
-              StreamManager.getInstance().clearStep(fsStepId)
-              timeline.commitStreamingText(fsStepId)
-              timeline.updateAgentSession(fsStepId, { status: "complete", streamState: "cancelled" })
-              timeline.streamingTexts.delete(fsStepId)
-              this.stepByExecId.delete(eid)
-            }
-            this.sessionToExecId.delete(sid)
-          }
-          this.activeSessionId = null
+        if (s.status === "running") {
+          s.status = "cancelled"
+          s.completedAt = Date.now()
         }
       }
-    }, 5000)
+      this.stepByExecId.clear()
+      this.initStepIds.clear()
+      this.sessionToExecId.clear()
+    }, 2000)
 
     this.pruneSessions()
   }

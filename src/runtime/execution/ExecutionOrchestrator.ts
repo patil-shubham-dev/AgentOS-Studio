@@ -2,6 +2,7 @@ import { useAgentStore } from "@/stores/agent-store"
 import { useAppStore } from "@/stores/app-store"
 import { useToastStore } from "@/stores/toast-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
+import { useWorkspaceStore } from "@/stores/workspace-store"
 import { route as managerRoute } from "@/runtime/manager-routing-engine"
 import type { RoutingDecision } from "@/runtime/manager-routing-engine"
 import { applyModeConstraints } from "@/runtime/execution-mode"
@@ -9,6 +10,7 @@ import { compressConversationHistory } from "@/runtime/context/HistoryCompressor
 import { summarizeMessages, getMemoryPressure } from "@/runtime/memory-manager"
 import { RUNTIME_TOKEN_LIMITS } from "@/runtime/runtime-token-config"
 import { AgentExecutor, type AgentMode } from "@/runtime/agents/AgentExecutor"
+import { RuntimeOS } from "@/runtime/RuntimeOS"
 import { StreamManager } from "@/runtime/streaming/StreamManager"
 import { normalizeRole } from "@/lib/role-identity"
 import { fastChatCompletion } from "@/lib/agents/orchestrator"
@@ -16,6 +18,24 @@ import type { RuntimeRole } from "@/types"
 import { startTrace, trace, endTrace } from "@/lib/execution-trace"
 import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
 import { emitTelemetry } from "@/lib/telemetry"
+import { RuntimeCleanupManager } from "@/runtime/RuntimeCleanupManager"
+
+// Tool capabilities that require an active workspace
+const WORKSPACE_CAPABILITIES = {
+  requiresTerminal: new Set(["run_command", "bash", "terminal"]),
+  requiresFilesystem: new Set(["read_file", "write_file", "edit_file", "file_delete", "file_move", "file_copy", "folder_create", "folder_delete", "folder_list", "list_files"]),
+  requiresGit: new Set(["git_diff", "git_commit", "git_push", "git_status", "git_log"]),
+  requiresSearch: new Set(["grep_files", "glob_files", "search_files", "find_files", "file_tree", "workspace_index", "project_analysis"]),
+  requiresBuild: new Set(["build_project", "run_tests"]),
+}
+
+// Tools that work without any workspace
+const WORKSPACE_FREE_TOOLS = new Set([
+  "web_search", "web_fetch",
+  "browser_navigate", "browser_click", "browser_type", "browser_snapshot",
+  "think", "reasoning", "plan",
+  "delegate_task", "spawn_agent",
+])
 
 export type AgentModeOption = "fast" | "full" | "multi"
 
@@ -54,7 +74,13 @@ export class ExecutionOrchestrator {
       console.warn("[Orchestrator] execute called while already executing — rejecting duplicate")
       throw new Error("An execution is already in progress. Please wait for it to complete or cancel it.")
     }
+    if (options.signal?.aborted) {
+      console.warn("[Orchestrator] execute called with already-aborted signal — rejecting")
+      throw new DOMException("Execution cancelled before start", "AbortError")
+    }
     this.isExecuting = true
+    const cleanupId = `orchestrator_exec_${Date.now()}`
+    let cleanupRegistered = false
     try {
     const { input, activeRole, correlationId, signal: userSignal } = options
     const t0 = performance.now()
@@ -63,9 +89,23 @@ export class ExecutionOrchestrator {
     const ctrl = new AbortController()
     this.currentCtrl = ctrl
 
+    // Register with RuntimeCleanupManager so app shutdown cancels execution
+    RuntimeCleanupManager.getInstance().register(
+      { type: "abort-controller", id: cleanupId, controller: ctrl },
+      "execution",
+    )
+    cleanupRegistered = true
+
     if (userSignal) {
       if (userSignal.aborted) ctrl.abort()
       userSignal.addEventListener("abort", () => ctrl.abort(), { once: true })
+    }
+
+    // Also abort if RuntimeCleanupManager global signal fires (app shutdown)
+    const shutdownSignal = RuntimeCleanupManager.getInstance().signal
+    if (!shutdownSignal.aborted) {
+      const onShutdown = () => ctrl.abort()
+      shutdownSignal.addEventListener("abort", onShutdown, { once: true })
     }
 
     startTrace(traceId)
@@ -98,6 +138,26 @@ export class ExecutionOrchestrator {
       return
     }
 
+    // Workspace guard: tool-driven capability check
+    // If no workspace is open, check if the selected roles have tools that require it
+    const workspaceRoot = useWorkspaceStore.getState().rootPath
+    const workspaceOpen = !!workspaceRoot
+
+    if (!workspaceOpen && decision.requiresDelegation) {
+      const needsWorkspace = this.checkWorkspaceRequired(decision, executionId)
+      if (needsWorkspace) {
+        yield { type: "THINKING_STARTED", executionId, label: "No workspace open", timestamp: Date.now() }
+        const noWsMsg = "I can't inspect files or run commands because no workspace is currently open. Open a folder and I'll immediately inspect its contents."
+        yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: "assistant", roleName: "Assistant", modelName: "", providerName: "", stepId: `${executionId}_step`, timestamp: Date.now() }
+        StreamManager.getInstance().append(`${executionId}_step`, noWsMsg)
+        StreamManager.getInstance().complete(`${executionId}_step`)
+        yield { type: "MESSAGE_COMPLETE", executionId, stepId: `${executionId}_step`, content: noWsMsg, finishReason: "stop", timestamp: Date.now() }
+        yield { type: "EXECUTION_COMPLETE", executionId, content: noWsMsg, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: Math.round(performance.now() - t0), timestamp: Date.now() }
+        endTrace(traceId)
+        return
+      }
+    }
+
     const agentMode: AgentMode = this.resolveMode(decision, options.mode)
 
     if (!decision.requiresDelegation || agentMode === "FAST") {
@@ -112,8 +172,29 @@ export class ExecutionOrchestrator {
   } finally {
     this.isExecuting = false
     this.currentCtrl = null
+    if (cleanupRegistered) {
+      RuntimeCleanupManager.getInstance().unregister(cleanupId)
+    }
   }
 }
+
+  /** Check if any tool available to the selected roles requires workspace access */
+  private checkWorkspaceRequired(decision: RoutingDecision, executionId: string): boolean {
+    try {
+      const runtimeOS = RuntimeOS.getInstance()
+      for (const role of decision.selectedRoles) {
+        const roleTools = runtimeOS.toolRegistry.getByMode(role)
+        for (const tool of roleTools) {
+          for (const [, tools] of Object.entries(WORKSPACE_CAPABILITIES)) {
+            if (tools.has(tool.name)) return true
+          }
+        }
+      }
+    } catch {
+      // If RuntimeOS isn't available, fall through to allow
+    }
+    return false
+  }
 
   private resolveMode(decision: RoutingDecision, requestedMode?: AgentModeOption): AgentMode {
     if (requestedMode === "fast") return "FAST"
@@ -198,13 +279,15 @@ export class ExecutionOrchestrator {
     yield { type: "PROVIDER_CONNECTING", executionId, model: wiredForFastChat.model, provider: fcProvider.name, temperature: wiredForFastChat.temperature, timestamp: Date.now() }
 
     try {
+      let fcTokenCount = 0
       const result = await fastChatCompletion(
         fcProvider.baseUrl, fcProvider.apiKey, wiredForFastChat.model,
         input, this.getProcessedHistory(activeRole), ctrl.signal,
         (token: string) => {
           streamedContent += token
           streamTokenCount++
-          streamManager.append(stepId, token)
+          fcTokenCount++
+          streamManager.append(stepId, token, fcTokenCount <= 5)
         },
       )
 
@@ -290,9 +373,11 @@ export class ExecutionOrchestrator {
           signal: ctrl.signal,
         })
 
+        let tokenCount = 0
         for await (const event of executor.execute()) {
           if (event.type === "TOKEN") {
-            StreamManager.getInstance().append(stepId, event.token)
+            tokenCount++
+            StreamManager.getInstance().append(stepId, event.token, tokenCount <= 5)
             continue
           }
           if (event.type === "MESSAGE_COMPLETE") {

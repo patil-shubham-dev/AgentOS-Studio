@@ -8,13 +8,18 @@ interface StepStream {
   active: boolean
 }
 
+const BURST_TOKEN_LIMIT = 3
+const BURST_CHAR_LIMIT = 100
+const MAX_CONSECUTIVE_MICROTASK_FLUSHES = 5
+
 export class StreamManager {
   private static instance: StreamManager
   private streams = new Map<string, StepStream>()
-  private flushScheduled = false
+  private flushScheduled: "raf" | "microtask" | null = null
   private rafId: number | null = null
   private flushCallback: StreamFlushCallback | null = null
   private cancelled = false
+  private microtaskFlushCount = 0
 
   static getInstance(): StreamManager {
     if (!StreamManager.instance) {
@@ -30,7 +35,8 @@ export class StreamManager {
   reset(): void {
     this.cancelled = false
     this.streams.clear()
-    this.flushScheduled = false
+    this.flushScheduled = null
+    this.microtaskFlushCount = 0
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId)
       this.rafId = null
@@ -43,11 +49,9 @@ export class StreamManager {
     return this.droppedTokenCount
   }
 
-  append(stepId: string, token: string): void {
-    // Drop tokens during cancellation to prevent orphan streams (Z9 fix)
+  append(stepId: string, token: string, priority?: boolean): void {
     if (this.cancelled) {
       this.droppedTokenCount++
-      emitTelemetry({ type: "stream_token_dropped", timestamp: Date.now(), error: "Token dropped during cancellation", metadata: { stepId, reason: "cancelled", totalDropped: this.droppedTokenCount } })
       return
     }
     let stream = this.streams.get(stepId)
@@ -57,28 +61,64 @@ export class StreamManager {
     }
     if (!stream.active) {
       this.droppedTokenCount++
-      emitTelemetry({ type: "stream_token_dropped", timestamp: Date.now(), error: "Token dropped for inactive stream", metadata: { stepId, totalDropped: this.droppedTokenCount } })
-      console.warn(`[StreamManager] token dropped for inactive stream "${stepId}" (total dropped: ${this.droppedTokenCount})`)
       return
     }
+
     const isFirstToken = stream.tokens.length === 0
     stream.tokens.push(token)
+
     if (isFirstToken) {
-      this.flushImmediate()
+      this.flushViaMicrotask()
+    } else if (priority) {
+      this.flushViaMicrotask()
     } else {
-      this.scheduleFlush()
+      const pendingTokens = stream.tokens.length
+      const totalChars = stream.tokens.reduce((sum, t) => sum + t.length, 0)
+      if (pendingTokens <= BURST_TOKEN_LIMIT && totalChars < BURST_CHAR_LIMIT) {
+        this.flushViaMicrotask()
+      } else {
+        this.scheduleRafFlush()
+      }
     }
   }
 
-  private scheduleFlush(): void {
-    if (this.flushScheduled) return
-    this.flushScheduled = true
-    this.rafId = requestAnimationFrame(() => this.flush())
+  private flushViaMicrotask(): void {
+    // Prevent microtask starvation: if we've done too many consecutive microtask
+    // flushes, fall back to RAF to give the browser a chance to render
+    if (this.microtaskFlushCount >= MAX_CONSECUTIVE_MICROTASK_FLUSHES) {
+      this.microtaskFlushCount = 0
+      if (this.flushScheduled !== "raf") {
+        this.scheduleRafFlush()
+      }
+      return
+    }
+    if (this.flushScheduled === "microtask") return
+    this.flushScheduled = "microtask"
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId)
+      this.rafId = null
+    }
+    this.microtaskFlushCount++
+    queueMicrotask(() => {
+      if (this.flushScheduled !== "microtask") return
+      this.flushScheduled = null
+      this.flush()
+    })
+  }
+
+  private scheduleRafFlush(): void {
+    this.microtaskFlushCount = 0
+    if (this.flushScheduled === "raf") return
+    this.flushScheduled = "raf"
+    this.rafId = requestAnimationFrame(() => {
+      this.flushScheduled = null
+      this.rafId = null
+      this.flush()
+    })
   }
 
   private flush(): void {
-    this.flushScheduled = false
-    this.rafId = null
+    this.microtaskFlushCount = 0
     if (this.streams.size === 0) return
 
     for (const [stepId, stream] of this.streams) {
@@ -98,7 +138,6 @@ export class StreamManager {
       }
     }
 
-    // Remove inactive streams with no pending tokens
     for (const [stepId, stream] of this.streams) {
       if (!stream.active && stream.tokens.length === 0) {
         this.streams.delete(stepId)
@@ -106,11 +145,12 @@ export class StreamManager {
     }
 
     if (this.streams.size > 0) {
-      // Only reschedule if any active stream has pending tokens
       const hasPendingWork = Array.from(this.streams.values())
         .some(s => s.active && s.tokens.length > 0)
       if (hasPendingWork) {
-        this.scheduleFlush()
+        if (this.flushScheduled === null) {
+          this.scheduleRafFlush()
+        }
       }
     }
   }
@@ -120,7 +160,7 @@ export class StreamManager {
       cancelAnimationFrame(this.rafId)
       this.rafId = null
     }
-    this.flushScheduled = false
+    this.flushScheduled = null
     this.flush()
   }
 
@@ -138,8 +178,9 @@ export class StreamManager {
 
   clearAll(): void {
     this.streams.clear()
-    this.flushScheduled = false
+    this.flushScheduled = null
     this.cancelled = true
+    this.microtaskFlushCount = 0
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId)
       this.rafId = null

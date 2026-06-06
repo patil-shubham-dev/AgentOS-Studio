@@ -97,6 +97,8 @@ export function ChatPanel() {
   const [currentSession, setCurrentSession] = useState<ExecutionSession | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
 
+  const sessionRef = useRef<ExecutionSession | null>(null)
+
   useEffect(() => {
     inputRef.current?.focus()
   }, [activeRole])
@@ -113,8 +115,9 @@ export function ChatPanel() {
 
     const userInput = input.trim()
     const ts = Date.now()
-
     const correlationId = useTimelineStore.getState().generateId()
+    const optimisticStepId = `optimistic_${correlationId}`
+
     addMessage(activeRole, { role: "user", content: userInput, timestamp: ts })
     useTimelineStore.getState().addEvent({
       type: "user-message",
@@ -123,47 +126,79 @@ export function ChatPanel() {
       content: userInput,
       timestamp: ts,
     })
+
+    // Optimistic: show assistant thinking state immediately
+    useTimelineStore.getState().addOptimisticSession(optimisticStepId, correlationId)
     setInput("")
     useAgentStore.getState().setProcessing(true)
 
-    try {
-      const session = await executionSessionManager.start({
-        input: userInput,
-        activeRole,
-        correlationId,
-      })
+    // Fire-and-forget: execution runs in background, store updates drive UI
+    executionSessionManager.start({
+      input: userInput,
+      activeRole,
+      correlationId,
+    }).then((session) => {
       setCurrentSession(session)
-    } catch (err) {
+      sessionRef.current = session
+    }).catch((err) => {
       const msg = err instanceof Error ? err.message : String(err)
       console.error("[ChatPanel] Execution failed:", msg)
+      // Clean up optimistic session on failure — mark as error, don't just remove
+      const timeline = useTimelineStore.getState()
+      if (timeline.agentSessions.has(optimisticStepId)) {
+        timeline.updateAgentSession(optimisticStepId, {
+          status: "error",
+          streamState: "failed",
+          error: msg,
+        })
+        timeline.streamingTexts.delete(optimisticStepId)
+      }
       useAgentStore.getState().addMessage(activeRole, {
         role: "assistant",
-        content: `⚠️ Execution failed: ${msg}`,
+        content: `\u26a0\ufe0f Execution failed: ${msg}`,
         timestamp: Date.now(),
       })
-    } finally {
+    }).finally(() => {
       useAgentStore.getState().setProcessing(false)
-    }
+      // Safety: finalize any remaining optimistic sessions that weren't upgraded
+      const timeline = useTimelineStore.getState()
+      for (const [stepId, session] of timeline.agentSessions) {
+        if (stepId.startsWith("optimistic_") && session.streamState === "streaming") {
+          timeline.updateAgentSession(stepId, {
+            status: "error",
+            streamState: "failed",
+            error: "Execution ended without agent assignment",
+          })
+          timeline.streamingTexts.delete(stepId)
+        }
+      }
+    })
   }, [input, activeRole, addMessage, canSend])
 
-  const cancelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
   const handleCancel = useCallback(() => {
-    if (cancelTimerRef.current) clearTimeout(cancelTimerRef.current)
     setIsCancelling(true)
 
-    if (currentSession) {
-      executionSessionManager.cancel(currentSession.id)
+    const session = sessionRef.current
+    if (session) {
+      executionSessionManager.cancel(session.id)
     } else {
       ExecutionSessionManager.cancelCurrent()
     }
 
-    // Keep cancelling state visible for at least 800ms so users perceive it
-    cancelTimerRef.current = setTimeout(() => {
-      useAgentStore.getState().setProcessing(false)
-      setIsCancelling(false)
-    }, 800)
-  }, [currentSession])
+    // UI updates immediately — no artificial delay
+    useAgentStore.getState().setProcessing(false)
+
+    // Clean up optimistic sessions
+    const timeline = useTimelineStore.getState()
+    for (const [stepId, session] of timeline.agentSessions) {
+      if (session.streamState === "streaming" || session.streamState === "not_started") {
+        timeline.commitStreamingText(stepId)
+        timeline.updateAgentSession(stepId, { status: "complete", streamState: "cancelled", completedAt: Date.now() })
+      }
+    }
+
+    setIsCancelling(false)
+  }, [])
 
   return (
     <div className="flex h-full flex-col bg-gradient-to-b from-[#0a0a0b] to-[#09090a]">

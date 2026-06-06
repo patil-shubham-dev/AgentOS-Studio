@@ -289,6 +289,93 @@ const BUILTIN_TOOLS: BuiltinToolDef[] = [
     roles: ["browser", "qa", "design"],
   },
   {
+    name: "browser_get_url",
+    description: "Get the current URL of the browser page",
+    parameters: {
+      type: "object",
+      properties: {
+        session_id: { type: "string", description: "Browser session ID" },
+      },
+      required: ["session_id"],
+    },
+    roles: ["browser", "qa", "design"],
+  },
+  {
+    name: "browser_press_key",
+    description: "Press a keyboard key in the browser page",
+    parameters: {
+      type: "object",
+      properties: {
+        session_id: { type: "string", description: "Browser session ID" },
+        key: { type: "string", description: "Key to press (e.g. Enter, Tab, Escape)" },
+      },
+      required: ["session_id", "key"],
+    },
+    roles: ["browser", "qa", "design"],
+  },
+  {
+    name: "browser_reload",
+    description: "Reload the current browser page",
+    parameters: {
+      type: "object",
+      properties: {
+        session_id: { type: "string", description: "Browser session ID" },
+      },
+      required: ["session_id"],
+    },
+    roles: ["browser", "qa", "design"],
+  },
+  {
+    name: "browser_new_tab",
+    description: "Open a new tab in the browser session",
+    parameters: {
+      type: "object",
+      properties: {
+        session_id: { type: "string", description: "Browser session ID" },
+        url: { type: "string", description: "URL to open in the new tab" },
+      },
+      required: ["session_id", "url"],
+    },
+    roles: ["browser", "qa", "design"],
+  },
+  {
+    name: "browser_list_tabs",
+    description: "List all open tabs in a browser session",
+    parameters: {
+      type: "object",
+      properties: {
+        session_id: { type: "string", description: "Browser session ID" },
+      },
+      required: ["session_id"],
+    },
+    roles: ["browser", "qa", "design"],
+  },
+  {
+    name: "web_search",
+    description: "Search the web for a query and return summarized results",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        num_results: { type: "number", description: "Number of results to return (default: 5)" },
+      },
+      required: ["query"],
+    },
+    roles: ["*"],
+  },
+  {
+    name: "web_fetch",
+    description: "Fetch a web page and return its text content",
+    parameters: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "URL to fetch" },
+      },
+      required: ["url"],
+    },
+    roles: ["*"],
+  },
+  {
     name: "delegate_subtask",
     description: "Delegate a subtask to a specialized sub-agent with its own isolated context window",
     parameters: {
@@ -364,6 +451,108 @@ function createAgentTool(def: BuiltinToolDef): AgentTool {
 
         delegate_subtask: async (_, i) => implDelegateSubtask(i),
         run_skill: async (ctx, i) => implRunSkill(String(i.name ?? ''), String(i.args ?? ''), ctx.role ?? 'coder'),
+
+        launch_browser: async (_, i) => {
+          const { launchBrowser } = await import("@/lib/browser")
+          return await launchBrowser(String(i.url ?? ""))
+        },
+        browser_navigate: async (_, i) => {
+          const { navigate } = await import("@/lib/browser")
+          await navigate(String(i.session_id ?? ""), String(i.url ?? ""))
+          return `Navigated to ${i.url}`
+        },
+        browser_screenshot: async (_, i) => {
+          const { takeScreenshot } = await import("@/lib/browser")
+          return await takeScreenshot(String(i.session_id ?? ""))
+        },
+        browser_click: async (_, i) => {
+          const { browserClick } = await import("@/lib/browser")
+          await browserClick(String(i.session_id ?? ""), String(i.selector ?? ""))
+          return `Clicked ${i.selector}`
+        },
+        browser_fill: async (_, i) => {
+          const { browserFill } = await import("@/lib/browser")
+          await browserFill(String(i.session_id ?? ""), String(i.selector ?? ""), String(i.value ?? ""))
+          return `Filled ${i.selector} with "${i.value}"`
+        },
+        browser_execute_js: async (_, i) => {
+          const { executeJs } = await import("@/lib/browser")
+          return await executeJs(String(i.session_id ?? ""), String(i.js ?? ""))
+        },
+        browser_get_title: async (_, i) => {
+          const { getTitle } = await import("@/lib/browser")
+          return await getTitle(String(i.session_id ?? ""))
+        },
+        browser_get_text: async (_, i) => {
+          const { browserGetText } = await import("@/lib/browser")
+          return await browserGetText(String(i.session_id ?? ""), String(i.selector ?? ""))
+        },
+        browser_close: async (_, i) => {
+          const { closeBrowser } = await import("@/lib/browser")
+          await closeBrowser(String(i.session_id ?? ""))
+          return "Browser closed"
+        },
+        browser_wait: async (_, i) => {
+          const { browserWait } = await import("@/lib/browser")
+          await browserWait(String(i.session_id ?? ""), String(i.selector ?? ""), Number(i.timeout ?? 5000))
+          return `Selector "${i.selector}" appeared`
+        },
+        browser_get_url: async (_, i) => {
+          const { getUrl } = await import("@/lib/browser")
+          return await getUrl(String(i.session_id ?? ""))
+        },
+        browser_press_key: async (_, i) => {
+          const { pressKey } = await import("@/lib/browser")
+          await pressKey(String(i.session_id ?? ""), String(i.key ?? ""))
+          return `Pressed key: ${i.key}`
+        },
+        browser_reload: async (_, i) => {
+          const { reload } = await import("@/lib/browser")
+          await reload(String(i.session_id ?? ""))
+          return "Page reloaded"
+        },
+        browser_new_tab: async (_, i) => {
+          const { newTab } = await import("@/lib/browser")
+          const info = await newTab(String(i.session_id ?? ""), String(i.url ?? ""))
+          return `Opened new tab: ${info.url}`
+        },
+        browser_list_tabs: async (_, i) => {
+          const { listTabs } = await import("@/lib/browser")
+          const tabs = await listTabs(String(i.session_id ?? ""))
+          return tabs.map((t) => `[${t.tab_id}] ${t.title} — ${t.url}`).join("\n")
+        },
+
+        web_search: async (_, i) => {
+          const query = String(i.query ?? "")
+          const num = Number(i.num_results ?? 5)
+          try {
+            const resp = await fetch(`https://www.google.com/search?q=${encodeURIComponent(query)}&num=${num}`, {
+              headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+            })
+            const html = await resp.text()
+            // Simple extraction: get text between <h3> tags (search result titles)
+            const titles = html.match(/<h3[^>]*>(.*?)<\/h3>/g)?.map(t => t.replace(/<[^>]+>/g, "")) ?? []
+            const snippets = html.match(/<div[^>]*class="[^"]*VwiC3b[^"]*"[^>]*>(.*?)<\/div>/g)?.map(s => s.replace(/<[^>]+>/g, "")) ?? []
+            const results = titles.map((t, i) => `${i + 1}. ${t}${snippets[i] ? ` — ${snippets[i].slice(0, 200)}` : ""}`).join("\n")
+            return results || "No results found"
+          } catch (e) {
+            return `Search failed: ${e}`
+          }
+        },
+        web_fetch: async (_, i) => {
+          const url = String(i.url ?? "")
+          try {
+            const resp = await fetch(url, {
+              headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+            })
+            const text = await resp.text()
+            // Strip HTML tags and return plain text
+            const cleaned = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+            return cleaned.slice(0, 10000) // Limit to 10k chars
+          } catch (e) {
+            return `Fetch failed: ${e}`
+          }
+        },
       }
 
       try {

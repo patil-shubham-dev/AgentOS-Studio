@@ -50,6 +50,7 @@ export function BrowserWorkspace() {
   const [showActionSidebar, setShowActionSidebar] = useState(true)
   const [screenshotZoom, setScreenshotZoom] = useState(1)
   const [showLogs, setShowLogs] = useState(false)
+  const [browserBackendAvailable, setBrowserBackendAvailable] = useState<boolean | null>(null)
   const logIntervalRef = useRef<number | null>(null)
   const screenshotRef = useRef<HTMLDivElement>(null)
   const { pulse, notify } = useHaptic()
@@ -68,14 +69,39 @@ export function BrowserWorkspace() {
     }
   }, [showSelectorInput])
 
+  // ── Probe browser backend availability ──
+  useEffect(() => {
+    let cancelled = false
+    async function probe() {
+      try {
+        const core = await import("@tauri-apps/api/core")
+        if (typeof core.invoke !== "function") {
+          if (!cancelled) setBrowserBackendAvailable(false)
+          return
+        }
+        const result = await core.invoke("browser_launch", { url: "about:blank" }).catch(() => null)
+        if (result && typeof result === "string") {
+          core.invoke("browser_close", { sessionId: result }).catch(() => {})
+          if (!cancelled) setBrowserBackendAvailable(true)
+        } else {
+          if (!cancelled) setBrowserBackendAvailable(false)
+        }
+      } catch {
+        if (!cancelled) setBrowserBackendAvailable(false)
+      }
+    }
+    probe()
+    return () => { cancelled = true }
+  }, [])
+
   // ── Automation step tracking ──
   const trackStep = useCallback((step: BrowserAutomationStep) => {
     setAutomationSteps((prev) => [step, ...prev])
   }, [])
 
-  // ── Console log polling ──
+  // ── Console log polling (only if backend is available) ──
   useEffect(() => {
-    if (activeSessionId) {
+    if (activeSessionId && browserBackendAvailable) {
       logIntervalRef.current = window.setInterval(async () => {
         try {
           const logs = await fetchConsoleLogs(activeSessionId)
@@ -226,11 +252,14 @@ export function BrowserWorkspace() {
     idle: { label: "Idle", color: "text-white/30", dot: "bg-white/20" },
     launching: { label: "Launching", color: "text-blue-400", dot: "bg-blue-400 animate-pulse" },
     connected: { label: "Connected", color: "text-green-400", dot: "bg-green-400" },
+    unavailable: { label: "Backend unavailable", color: "text-yellow-500/60", dot: "bg-yellow-500/40" },
     error: { label: "Error", color: "text-red-400", dot: "bg-red-400" },
   }
 
-  const browserStatus: "idle" | "launching" | "connected" | "error" =
-    isLaunching ? "launching"
+  const browserStatus: "idle" | "launching" | "connected" | "unavailable" | "error" =
+    browserBackendAvailable === null ? "idle"
+    : browserBackendAvailable === false ? "unavailable"
+    : isLaunching ? "launching"
     : activeSession ? "connected"
     : "idle"
 
@@ -279,8 +308,8 @@ export function BrowserWorkspace() {
             </Button>
           </Tooltip>
         ) : (
-          <Tooltip content="Launch browser (⌘↵)">
-            <Button size="sm" className="h-7 text-[10px] shrink-0" onClick={handleLaunch} disabled={isLaunching}>
+          <Tooltip content={browserBackendAvailable === false ? "Browser backend not available" : "Launch browser (⌘↵)"}>
+            <Button size="sm" className="h-7 text-[10px] shrink-0" onClick={handleLaunch} disabled={isLaunching || browserBackendAvailable === false}>
               {isLaunching ? (
                 <Loader2 className="h-3 w-3 animate-spin mr-1" />
               ) : (
