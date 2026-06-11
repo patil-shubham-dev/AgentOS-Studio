@@ -111,7 +111,7 @@ export class ProviderTransport {
     latencyMs: number
   }> {
     const adapter = resolveAdapter(adapterConfig)
-    const url = adapter.buildChatUrl()
+    const url = adapter.buildChatUrl(request.model)
     const headers = adapter.buildHeaders()
     const body = adapter.buildCompletionBody({ ...request, stream: false })
 
@@ -148,7 +148,7 @@ export class ProviderTransport {
     },
   ): Promise<void> {
     const adapter = resolveAdapter(adapterConfig)
-    const url = adapter.buildChatUrl()
+    const url = adapter.buildChatUrl(request.model)
     const headers = adapter.buildHeaders()
     const body = adapter.buildCompletionBody({ ...request, stream: true })
 

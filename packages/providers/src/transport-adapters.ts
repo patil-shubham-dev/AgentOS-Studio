@@ -39,7 +39,7 @@ export interface ModelsResponse {
 
 export interface TransportAdapter {
   name: string
-  buildChatUrl(): string
+  buildChatUrl(requestModel?: string): string
   buildModelsUrl(): string
   buildHeaders(): Record<string, string>
   buildCompletionBody(req: CompletionRequest): Record<string, unknown>
@@ -97,7 +97,7 @@ export class OpenAITransportAdapter implements TransportAdapter {
     this.config = config
   }
 
-  buildChatUrl(): string {
+  buildChatUrl(_requestModel?: string): string {
     const base = normalizeBaseUrl(this.config.baseUrl)
     if (base.endsWith("/chat/completions")) return base
     const v1 = base.endsWith("/v1") ? base : `${base}/v1`
@@ -250,7 +250,7 @@ export class AnthropicTransportAdapter implements TransportAdapter {
     this.config = config
   }
 
-  buildChatUrl(): string {
+  buildChatUrl(_requestModel?: string): string {
     const base = normalizeBaseUrl(this.config.baseUrl)
     if (base.endsWith("/v1/messages")) return base
     if (base.endsWith("/v1")) return `${base}/messages`
@@ -356,9 +356,11 @@ export class GeminiTransportAdapter implements TransportAdapter {
     this.config = config
   }
 
-  buildChatUrl(): string {
+  buildChatUrl(requestModel?: string): string {
     const base = normalizeBaseUrl(this.config.baseUrl)
-    return `${base}/models/${encodeURIComponent(this.config.providerName)}:generateContent`
+    // Gemini requires model in URL path (e.g., /models/gemini-pro:generateContent)
+    const model = requestModel ?? "unknown-model"
+    return `${base}/models/${encodeURIComponent(model)}:generateContent`
   }
 
   buildModelsUrl(): string {

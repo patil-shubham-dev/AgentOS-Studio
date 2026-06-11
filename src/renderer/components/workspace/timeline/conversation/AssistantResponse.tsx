@@ -1,0 +1,381 @@
+import { memo, useCallback } from "react"
+import { motion, AnimatePresence } from "framer-motion"
+import { RotateCcw } from "lucide-react"
+import { useTimelineStore } from "../timeline-store"
+import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useAgentStore } from "@/stores/agent-store"
+import { ResponseStream } from "./response-stream"
+import { TerminalBlock } from "./TerminalBlock"
+import { ToolCallCard } from "./ToolCallCard"
+import { MultiFileDiffCard, FileCreatedCard, FileDeletedCard } from "./diff"
+import type { AgentSession } from "../timeline-store"
+import type { AgentStatus } from "@/stores/agent-store"
+import { getAgentLabel, getAgentStateIcon, mapToolToActivity } from "../../agent-visibility/AgentActivityMapper"
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  routing: "Looking through the project",
+  orchestrating: "Planning the approach",
+  thinking: "Thinking through this",
+  planning: "Planning the approach",
+  searching: "Searching the project",
+  reading: "Checking the code",
+  writing: "Making changes",
+  editing: "Updating code",
+  validating: "Verifying the changes",
+  analyzing: "Checking the results",
+  finalizing: "Wrapping up",
+  synthesizing: "Putting it together",
+}
+
+function getActivityLabel(session: AgentSession, hasContent: boolean): string | null {
+  if (!session || session.streamState === "completed" || session.streamState === "failed") return null
+  const phase = session.currentPhase
+  if (phase && ACTIVITY_LABELS[phase]) return ACTIVITY_LABELS[phase]
+  if (phase && ACTIVITY_LABELS[phase.toLowerCase()]) return ACTIVITY_LABELS[phase.toLowerCase()]
+  if (hasContent) return "Just a moment"
+  return "Thinking through this"
+}
+
+function buildExecutionSummary(session: AgentSession): string | null {
+  if (session.streamState !== "completed" && session.streamState !== "failed") return null
+  const toolCount = session.toolCalls.length
+  const editCount = session.fileEdits.length
+  const termsCount = session.terminalOutputs.length
+  const parts: string[] = []
+  if (editCount > 0) parts.push(`${editCount} file${editCount > 1 ? "s" : ""} edited`)
+  if (termsCount > 0) parts.push(`${termsCount} command${termsCount > 1 ? "s" : ""} run`)
+  if (toolCount > 0 && parts.length === 0) parts.push(`${toolCount} step${toolCount > 1 ? "s" : ""}`)
+  return parts.length > 0 ? parts.join(", ") : null
+}
+
+const AGENT_PRIORITY = ["manager", "research", "browser", "coder", "qa", "memory"]
+
+function getActiveAgentNarrative(agentStatuses: Record<string, AgentStatus>): { icon: string; label: string; task: string } | null {
+  const active = AGENT_PRIORITY
+    .map((role) => agentStatuses[role])
+    .filter((s): s is AgentStatus => s != null && s.state !== "idle" && s.state !== "complete" && s.state !== "failed")
+
+  if (active.length > 0) {
+    const agent = active[0]
+    return {
+      icon: getAgentStateIcon(agent.state),
+      label: getAgentLabel(agent.role),
+      task: agent.currentTask || "Working",
+    }
+  }
+
+  return null
+}
+
+interface AssistantResponseProps {
+  stepId: string
+  isLatest: boolean
+  onRetry?: (input: string) => void
+  originalInput?: string
+}
+
+const ENTRANCE_SPRING = { type: "spring" as const, stiffness: 350, damping: 26, mass: 0.8 }
+const SECTION_SPRING = { type: "spring" as const, stiffness: 300, damping: 24, mass: 0.7 }
+
+const sectionVariants = {
+  initial: { opacity: 0, y: -3 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, height: 0, marginBottom: 0, overflow: "hidden" as const },
+}
+
+function ToolErrorDisplay({ toolCalls }: { toolCalls: Array<{ name: string; status: string; result?: string }> }) {
+  const errors = toolCalls.filter((tc) => tc.status === "error")
+  if (errors.length === 0) return null
+  return (
+    <div className="py-1 space-y-1">
+      {errors.map((tc, i) => (
+        <motion.div
+          key={i}
+          initial={{ opacity: 0, x: -4 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: i * 0.05 }}
+          className="rounded-lg border border-red-500/12 bg-red-500/[0.03] px-3 py-1.5"
+        >
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="text-[10px] font-medium text-red-400/70 uppercase tracking-wider">
+              {mapToolToActivity(tc.name).label}
+            </span>
+            <span className="text-[9px] text-red-400/40">failed</span>
+          </div>
+          <p className="text-[11px] text-red-300/60 font-mono break-words">{tc.result}</p>
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
+export const AssistantResponse = memo(function AssistantResponse({
+  stepId,
+  isLatest,
+  onRetry,
+  originalInput,
+}: AssistantResponseProps) {
+  const session = useTimelineStore((s) => s.agentSessions.get(stepId))
+  const streamingText = useTimelineStore((s) => s.streamingTexts.get(stepId))
+  const streamState = session?.streamState ?? "not_started"
+  const isRunning = streamState === "streaming" || streamState === "not_started"
+
+  if (!session) {
+    if (isLatest) {
+      console.warn("[AssistantResponse] Session not found for latest turn — may indicate turn correlation gap", { stepId })
+    }
+    return null
+  }
+
+  const displayText = streamingText ?? session.streamingText
+  const hasContent = displayText.length > 0
+  const hasEdits = session.fileEdits.length > 0
+  const hasFileOps = session.fileOps != null && session.fileOps.length > 0
+  const hasTerminals = session.terminalOutputs.length > 0
+  const hasToolCalls = session.toolCalls.length > 0
+  const hasToolErrors = session.toolCalls.some((tc) => tc.status === "error")
+  const isError = streamState === "failed"
+  const isComplete = !isRunning && streamState === "completed"
+
+  const handleRevert = useCallback(async (path: string) => {
+    const edit = session.fileEdits.find((fe) => fe.path === path)
+    if (!edit?.oldContent) return
+    try {
+      const rootPath = useWorkspaceStore.getState().rootPath
+      const fullPath = rootPath ? `${rootPath}\\${path.replace(/\//g, "\\")}` : path
+      const fs = await import("@tauri-apps/plugin-fs")
+      await fs.writeTextFile(fullPath, edit.oldContent)
+      useWorkspaceStore.getState().notifyFileEdited(fullPath, edit.oldContent)
+    } catch {}
+  }, [session.fileEdits])
+
+  const handleRevertAll = useCallback(async () => {
+    for (const edit of session.fileEdits) {
+      if (edit.oldContent) {
+        await handleRevert(edit.path)
+      }
+    }
+  }, [session.fileEdits, handleRevert])
+
+  const agentStatuses = useAgentStore((s) => s.agentStatuses)
+  const currentActivity = getActivityLabel(session, hasContent)
+  const agentNarrative = isRunning && !hasContent ? getActiveAgentNarrative(agentStatuses) : null
+  const executionSummary = isComplete ? buildExecutionSummary(session) : null
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={ENTRANCE_SPRING}
+      className="w-full space-y-0.5"
+    >
+      {/* Execution summary — spring entrance */}
+      <AnimatePresence>
+        {executionSummary && (
+          <motion.div
+            key="summary"
+            initial={{ opacity: 0, y: -4, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={SECTION_SPRING}
+            className="flex items-center gap-2 py-1 text-[11px] text-emerald-400/60"
+          >
+            <svg
+              viewBox="0 0 14 14"
+              className="h-3.5 w-3.5 text-emerald-400/60 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <motion.path
+                d="M3 7.5L5.5 10L11 4"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+              />
+            </svg>
+            <span>{executionSummary}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Activity indicator during execution */}
+      {isRunning && !hasContent && (
+        <motion.div
+          initial={{ opacity: 0, y: -2 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-2 py-1"
+        >
+          {agentNarrative ? (
+            <>
+              <span className="text-[11px] text-white/50">{agentNarrative.icon}</span>
+              <span className="text-xs text-white/40">
+                <span className="text-white/60 font-medium">{agentNarrative.label}</span>
+                <span className="text-white/30"> — {agentNarrative.task}</span>
+              </span>
+            </>
+          ) : currentActivity ? (
+            <>
+              <span className="relative flex h-3 w-3 items-center justify-center">
+                <span className="absolute inset-0 rounded-full bg-blue-400/30 animate-ping" />
+                <span className="h-2 w-2 rounded-full bg-blue-400/80" />
+              </span>
+              <span className="text-sm text-white/50 italic font-medium">{currentActivity}…</span>
+            </>
+          ) : null}
+        </motion.div>
+      )}
+
+      {/* Tool calls — compact animated cards */}
+      <AnimatePresence mode="popLayout">
+        {hasToolCalls && (
+          <motion.div
+            key="tool-calls"
+            layout
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            variants={sectionVariants}
+            transition={SECTION_SPRING}
+            className="py-0.5 space-y-0.5"
+          >
+            {session.toolCalls.map((tc, i) => (
+              <ToolCallCard key={tc.id} toolCall={tc} index={i} />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* File creates/deletes */}
+      <AnimatePresence>
+        {hasFileOps && (
+          <motion.div
+            key="file-ops"
+            initial={{ opacity: 0, y: -3 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={SECTION_SPRING}
+            className="py-0.5 space-y-1"
+          >
+            {session.fileOps.map((op, i) => {
+              if (op.operation === "create") {
+                return <FileCreatedCard key={`op-${i}`} op={op} />
+              }
+              if (op.operation === "delete") {
+                return <FileDeletedCard key={`op-${i}`} op={op} />
+              }
+              return null
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Terminal outputs */}
+      <AnimatePresence>
+        {hasTerminals && (
+          <motion.div
+            key="terminals"
+            initial={{ opacity: 0, y: -3 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={SECTION_SPRING}
+            className="py-0.5 space-y-1"
+          >
+            {session.terminalOutputs.map((term, i) => (
+              <TerminalBlock key={`term-${i}`} terminal={term} />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* File edits — grouped diff view */}
+      <AnimatePresence>
+        {hasEdits && (
+          <motion.div
+            key="file-edits"
+            initial={{ opacity: 0, y: -3 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={SECTION_SPRING}
+            className="py-0.5"
+          >
+            <MultiFileDiffCard
+              files={session.fileEdits.map((fe) => ({ edit: fe }))}
+              onRevert={handleRevert}
+              onRevertAll={handleRevertAll}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Tool errors */}
+      <AnimatePresence>
+        {hasToolErrors && (
+          <motion.div
+            key="tool-errors"
+            initial={{ opacity: 0, y: -3 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={SECTION_SPRING}
+          >
+            <ToolErrorDisplay toolCalls={session.toolCalls} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Streaming content */}
+      <AnimatePresence>
+        {hasContent && (
+          <motion.div
+            key="content"
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={SECTION_SPRING}
+            className="prose-container py-1"
+          >
+            <ResponseStream text={displayText} isStreaming={isRunning} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Error state */}
+      <AnimatePresence>
+        {isError && (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={SECTION_SPRING}
+            className="py-2 space-y-2"
+          >
+            {session.error && (
+              <div className="rounded-lg border border-red-500/15 bg-red-500/[0.03] px-3 py-2">
+                <p className="text-xs text-red-400/80">{session.error}</p>
+              </div>
+            )}
+            {onRetry && originalInput && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.15 }}
+                className="flex gap-2"
+              >
+                <button
+                  onClick={() => onRetry(originalInput)}
+                  className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-xs text-foreground/60 hover:text-foreground/80 hover:bg-white/[0.04] transition-all"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Retry
+                </button>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+})

@@ -1,0 +1,97 @@
+/**
+ * Skill system — markdown-based commands with frontmatter.
+ * Inspired by Claude Code's skills/ directory.
+ *
+ * Skills are markdown files with YAML frontmatter that define
+ * reusable commands. They can be stored in:
+ *   - .agentic/skills/ (project-level)
+ *   - ~/.agentic/skills/ (user-level)
+ *   - Bundled with the app
+ */
+
+export interface SkillDefinition {
+  name: string
+  description: string
+  prompt: string
+  source: 'bundled' | 'project' | 'user' | 'plugin'
+  tags: string[]
+  aliases: string[]
+  requiresConfirmation: boolean
+  filePath?: string
+}
+
+export interface SkillRegistryState {
+  total: number
+  bundled: number
+  user: number
+  project: number
+  plugin: number
+}
+
+export class SkillRegistry {
+  private skills: Map<string, SkillDefinition> = new Map()
+  private sourceCounts = { bundled: 0, user: 0, project: 0, plugin: 0 }
+
+  register(skill: SkillDefinition): void {
+    this.skills.set(skill.name, skill)
+    for (const alias of skill.aliases) {
+      this.skills.set(alias, skill)
+    }
+    this.sourceCounts[skill.source]++
+  }
+
+  registerMany(skills: SkillDefinition[]): void {
+    for (const skill of skills) {
+      this.register(skill)
+    }
+  }
+
+  unregister(name: string): boolean {
+    const skill = this.skills.get(name)
+    if (!skill) return false
+    this.skills.delete(name)
+    for (const alias of skill.aliases) {
+      this.skills.delete(alias)
+    }
+    return true
+  }
+
+  resolve(name: string): SkillDefinition | undefined {
+    return this.skills.get(name)
+  }
+
+  getAll(): SkillDefinition[] {
+    return Array.from(
+      new Map(Array.from(this.skills.entries()).filter(([, v]) => v.name === v.name || !v.aliases.includes(v.name))).values(),
+    )
+  }
+
+  getByTag(tag: string): SkillDefinition[] {
+    return this.getAll().filter(s => s.tags.includes(tag))
+  }
+
+  getBySource(source: SkillDefinition['source']): SkillDefinition[] {
+    return this.getAll().filter(s => s.source === source)
+  }
+
+  search(query: string): SkillDefinition[] {
+    const q = query.toLowerCase()
+    return this.getAll().filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      s.description.toLowerCase().includes(q) ||
+      s.tags.some(t => t.toLowerCase().includes(q)),
+    )
+  }
+
+  size(): SkillRegistryState {
+    return {
+      total: this.skills.size,
+      ...this.sourceCounts,
+    }
+  }
+
+  clear(): void {
+    this.skills.clear()
+    this.sourceCounts = { bundled: 0, user: 0, project: 0, plugin: 0 }
+  }
+}

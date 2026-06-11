@@ -266,6 +266,7 @@ export async function streamingTransportFetch(
 
   const abortCtrl = new AbortController()
   const signal = options.signal
+  let removeAbortHandler: (() => void) | null = null
 
   if (signal) {
     if (signal.aborted) {
@@ -277,6 +278,7 @@ export async function streamingTransportFetch(
       callbacks.onError(new TransportError("CANCELLED", "Stream cancelled by user"))
     }
     signal.addEventListener("abort", abortHandler, { once: true })
+    removeAbortHandler = () => signal.removeEventListener("abort", abortHandler)
   }
 
   options.onStateChange?.("connecting")
@@ -295,6 +297,7 @@ export async function streamingTransportFetch(
       clearTimeout(connectTimeout)
     }
   } catch (err) {
+    removeAbortHandler?.()
     options.onStateChange?.("errored")
     const msg = err instanceof Error ? err.message : String(err)
     if (msg.includes("abort") && abortCtrl.signal.aborted) {
@@ -307,6 +310,7 @@ export async function streamingTransportFetch(
   }
 
   if (!response.ok) {
+    removeAbortHandler?.()
     options.onStateChange?.("errored")
     const text = await response.text().catch(() => "")
     const match = text.match(/"message"\s*:\s*"([^"]+)"/)
@@ -319,11 +323,13 @@ export async function streamingTransportFetch(
   }
 
   if (!response.body) {
+    removeAbortHandler?.()
     options.onStateChange?.("errored")
     callbacks.onError(new TransportError("NO_BODY", "Response body is null"))
     return
   }
 
+  removeAbortHandler?.()
   options.onStateChange?.("streaming")
 
   const metrics: StreamMetrics = {

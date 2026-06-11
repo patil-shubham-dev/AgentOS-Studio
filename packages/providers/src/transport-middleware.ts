@@ -114,13 +114,18 @@ export class RetryMiddleware implements TransportMiddleware {
         resolve()
         return
       }
-      const timer = setTimeout(resolve, ms)
+      let cleanup: (() => void) | null = null
+      const timer = setTimeout(() => {
+        cleanup?.()
+        resolve()
+      }, ms)
       if (signal) {
         const onAbort = () => {
           clearTimeout(timer)
           resolve()
         }
         signal.addEventListener("abort", onAbort, { once: true })
+        cleanup = () => signal.removeEventListener("abort", onAbort)
       }
     })
   }

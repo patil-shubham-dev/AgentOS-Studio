@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AgenticOS</title>
+    <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMklEQVQ4T2NkYPj/n4EBBJgYKAQMFFnAxMCAAgsLCwsDA8P/AYaG/4MDAQEqYcCqAQDQ4w0MGH2tCyoAAAAASUVORK5CYII=">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: resource:; font-src 'self' data:; connect-src 'self' ws: wss: http://localhost:* https://*.openai.com https://*.anthropic.com https://*.githubusercontent.com https://*.nvidia.com https://integrate.api.nvidia.com https://ai.api.nvidia.com;">
+    <!-- 'unsafe-inline' kept for style-src for Tailwind JIT; script-src uses 'self' only since Vite bundles all scripts -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

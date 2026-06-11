@@ -23,3 +23,12 @@ src-tauri/gen/schemas/
 
 # Heap snapshots
 *.heapsnapshot
+
+# Build output
+out/
+build/
+release/
+benchmarks/
+
+# Test fixture repos (large generated datasets)
+tests/fixtures/repos/

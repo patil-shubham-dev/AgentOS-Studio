@@ -8,7 +8,6 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
-    'apps/desktop/src-tauri/target',
     'packages/*/dist',
   ]),
   {
@@ -23,6 +22,14 @@ export default defineConfig([
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            group: ['@/runtime/index', '@/runtime'],
+            message: 'Do not import from the runtime barrel. Import specific modules by their direct path instead.',
+          },
+        ],
+      }],
     },
     languageOptions: {
       globals: globals.browser,

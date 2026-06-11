@@ -28,9 +28,17 @@ export type {
 export { parseStreamChunk } from "./openai-compatible-adapter"
 
 // Re-export with canonical names for consumer convenience
+// Note: this is the sole chatCompletion export — ai-service's chatCompletion is aiChatCompletion to avoid shadowing
 export { providerChatCompletion as chatCompletion } from "./provider-gateway"
 
-export * from "./ai-service"
+// Explicit re-exports from ai-service (avoid naming collisions — chatCompletion is exported as aiChatCompletion)
+export {
+  chatCompletion as aiChatCompletion,
+  streamChatCompletion,
+  tauriStreamChatCompletion,
+  directChatCompletion,
+} from "./ai-service"
+export type { ChatMessage, ToolCall, ToolDef, ChatRequest, ChatResponse, UsageInfo, StreamCallbacks } from "./ai-service"
 
 // ── Transport Layer Exports ──
 

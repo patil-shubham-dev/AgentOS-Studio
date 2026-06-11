@@ -248,13 +248,13 @@ export async function detectRuntime(baseUrl: string): Promise<RuntimeInfo> {
 // ── Provider Validation (frontend-only via fetch) ──
 
 async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number }): Promise<Response> {
-  const { timeout = 10000, ...fetchOpts } = options
+  const timeout = options.timeout ?? 10000
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeout)
   
   try {
     const response = await tauriFetch(url, {
-      ...fetchOpts,
+      ...options,
       signal: options.signal ?? ctrl.signal,
     })
     return response
@@ -412,7 +412,17 @@ export async function validateProvider(baseUrl: string, apiKey: string, _token?:
         const msg = err instanceof Error ? err.message : String(err)
         const name = err instanceof Error ? err.name : "Unknown"
         console.warn(`${DIAG_PREFIX_VAL} fetch threw for ${ep}:`, { name, message: msg })
-        lastError = `${name}: ${msg}`
+        if (msg.includes("ECONNREFUSED") || msg.includes("ERR_CONNECTION_REFUSED")) {
+          lastError = "Connection refused — ensure the provider service is running"
+        } else if (msg.includes("abort") || msg.includes("timeout") || msg.includes("timed out")) {
+          lastError = "Connection timed out — server may be unreachable"
+        } else if (msg.includes("ENOTFOUND") || msg.includes("getaddrinfo") || msg.includes("EAI_AGAIN")) {
+          lastError = "DNS resolution failed — hostname could not be resolved"
+        } else if (msg.includes("CERT") || msg.includes("certificate") || msg.includes("SSL") || msg.includes("TLS")) {
+          lastError = "TLS certificate error — server certificate could not be validated"
+        } else {
+          lastError = `${name}: ${msg}`
+        }
         continue
       }
     }
@@ -1023,16 +1033,20 @@ async function streamAnthropicChatCompletion(
     console.log(`${LOG_PREFIX_STREAM} [Anthropic] sending streaming request to ${url}`)
 
   const ctrl = new AbortController()
+  let removeAbortListener: (() => void) | null = null
+  let errored = false
   if (signal) {
     if (signal.aborted) {
       callbacks.onError(new DOMException("Cancelled before start", "AbortError"))
       return
     }
     const abortListener = () => {
+      errored = true
       ctrl.abort()
       callbacks.onError(new DOMException("Request cancelled", "AbortError"))
     }
     signal.addEventListener("abort", abortListener, { once: true })
+    removeAbortListener = () => signal.removeEventListener("abort", abortListener)
   }
 
   let response: Response
@@ -1044,6 +1058,8 @@ async function streamAnthropicChatCompletion(
       signal: ctrl.signal,
     })
   } catch (err: unknown) {
+    removeAbortListener?.()
+    if (errored) return // abort listener already handled it
     const msg = err instanceof Error ? err.message : String(err)
     console.log(`${LOG_PREFIX_STREAM} [Anthropic] fetch FAILED: ${msg}`)
     recordProviderFailure(baseUrl)
@@ -1052,6 +1068,7 @@ async function streamAnthropicChatCompletion(
   }
 
   if (!response.ok) {
+    removeAbortListener?.()
     let text = ""
     try { text = await response.text() } catch {}
     console.log(`${LOG_PREFIX_STREAM} [Anthropic] HTTP ${response.status}: ${text.slice(0, 200)}`)
@@ -1061,6 +1078,7 @@ async function streamAnthropicChatCompletion(
   }
 
   if (!response.body) {
+    removeAbortListener?.()
     recordProviderFailure(baseUrl)
     callbacks.onError(new Error("STREAM_NO_BODY: Response body is null"))
     return
@@ -1138,6 +1156,7 @@ async function streamAnthropicChatCompletion(
       }
     }
   } catch (err: unknown) {
+    removeAbortListener?.()
     const msg = err instanceof Error ? err.message : String(err)
     console.log(`${LOG_PREFIX_STREAM} [Anthropic] read error after ${contentLength} chars: ${msg}`)
     if (contentLength > 0) {
@@ -1150,6 +1169,7 @@ async function streamAnthropicChatCompletion(
     return
   }
 
+  removeAbortListener?.()
   const elapsed = (performance.now() - t0).toFixed(0)
   console.log(`${LOG_PREFIX_STREAM} [Anthropic] stream complete: ${chunkCount} chunks, ${contentLength} chars in ${elapsed}ms`)
 
@@ -1236,16 +1256,20 @@ async function streamGeminiChatCompletion(
   console.log(`${LOG_PREFIX_STREAM} [Gemini] sending streaming request to ${url}`)
 
   const ctrl = new AbortController()
+  let removeAbortListener: (() => void) | null = null
+  let errored = false
   if (signal) {
     if (signal.aborted) {
       callbacks.onError(new DOMException("Cancelled before start", "AbortError"))
       return
     }
     const abortListener = () => {
+      errored = true
       ctrl.abort()
       callbacks.onError(new DOMException("Request cancelled", "AbortError"))
     }
     signal.addEventListener("abort", abortListener, { once: true })
+    removeAbortListener = () => signal.removeEventListener("abort", abortListener)
   }
 
   let response: Response
@@ -1257,6 +1281,8 @@ async function streamGeminiChatCompletion(
       signal: ctrl.signal,
     })
   } catch (err: unknown) {
+    removeAbortListener?.()
+    if (errored) return
     const msg = err instanceof Error ? err.message : String(err)
     console.log(`${LOG_PREFIX_STREAM} [Gemini] fetch FAILED: ${msg}`)
     recordProviderFailure(baseUrl)
@@ -1265,6 +1291,7 @@ async function streamGeminiChatCompletion(
   }
 
   if (!response.ok) {
+    removeAbortListener?.()
     let text = ""
     try { text = await response.text() } catch {}
     console.log(`${LOG_PREFIX_STREAM} [Gemini] HTTP ${response.status}: ${text.slice(0, 200)}`)
@@ -1274,6 +1301,7 @@ async function streamGeminiChatCompletion(
   }
 
   if (!response.body) {
+    removeAbortListener?.()
     recordProviderFailure(baseUrl)
     callbacks.onError(new Error("STREAM_NO_BODY: Response body is null"))
     return
@@ -1334,6 +1362,7 @@ async function streamGeminiChatCompletion(
       }
     }
   } catch (err: unknown) {
+    removeAbortListener?.()
     const msg = err instanceof Error ? err.message : String(err)
     console.log(`${LOG_PREFIX_STREAM} [Gemini] read error after ${contentLength} chars: ${msg}`)
     if (contentLength > 0) {
@@ -1346,6 +1375,7 @@ async function streamGeminiChatCompletion(
     return
   }
 
+  removeAbortListener?.()
   const elapsed = (performance.now() - t0).toFixed(0)
   console.log(`${LOG_PREFIX_STREAM} [Gemini] stream complete: ${chunkCount} chunks, ${contentLength} chars in ${elapsed}ms`)
 
@@ -1388,16 +1418,20 @@ export async function providerStreamChatCompletion(
   console.log(`${LOG_PREFIX_STREAM} sending streaming request to ${url}`)
 
   const ctrl = new AbortController()
+  let removeAbortListener: (() => void) | null = null
+  let errored = false
   if (signal) {
     if (signal.aborted) {
       callbacks.onError(new DOMException("Cancelled before start", "AbortError"))
       return
     }
     const abortListener = () => {
+      errored = true
       ctrl.abort()
       callbacks.onError(new DOMException("Request cancelled", "AbortError"))
     }
     signal.addEventListener("abort", abortListener, { once: true })
+    removeAbortListener = () => signal.removeEventListener("abort", abortListener)
   }
 
   let response: Response
@@ -1407,6 +1441,8 @@ export async function providerStreamChatCompletion(
       signal: ctrl.signal,
     })
   } catch (err: unknown) {
+    removeAbortListener?.()
+    if (errored) return
     const msg = err instanceof Error ? err.message : String(err)
     console.log(`${LOG_PREFIX_STREAM} fetch FAILED: ${msg}`)
     recordProviderFailure(baseUrl)
@@ -1415,6 +1451,7 @@ export async function providerStreamChatCompletion(
   }
 
   if (!response.ok) {
+    removeAbortListener?.()
     let text = ""
     try { text = await response.text() } catch {}
     console.log(`${LOG_PREFIX_STREAM} HTTP ${response.status}: ${text.slice(0, 200)}`)
@@ -1424,6 +1461,7 @@ export async function providerStreamChatCompletion(
   }
 
   if (!response.body) {
+    removeAbortListener?.()
     recordProviderFailure(baseUrl)
     callbacks.onError(new Error("STREAM_NO_BODY: Response body is null"))
     return
@@ -1495,6 +1533,7 @@ export async function providerStreamChatCompletion(
       }
     }
   } catch (err: unknown) {
+    removeAbortListener?.()
     const msg = err instanceof Error ? err.message : String(err)
     console.log(`${LOG_PREFIX_STREAM} read error after ${contentLength} chars: ${msg}`)
     if (contentLength > 0) {
@@ -1507,6 +1546,7 @@ export async function providerStreamChatCompletion(
     return
   }
 
+  removeAbortListener?.()
   // Drain any remaining buffer
   if (buffer.trim()) {
     const trimmed = buffer.trim()

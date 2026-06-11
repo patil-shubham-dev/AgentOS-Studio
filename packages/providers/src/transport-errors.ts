@@ -39,8 +39,21 @@ export class TransportError extends Error {
   }
 }
 
+function tryParseBody(body?: string): { error?: { message?: string; code?: string } } | null {
+  if (!body) return null
+  try { return JSON.parse(body) as { error?: { message?: string; code?: string } } }
+  catch { return null }
+}
+
 export function classifyHttpError(status: number, body?: string): TransportError {
   switch (status) {
+    case 400: {
+      const parsed = tryParseBody(body)
+      const msg = parsed?.error?.message ?? `Bad request (HTTP 400)`
+      return new TransportError("HTTP_ERROR", msg, {
+        statusCode: status, retryable: false, details: body,
+      })
+    }
     case 401:
       return new TransportError("AUTH_FAILED", `Authentication failed (HTTP ${status})`, {
         statusCode: status, retryable: false, details: body,
