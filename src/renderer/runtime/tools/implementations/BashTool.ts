@@ -95,7 +95,7 @@ export const BashTool: AgentTool = buildTool({
       },
     )
 
-    const truncated = truncateOutput(result.content)
+    const truncated = await truncateOutput(result.content)
     if (truncated.truncated) {
       return {
         data: truncated.text,

@@ -1,5 +1,6 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, readdirSync } from 'fs'
 import { join, relative } from 'path'
+import { readTextFile, writeTextFile, exists, mkdir, remove, readDir } from '@/lib/tauri-shims/fs'
+import { invoke } from '@/lib/tauri-shims/core'
 
 export interface StoredResult {
   id: string
@@ -29,29 +30,40 @@ export class DiskBackedResultStore {
     return DiskBackedResultStore.instance
   }
 
-  initialize(workspaceRoot: string): void {
+  async initialize(workspaceRoot: string): Promise<void> {
     if (this.initialized) return
     this.resultsDir = join(workspaceRoot, RESULTS_DIR_NAME)
-    if (!existsSync(this.resultsDir)) {
-      mkdirSync(this.resultsDir, { recursive: true })
+    const dirExists = await exists(this.resultsDir)
+    if (!dirExists) {
+      await mkdir(this.resultsDir)
     }
     this.initialized = true
-    this.scanExisting()
+    await this.scanExisting()
   }
 
-  private scanExisting(): void {
+  private async scanExisting(): Promise<void> {
     if (!this.resultsDir) return
     try {
-      const files = readdirSync(this.resultsDir)
-      for (const file of files) {
-        if (!file.endsWith('.json')) continue
+      const entries = await readDir(this.resultsDir)
+      for (const entry of entries) {
+        if (entry.isDirectory) continue
+        const name = typeof entry.name === 'string' ? entry.name : entry
+        if (!name.endsWith('.json')) continue
         try {
-          const content = readFileSync(join(this.resultsDir, file), 'utf-8')
-          const parsed = JSON.parse(content) as StoredResult
-          this.store.set(parsed.id, parsed)
-          this.totalBytes += parsed.storedLength
+          const content = await readTextFile(join(this.resultsDir, name))
+          const parsed = JSON.parse(content) as StoredResult & { content?: string }
+          this.store.set(parsed.id, {
+            id: parsed.id,
+            originalLength: parsed.originalLength ?? 0,
+            storedLength: parsed.storedLength ?? 0,
+            filePath: parsed.filePath ?? join(this.resultsDir!, name),
+            preview: parsed.preview ?? '',
+            createdAt: parsed.createdAt ?? Date.now(),
+            toolName: parsed.toolName ?? '',
+          })
+          this.totalBytes += parsed.storedLength ?? 0
         } catch {
-          try { unlinkSync(join(this.resultsDir!, file)) } catch {}
+          try { await remove(join(this.resultsDir!, name)) } catch {}
         }
       }
       this.enforceQuota()
@@ -67,7 +79,7 @@ export class DiskBackedResultStore {
     }
   }
 
-  storeResult(id: string, content: string, toolName: string): StoredResult {
+  async storeResult(id: string, content: string, toolName: string): Promise<StoredResult> {
     if (!this.resultsDir) {
       return {
         id, originalLength: content.length, storedLength: content.length,
@@ -87,21 +99,24 @@ export class DiskBackedResultStore {
       createdAt: Date.now(),
       toolName,
     }
-    writeFileSync(result.filePath, JSON.stringify({ content, ...result }), 'utf-8')
+    await writeTextFile(result.filePath, JSON.stringify({ content, ...result }))
     this.store.set(id, result)
     this.totalBytes += content.length
     this.enforceQuota()
     return result
   }
 
-  getResult(id: string): { content: string; meta: StoredResult } | null {
+  async getResult(id: string): Promise<{ content: string; meta: StoredResult } | null> {
     const meta = this.store.get(id)
     if (!meta) return null
     try {
-      if (meta.filePath && existsSync(meta.filePath)) {
-        const raw = readFileSync(meta.filePath, 'utf-8')
-        const parsed = JSON.parse(raw)
-        return { content: parsed.content ?? '', meta }
+      if (meta.filePath) {
+        const fileExists = await exists(meta.filePath)
+        if (fileExists) {
+          const raw = await readTextFile(meta.filePath)
+          const parsed = JSON.parse(raw)
+          return { content: parsed.content ?? '', meta }
+        }
       }
     } catch {}
     return null
@@ -116,16 +131,20 @@ export class DiskBackedResultStore {
   getReferenceBlock(id: string, toolName: string): string {
     const meta = this.store.get(id)
     if (!meta) return ''
-    const relPath = this.resultsDir ? relative(process.cwd(), meta.filePath) : ''
+    const dir = this.resultsDir ?? ''
+    const relPath = relative(dir, meta.filePath)
     return `\n\n[Full ${toolName} result (${meta.originalLength} chars) stored at: ${relPath}]\nPreview:\n${meta.preview}`
   }
 
-  deleteResult(id: string): boolean {
+  async deleteResult(id: string): Promise<boolean> {
     const meta = this.store.get(id)
     if (!meta) return false
     try {
-      if (meta.filePath && existsSync(meta.filePath)) {
-        unlinkSync(meta.filePath)
+      if (meta.filePath) {
+        const fileExists = await exists(meta.filePath)
+        if (fileExists) {
+          await remove(meta.filePath)
+        }
       }
     } catch {}
     this.store.delete(id)
@@ -133,9 +152,9 @@ export class DiskBackedResultStore {
     return true
   }
 
-  clear(): void {
+  async clear(): Promise<void> {
     for (const id of this.store.keys()) {
-      this.deleteResult(id)
+      await this.deleteResult(id)
     }
     this.totalBytes = 0
   }

@@ -1,5 +1,5 @@
-import { resolve, normalize, realpathSync } from 'path'
-import { existsSync } from 'fs'
+import { resolve, normalize } from 'path'
+import { existsSync, realpathSync } from 'fs'
 
 /**
  * When no workspace is open, ALL paths are DENIED by default.

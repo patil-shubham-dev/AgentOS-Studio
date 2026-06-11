@@ -121,11 +121,11 @@ export class RuntimeOS {
     this.skillLoader.loadBundledSkills()
     const rootPath = useWorkspaceStore.getState().rootPath
     if (rootPath) {
-      this.skillLoader.loadProjectSkills(rootPath)
-      this.memoryManager.initialize(rootPath)
-      this.diskBackedStore.initialize(rootPath)
+      await this.skillLoader.loadProjectSkills(rootPath)
+      await this.memoryManager.initialize(rootPath)
+      await this.diskBackedStore.initialize(rootPath)
     }
-    this.skillLoader.loadUserSkills()
+    await this.skillLoader.loadUserSkills()
 
     await this.loadBuiltinPlugins()
     this.initialized = true
@@ -152,7 +152,7 @@ export class RuntimeOS {
     const toolSizes = this.toolRegistry.size()
     const mcpClients = this.mcpRegistry.getAll()
     const skillSizes = this.skillRegistry.size()
-    const memoryStats = this.memoryManager.getMemoryStats()
+    const memoryStats = this.memoryManager.getCachedMemoryStats()
     const costSummary = this.costTracker.getSummary()
 
     return {

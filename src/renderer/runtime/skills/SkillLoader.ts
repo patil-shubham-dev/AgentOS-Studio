@@ -1,28 +1,27 @@
-import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join, basename, extname } from 'path'
-import { homedir } from 'os'
+import { exists, readTextFile, readDir } from '@/lib/tauri-shims/fs'
+import { invoke } from '@/lib/tauri-shims/core'
 import { SkillRegistry, type SkillDefinition } from './SkillRegistry'
 
 export class SkillLoader {
   private registry: SkillRegistry
+  private homeDirPromise: Promise<string> | null = null
 
   constructor(registry: SkillRegistry) {
     this.registry = registry
   }
 
-  /**
-   * Parse a skill markdown file with YAML frontmatter.
-   * Format:
-   *   ---
-   *   name: compact
-   *   description: Compact the conversation
-   *   tags: [utility, conversation]
-   *   aliases: [compress, summarize]
-   *   requiresConfirmation: true
-   *   ---
-   *   Your prompt content here...
-   */
-  parseSkillFile(content: string, filePath?: string): SkillDefinition | null {
+  private async getHomeDir(): Promise<string> {
+    if (!this.homeDirPromise) {
+      this.homeDirPromise = (async () => {
+        const paths = await invoke('get_app_paths') as { home: string }
+        return paths.home
+      })()
+    }
+    return this.homeDirPromise
+  }
+
+  parseSkillFile(content: string, filePath?: string, homeDir?: string): SkillDefinition | null {
     const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
     if (!frontmatterMatch) return null
 
@@ -48,7 +47,7 @@ export class SkillLoader {
       name: String(frontmatter.name),
       description: String(frontmatter.description || ''),
       prompt,
-      source: filePath?.includes(homedir()) ? 'user' : filePath?.includes('.agentic') ? 'project' : 'bundled',
+      source: filePath?.includes(homeDir ?? '') ? 'user' : filePath?.includes('.agentic') ? 'project' : 'bundled',
       tags: Array.isArray(frontmatter.tags) ? frontmatter.tags : [],
       aliases: Array.isArray(frontmatter.aliases) ? frontmatter.aliases : [],
       requiresConfirmation: frontmatter.requiresConfirmation === true || frontmatter.requiresConfirmation === 'true',
@@ -56,17 +55,21 @@ export class SkillLoader {
     }
   }
 
-  loadFromDirectory(dirPath: string, source: SkillDefinition['source']): number {
-    if (!existsSync(dirPath)) return 0
+  async loadFromDirectory(dirPath: string, source: SkillDefinition['source']): Promise<number> {
+    const dirExists = await exists(dirPath)
+    if (!dirExists) return 0
     let count = 0
     try {
-      const files = readdirSync(dirPath)
-      for (const file of files) {
-        if (extname(file).toLowerCase() !== '.md') continue
-        const filePath = join(dirPath, file)
+      const entries = await readDir(dirPath)
+      const homeDir = await this.getHomeDir()
+      for (const entry of entries) {
+        if (entry.isDirectory) continue
+        const name = typeof entry.name === 'string' ? entry.name : entry
+        if (extname(name).toLowerCase() !== '.md') continue
+        const filePath = join(dirPath, name)
         try {
-          const content = readFileSync(filePath, 'utf-8')
-          const skill = this.parseSkillFile(content, filePath)
+          const content = await readTextFile(filePath)
+          const skill = this.parseSkillFile(content, filePath, homeDir)
           if (skill) {
             skill.source = source
             this.registry.register(skill)
@@ -177,17 +180,18 @@ export class SkillLoader {
     }
   }
 
-  loadProjectSkills(projectRoot: string): number {
+  async loadProjectSkills(projectRoot: string): Promise<number> {
     return this.loadFromDirectory(join(projectRoot, '.agentic', 'skills'), 'project')
   }
 
-  loadUserSkills(): number {
-    return this.loadFromDirectory(join(homedir(), '.agentic', 'skills'), 'user')
+  async loadUserSkills(): Promise<number> {
+    const homeDir = await this.getHomeDir()
+    return this.loadFromDirectory(join(homeDir, '.agentic', 'skills'), 'user')
   }
 
-  loadAll(projectRoot?: string): void {
+  async loadAll(projectRoot?: string): Promise<void> {
     this.loadBundledSkills()
-    if (projectRoot) this.loadProjectSkills(projectRoot)
-    this.loadUserSkills()
+    if (projectRoot) await this.loadProjectSkills(projectRoot)
+    await this.loadUserSkills()
   }
 }

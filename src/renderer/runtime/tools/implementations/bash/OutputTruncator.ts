@@ -29,7 +29,7 @@ const DEFAULT_CONFIG: TruncationConfig = {
   ellipsis: '\n... [${truncatedLines} lines truncated, ${truncatedChars} chars]',
 }
 
-export function truncateOutput(output: string, config: Partial<TruncationConfig> = {}): TruncationResult {
+export async function truncateOutput(output: string, config: Partial<TruncationConfig> = {}): Promise<TruncationResult> {
   const cfg = { ...DEFAULT_CONFIG, ...config }
   const lines = output.split('\n')
   const originalLength = output.length
@@ -40,7 +40,7 @@ export function truncateOutput(output: string, config: Partial<TruncationConfig>
   if (originalLength >= cfg.diskBackedThreshold) {
     const store = DiskBackedResultStore.getInstance()
     const resultId = `tool_result_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-    const stored = store.storeResult(resultId, output, 'run_command')
+    const stored = await store.storeResult(resultId, output, 'run_command')
 
     const previewLines = Math.min(cfg.maxLines, 50)
     const previewChars = Math.min(cfg.maxChars, 2000)
