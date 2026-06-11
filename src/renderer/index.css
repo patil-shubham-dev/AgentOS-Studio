@@ -23,7 +23,7 @@
   --color-input: hsl(0 0% 89.8%);
   --color-ring: hsl(0 0% 3.9%);
   --radius: 0.5rem;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', ui-monospace, monospace;
 }
 
@@ -56,9 +56,10 @@
 body {
   background: var(--color-background);
   color: var(--color-foreground);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
   margin: 0;
   padding: 0;
   overflow: hidden;

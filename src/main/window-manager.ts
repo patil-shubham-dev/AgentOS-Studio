@@ -29,7 +29,7 @@ export function createWindowManager(): WindowManager {
         show: false,
         icon: join(__dirname, '../../resources/branding/icon.png'),
         webPreferences: {
-          preload: join(__dirname, '../preload/index.mjs'),
+          preload: join(__dirname, '../preload/index.js'),
           contextIsolation: true,
           sandbox: true,
           nodeIntegration: false,
@@ -64,7 +64,7 @@ export function createWindowManager(): WindowManager {
         resizable: true,
         show: false,
         webPreferences: {
-          preload: join(__dirname, '../preload/index.mjs'),
+          preload: join(__dirname, '../preload/index.js'),
           contextIsolation: true,
           sandbox: true,
           nodeIntegration: false

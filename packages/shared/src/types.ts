@@ -99,15 +99,6 @@ export interface ComponentDefinition {
   dependencies: string[]
 }
 
-export interface FileEntry {
-  name: string
-  path: string
-  is_dir: boolean
-  size?: number
-  lastModified?: number
-  children: FileEntry[]
-}
-
 export type FileChangeKind = "created" | "modified" | "removed"
 
 export interface FileChangeEvent {

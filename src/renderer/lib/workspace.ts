@@ -127,15 +127,21 @@ export async function pickWorkspaceFolder(): Promise<string | null> {
 }
 
 export async function loadFileTree(rootPath: string): Promise<FileEntry[]> {
+  console.log("[TRACE:loadFileTree] START rootPath=", rootPath, "isElectron=", isElectron())
   // Electron first
   if (isElectron()) {
-    return await eapi.workspaceGetTree(rootPath)
+    const result = await eapi.workspaceGetTree(rootPath)
+    console.log("[TRACE:loadFileTree] Electron response length=", result.length, "first=", result[0] ? JSON.stringify(result[0]).slice(0, 200) : "EMPTY")
+    return result
   }
   // Tauri second
   try {
     const { invoke } = await import("@tauri-apps/api/core")
-    return await invoke<FileEntry[]>("list_directory", { path: rootPath })
+    const result = await invoke<FileEntry[]>("list_directory", { path: rootPath })
+    console.log("[TRACE:loadFileTree] Tauri response length=", result.length)
+    return result
   } catch {
+    console.warn("[TRACE:loadFileTree] Tauri not available, falling back to web")
     return await loadWebFileTree()
   }
 }

@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import { resolve, normalize } from 'path'
 import { WorkspaceManager } from '../WorkspaceManager'
 import { setAllowedWorkspacePath } from './path-utils'
 
@@ -28,9 +29,30 @@ export function registerWorkspaceIpcHandlers(): void {
     return wm.openWorkspaceDialog(win)
   })
 
+  // Normalize the main-process FileEntry (camelCase) to renderer FileEntry (snake_case)
+  function toRendererEntry(camel: import('../WorkspaceManager').FileEntry): {
+    name: string; path: string; is_dir: boolean; size: number; lastModified: number; children: any[]
+  } {
+    return {
+      name: camel.name,
+      path: camel.path,
+      is_dir: camel.isDirectory,
+      size: camel.size,
+      lastModified: camel.modified,
+      children: camel.children ? camel.children.map(toRendererEntry) : [],
+    }
+  }
+
   // Get file tree
   ipcMain.handle('workspace:get-tree', async (_event, dirPath: string, maxDepth?: number) => {
-    return wm.getFileTree(dirPath, maxDepth || 10)
+    const resolvedPath = resolve(normalize(dirPath))
+    console.log("[TRACE:IPC:workspace:get-tree] START dirPath=", dirPath, "resolved=", resolvedPath, "maxDepth=", maxDepth)
+    setAllowedWorkspacePath(resolvedPath)
+    const entries = wm.getFileTree(resolvedPath, maxDepth || 10)
+    console.log("[TRACE:IPC:workspace:get-tree] raw entries from WorkspaceManager:", entries.length, "first.name=", entries[0]?.name ?? "EMPTY")
+    const normalized = entries.map(toRendererEntry)
+    console.log("[TRACE:IPC:workspace:get-tree] normalized first entry:", normalized[0] ? JSON.stringify(normalized[0]).slice(0, 300) : "EMPTY")
+    return normalized
   })
 
   // Read file
@@ -65,7 +87,8 @@ export function registerWorkspaceIpcHandlers(): void {
 
   // Start file watcher
   ipcMain.handle('workspace:start-watcher', async (_event, dirPath: string) => {
-    return wm.startWatching(dirPath, (_eventType, filePath) => {
+    const resolvedPath = resolve(normalize(dirPath))
+    return wm.startWatching(resolvedPath, (_eventType, filePath) => {
       const windows = BrowserWindow.getAllWindows()
       for (const w of windows) {
         try {

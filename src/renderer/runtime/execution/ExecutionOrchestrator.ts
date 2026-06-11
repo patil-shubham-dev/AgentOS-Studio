@@ -450,10 +450,8 @@ export class ExecutionOrchestrator {
 
         StreamManager.getInstance().complete(stepId)
 
-        if (streamedContent) {
-          yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: streamedContent, finishReason: "stop", timestamp: Date.now() }
-          agentResults.push({ role: runtimeRole, content: streamedContent })
-        }
+        yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: streamedContent || "", finishReason: "stop", timestamp: Date.now() }
+        agentResults.push({ role: runtimeRole, content: streamedContent || "" })
       } catch (e: unknown) {
         const errMsg = e instanceof Error ? e.message : String(e)
         console.error(`[Orchestrator] Agent ${role} failed:`, errMsg)

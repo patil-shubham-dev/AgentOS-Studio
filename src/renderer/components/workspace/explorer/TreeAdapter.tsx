@@ -66,7 +66,11 @@ export function WorkspaceTree({ onOpenSearchFile }: WorkspaceTreeProps) {
   const rootPathRef = useRef(rootPath)
   rootPathRef.current = rootPath
 
-  console.log(`[WorkspaceTree] Render cycle: ${fileTree.length} roots, ${paths.length} paths, ${dirs.length} dirs`)
+  console.log(`[TRACE:WorkspaceTree] Render: ${fileTree.length} roots, rootPath=${rootPath}, ${paths.length} paths, ${dirs.length} dirs`)
+  if (fileTree.length > 0) {
+    console.log("[TRACE:WorkspaceTree] first root:", JSON.stringify(fileTree[0]).slice(0, 200))
+    console.log("[TRACE:WorkspaceTree] first root is_dir:", fileTree[0].is_dir)
+  }
 
   const handleSelectionChange = useCallback((selectedPaths: readonly string[]) => {
     const path = selectedPaths[0]

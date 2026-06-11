@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import { emitTelemetry } from "@/lib/telemetry"
 import {
   Search, X, File, FolderOpen,
-  FileSearch, Folder,
+  FileSearch, Folder, FilePlus, FolderPlus,
 } from "lucide-react"
 
 function SearchSection({
@@ -99,14 +99,26 @@ function SearchSection({
   )
 }
 
+interface WorkspaceExplorerProps {
+  onOpenWorkspace?: () => void
+  creatingType?: "file" | "folder" | null
+  creatingParent?: string | null
+  onCreateSubmit?: (fullPath: string, name: string) => Promise<void>
+  onCreateCancel?: () => void
+  onDeleteEntry?: (path: string) => Promise<void>
+  onRenameSubmit?: (oldPath: string, newPath: string, newName: string) => Promise<void>
+}
+
 interface WorkspaceExplorerHandle {
   collapseAll: () => void
   getSelectedPaths: () => string[]
 }
 
-const WorkspaceExplorer = forwardRef<WorkspaceExplorerHandle, Record<string, unknown>>(
-  function WorkspaceExplorer(_props, ref) {
+const WorkspaceExplorer = forwardRef<WorkspaceExplorerHandle, WorkspaceExplorerProps>(
+  function WorkspaceExplorer(props, ref) {
+    const { onOpenWorkspace, creatingType, creatingParent, onCreateSubmit, onCreateCancel, onDeleteEntry, onRenameSubmit } = props
     const rootPath = useWorkspaceStore((s) => s.rootPath)
+    const [createName, setCreateName] = useState("")
 
     const searchQuery = useExplorerStore((s) => s.searchQuery)
     const searchMode = useExplorerStore((s) => s.searchMode)
@@ -276,10 +288,25 @@ const WorkspaceExplorer = forwardRef<WorkspaceExplorerHandle, Record<string, unk
           />
         )}
 
+        {/* Empty state — show open button when no workspace */}
+        {!rootPath && onOpenWorkspace && (
+          <div className="flex flex-col items-center justify-center flex-1 gap-3 px-6 text-center">
+            <FolderOpen className="h-8 w-8 text-white/10" />
+            <p className="text-xs text-white/30">No workspace open</p>
+            <button
+              onClick={onOpenWorkspace}
+              className="px-4 py-1.5 text-xs font-medium text-white/70 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded transition-colors"
+            >
+              Open Folder
+            </button>
+          </div>
+        )}
+
         {/* File tree — takes ~95% of remaining vertical space */}
         <div className={cn(
           "flex-1 overflow-hidden min-h-0",
           isSearching && "opacity-30 pointer-events-none",
+          !rootPath && "hidden",
         )}>
           {/* Workspace name header */}
           {rootPath && (
@@ -289,6 +316,40 @@ const WorkspaceExplorer = forwardRef<WorkspaceExplorerHandle, Record<string, unk
             </div>
           )}
           <WorkspaceTree />
+          {/* Inline creation input */}
+          {creatingType && onCreateSubmit && (
+            <div className="px-3 py-1.5 border-t border-white/[0.06]">
+              <div className="flex items-center gap-1.5">
+                {creatingType === "folder" ? (
+                  <FolderPlus className="h-3 w-3 shrink-0 text-white/30" />
+                ) : (
+                  <FilePlus className="h-3 w-3 shrink-0 text-white/30" />
+                )}
+                <input
+                  autoFocus
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && createName.trim()) {
+                      const parent = creatingParent || rootPath || ""
+                      const fullPath = parent + (parent.endsWith("\\") || parent.endsWith("/") ? "" : "\\") + createName.trim()
+                      await onCreateSubmit(fullPath, createName.trim())
+                      setCreateName("")
+                    } else if (e.key === "Escape") {
+                      onCreateCancel?.()
+                      setCreateName("")
+                    }
+                    e.stopPropagation()
+                  }}
+                  onBlur={() => {
+                    if (!createName.trim()) onCreateCancel?.()
+                  }}
+                  placeholder={creatingType === "folder" ? "Folder name..." : "File name..."}
+                  className="flex-1 bg-white/[0.06] border border-white/[0.08] rounded px-2 py-1 text-[11px] text-white/70 outline-none placeholder-white/20 focus:border-blue-500/40 transition-colors"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )

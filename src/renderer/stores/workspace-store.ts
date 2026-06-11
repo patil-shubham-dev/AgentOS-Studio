@@ -274,7 +274,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
-  setFileTree: (tree) => set({ fileTree: tree, isLoading: false }),
+  setFileTree: (tree) => {
+    console.log("[TRACE:setFileTree] tree.length=", tree.length, "rootPath=", useWorkspaceStore.getState().rootPath)
+    if (tree.length > 0) {
+      console.log("[TRACE:setFileTree] first entry:", JSON.stringify(tree[0]).slice(0, 200))
+    }
+    set({ fileTree: tree, isLoading: false })
+  },
 
   loadDirectory: async (path: string) => {
     try {

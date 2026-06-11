@@ -174,6 +174,7 @@ export class AgentExecutor {
 
     const thisRole = this.role
     const transport = createTransport()
+    let lastAttemptError: string | null = null
 
     yield { type: "THINKING_STARTED", executionId: eid, label: "Thinking", timestamp: Date.now() }
     yield { type: "PROVIDER_CONNECTING", executionId: eid, model: primary.model, provider: this.role, temperature: primary.temperature, timestamp: Date.now() }
@@ -196,6 +197,7 @@ export class AgentExecutor {
           onToolCallEnd: () => {},
           onFinish: () => {},
           onError: (error: TransportError) => {
+            lastAttemptError = error.message
             channel.push({ type: "EXECUTION_FAILED", executionId: eid, error: error.message, durationMs: 0, timestamp: Date.now() })
             channel.close()
           },
@@ -208,7 +210,8 @@ export class AgentExecutor {
       }
       await streamPromise
     } catch (err) {
-      console.warn("[AgentExecutor] Primary streaming failed:", err)
+      lastAttemptError = err instanceof Error ? err.message : String(err)
+      console.warn("[AgentExecutor] Primary streaming failed:", lastAttemptError)
     }
 
     // Attempt 2: streaming with fallback model if primary streaming failed
@@ -230,6 +233,7 @@ export class AgentExecutor {
             onToolCallEnd: () => {},
             onFinish: () => {},
             onError: (error: TransportError) => {
+              lastAttemptError = error.message
               channel.push({ type: "EXECUTION_FAILED", executionId: eid, error: error.message, durationMs: 0, timestamp: Date.now() })
               channel.close()
             },
@@ -242,7 +246,8 @@ export class AgentExecutor {
         }
         await streamPromise
       } catch (err) {
-        console.warn("[AgentExecutor] Fallback streaming failed:", err)
+        lastAttemptError = err instanceof Error ? err.message : String(err)
+        console.warn("[AgentExecutor] Fallback streaming failed:", lastAttemptError)
       }
     }
 
@@ -266,9 +271,10 @@ export class AgentExecutor {
           }
         }
       } catch (err) {
+        lastAttemptError = err instanceof Error ? err.message : String(err)
         // Attempt 4: non-streaming with the other model if we haven't tried both
         if (!usedFallback && fallback) {
-          console.warn("[AgentExecutor] Primary non-streaming failed, trying fallback:", err)
+          console.warn("[AgentExecutor] Primary non-streaming failed, trying fallback:", lastAttemptError)
           try {
             const result = await transport.chatCompletion(
               buildAdapterConfig(fallback),
@@ -283,15 +289,20 @@ export class AgentExecutor {
               }
             }
           } catch (fbErr) {
-            console.warn("[AgentExecutor] Fallback non-streaming also failed:", fbErr)
+            lastAttemptError = fbErr instanceof Error ? fbErr.message : String(fbErr)
+            console.warn("[AgentExecutor] Fallback non-streaming also failed:", lastAttemptError)
           }
         } else {
-          console.warn("[AgentExecutor] Non-streaming failed:", err)
+          console.warn("[AgentExecutor] Non-streaming failed:", lastAttemptError)
         }
       }
       if (content) {
         yield { type: "MESSAGE_UPDATE", executionId: eid, content, timestamp: Date.now() }
       }
+    }
+
+    if (!content && lastAttemptError) {
+      yield { type: "EXECUTION_FAILED", executionId: eid, error: `All provider attempts failed: ${lastAttemptError}`, durationMs: 0, timestamp: Date.now() }
     }
 
     yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content, finishReason: "stop", timestamp: Date.now() }
@@ -393,6 +404,7 @@ export class AgentExecutor {
 
     const thisRole = this.role
     const transport = createTransport()
+    let lastAttemptError: string | null = null
 
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const elapsed = performance.now() - startedAt
@@ -441,6 +453,7 @@ export class AgentExecutor {
             },
             onFinish: () => {},
             onError: (error: TransportError) => {
+              lastAttemptError = error.message
               channel.push({ type: "EXECUTION_FAILED", executionId: eid, error: error.message, durationMs: 0, timestamp: Date.now() })
               channel.close()
             },
@@ -453,7 +466,8 @@ export class AgentExecutor {
         }
         await streamPromise
       } catch (err) {
-        console.warn("[AgentExecutor] Primary streaming failed:", err)
+        lastAttemptError = err instanceof Error ? err.message : String(err)
+        console.warn("[AgentExecutor] Primary streaming failed:", lastAttemptError)
       }
 
       // Attempt 2: streaming with fallback model if primary streaming produced nothing
@@ -482,6 +496,7 @@ export class AgentExecutor {
               },
               onFinish: () => {},
               onError: (error: TransportError) => {
+                lastAttemptError = error.message
                 channel.push({ type: "EXECUTION_FAILED", executionId: eid, error: error.message, durationMs: 0, timestamp: Date.now() })
                 channel.close()
               },
@@ -494,7 +509,8 @@ export class AgentExecutor {
           }
           await streamPromise
         } catch (err) {
-          console.warn("[AgentExecutor] Fallback streaming failed:", err)
+          lastAttemptError = err instanceof Error ? err.message : String(err)
+          console.warn("[AgentExecutor] Fallback streaming failed:", lastAttemptError)
         }
       }
 
@@ -519,9 +535,10 @@ export class AgentExecutor {
             totalUsage.total_tokens += result.usage.totalTokens
           }
         } catch (err) {
+          lastAttemptError = err instanceof Error ? err.message : String(err)
           // Attempt 4: non-streaming with the other model if haven't tried both
           if (!usedFallback && fallback) {
-            console.warn("[AgentExecutor] Primary non-streaming failed, trying fallback:", err)
+            console.warn("[AgentExecutor] Primary non-streaming failed, trying fallback:", lastAttemptError)
             try {
               const result = await transport.chatCompletion(
                 buildAdapterConfig(fallback),
@@ -537,16 +554,22 @@ export class AgentExecutor {
                 totalUsage.total_tokens += result.usage.totalTokens
               }
             } catch (fbErr) {
-              console.warn("[AgentExecutor] Fallback non-streaming also failed:", fbErr)
+              lastAttemptError = fbErr instanceof Error ? fbErr.message : String(fbErr)
+              console.warn("[AgentExecutor] Fallback non-streaming also failed:", lastAttemptError)
             }
           } else {
-            console.warn("[AgentExecutor] Non-streaming failed:", err)
+            console.warn("[AgentExecutor] Non-streaming failed:", lastAttemptError)
           }
         }
       }
 
       if (responseContent) {
         yield { type: "MESSAGE_UPDATE", executionId: eid, content: responseContent, timestamp: Date.now() }
+      }
+
+      if (!responseContent && responseToolCalls.length === 0 && lastAttemptError && round === 0) {
+        yield { type: "EXECUTION_FAILED", executionId: eid, error: `All provider attempts failed: ${lastAttemptError}`, durationMs: Math.round(performance.now() - startedAt), timestamp: Date.now() }
+        break
       }
 
       const assistantMsg: ChatMessage = {

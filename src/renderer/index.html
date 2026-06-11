@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AgenticOS</title>
     <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMklEQVQ4T2NkYPj/n4EBBJgYKAQMFFnAxMCAAgsLCwsDA8P/AYaG/4MDAQEqYcCqAQDQ4w0MGH2tCyoAAAAASUVORK5CYII=">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: resource:; font-src 'self' data:; connect-src 'self' ws: wss: http://localhost:* https://*.openai.com https://*.anthropic.com https://*.githubusercontent.com https://*.nvidia.com https://integrate.api.nvidia.com https://ai.api.nvidia.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: asset: resource:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: wss: http://localhost:* https://*.openai.com https://*.anthropic.com https://*.githubusercontent.com https://*.nvidia.com https://integrate.api.nvidia.com https://ai.api.nvidia.com https://fonts.googleapis.com https://fonts.gstatic.com;">
     <!-- 'unsafe-inline' kept for style-src for Tailwind JIT; script-src uses 'self' only since Vite bundles all scripts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>

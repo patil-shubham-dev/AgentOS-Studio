@@ -392,7 +392,7 @@ export function ControlCenterPage() {
   return (
     <ErrorBoundary>
       <div className="h-full overflow-y-auto bg-[#0a0a0b] [background:radial-gradient(ellipse_80%_50%_at_50%_0%,rgba(59,130,246,0.06),transparent),radial-gradient(ellipse_80%_50%_at_50%_100%,rgba(168,85,247,0.04),transparent)]">
-        <div className="p-6 max-w-6xl mx-auto space-y-6">
+        <div className="p-6 max-w-[1300px] mx-auto space-y-6">
           <DiagnosticsOverlay />
 
           {/* Header with readiness indicator */}
@@ -426,7 +426,7 @@ export function ControlCenterPage() {
 
           {/* Summary metrics — only when ready */}
           {showMetrics && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {[
                 { label: "Total Tokens", value: `${(totalTokens / 1000).toFixed(1)}K`, icon: Cpu, color: "text-blue-400", detail: "across all agents" },
                 { label: "Total Messages", value: totalMessages.toLocaleString(), icon: MessageSquare, color: "text-purple-400", detail: "conversation history" },
@@ -450,7 +450,7 @@ export function ControlCenterPage() {
           )}
 
           {/* Second row: orchestration, runtime, providers */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             <OrchestrationPanel managerConfigured={managerConfigured} roleConfigStats={roleConfigStats} navigate={navigate} />
             <RuntimeHealthCard roleConfigs={roleConfigs} isProcessing={isProcessing} />
             <ProviderStatusCard providers={providers} navigate={navigate} />
