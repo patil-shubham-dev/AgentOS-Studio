@@ -6,11 +6,16 @@ import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useDiagnosticsStore, type Diagnostic } from "@/stores/diagnostics-store"
 import type { OpenFile } from "@/types"
 import { cn } from "@/lib/utils"
-import { loadFileTree } from "@/lib/workspace"
+import { loadFileTree } from "@/lib/filesystem"
 import { Badge, TooltipSimple as Tooltip } from "@agentic-os/ui"
 import { PremiumEmptyState, getCodeEmptyState } from "./premium-empty-state"
 import { DiagnosticsPanel } from "./diagnostics-panel"
+import { GitPanel } from "./git-panel"
+import { TerminalWorkspace } from "./terminal-workspace"
+import { OutputPanel } from "./OutputPanel"
 import { SymbolSearch, type SymbolItem } from "./symbol-search"
+import { BreadcrumbNav } from "./BreadcrumbNav"
+import { SplitEditor } from "./SplitEditor"
 import { DebugPanel } from "./debug-panel"
 import { debugService } from "@/lib/debug/debug-service"
 import { useDebugStore } from "@/stores/debug-store"
@@ -22,11 +27,12 @@ import { useHaptic } from "@/lib/haptics"
 import {
   WrapText, Minus, Plus, X, FileCode,
   Sparkles, Brain, Check, Save,
-  PanelRightClose, FileDown, Pencil, AlertCircle, AlertTriangle, GitBranch,
-  Bug, FileSearch,
+  Columns3, FileDown, Pencil, AlertCircle, AlertTriangle, GitBranch,
+  Bug, FileSearch, PanelRight, PanelRightClose, Terminal, Logs, FolderOpen, FilePlus,
 } from "lucide-react"
 import { registerInlineCompletionProvider, unregisterInlineCompletionProvider, setupCompletionTracking, cleanupCompletionTracking } from "@/lib/completion/completion-provider"
 import { InlineEditOverlay } from "./inline-edit-overlay"
+import { useStreamingState } from "./use-streaming-state"
 
 const EXT_LANG_MAP: Record<string, string> = {
   ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
@@ -63,6 +69,8 @@ const EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
   smoothScrolling: true,
   cursorBlinking: "smooth",
   cursorSmoothCaretAnimation: "on",
+  stickyScroll: { enabled: true },
+  codeLens: true,
   wordWrap: "off",
   tabSize: 2,
   insertSpaces: true,
@@ -88,6 +96,166 @@ interface AIChange {
   newContent: string
   applied: boolean
   rejected: boolean
+}
+
+// ── Welcome Page — VS Code-style start page ──
+
+function WelcomePage({ rootPath, onOpenWorkspace }: { rootPath: string | null; onOpenWorkspace: () => void }) {
+  const [recentWorkspaces, setRecentWorkspaces] = useState<string[]>([])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("agentic-workspace-root")
+      if (raw && raw !== rootPath) {
+        setRecentWorkspaces([raw])
+      }
+    } catch {}
+  }, [rootPath])
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center px-8 py-12 overflow-y-auto">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="flex flex-col items-center gap-6 max-w-sm w-full"
+      >
+        {/* App logo — animated code illustration */}
+        <div className="relative h-16 w-16 mb-2">
+          <svg viewBox="0 0 64 64" fill="none" className="absolute inset-0 h-full w-full">
+            <motion.rect
+              x="8" y="12" width="48" height="40" rx="4"
+              stroke="currentColor" strokeWidth="1.5" fill="none"
+              className="text-blue-400/40"
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+            />
+            <motion.path
+              d="M22 28L18 32L22 36"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              className="text-blue-400"
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.4 }}
+            />
+            <motion.path
+              d="M42 28L46 32L42 36"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              className="text-cyan-400"
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.6 }}
+            />
+            <motion.path
+              d="M34 22L30 42"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+              className="text-purple-400"
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.3, delay: 0.8 }}
+            />
+            <motion.circle
+              cx="32" cy="32" r="2"
+              fill="currentColor" className="text-blue-400"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 0.3 }}
+              transition={{ duration: 0.3, delay: 0.3 }}
+            />
+          </svg>
+        </div>
+
+        <div className="text-center">
+          <h1 className="text-lg font-semibold text-white/70">AgenticOS</h1>
+          <p className="text-[11px] text-white/30 mt-1">
+            {rootPath
+              ? "Workspace is ready. Open a file to start editing."
+              : "Open a project folder to begin working with AI assistance."}
+          </p>
+        </div>
+
+        {/* Quick actions */}
+        <div className="grid grid-cols-2 gap-2 w-full">
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onOpenWorkspace}
+            className="flex items-center gap-2 rounded-lg bg-white/[0.04] border border-white/[0.06] px-3 py-2.5 text-[11px] font-medium text-white/60 hover:bg-white/[0.07] hover:text-white/80 transition-all"
+          >
+            <FolderOpen className="h-4 w-4 text-blue-400" />
+            <span>Open Folder</span>
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            disabled={!rootPath}
+            onClick={async () => {
+              if (!rootPath) return
+              const name = prompt("File name:")
+              if (!name) return
+              try {
+                const { createFile, loadFileTree } = await import("@/lib/filesystem")
+                await createFile(`${rootPath}\\${name}`)
+                const tree = await loadFileTree(rootPath)
+                useWorkspaceStore.getState().setFileTree(tree)
+              } catch {}
+            }}
+            className="flex items-center gap-2 rounded-lg bg-white/[0.04] border border-white/[0.06] px-3 py-2.5 text-[11px] font-medium text-white/40 hover:bg-white/[0.07] hover:text-white/70 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <FilePlus className="h-4 w-4 text-emerald-400" />
+            <span>New File</span>
+          </motion.button>
+        </div>
+
+        {/* Recent workspace */}
+        {recentWorkspaces.length > 0 && (
+          <div className="w-full">
+            <p className="text-[9px] font-medium text-white/20 uppercase tracking-wider mb-2">Recent</p>
+            {recentWorkspaces.map((ws) => (
+              <button
+                key={ws}
+                onClick={() => {
+                  const { setRootPath, setFileTree, setLoading } = useWorkspaceStore.getState()
+                  setRootPath(ws)
+                  setLoading(true)
+                  loadFileTree(ws).then((tree) => {
+                    setFileTree(tree)
+                    import("@/lib/workspace").then((w) => w.startWatching(ws))
+                  })
+                }}
+                className="flex items-center gap-2 w-full rounded-lg px-2 py-1.5 text-[11px] text-white/40 hover:bg-white/[0.04] hover:text-white/60 transition-all"
+              >
+                <FolderOpen className="h-3 w-3 shrink-0 text-white/20" />
+                <span className="truncate">{ws.split(/[/\\]/).pop()}</span>
+                <span className="ml-auto text-[9px] text-white/15 truncate max-w-[120px]">{ws}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Keyboard shortcuts */}
+        <div className="w-full pt-2 border-t border-white/[0.04]">
+          <p className="text-[9px] font-medium text-white/15 uppercase tracking-wider mb-2">Keyboard Shortcuts</p>
+          <div className="space-y-1">
+            {[
+              { keys: "⌘P", desc: "Quick open" },
+              { keys: "⌘⇧P", desc: "Command palette" },
+              { keys: "⌘B", desc: "Toggle explorer" },
+              { keys: "⌘J", desc: "Toggle panel" },
+              { keys: "⌘S", desc: "Save file" },
+              { keys: "⌘W", desc: "Close tab" },
+            ].map(({ keys, desc }) => (
+              <div key={keys} className="flex items-center justify-between">
+                <span className="text-[10px] text-white/20">{desc}</span>
+                <kbd className="text-[9px] font-mono text-white/15 bg-white/[0.04] px-1.5 py-0.5 rounded">{keys}</kbd>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  )
 }
 
 // ── Editor Tabs ──
@@ -268,7 +436,7 @@ async function saveFile(
 ): Promise<{ success: boolean; method: "tauri" | "download" | "error"; error?: string }> {
   // Try Tauri first
   try {
-    const { invoke } = await import("@tauri-apps/api/core")
+    const { invoke } = await import("@/lib/electron-api")
     // Normalize path to use platform-appropriate separators
     const normalizedPath = filePath.replace(/\//g, "\\")
     const absolutePath = rootPath ? `${rootPath}\\${normalizedPath}` : filePath
@@ -349,6 +517,9 @@ export function CodeWorkspace() {
   const addAiContextFile = useWorkspaceStore((s) => s.addAiContextFile)
   const removeAiContextFile = useWorkspaceStore((s) => s.removeAiContextFile)
   const rootPath = useWorkspaceStore((s) => s.rootPath)
+  const splitMode = useWorkspaceStore((s) => s.splitMode)
+  const setSplitMode = useWorkspaceStore((s) => s.setSplitMode)
+  const setSplitFile = useWorkspaceStore((s) => s.setSplitFile)
   const { pulse, notify } = useHaptic()
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
@@ -359,6 +530,9 @@ export function CodeWorkspace() {
   const [showMinimap, setShowMinimap] = useState(true)
   const [showProblems, setShowProblems] = useState(false)
   const [showDebugPanel, setShowDebugPanel] = useState(false)
+  const [showGitPanel, setShowGitPanel] = useState(false)
+  const [showTerminal, setShowTerminal] = useState(false)
+  const [showOutput, setShowOutput] = useState(false)
   const [symbolSearchOpen, setSymbolSearchOpen] = useState(false)
   const [currentFileSymbols, setCurrentFileSymbols] = useState<SymbolItem[]>([])
   const [aiChanges, setAiChanges] = useState<AIChange[]>([])
@@ -394,11 +568,7 @@ export function CodeWorkspace() {
     viewMode: "edit",
   })
 
-  const liveStreamActive = false
-  const liveEditingFile = null as string | null
-  const streamProgress = 0
-  const sessionTokens = 0
-  const sessionChars = 0
+  const { isStreaming: liveStreamActive, streamingFilePath: liveEditingFile, streamProgress, sessionTokens, sessionChars } = useStreamingState()
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath)
   const isInAiContext = activeFile ? aiContextFiles.some((f) => f.path === activeFile.path) : false
@@ -600,6 +770,22 @@ export function CodeWorkspace() {
       label: "Toggle Debug Panel",
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyD],
       run: () => { setShowDebugPanel((p) => !p) },
+    })
+
+    // ── Format Document (Shift+Alt+F) ──
+    editor.addAction({
+      id: "format-document",
+      label: "Format Document",
+      keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
+      run: (ed) => { ed.getAction("editor.action.formatDocument")?.run() },
+    })
+
+    // ── Rename Symbol (F2) ──
+    editor.addAction({
+      id: "rename-symbol",
+      label: "Rename Symbol",
+      keybindings: [monaco.KeyCode.F2],
+      run: (ed) => { ed.getAction("editor.action.rename")?.run() },
     })
 
     // ── Debug gutter: click to add/remove breakpoints ──
@@ -854,29 +1040,37 @@ export function CodeWorkspace() {
 
   // ── Empty state ──
   if (!activeFile) {
+    if (openFiles.length > 0) {
+      return (
+        <PremiumEmptyState config={getCodeEmptyState(true, undefined, rootPath)} />
+      )
+    }
     return (
-      <PremiumEmptyState config={getCodeEmptyState(openFiles.length > 0, async () => {
-        try {
-          const { open } = await import("@tauri-apps/plugin-dialog")
-          const selected = await open({ directory: true, multiple: false })
-          if (selected) {
-            const { setRootPath, setFileTree, setLoading } = useWorkspaceStore.getState()
-            await setRootPath(String(selected))
-            setLoading(true)
-            const tree = await loadFileTree(String(selected))
-            setFileTree(tree)
+      <WelcomePage
+        rootPath={rootPath}
+        onOpenWorkspace={async () => {
+          try {
+            const { dialogOpen } = await import("@/lib/electron-api")
+            const selected = await dialogOpen({ directory: true, multiple: false, title: "Open Workspace" })
+            if (selected) {
+              const { setRootPath, setFileTree, setLoading } = useWorkspaceStore.getState()
+              await setRootPath(String(selected))
+              setLoading(true)
+              const tree = await loadFileTree(String(selected))
+              setFileTree(tree)
+            }
+          } catch {
+            const path = prompt("Enter workspace folder path:")
+            if (path) {
+              const { setRootPath, setFileTree, setLoading } = useWorkspaceStore.getState()
+              await setRootPath(path)
+              setLoading(true)
+              const tree = await loadFileTree(path)
+              setFileTree(tree)
+            }
           }
-        } catch {
-          const path = prompt("Enter workspace folder path:")
-          if (path) {
-            const { setRootPath, setFileTree, setLoading } = useWorkspaceStore.getState()
-            await setRootPath(path)
-            setLoading(true)
-            const tree = await loadFileTree(path)
-            setFileTree(tree)
-          }
-        }
-      }, rootPath)} />
+        }}
+      />
     )
   }
 
@@ -892,6 +1086,9 @@ export function CodeWorkspace() {
         onOpen={openFileInStore}
         onClose={closeFile}
       />
+
+      {/* Breadcrumb navigation */}
+      <BreadcrumbNav />
 
       {/* Editor toolbar */}
       <div className="flex items-center justify-between border-b border-white/[0.04] bg-black/10 px-3 py-1 shrink-0">
@@ -960,16 +1157,24 @@ export function CodeWorkspace() {
             </Badge>
           )}
 
-          {/* Git branch indicator */}
+          {/* Git branch indicator — click to toggle Git panel */}
           {gitInfo && (
-            <Tooltip content={`${gitInfo.changes} changed file(s) on ${gitInfo.branch}`}>
-              <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-white/40">
+            <Tooltip content={`${gitInfo.changes} changed file(s) on ${gitInfo.branch} — click for details`}>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowGitPanel((p) => !p)}
+                className={cn(
+                  "flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-all",
+                  showGitPanel ? "bg-blue-500/10 text-blue-400" : "text-white/40 hover:text-white/60 hover:bg-white/[0.03]",
+                )}
+              >
                 <GitBranch className="h-2.5 w-2.5" />
                 {gitInfo.branch}
                 {gitInfo.changes > 0 && (
                   <span className="text-amber-400 font-medium">{gitInfo.changes}</span>
                 )}
-              </span>
+              </motion.button>
             </Tooltip>
           )}
 
@@ -1028,7 +1233,26 @@ export function CodeWorkspace() {
               onClick={() => { pulse("click"); setShowMinimap(!showMinimap) }}
               className={cn("rounded p-1 transition-colors", showMinimap ? "text-white/60" : "text-white/20 hover:text-white/40")}
             >
-              <PanelRightClose className="h-3 w-3" />
+                <Columns3 className="h-3 w-3" />
+              </motion.button>
+            </Tooltip>
+
+          <Tooltip content={splitMode === "none" ? "Split editor" : "Close split"}>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => {
+                pulse("click")
+                if (splitMode === "none") {
+                  setSplitMode("vertical")
+                  setSplitFile(activeFile?.path ?? null)
+                } else {
+                  setSplitMode("none")
+                }
+              }}
+              className={cn("rounded p-1 transition-colors", splitMode !== "none" ? "text-blue-400 bg-blue-500/10" : "text-white/20 hover:text-white/40")}
+            >
+              <PanelRight className="h-3 w-3" />
             </motion.button>
           </Tooltip>
 
@@ -1151,6 +1375,30 @@ export function CodeWorkspace() {
               <Save className="h-3 w-3" />
             </motion.button>
           </Tooltip>
+
+          <span className="text-white/10 text-[8px]">|</span>
+
+          <Tooltip content={showTerminal ? "Hide terminal" : "Show terminal"}>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => { pulse("click"); setShowTerminal((p) => !p) }}
+              className={cn("rounded p-1 transition-colors", showTerminal ? "text-blue-400 bg-blue-500/10" : "text-white/20 hover:text-white/40")}
+            >
+              <Terminal className="h-3 w-3" />
+            </motion.button>
+          </Tooltip>
+
+          <Tooltip content={showOutput ? "Hide output" : "Show output"}>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => { pulse("click"); setShowOutput((p) => !p) }}
+              className={cn("rounded p-1 transition-colors", showOutput ? "text-blue-400 bg-blue-500/10" : "text-white/20 hover:text-white/40")}
+            >
+              <Logs className="h-3 w-3" />
+            </motion.button>
+          </Tooltip>
         </div>
       </div>
 
@@ -1170,43 +1418,51 @@ export function CodeWorkspace() {
 
       {/* Editor */}
       <div className="flex-1 relative overflow-hidden min-h-0">
-        <Editor
-          key="monaco-editor"
-          defaultLanguage={language}
-          language={language}
-          value={activeFile.content}
-          onChange={handleContentChange}
-          onMount={handleEditorMount}
-          options={{
-            ...EDITOR_OPTIONS,
-            wordWrap: wordWrap ? "on" : "off",
-            fontSize,
-            minimap: { enabled: showMinimap },
-            readOnly: false,
-          }}
-          theme="agentic-dark"
-          loading={
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex h-full items-center justify-center"
-            >
-              <div className="flex items-center gap-2 text-white/30">
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                <motion.span
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="text-[11px]"
-                >
-                  Loading editor...
-                </motion.span>
-              </div>
-            </motion.div>
-          }
-        />
+        {splitMode === "none" ? (
+          <Editor
+            key="monaco-editor"
+            defaultLanguage={language}
+            language={language}
+            onChange={handleContentChange}
+            onMount={handleEditorMount}
+            options={{
+              ...EDITOR_OPTIONS,
+              wordWrap: wordWrap ? "on" : "off",
+              fontSize,
+              minimap: { enabled: showMinimap },
+              readOnly: false,
+            }}
+            theme="agentic-dark"
+            loading={
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex h-full items-center justify-center"
+              >
+                <div className="flex items-center gap-2 text-white/30">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <motion.span
+                    animate={{ opacity: [0.5, 1, 0.5] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="text-[11px]"
+                  >
+                    Loading editor...
+                  </motion.span>
+                </div>
+              </motion.div>
+            }
+          />
+        ) : (
+          <SplitEditor
+            activeFile={activeFile}
+            language={language}
+            handleEditorMount={handleEditorMount}
+            handleContentChange={handleContentChange}
+          />
+        )}
 
         <AnimatePresence>
           {showAiOverlay && pendingChange && (
@@ -1295,6 +1551,67 @@ export function CodeWorkspace() {
           onNavigateTo={handleNavigateToDiagnostic}
         />
       </AnimatePresence>
+
+      {/* Git panel at bottom */}
+      <AnimatePresence>
+        {showGitPanel && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 250, opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="border-t border-white/[0.06] overflow-hidden shrink-0"
+          >
+            <div className="flex items-center justify-between px-2 py-1 bg-black/20 border-b border-white/[0.04]">
+              <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">
+                <GitBranch className="h-2.5 w-2.5 inline mr-1" />
+                Git Changes
+              </span>
+              <button
+                onClick={() => setShowGitPanel(false)}
+                className="rounded p-0.5 text-white/30 hover:text-white/60 transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+            <div className="h-full overflow-y-auto">
+              <GitPanel />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Terminal panel at bottom */}
+      <AnimatePresence>
+        {showTerminal && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 200, opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="border-t border-white/[0.06] overflow-hidden shrink-0"
+          >
+            <div className="flex items-center justify-between px-2 py-1 bg-black/20 border-b border-white/[0.04]">
+              <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider flex items-center gap-1">
+                <Terminal className="h-2.5 w-2.5" />
+                Terminal
+              </span>
+              <button
+                onClick={() => setShowTerminal(false)}
+                className="rounded p-0.5 text-white/30 hover:text-white/60 transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+            <div className="h-full">
+              <TerminalWorkspace />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Output panel at bottom */}
+      <OutputPanel open={showOutput} onClose={() => setShowOutput(false)} />
 
       {/* Debug panel at bottom-right */}
       <AnimatePresence>

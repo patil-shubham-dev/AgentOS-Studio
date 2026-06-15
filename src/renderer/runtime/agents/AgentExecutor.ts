@@ -4,13 +4,11 @@ import { ProviderTransport, type TransportAdapterConfig, type TransportError } f
 import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { useWorkspaceStore, getWorkspaceContextSnapshot } from "@/stores/workspace-store"
-import { useAgentStore } from "@/stores/agent-store"
 import { memoryLoader } from "@/runtime/project-memory/memory-loader"
 import type { MemoryLoadResult } from "@/runtime/project-memory/memory-loader"
 import { ContextManager } from "@/runtime/context/ContextManager"
 import type { ContextAssemblyInput } from "@/runtime/context/context-types"
-import { PostWriteVerifier } from "@/runtime/PostWriteVerifier"
-import type { ExecutionModeId } from "@/runtime/execution-mode"
+import { VerificationPipeline } from "@/runtime/verification/VerificationPipeline"
 import { normalizeRole } from "@/lib/role-identity"
 import { getEffectiveMaxTokens } from "@/runtime/runtime-token-config"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
@@ -305,7 +303,7 @@ export class AgentExecutor {
       yield { type: "EXECUTION_FAILED", executionId: eid, error: `All provider attempts failed: ${lastAttemptError}`, durationMs: 0, timestamp: Date.now() }
     }
 
-    yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content, finishReason: "stop", timestamp: Date.now() }
+    yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content, finishReason: "stop", timestamp: Date.now(), tokensIn: usage.prompt_tokens, tokensOut: usage.completion_tokens }
   }
 
   private async *executeFull(): AsyncGenerator<ExecutionEvent> {
@@ -317,7 +315,6 @@ export class AgentExecutor {
     trace("AgentExecutor", "start", { role: this.role, mode: this.mode })
 
     const normalizedRole = normalizeRole(this.role) ?? "coder"
-    const executionMode = useAgentStore.getState().executionMode
 
     // ── Phase 5: Read memory scope and filter memory accordingly ──
     const roleConfigs = useAppStore.getState().roleConfigs ?? []
@@ -339,7 +336,6 @@ export class AgentExecutor {
     const assemblyInput: ContextAssemblyInput = {
       role: normalizedRole,
       userMessage: this.input,
-      executionMode,
       customInstructions: projectRules,
       activeFilePath: wsSnapshot.activeFilePath ?? undefined,
       activeFileName: wsSnapshot.activeFileName ?? undefined,
@@ -591,7 +587,7 @@ export class AgentExecutor {
             executionId: eid,
             toolId: tc.id,
             toolName: tc.function.name,
-            args: JSON.stringify(args).slice(0, 200),
+            args: JSON.stringify(args),
             timestamp: Date.now(),
           }
         }
@@ -749,16 +745,14 @@ export class AgentExecutor {
 
         if (editedFiles.length > 0) {
           try {
-            const verificationResult = await PostWriteVerifier.verify(
-              executionMode as ExecutionModeId,
-              [...new Set(editedFiles)],
-            )
-            if (verificationResult) {
-              const verifyMsg = PostWriteVerifier.formatForAgent(verificationResult)
+            const pipeline = VerificationPipeline.getInstance()
+            const verifyResult = await pipeline.fastVerify([...new Set(editedFiles)])
+            if (verifyResult) {
+              const verifyMsg = pipeline.formatForLLM(verifyResult)
               msgs.push({ role: "user" as const, content: verifyMsg })
             }
           } catch (err) {
-            console.warn("[AgentExecutor] PostWriteVerifier failed:", err)
+            console.warn("[AgentExecutor] fastVerify failed:", err)
           }
         }
 
@@ -795,7 +789,7 @@ export class AgentExecutor {
 
     trace("AgentExecutor", "complete", { role: this.role, mode: this.mode, elapsedMs: totalElapsedMs })
 
-    yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content: lastResponse, finishReason: "stop", timestamp: Date.now() }
+    yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content: lastResponse, finishReason: "stop", timestamp: Date.now(), tokensIn: totalUsage.prompt_tokens, tokensOut: totalUsage.completion_tokens }
   }
 
   private filterMemoryByScope(memory: MemoryLoadResult, scope: string): MemoryLoadResult {

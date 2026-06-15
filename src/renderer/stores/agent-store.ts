@@ -6,8 +6,6 @@ const MAX_MESSAGES_PER_ROLE = 200
 const MAX_ORCHESTRATION_STEPS = 100
 const MAX_AGENT_ASSIGNMENTS = 50
 
-export type ExecutionMode = "autonomous" | "fastest" | "most_accurate" | "research_heavy" | "human_guided" | "safe_mode"
-
 export interface AgentAssignment {
   role: RuntimeRole
   reason: string
@@ -53,7 +51,6 @@ export interface AgentStore {
   isProcessing: boolean
 
   wiredRoles: RuntimeRole[]
-  executionMode: ExecutionMode
 
   agentAssignments: AgentAssignment[]
   orchestrationSteps: OrchestrationStep[]
@@ -68,7 +65,6 @@ export interface AgentStore {
   setWiredRoles: (roles: RuntimeRole[]) => void
   validateAssignment: (role: RuntimeRole) => boolean
 
-  setExecutionMode: (mode: ExecutionMode) => void
   addAgentAssignment: (assignment: AgentAssignment) => void
   updateAgentAssignment: (role: RuntimeRole, updates: Partial<AgentAssignment>) => void
   clearAssignments: () => void
@@ -101,7 +97,6 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   isProcessing: false,
 
   wiredRoles: [],
-  executionMode: "autonomous",
 
   agentAssignments: [],
   orchestrationSteps: [],
@@ -119,7 +114,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     set((s) => {
       const existing = s.conversations[role]?.messages ?? []
       const messages = existing.length >= MAX_MESSAGES_PER_ROLE
-        ? [...existing.slice(existing.length - MAX_MESSAGES_PER_ROLE + 1), msg]
+        ? [...existing.slice(-(MAX_MESSAGES_PER_ROLE - 1)), msg]
         : [...existing, msg]
       return {
         conversations: {
@@ -148,7 +143,6 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     return wiredRoles.includes(role)
   },
 
-  setExecutionMode: (mode) => set({ executionMode: mode }),
   addAgentAssignment: (assignment) =>
     set((s) => {
       if (s.wiredRoles.length > 0 && !s.wiredRoles.includes(assignment.role)) {
@@ -156,7 +150,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         return s
       }
       const assignments = s.agentAssignments.length >= MAX_AGENT_ASSIGNMENTS
-        ? [...s.agentAssignments.slice(s.agentAssignments.length - MAX_AGENT_ASSIGNMENTS + 1), assignment]
+        ? [...s.agentAssignments.slice(-(MAX_AGENT_ASSIGNMENTS - 1)), assignment]
         : [...s.agentAssignments, assignment]
       return { agentAssignments: assignments }
     }),
@@ -171,7 +165,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     const id = crypto.randomUUID()
     set((s) => {
       const steps = s.orchestrationSteps.length >= MAX_ORCHESTRATION_STEPS
-        ? [...s.orchestrationSteps.slice(s.orchestrationSteps.length - MAX_ORCHESTRATION_STEPS + 1), { ...step, id, timestamp: Date.now() }]
+        ? [...s.orchestrationSteps.slice(-(MAX_ORCHESTRATION_STEPS - 1)), { ...step, id, timestamp: Date.now() }]
         : [...s.orchestrationSteps, { ...step, id, timestamp: Date.now() }]
       return { orchestrationSteps: steps }
     })

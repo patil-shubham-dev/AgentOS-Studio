@@ -1,6 +1,6 @@
 import { memo, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { RotateCcw } from "lucide-react"
+import { RotateCcw, ChevronDown, ChevronRight, Brain, Loader2 } from "lucide-react"
 import { useTimelineStore } from "../timeline-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useAgentStore } from "@/stores/agent-store"
@@ -11,6 +11,8 @@ import { MultiFileDiffCard, FileCreatedCard, FileDeletedCard } from "./diff"
 import type { AgentSession } from "../timeline-store"
 import type { AgentStatus } from "@/stores/agent-store"
 import { getAgentLabel, getAgentStateIcon, mapToolToActivity } from "../../agent-visibility/AgentActivityMapper"
+import { cn } from "@/lib/utils"
+import { getSpringConfig } from "@/lib/motion"
 
 const ACTIVITY_LABELS: Record<string, string> = {
   routing: "Looking through the project",
@@ -74,13 +76,61 @@ interface AssistantResponseProps {
   originalInput?: string
 }
 
-const ENTRANCE_SPRING = { type: "spring" as const, stiffness: 350, damping: 26, mass: 0.8 }
-const SECTION_SPRING = { type: "spring" as const, stiffness: 300, damping: 24, mass: 0.7 }
+const ENTRANCE_SPRING = getSpringConfig("default")
+const SECTION_SPRING = getSpringConfig("gentle")
 
 const sectionVariants = {
   initial: { opacity: 0, y: -3 },
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, height: 0, marginBottom: 0, overflow: "hidden" as const },
+}
+
+const stagger = (i: number) => ({
+  initial: { opacity: 0, x: -4 },
+  animate: { opacity: 1, x: 0, transition: { delay: i * 0.03 } },
+  exit: { opacity: 0, x: -4, height: 0, overflow: "hidden" as const },
+})
+
+function ThinkingBlock({ session }: { session: AgentSession }) {
+  const isCollapsed = useTimelineStore((s) => s.collapsedSections.has(`thinking-${session.stepId}`))
+  const toggleCollapse = useTimelineStore((s) => s.toggleCollapse)
+  const expanded = isCollapsed
+
+  if (!session.phaseHistory || session.phaseHistory.length === 0) return null
+
+  return (
+    <div className="py-1">
+      <button
+        onClick={() => toggleCollapse(`thinking-${session.stepId}`)}
+        className="flex items-center gap-1.5 text-[10px] text-white/30 hover:text-white/50 transition-colors"
+      >
+        {expanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+        <Brain className="h-2.5 w-2.5" />
+        <span>Thinking process ({session.phaseHistory.length} steps)</span>
+      </button>
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={getSpringConfig("fast")}
+            className="mt-1 ml-4 space-y-0.5 overflow-hidden"
+          >
+            {session.phaseHistory.map((phase, i) => (
+              <div key={i} className="flex items-center gap-1.5 text-[10px] text-white/25">
+                <span className="h-1 w-1 rounded-full bg-white/20 shrink-0" />
+                <span>{phase.label}</span>
+                <span className="text-[8px] text-white/10 ml-auto">
+                  {new Date(phase.timestamp).toLocaleTimeString([], { minute: "2-digit", second: "2-digit" })}
+                </span>
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
 }
 
 function ToolErrorDisplay({ toolCalls }: { toolCalls: Array<{ name: string; status: string; result?: string }> }) {
@@ -91,9 +141,8 @@ function ToolErrorDisplay({ toolCalls }: { toolCalls: Array<{ name: string; stat
       {errors.map((tc, i) => (
         <motion.div
           key={i}
-          initial={{ opacity: 0, x: -4 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: i * 0.05 }}
+          {...stagger(i)}
+          transition={getSpringConfig("gentle")}
           className="rounded-lg border border-red-500/12 bg-red-500/[0.03] px-3 py-1.5"
         >
           <div className="flex items-center gap-1.5 mb-0.5">
@@ -105,6 +154,21 @@ function ToolErrorDisplay({ toolCalls }: { toolCalls: Array<{ name: string; stat
           <p className="text-[11px] text-red-300/60 font-mono break-words">{tc.result}</p>
         </motion.div>
       ))}
+    </div>
+  )
+}
+
+function ExecutionMetrics({ session }: { session: AgentSession }) {
+  if (session.streamState !== "completed") return null
+  const duration = session.completedAt && session.startedAt
+    ? Math.round((session.completedAt - session.startedAt) / 1000)
+    : null
+
+  return (
+    <div className="flex items-center gap-2 text-[9px] text-white/15 mt-1">
+      {duration !== null && <span>{duration}s</span>}
+      {session.modelName && <span>via {session.modelName}</span>}
+      {session.providerName && <span className="text-white/10">{session.providerName}</span>}
     </div>
   )
 }
@@ -122,7 +186,7 @@ export const AssistantResponse = memo(function AssistantResponse({
 
   if (!session) {
     if (isLatest) {
-      console.warn("[AssistantResponse] Session not found for latest turn — may indicate turn correlation gap", { stepId })
+      console.warn("[AssistantResponse] Session not found for latest turn", { stepId })
     }
     return null
   }
@@ -136,6 +200,7 @@ export const AssistantResponse = memo(function AssistantResponse({
   const hasToolErrors = session.toolCalls.some((tc) => tc.status === "error")
   const isError = streamState === "failed"
   const isComplete = !isRunning && streamState === "completed"
+  const hasThinking = session.phaseHistory != null && session.phaseHistory.length > 0
 
   const handleRevert = useCallback(async (path: string) => {
     const edit = session.fileEdits.find((fe) => fe.path === path)
@@ -143,7 +208,7 @@ export const AssistantResponse = memo(function AssistantResponse({
     try {
       const rootPath = useWorkspaceStore.getState().rootPath
       const fullPath = rootPath ? `${rootPath}\\${path.replace(/\//g, "\\")}` : path
-      const fs = await import("@tauri-apps/plugin-fs")
+      const fs = await import("@/lib/electron-api")
       await fs.writeTextFile(fullPath, edit.oldContent)
       useWorkspaceStore.getState().notifyFileEdited(fullPath, edit.oldContent)
     } catch {}
@@ -151,9 +216,7 @@ export const AssistantResponse = memo(function AssistantResponse({
 
   const handleRevertAll = useCallback(async () => {
     for (const edit of session.fileEdits) {
-      if (edit.oldContent) {
-        await handleRevert(edit.path)
-      }
+      if (edit.oldContent) await handleRevert(edit.path)
     }
   }, [session.fileEdits, handleRevert])
 
@@ -169,6 +232,19 @@ export const AssistantResponse = memo(function AssistantResponse({
       transition={ENTRANCE_SPRING}
       className="w-full space-y-0.5"
     >
+      {/* Agent label */}
+      <div className="flex items-center gap-1.5 px-0.5 py-0.5">
+        <div className="flex items-center justify-center h-4 w-4 rounded-md bg-gradient-to-br from-blue-500/10 to-purple-500/10">
+          <Brain className="h-2.5 w-2.5 text-blue-400/50" />
+        </div>
+        <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">
+          {session.roleName || "Assistant"}
+        </span>
+        {isRunning && (
+          <Loader2 className="h-2.5 w-2.5 animate-spin text-blue-400/40" />
+        )}
+      </div>
+
       {/* Execution summary — spring entrance */}
       <AnimatePresence>
         {executionSummary && (
@@ -222,10 +298,15 @@ export const AssistantResponse = memo(function AssistantResponse({
                 <span className="absolute inset-0 rounded-full bg-blue-400/30 animate-ping" />
                 <span className="h-2 w-2 rounded-full bg-blue-400/80" />
               </span>
-              <span className="text-sm text-white/50 italic font-medium">{currentActivity}…</span>
+              <span className="text-sm text-white/50 italic font-medium">{currentActivity}&hellip;</span>
             </>
           ) : null}
         </motion.div>
+      )}
+
+      {/* Thinking process visualization */}
+      {hasThinking && !isRunning && (
+        <ThinkingBlock session={session} />
       )}
 
       {/* Tool calls — compact animated cards */}
@@ -260,12 +341,8 @@ export const AssistantResponse = memo(function AssistantResponse({
             className="py-0.5 space-y-1"
           >
             {session.fileOps.map((op, i) => {
-              if (op.operation === "create") {
-                return <FileCreatedCard key={`op-${i}`} op={op} />
-              }
-              if (op.operation === "delete") {
-                return <FileDeletedCard key={`op-${i}`} op={op} />
-              }
+              if (op.operation === "create") return <FileCreatedCard key={`op-${i}`} op={op} />
+              if (op.operation === "delete") return <FileDeletedCard key={`op-${i}`} op={op} />
               return null
             })}
           </motion.div>
@@ -340,6 +417,11 @@ export const AssistantResponse = memo(function AssistantResponse({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Execution metrics */}
+      {isComplete && (
+        <ExecutionMetrics session={session} />
+      )}
 
       {/* Error state */}
       <AnimatePresence>

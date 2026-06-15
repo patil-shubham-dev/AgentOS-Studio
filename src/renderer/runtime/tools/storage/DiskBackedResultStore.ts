@@ -1,6 +1,5 @@
 import { join, relative } from 'path'
-import { readTextFile, writeTextFile, exists, mkdir, remove, readDir } from '@/lib/tauri-shims/fs'
-import { invoke } from '@/lib/tauri-shims/core'
+import { readTextFile, writeTextFile, exists, mkdir, remove, readDir, invoke } from '@/lib/electron-api'
 
 export interface StoredResult {
   id: string

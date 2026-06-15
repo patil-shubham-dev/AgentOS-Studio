@@ -19,7 +19,7 @@ function getLedgerPath(): string | null {
  */
 async function writeFile(path: string, content: string): Promise<boolean> {
   try {
-    const { invoke } = await import("@tauri-apps/api/core")
+    const { invoke } = await import("@/lib/electron-api")
     await invoke("write_text_file", { path, content })
     return true
   } catch {
@@ -32,7 +32,7 @@ async function writeFile(path: string, content: string): Promise<boolean> {
  */
 async function readFile(path: string): Promise<string | null> {
   try {
-    const { invoke } = await import("@tauri-apps/api/core")
+    const { invoke } = await import("@/lib/electron-api")
     return await invoke<string>("read_text_file", { path })
   } catch {
     return null

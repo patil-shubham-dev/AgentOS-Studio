@@ -78,34 +78,35 @@ describe("Production Readiness Audit — P16", () => {
   it("scores Search readiness", () => {
     const evidence: string[] = [
       "Workspace index — filename mode search with debounced results",
+      "Symbol index search — search symbols by name (functions, classes, interfaces, types, enums)",
       "Search benchmarks across 1k, 10k, 50k file repos",
       "Search cancellation test",
       "Incremental search support",
       "Global search overlay in workspace",
       "Real-repo benchmarks: enumerates .ts/.tsx across 3 repos, measures read performance",
     ]
-    const score = 72
+    const score = 78
     const maxScore = 100
     scores.push({ category: "Search", score, maxScore, evidence })
-    console.log(`[Search] ${score}/${maxScore} — filename + real-repo enumeration, no content search`)
+    console.log(`[Search] ${score}/${maxScore} — filename + symbol search, no content search`)
   })
 
   it("scores Code Intelligence readiness", () => {
     const evidence: string[] = [
-      "Symbol index — Babel AST-based extraction, 5 kinds across 6 languages",
-      "Dependency graph — import/require analysis with transitive resolution",
-      "Find references — usage site tracking with dedup",
-      "Go to definition — position-based and symbol-based resolution",
-      "Call hierarchy — caller/callee analysis",
-      "Accuracy tests: symbol-index, find-references, go-to-definition, call-hierarchy, dep-graph",
-      "Synthetic benchmarks: 1k, 10k, 50k files",
-      "Real-repo benchmarks: indexes 3 real repos with full pipeline (CreatorOS, Startup Graveyard, LifeOS Platform)",
-      "Average: 68 files indexed in 448ms, ~150 files/sec, 196 symbols/repo",
+      "Symbol index — regex-based extraction, 9 kinds across 8 language extensions",
+      "Dependency graph — import/export/require analysis with transitive resolution",
+      "Find references — call graph based usage site tracking",
+      "Call hierarchy — caller/callee analysis with file+line context",
+      "Symbol search — search by symbol name across whole workspace",
+      "Real-repo validation: 8 tests across 5 fixture repos (accuracy, calls, deps, goto, refs)",
+      "Project Map panel — collapsible with top imported, most dependent, A-Z sort, rescan",
+      "Symbol Search panel — inline in explorer with kind icons and export indicators",
+      "Average: 150+ symbols/repo, 30+ call edges/repo",
     ]
-    const score = 75
+    const score = 85
     const maxScore = 100
     scores.push({ category: "CodeIntelligence", score, maxScore, evidence })
-    console.log(`[CodeIntelligence] ${score}/${maxScore} — synthetic + real-repo validation, 150 files/sec`)
+    console.log(`[CodeIntelligence] ${score}/${maxScore} — symbol index, dep scanner, 5 fixture repos`)
   })
 
   it("scores Browser Workspace readiness", () => {
@@ -155,11 +156,15 @@ describe("Production Readiness Audit — P16", () => {
       "Decorative animations removed, informative animations preserved",
       "Agent activity shown in plain English (no architecture terminology)",
       "Human-readable labels for all browser tools in AgentActivityMapper",
+      "Project Map panel with dependency visualization in explorer",
+      "Symbol Search panel with kind-specific icons and export indicators",
+      "Agent-aware file badges in tree via renderRowDecoration",
+      "Lazy-loaded file tree with on-demand directory expansion",
     ]
-    const score = 82
+    const score = 86
     const maxScore = 100
     scores.push({ category: "UX", score, maxScore, evidence })
-    console.log(`[UX] ${score}/${maxScore} — P14 completed, but not real-user tested`)
+    console.log(`[UX] ${score}/${maxScore} — P14 + project map + symbol search + agent badges`)
   })
 
   it("scores Observability readiness", () => {
@@ -184,20 +189,24 @@ describe("Production Readiness Audit — P16", () => {
   it("scores Security readiness", () => {
     const evidence: string[] = [
       "Comprehensive threat model documented (12 threats, 4 privilege levels, risk register)",
-      "Permission engine with approval gate (60s auto-reject)",
-      "Execution mode system (6 modes: autonomous → safe_mode)",
-      "Block patterns for dangerous commands (substring match)",
-      "CSP configured with restricted origins",
-      "Tauri capability-based permissions (fs, shell, http, browser)",
-      "No URL allowlist for browser navigation",
-      "Shell command injection not fully mitigated",
-      "unsafe-eval still in CSP",
-      "API keys in localStorage (base64, not encrypted)",
+      "Workspace path allowlist — assertPathAllowed with default-deny, no workspace = no access",
+      "Command allowlist — ALLOWED_COMMANDS (48 entries), metacharacter validation, path traversal check",
+      "Shell interpreters excluded from allowlist (cmd, powershell, pwsh, bash, zsh, sh)",
+      "CSP: script-src 'self' (no unsafe-eval), style-src 'self' 'unsafe-inline'",
+      "Electron sandbox: true, contextIsolation: true, nodeIntegration: false",
+      "browser-execute-js: user approval dialog + strict pattern allowlist (no unvalidated fallthrough)",
+      "Filesystem: all IPC handlers enforce assertPathAllowed (incl. get-file-stats, git, browser state)",
+      "Git handlers: repoPath validated against workspace via assertGitRepoPath",
+      "run-command workingDir validated against workspace",
+      "Terminal PTY: shell allowlist (9 known shells), blocks arbitrary paths",
+      "API keys: Electron safeStorage encryption, base64 fallback for legacy keys",
+      "Preload: channel allowlist for event subscriptions",
+      "Audit logging: denied path access logged to console",
     ]
-    const score = 45
+    const score = 60
     const maxScore = 100
     scores.push({ category: "Security", score, maxScore, evidence })
-    console.log(`[Security] ${score}/${maxScore} — threat model complete, 5 P0 mitigations remain`)
+    console.log(`[Security] ${score}/${maxScore} — path/git/shell/PTY hardened + safeStorage`)
   })
 
   it("scores Scalability readiness", () => {
@@ -206,11 +215,13 @@ describe("Production Readiness Audit — P16", () => {
       "Long-running session framework: configurable DURATION_MINUTES, 5s memory sampling",
       "Durability test: 60s steady-state memory check with cleanup verification",
       "Real-repo benchmarks: enumerates 3 repos, indexes with TS file sampling (max 2000 per repo)",
+      "Lazy node expansion — directories load children only on expand via workspace:list-dir IPC",
+      "Virtualized tree — @pierre/trees handles 10k+ files via fixed-height row virtualization",
     ]
-    const score = 55
+    const score = 62
     const maxScore = 100
     scores.push({ category: "Scalability", score, maxScore, evidence })
-    console.log(`[Scalability] ${score}/${maxScore} — stress tests pass, 24h/48h framework exists`)
+    console.log(`[Scalability] ${score}/${maxScore} — lazy loading + virtualization + stress tests`)
   })
 
   it("calculates overall readiness score", () => {
@@ -257,28 +268,28 @@ describe("Production Readiness Audit — P16", () => {
   it("identifies top remaining blockers", () => {
     const blockers = [
       "[P0] Content search — only filename search exists, no grep-in-files",
-      "[P0] Shell command injection — no shell allowlist, cmd /C passes full string unsanitized",
-      "[P0] No-sandbox browser — Chromium launched with .no_sandbox(), full OS access via CDP",
-      "[P0] unsafe-eval in CSP — allows eval(), code injection risk",
-      "[P0] Full filesystem access — Tauri fs scope unrestricted",
-      "[P1] API keys in localStorage — base64 encoded, not encrypted",
-      "[P1] No IPC argument validation — all 54 Tauri commands accept unbounded strings",
+      "[P1] No IPC argument validation — commands accept unbounded strings",
       "[P1] Permission default-allow — roles with no config get all tools",
-      "[P1] Browser JS execution — no sandbox on browser_execute_js",
       "[P1] No cloud sync for conversation/browser state",
       "[P2] 24h/48h stress sessions — framework exists but not executed",
       "[P2] Memory leak detection in CI — not automated",
-      "[P2] File history snapshots — Rust backend not started",
-      "[P2] read_text_file/write_text_file Tauri commands — deferred",
+      "[P2] File history snapshots — backend not started",
+      "[P2] Multi-workspace browser session isolation",
+      "[P2] Filesystem audit trail — denied path access logged but not persisted",
       "[P3] Semantic search — embedding-based not implemented",
-      "[P3] True virtualization for file tree — 10k+ files would degrade",
-      "[P3] Multi-workspace browser session isolation",
-      "[P3] Agent-aware file explorer — badges exist but no inline agent state",
+      "[P3] Dynamic row heights in file tree — fixed-height only",
       "[P4] Browser session restoration UI — auto-re-launch on workspace open",
-      "[P4] PTY unrestricted — accepts any executable path",
     ]
-    expect(blockers.length).toBeGreaterThanOrEqual(20)
+    expect(blockers.length).toBeGreaterThanOrEqual(10)
     console.log(`\n[Top Remaining Blockers]`)
     blockers.forEach((b, i) => console.log(`  ${i + 1}. ${b}`))
+    console.log(`\n  ✅ Resolved in this sprint:`)
+    console.log(`  ✅ [P0] Shell command injection — command allowlist + metacharacter validation`)
+    console.log(`  ✅ [P0] No-sandbox browser — Electron sandbox: true on all windows`)
+    console.log(`  ✅ [P0] unsafe-eval in CSP — script-src 'self', no eval`)
+    console.log(`  ✅ [P0] Full filesystem access — all IPC handlers enforce assertPathAllowed`)
+    console.log(`  ✅ [P1] API keys in localStorage — Electron safeStorage encryption`)
+    console.log(`  ✅ [P1] Browser JS execution — pattern allowlist only, removed bypass`)
+    console.log(`  ✅ [P4] PTY unrestricted — shell allowlist (9 known shells)`)
   })
 })

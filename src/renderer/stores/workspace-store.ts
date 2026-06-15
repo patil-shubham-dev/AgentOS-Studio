@@ -74,6 +74,12 @@ interface WorkspaceStore {
   lastEditedFile: string | null
   recordFileEdit: (path: string) => void
 
+  // Split editor
+  splitMode: 'none' | 'horizontal' | 'vertical'
+  splitFilePath: string | null
+  setSplitMode: (mode: 'none' | 'horizontal' | 'vertical') => void
+  setSplitFile: (path: string | null) => void
+
   // State persistence (open files, cursor, scroll)
   persistWorkspaceState: () => void
   restoreWorkspaceState: () => void
@@ -255,6 +261,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   suggestedFiles: [],
   recentlyModified: [],
 
+  splitMode: 'none' as const,
+  splitFilePath: null,
+
   runtimeConfig: { ...DEFAULT_RUNTIME_CONFIG },
   workspaceLoaded: false,
 
@@ -275,17 +284,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   setFileTree: (tree) => {
-    console.log("[TRACE:setFileTree] tree.length=", tree.length, "rootPath=", useWorkspaceStore.getState().rootPath)
-    if (tree.length > 0) {
-      console.log("[TRACE:setFileTree] first entry:", JSON.stringify(tree[0]).slice(0, 200))
-    }
     set({ fileTree: tree, isLoading: false })
   },
 
   loadDirectory: async (path: string) => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
-      const children = await invoke<FileEntry[]>("list_directory", { path })
+      const { listDirectory } = await import("@/lib/filesystem")
+      const children = await listDirectory(path)
       set((state) => {
         function updateEntry(entries: FileEntry[]): FileEntry[] {
           return entries.map((entry) => {
@@ -324,11 +329,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set((store) => {
       const exists = store.openFiles.find((f) => f.path === file.path)
       if (exists) {
-        // Only fire context refresh if the active file actually changes
         if (store.activeFilePath !== file.path) {
           requestRefresh("workspace_change")
         }
-        return { activeFilePath: file.path }
+        return {
+          activeFilePath: file.path,
+          openFiles: store.openFiles.map((f) =>
+            f.path === file.path ? { ...f, content: file.content, isDirty: file.isDirty } : f
+          ),
+        }
       }
       requestRefresh("workspace_change")
       return { openFiles: [...store.openFiles, file], activeFilePath: file.path }
@@ -421,6 +430,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set((store) => ({
       runtimeConfig: { ...store.runtimeConfig, ...config },
     })),
+
+  setSplitMode: (mode) => set({ splitMode: mode }),
+  setSplitFile: (path) => set({ splitFilePath: path }),
 
   cursorLine: 1,
   cursorColumn: 1,

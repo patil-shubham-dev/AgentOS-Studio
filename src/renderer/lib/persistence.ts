@@ -76,7 +76,7 @@ class TauriFsBackend implements StorageBackend {
         this.available = false
         return false
       }
-      await import("@tauri-apps/plugin-fs")
+      await import("@/lib/electron-api")
       this.available = true
       log("Tauri FS backend available")
       return true
@@ -88,9 +88,9 @@ class TauriFsBackend implements StorageBackend {
 
   private async ensureDir(): Promise<boolean> {
     try {
-      const mod = await import("@tauri-apps/plugin-fs")
+      const mod = await import("@/lib/electron-api")
       if (mod.mkdir) {
-        const { BaseDirectory } = await import("@tauri-apps/plugin-fs")
+        const { BaseDirectory } = await import("@/lib/electron-api")
         await mod.mkdir("", { baseDir: BaseDirectory.AppData, recursive: true })
       }
       return true
@@ -105,7 +105,7 @@ class TauriFsBackend implements StorageBackend {
     if (!avail) return null
 
     try {
-      const { readTextFile, BaseDirectory } = await import("@tauri-apps/plugin-fs")
+      const { readTextFile, BaseDirectory } = await import("@/lib/electron-api")
       const data = await readTextFile(key, { baseDir: BaseDirectory.AppData })
       return data
     } catch (err) {
@@ -120,7 +120,7 @@ class TauriFsBackend implements StorageBackend {
 
     try {
       await this.ensureDir()
-      const { writeTextFile, BaseDirectory } = await import("@tauri-apps/plugin-fs")
+      const { writeTextFile, BaseDirectory } = await import("@/lib/electron-api")
       await writeTextFile(key, data, { baseDir: BaseDirectory.AppData })
       return true
     } catch (err) {
@@ -134,7 +134,7 @@ class TauriFsBackend implements StorageBackend {
     if (!avail) return
 
     try {
-      const { remove, BaseDirectory } = await import("@tauri-apps/plugin-fs")
+      const { remove, BaseDirectory } = await import("@/lib/electron-api")
       await remove(key, { baseDir: BaseDirectory.AppData })
     } catch {
       // ignore

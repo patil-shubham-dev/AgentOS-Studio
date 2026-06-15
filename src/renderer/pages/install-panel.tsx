@@ -92,7 +92,7 @@ export function InstallPanel() {
 
   const checkContextMenu = async () => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
+      const { invoke } = await import("@/lib/electron-api")
       const result = await invoke<boolean>("is_context_menu_registered")
       setContextMenuRegistered(result)
     } catch {
@@ -104,7 +104,7 @@ export function InstallPanel() {
     setContextMenuAction("register")
     setContextMenuLoading(true)
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
+      const { invoke } = await import("@/lib/electron-api")
       await invoke("register_context_menu")
       setContextMenuRegistered(true)
     } catch (err) {
@@ -118,7 +118,7 @@ export function InstallPanel() {
     setContextMenuAction("unregister")
     setContextMenuLoading(true)
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
+      const { invoke } = await import("@/lib/electron-api")
       await invoke("unregister_context_menu")
       setContextMenuRegistered(false)
     } catch (err) {
@@ -134,7 +134,7 @@ export function InstallPanel() {
     setLoading(true)
     setLoadError(null)
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
+      const { invoke } = await import("@/lib/electron-api")
       const result = await invoke<InstallInfo>("get_install_info")
       setInfo(result)
     } catch (err) {
@@ -155,7 +155,7 @@ export function InstallPanel() {
   const loadSystemInfo = async () => {
     setLoadError(null)
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
+      const { invoke } = await import("@/lib/electron-api")
       const result = await invoke<SystemInfo>("get_system_info")
       setSystemInfo(result)
     } catch (err) {
@@ -173,12 +173,12 @@ export function InstallPanel() {
 
   const openLocation = async (path: string) => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
+      const { invoke } = await import("@/lib/electron-api")
       await invoke("open_install_location")
     } catch {
       try {
-        const { open } = await import("@tauri-apps/plugin-shell")
-        await open(path)
+        const { shellOpen } = await import("@/lib/electron-api")
+        await shellOpen(path)
       } catch { }
     }
   }

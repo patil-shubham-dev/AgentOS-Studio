@@ -9,6 +9,7 @@ export type RuntimeRole =
   | "browser"
   | "memory"
   | "fast-inference"
+  | "verification"
 
 export type AgentState = "idle" | "running" | "error" | "completed"
 

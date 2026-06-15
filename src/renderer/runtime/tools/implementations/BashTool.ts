@@ -57,9 +57,6 @@ export const BashTool: AgentTool = buildTool({
     const timeout = (input.timeout as number) ?? getDefaultTimeout(command)
 
     if (!command) return { data: null, error: 'command is required', isError: true }
-    if (isBackground && ctx.executionMode !== 'autonomous') {
-      return { data: null, error: 'Background execution requires autonomous mode', isError: true }
-    }
 
     const parsed = parseShellCommand(command)
     if (parsed.isDangerouslyInjected) {

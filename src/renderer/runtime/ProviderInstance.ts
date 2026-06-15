@@ -31,6 +31,7 @@ export type RuntimeRole =
   | "browser"
   | "memory"
   | "fast-inference"
+  | "verification"
 
 export const ROLE_CAPABILITY_REQUIREMENTS: Partial<Record<RuntimeRole, Partial<ModelCapabilities>>> = {
   manager: { supportsTools: true, supportsStreaming: true, maxContext: 32000 },

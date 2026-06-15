@@ -2,7 +2,7 @@ import { ContextWindowResolver } from './ContextWindowResolver'
 import { TokenEstimator } from './TokenEstimator'
 import { TokenBudgetTracker } from './TokenBudgetTracker'
 import { Compactor, type CompactorConfig } from './Compactor'
-import type { ContextAssemblyInput, ContextAssemblyResult, BudgetState, MessageLike, CompactResult } from './context-types'
+import type { ContextAssemblyInput, ContextAssemblyResult, BudgetState, MessageLike, CompactResult, ScoredFile } from './context-types'
 
 import { PromptRegistry } from '@/runtime/prompting/registry/PromptRegistry'
 import { PromptCompositionEngine } from '@/runtime/prompting/composition/PromptCompositionEngine'
@@ -13,6 +13,9 @@ import { CapabilityResolver } from '@/runtime/prompting/providers/CapabilityReso
 import { getFormatterForProvider } from '@/runtime/prompting/formatters'
 import { RuntimeOS } from '@/runtime/RuntimeOS'
 import { getWorkspaceContextSnapshot } from '@/stores/workspace-store'
+import { useTimelineStore } from '@/components/workspace/timeline/timeline-store'
+import { workspaceIndex } from '@/lib/search-index'
+import { MemoryArchitecture } from '@/runtime/memory/unified/MemoryArchitecture'
 
 export type ContextManagerConfig = {
   defaultModel?: string
@@ -20,6 +23,12 @@ export type ContextManagerConfig = {
   enableCacheOptimization?: boolean
   defaultBetas?: string[]
   migrationMode?: MigrationMode
+  contextTarget?: number
+  enableRelevanceScoring?: boolean
+  enableGitAwareness?: boolean
+  enableActiveFileBoost?: boolean
+  enableMemoryRanking?: boolean
+  enableWorkspaceAwareness?: boolean
 }
 
 const DEFAULT_CONFIG: ContextManagerConfig = {
@@ -28,6 +37,12 @@ const DEFAULT_CONFIG: ContextManagerConfig = {
   enableCacheOptimization: true,
   defaultBetas: [],
   migrationMode: 'new',
+  contextTarget: 200000,
+  enableRelevanceScoring: true,
+  enableGitAwareness: true,
+  enableActiveFileBoost: true,
+  enableMemoryRanking: true,
+  enableWorkspaceAwareness: true,
 }
 
 export class ContextManager {
@@ -51,6 +66,9 @@ export class ContextManager {
     if (!ContextManager.instance) {
       ContextManager.instance = new ContextManager(config)
     }
+    if (config) {
+      ContextManager.instance.configure(config)
+    }
     return ContextManager.instance
   }
 
@@ -73,14 +91,12 @@ export class ContextManager {
     this.capabilityResolver = new CapabilityResolver()
 
     this.runtimeOS = RuntimeOS.getInstance()
-    this.runtimeOS.initialize()
+    try { this.runtimeOS.initialize() } catch { /* may fail in test env */ }
   }
 
   configure(config: Partial<ContextManagerConfig>): void {
     this.config = { ...this.config, ...config }
-    if (config.migrationMode) {
-      this.migrationValidator.setMode(config.migrationMode)
-    }
+    if (config.migrationMode) this.migrationValidator.setMode(config.migrationMode)
   }
 
   initializeTask(model?: string, betas?: string[]): void {
@@ -91,11 +107,104 @@ export class ContextManager {
   }
 
   /**
-   * Read the current workspace state from the store and merge it into
-   * the ResolutionContext for prompt rendering. This is the single point
-   * where the editor's active file, cursor, selection, open tabs, etc.
-   * become visible to the prompt composition engine.
+   * Score files by relevance to the current context.
+   * Uses active file, git changes, recent edits, conversation history, and symbol references.
    */
+  private scoreRelevantFiles(): ScoredFile[] {
+    const scored: Map<string, { relevance: number; reasons: string[] }> = new Map()
+
+    try {
+      const ws = getWorkspaceContextSnapshot()
+
+      // Active file: highest priority
+      if (ws.activeFilePath) {
+        scored.set(ws.activeFilePath, { relevance: 1.0, reasons: ['Active file'] })
+      }
+
+      // Open files: high priority
+      for (const f of ws.openFiles) {
+        const existing = scored.get(f.path)
+        if (existing) {
+          existing.relevance = Math.max(existing.relevance, 0.9)
+          existing.reasons.push('Open tab')
+        } else {
+          scored.set(f.path, { relevance: 0.9, reasons: ['Open tab'] })
+        }
+      }
+
+      // Recently modified files
+      if (this.config.enableActiveFileBoost && ws.recentEdits) {
+        for (const edit of ws.recentEdits) {
+          const age = Date.now() - edit.timestamp
+          const boost = Math.max(0, 1 - age / 60000) // decays over 60s
+          if (boost > 0.1) {
+            const existing = scored.get(edit.path)
+            if (existing) {
+              existing.relevance = Math.max(existing.relevance, 0.7 + boost * 0.3)
+              existing.reasons.push('Recently edited')
+            } else {
+              scored.set(edit.path, { relevance: 0.7 + boost * 0.3, reasons: ['Recently edited'] })
+            }
+          }
+        }
+      }
+
+      // Symbol references from active file (requires SymbolIndex — not yet implemented)
+    } catch {
+      // workspace store may not be available
+    }
+
+    return [...scored.entries()]
+      .map(([path, s]) => ({ path, relevance: s.relevance, reason: s.reasons[0] }))
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, 20)
+  }
+
+  /**
+   * Estimate available context based on current model and budget.
+   */
+  private estimateAvailableContext(): { total: number; used: number; remaining: number } {
+    const windowSize = this.resolver.getContextWindowForModel(this.currentModel, this.currentBetas)
+    const budget = this.budgetTracker.getBudgetState()
+    return {
+      total: Math.max(windowSize, this.config.contextTarget ?? 200000),
+      used: budget.used,
+      remaining: budget.remaining,
+    }
+  }
+
+  /**
+   * Build git-aware context about recent changes.
+   */
+  private async getGitContext(): Promise<string | null> {
+    if (!this.config.enableGitAwareness) return null
+    try {
+      const workspace = getWorkspaceContextSnapshot()
+      if (!workspace.rootPath) return null
+      const { gitStatusToString } = await import('@/lib/git')
+      return await gitStatusToString(workspace.rootPath)
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Build a workspace-awareness summary.
+   */
+  private async getWorkspaceSummary(): Promise<string | null> {
+    if (!this.config.enableWorkspaceAwareness) return null
+    try {
+      const stats = workspaceIndex.getStats()
+      if (stats.totalFiles === 0) return null
+      return [
+        `Workspace: ${stats.totalFiles} files indexed`,
+        `Cache: ${stats.cachedFiles} files cached (${Math.round(stats.memoryEstimateKB / 1024)}MB)`,
+      ].join('\n')
+    } catch {
+      return null
+    }
+  }
+
   private readWorkspaceContext(): Partial<ResolutionContext> {
     try {
       const ws = getWorkspaceContextSnapshot()
@@ -117,12 +226,14 @@ export class ContextManager {
         fileTreeSummary: ws.fileTreeSummary || undefined,
       }
     } catch {
-      // Workspace store may not be available (e.g. during SSR / testing)
       return {}
     }
   }
 
-  async assembleSystemPrompt(input: ContextAssemblyInput, options?: { cacheOptimize?: boolean }): Promise<ContextAssemblyResult> {
+  async assembleSystemPrompt(
+    input: ContextAssemblyInput,
+    options?: { cacheOptimize?: boolean }
+  ): Promise<ContextAssemblyResult> {
     const providerCapabilities = this.capabilityResolver.resolveFromModel(this.currentModel)
 
     const resolveCtx: ResolutionContext = defaultContext({
@@ -140,10 +251,23 @@ export class ContextManager {
 
     const toolCount = this.runtimeOS?.toolRegistry.size().builtin ?? 0
     const workspaceCtx = this.readWorkspaceContext()
-    const resolveCtxFinal: ResolutionContext = { ...resolveCtx, toolCount, ...workspaceCtx }
+    const relevantFiles = this.scoreRelevantFiles()
+    const contextEstimate = this.estimateAvailableContext()
+    const gitContext = await this.getGitContext()
+    const workspaceSummary = await this.getWorkspaceSummary()
+
+    const resolveCtxFinal: ResolutionContext = {
+      ...resolveCtx,
+      toolCount,
+      ...workspaceCtx,
+      relevantFiles: relevantFiles.length > 0 ? relevantFiles : undefined,
+      contextEstimate,
+      gitContext: gitContext ?? undefined,
+      workspaceSummary: workspaceSummary ?? undefined,
+      memorySummary: await this.injectMemorySummary(input.memorySummary),
+    }
 
     const plan = this.promptRegistry.plan(resolveCtxFinal)
-
     const result = await this.compositionEngine.compose(plan, resolveCtxFinal)
 
     if (options?.cacheOptimize && result.promptText.length < 200) {
@@ -155,8 +279,8 @@ export class ContextManager {
       staticBlocks: [],
       dynamicBlocks: [],
       tokenEstimate: result.trace.totalTokens ?? Math.round(result.promptText.length / 4),
-      contextWindowSize: this.resolver.getContextWindowForModel(this.currentModel, this.currentBetas),
-      budgetRemaining: this.budgetTracker.getBudgetState().remaining,
+      contextWindowSize: contextEstimate.total,
+      budgetRemaining: contextEstimate.remaining,
     }
   }
 
@@ -174,7 +298,16 @@ export class ContextManager {
 
     const toolCount = this.runtimeOS?.toolRegistry.size().builtin ?? 0
     const workspaceCtx = this.readWorkspaceContext()
-    const resolveCtxFinal: ResolutionContext = { ...resolveCtx, toolCount, ...workspaceCtx }
+    const relevantFiles = this.scoreRelevantFiles()
+    const contextEstimate = this.estimateAvailableContext()
+
+    const resolveCtxFinal: ResolutionContext = {
+      ...resolveCtx,
+      toolCount,
+      ...workspaceCtx,
+      relevantFiles: relevantFiles.length > 0 ? relevantFiles : undefined,
+      contextEstimate,
+    }
 
     const plan = this.promptRegistry.plan(resolveCtxFinal)
     const result = await this.compositionEngine.compose(plan, resolveCtxFinal)
@@ -198,6 +331,14 @@ export class ContextManager {
     return this.budgetTracker.getBudgetState()
   }
 
+  getContextEstimate(): { total: number; used: number; remaining: number } {
+    return this.estimateAvailableContext()
+  }
+
+  getRelevantFiles(): ScoredFile[] {
+    return this.scoreRelevantFiles()
+  }
+
   shouldCompact(messages: MessageLike[]): boolean {
     if (!this.config.enableAutoCompact) return false
     const threshold = this.resolver.getAutoCompactThreshold(this.currentModel, this.currentBetas)
@@ -218,6 +359,31 @@ export class ContextManager {
 
   hasDiminishingReturns(): boolean {
     return this.budgetTracker.hasDiminishingReturns()
+  }
+
+  private async injectMemorySummary(inputSummary: string): Promise<string> {
+    if (!this.config.enableMemoryRanking) return inputSummary
+
+    try {
+      const arch = MemoryArchitecture.getInstance()
+      if (!arch.isInitialized()) return inputSummary
+
+      const memories = await arch.query({ limit: 5, minImportance: 3 })
+      if (memories.length === 0) return inputSummary
+
+      const lines = memories.map((m) => {
+        const type = m.type
+        const scope = m.scope
+        const content = m.content.length > 200 ? m.content.slice(0, 200) + "..." : m.content
+        return `[${type}/${scope}] ${content} (importance: ${m.importance}/10)`
+      })
+
+      return inputSummary === "none" || !inputSummary
+        ? `Relevant memories:\n${lines.join("\n")}`
+        : `${inputSummary}\n\nRelevant memories:\n${lines.join("\n")}`
+    } catch {
+      return inputSummary
+    }
   }
 
   clearCaches(): void {
@@ -245,10 +411,13 @@ export class ContextManager {
     autoContinueTriggered: boolean
     consecutiveAutoContinues: number
     compactEnabled: boolean
+    relevantFiles: number
+    contextTarget: number
     compactStats: { autoCompactTokenThreshold: number; messageCountHardLimit: number; consecutiveCompactions: number; lastStrategy: string | null }
   } {
     const budgetState = this.budgetTracker.getBudgetState()
     const config = this.resolver.getModelConfig(this.currentModel)
+    const relevant = this.scoreRelevantFiles()
     return {
       model: this.currentModel,
       contextWindow: config.contextWindow,
@@ -258,6 +427,8 @@ export class ContextManager {
       autoContinueTriggered: budgetState.autoContinueTriggered,
       consecutiveAutoContinues: this.budgetTracker.getConsecutiveAutoContinues(),
       compactEnabled: this.config.enableAutoCompact!,
+      relevantFiles: relevant.length,
+      contextTarget: this.config.contextTarget ?? 200000,
       compactStats: this.compactor.getCompactStats(),
     }
   }

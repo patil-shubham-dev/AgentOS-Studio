@@ -242,7 +242,7 @@ export class DebugService {
     store.setConnecting(true)
 
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
+      const { invoke } = await import("@/lib/electron-api")
       const result = await invoke<string>("debug_launch", { filePath, workingDir })
       const [inspectorUrl, sessionId] = result.split("\n")
       store.setInspectorUrl(inspectorUrl)
@@ -274,7 +274,7 @@ export class DebugService {
     this.clearPausedLine()
     if (sessionId) {
       try {
-        const { invoke } = await import("@tauri-apps/api/core")
+        const { invoke } = await import("@/lib/electron-api")
         await invoke("debug_stop", { sessionId })
       } catch { /* ignore */ }
     }

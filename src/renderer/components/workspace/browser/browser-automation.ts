@@ -266,6 +266,104 @@ export async function fetchConsoleLogs(sessionId: string): Promise<string[]> {
   }
 }
 
+const DOM_EXTRACT_SCRIPT = `
+(function() {
+  const results = [];
+  const seen = new Set();
+  const interactiveTags = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'DETAILS', 'SUMMARY', 'LABEL']);
+  const interactiveRoles = new Set(['button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'option', 'switch', 'textbox']);
+
+  function getCssSelector(el) {
+    if (el.id) return '#' + CSS.escape(el.id);
+    let path = [];
+    while (el && el.nodeType === 1) {
+      let selector = el.tagName.toLowerCase();
+      if (el.id) {
+        path.unshift('#' + CSS.escape(el.id));
+        break;
+      }
+      if (el.className && typeof el.className === 'string') {
+        const cls = el.className.trim().split(/\\s+/).filter(c => !c.startsWith('_') && c.length < 20).slice(0, 2);
+        if (cls.length) selector += '.' + cls.map(c => CSS.escape(c)).join('.');
+      }
+      const parent = el.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
+        if (siblings.length > 1) {
+          const idx = siblings.indexOf(el) + 1;
+          selector += ':nth-of-type(' + idx + ')';
+        }
+      }
+      path.unshift(selector);
+      el = el.parentElement;
+    }
+    return path.join(' > ');
+  }
+
+  function walk(node, depth) {
+    if (depth > 15) return;
+    if (node.nodeType !== 1) return;
+    if (seen.has(node)) return;
+    seen.add(node);
+
+    const tag = node.tagName.toLowerCase();
+    const role = node.getAttribute('role') || '';
+    const isInteractive = interactiveTags.has(node.tagName) || interactiveRoles.has(role) || node.getAttribute('onclick') || (node.tagName === 'A' && node.href);
+
+    if (isInteractive) {
+      const text = (node.textContent || '').trim().slice(0, 120);
+      const ariaLabel = node.getAttribute('aria-label') || '';
+      const href = node.tagName === 'A' ? (node.getAttribute('href') || '') : '';
+      const inputType = node.tagName === 'INPUT' ? (node.getAttribute('type') || 'text') : '';
+      const placeholder = node.getAttribute('placeholder') || '';
+      const alt = node.getAttribute('alt') || '';
+      const testId = node.getAttribute('data-testid') || node.getAttribute('data-test-id') || '';
+
+      results.push({
+        tag,
+        text: text || ariaLabel || alt || '',
+        selector: getCssSelector(node),
+        href: href ? (href.startsWith('/') ? window.location.origin + href : href) : '',
+        type: inputType,
+        placeholder,
+        testId,
+        role,
+      });
+    }
+
+    for (let i = 0; i < node.children.length; i++) {
+      walk(node.children[i], depth + 1);
+    }
+  }
+
+  walk(document.body, 0);
+  return JSON.stringify({ url: window.location.href, title: document.title, elements: results });
+})();
+`
+
+export async function getDom(
+  sessionId: string,
+  onUpdate?: BrowserActionCallback,
+): Promise<{ url: string; title: string; elements: Array<{ tag: string; text: string; selector: string; href: string; type: string; placeholder: string; testId: string; role: string }>; step: BrowserAutomationStep }> {
+  const step = runStep(createStep("execute-js", "Extract page DOM"), onUpdate)
+  try {
+    const { result } = await executeJavaScript(sessionId, DOM_EXTRACT_SCRIPT)
+    let parsed
+    try {
+      parsed = JSON.parse(result)
+    } catch {
+      parsed = { url: '', title: '', elements: [] }
+    }
+    const finalStep = completeStep(step, `${parsed.elements?.length ?? 0} interactive elements found`)
+    onUpdate?.(finalStep)
+    return { ...parsed, step: finalStep }
+  } catch (e) {
+    const failed = failStep(step, String(e))
+    onUpdate?.(failed)
+    return { url: '', title: '', elements: [], step: failed }
+  }
+}
+
 export const BROWSER_ACTION_LABELS: Record<BrowserAutomationStep["action"], string> = {
   launch: "Launch Browser",
   navigate: "Navigate",

@@ -34,6 +34,12 @@ export type ResolutionContext = {
   unsavedChanges?: number
   recentEdits?: { path: string; timestamp: number }[]
   fileTreeSummary?: string
+
+  // ── Enhanced context (computed at assembly time) ──
+  relevantFiles?: Array<{ path: string; relevance: number; reason: string }>
+  contextEstimate?: { total: number; used: number; remaining: number }
+  gitContext?: string
+  workspaceSummary?: string
 }
 
 export type CacheStrategy = 'none' | 'request' | 'task' | 'session' | 'workspace'
@@ -94,6 +100,10 @@ export function defaultContext(overrides?: Partial<ResolutionContext>): Resoluti
     unsavedChanges: undefined,
     recentEdits: undefined,
     fileTreeSummary: undefined,
+    relevantFiles: undefined,
+    contextEstimate: undefined,
+    gitContext: undefined,
+    workspaceSummary: undefined,
     ...overrides,
   }
 }

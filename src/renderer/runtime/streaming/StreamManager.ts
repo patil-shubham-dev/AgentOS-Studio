@@ -23,6 +23,7 @@ export class StreamManager {
   private idle = true
   private lastActivityAt = Date.now()
   private readonly IDLE_TIMEOUT_MS = 5000
+  private readonly STREAM_TTL_MS = 5 * 60 * 1000
 
   static getInstance(): StreamManager {
     if (!StreamManager.instance) {
@@ -59,6 +60,7 @@ export class StreamManager {
     }
     let stream = this.streams.get(stepId)
     if (!stream) {
+      this.evictStaleStreams()
       stream = { tokens: [], lastFlushedAt: 0, active: true }
       this.streams.set(stepId, stream)
     }
@@ -71,6 +73,10 @@ export class StreamManager {
     this.lastActivityAt = Date.now()
     const isFirstToken = stream.tokens.length === 0
     stream.tokens.push(token)
+    // Enforce max token buffer per stream to prevent unbounded memory
+    if (stream.tokens.length > 1000) {
+      stream.tokens = stream.tokens.slice(-500)
+    }
 
     if (isFirstToken) {
       this.flushViaMicrotask()
@@ -132,9 +138,9 @@ export class StreamManager {
     let flushed = false
     for (const [stepId, stream] of this.streams) {
       if (stream.tokens.length === 0 || !stream.active) continue
-      const tokens = stream.tokens.slice()
-      const delta = tokens.join("")
+      const tokens = stream.tokens
       stream.tokens = []
+      const delta = tokens.join("")
       stream.lastFlushedAt = performance.now()
 
       if (delta && this.flushCallback) {
@@ -154,6 +160,8 @@ export class StreamManager {
       }
     }
 
+    this.evictStaleStreams()
+
     if (this.streams.size > 0) {
       const hasPendingWork = Array.from(this.streams.values())
         .some(s => s.active && s.tokens.length > 0)
@@ -166,6 +174,15 @@ export class StreamManager {
       }
     } else {
       this.checkIdle()
+    }
+  }
+
+  private evictStaleStreams(): void {
+    const cutoff = performance.now() - this.STREAM_TTL_MS
+    for (const [stepId, stream] of this.streams) {
+      if (stream.lastFlushedAt > 0 && stream.lastFlushedAt < cutoff && stream.tokens.length === 0) {
+        this.streams.delete(stepId)
+      }
     }
   }
 

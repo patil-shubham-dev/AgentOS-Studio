@@ -1,26 +1,10 @@
-let tauriClipboard: typeof import("@tauri-apps/plugin-clipboard-manager") | null = null
-
-async function getTauriClipboard() {
-  if (!tauriClipboard) {
-    try {
-      tauriClipboard = await import("@tauri-apps/plugin-clipboard-manager")
-    } catch {
-      tauriClipboard = null
-    }
-  }
-  return tauriClipboard
-}
-
 export async function copyToClipboard(text: string): Promise<boolean> {
-  // Try Tauri clipboard plugin first (in desktop app)
-  const tauri = await getTauriClipboard()
-  if (tauri?.writeText) {
-    try {
-      await tauri.writeText(text)
-      return true
-    } catch {
-      // fall through to web API
-    }
+  try {
+    const { clipboardWriteText } = await import("@/lib/electron-api")
+    await clipboardWriteText(text)
+    return true
+  } catch {
+    // fall through to web API
   }
 
   // Fall back to Web Clipboard API

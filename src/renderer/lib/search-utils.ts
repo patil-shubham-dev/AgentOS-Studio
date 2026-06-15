@@ -116,7 +116,7 @@ export interface GrepResult {
 }
 
 export async function grepFiles(query: string, includeExt?: string): Promise<GrepResult> {
-  const fs = await import("@tauri-apps/plugin-fs")
+  const fs = await import("@/lib/electron-api")
   const rootPath = useWorkspaceStore.getState().rootPath
   const fileTree = useWorkspaceStore.getState().fileTree
 

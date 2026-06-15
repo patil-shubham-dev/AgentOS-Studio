@@ -1,62 +1,57 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
-import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
 import { useWorkspaceStore } from "@/stores/workspace-store"
-import { useAgentStore, type ExecutionMode } from "@/stores/agent-store"
+import { useAgentStore } from "@/stores/agent-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 
-import { pickWorkspaceFolder, loadFileTree, startWatching, onFileChange, createFile, createFolder, deleteEntry, renameEntry, sanitizeFilename, readFile } from "@/lib/workspace"
+import { loadFileTree, readFile, createFile, createFolder } from "@/lib/filesystem"
+import { pickWorkspaceFolder, startWatching, onFileChange } from "@/lib/workspace"
 import type { FileEntry } from "@/types"
 import { workspaceIndex } from "@/lib/search-index"
 import { WorkspaceExplorer, type WorkspaceExplorerHandle } from "@/components/workspace/explorer/WorkspaceExplorer"
 import { CodeWorkspace } from "@/components/workspace/code-workspace"
 import { ChatPanel } from "@/components/workspace/chat-panel"
 import { BrowserWorkspace } from "@/components/workspace/browser/browser-workspace"
-import { ExecutionTimeline } from "@/components/workspace/execution-timeline/ExecutionTimeline"
-import { AgentStatusBar } from "@/components/workspace/agent-visibility/AgentStatusBar"
 import { DesignWorkspace } from "@/components/workspace/design-workspace"
-import { SnapshotBrowser } from "@/components/workspace/snapshot-browser"
-import { ChatHistoryViewer } from "@/components/workspace/chat-history-viewer"
-import { TerminalWorkspace } from "@/components/workspace/terminal-workspace"
-import { AgentWorkspace } from "@/components/workspace/agent-workspace"
+import { PaneContainer, Pane } from "@/components/workspace/pane-layout/PaneContainer"
+import { DiffViewerPane } from "@/components/workspace/diff-viewer/DiffViewerPane"
+import { PreviewPane } from "@/components/workspace/preview/PreviewPane"
+import { AgentActivityPanel } from "@/components/workspace/agent-visibility/AgentActivityPanel"
+
 import { GlobalSearch } from "@/components/workspace/global-search"
 import { CommandPalette } from "@/components/workspace/command-palette"
+import { QuickOpen } from "@/components/workspace/QuickOpen"
 import { ExecutionDock } from "@/components/runtime/ExecutionDock"
 import { ErrorBoundary } from "@/components/runtime/ErrorBoundary"
+import { SessionSidebar } from "@/components/workspace/session-sidebar/SessionSidebar"
+import { ContextUsageIndicator } from "@/components/workspace/context-indicator/ContextUsageIndicator"
+import { SideChat } from "@/components/workspace/side-chat/SideChat"
+import { usePaneStore } from "@/stores/pane-store"
 
 import { Button, TooltipSimple as Tooltip } from "@agentic-os/ui"
 import { cn } from "@/lib/utils"
-import { useToastStore } from "@/stores/toast-store"
 import { WorkspacePanelController, type WorkspacePanel } from "@/lib/workspace-panel-controller"
 import { useLeakTracker } from "@/performance/leak-detector"
 import {
-  PanelRightClose, PanelRight, PanelLeftClose, PanelLeft,
-  FileCode, Globe,
-  FolderOpen, FilePlus, FolderPlus, ChevronsUpDown, ChevronLeft, RefreshCw, Loader2,
-  Cpu, Zap, Target, BookOpen, UserCheck, Shield,
-  Brain, Activity, CheckCircle2, XCircle, AlertTriangle,
-  Palette,
-  GripVertical, History, Search, Terminal,
+  PanelRightClose, PanelLeftClose, PanelLeft,
+  FolderOpen, ChevronLeft, Loader2,
+  XCircle,
+  GripVertical,
 } from "lucide-react"
+import {
+  CodePanelIcon,
+  BrowserPanelIcon,
+  DesignPanelIcon,
+  DiffPanelIcon,
+  PreviewPanelIcon,
+} from "@/components/ui/PanelIcons"
 
-
-
-const EXECUTION_MODES: { id: ExecutionMode; label: string; icon: typeof Cpu; color: string; description: string }[] = [
-  { id: "autonomous", label: "Autonomous", icon: Cpu, color: "text-blue-400", description: "AI auto-selects agents and tools" },
-  { id: "fastest", label: "Fastest", icon: Zap, color: "text-yellow-400", description: "Optimize for speed — parallel execution" },
-  { id: "most_accurate", label: "Most Accurate", icon: Target, color: "text-purple-400", description: "Multi-agent verification & review" },
-  { id: "research_heavy", label: "Research", icon: BookOpen, color: "text-cyan-400", description: "Deep analysis, extensive searching" },
-  { id: "human_guided", label: "Human Guided", icon: UserCheck, color: "text-orange-400", description: "Approve every action before execution" },
-  { id: "safe_mode", label: "Safe Mode", icon: Shield, color: "text-red-400", description: "Read-only analysis, no mutations" },
-]
-
-const WORKSPACE_PANEL_OPTIONS: { id: WorkspacePanel; label: string; icon: typeof FileCode }[] = [
-  { id: "code", label: "Code", icon: FileCode },
-  { id: "browser", label: "Browser", icon: Globe },
-  { id: "design", label: "Design", icon: Palette },
-  { id: "history", label: "History", icon: History },
-  { id: "terminal", label: "Terminal", icon: Terminal },
-  { id: "agents", label: "Agents", icon: Brain },
+const WORKSPACE_PANEL_OPTIONS: { id: WorkspacePanel; label: string; icon: typeof CodePanelIcon }[] = [
+  { id: "code", label: "Code", icon: CodePanelIcon },
+  { id: "browser", label: "Browser", icon: BrowserPanelIcon },
+  { id: "design", label: "Design", icon: DesignPanelIcon },
+  { id: "diff", label: "Diff", icon: DiffPanelIcon },
+  { id: "preview", label: "Preview", icon: PreviewPanelIcon },
 ]
 
 const PANEL_STORAGE_KEY_PREFIX = "aos-panel-"
@@ -100,7 +95,7 @@ async function updateImportsOnMove(rootPath: string, oldPath: string, newPath: s
   const affectedFiles: string[] = []
   let updatedCount = 0
   try {
-    const { invoke } = await import("@tauri-apps/api/core")
+    const { invoke } = await import("@/lib/electron-api")
     const tree = await invoke<FileEntry[]>("list_directory", { path: rootPath })
     const allFiles: string[] = []
     function flatten(entries: FileEntry[], base: string) {
@@ -158,8 +153,6 @@ export function CodeCanvasPage() {
   const setLoading = useWorkspaceStore((s) => s.setLoading)
   const handleFileChange = useWorkspaceStore((s) => s.handleFileChange)
 
-  const executionMode = useAgentStore((s) => s.executionMode)
-  const setExecutionMode = useAgentStore((s) => s.setExecutionMode)
   const runtimeStatus = useWorkspaceRuntime((s) => s.status)
   const runtimeHealth = useWorkspaceRuntime((s) => s.health)
   const runtimeMessage = useWorkspaceRuntime((s) => s.statusMessage)
@@ -185,22 +178,42 @@ export function CodeCanvasPage() {
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel>(() => loadPanelState("workspacePanel", "code"))
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(() => loadPanelState("workspacePanelOpen", true))
   const [workspacePanelWidth, setWorkspacePanelWidth] = useState(() => loadPanelState("workspacePanelWidth", 420))
-  const [showModeSelector, setShowModeSelector] = useState(false)
-  const [explorerCreating, setExplorerCreating] = useState<{ type: "file" | "folder"; parent: string | null } | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false)
+
+  const sessionSidebarOpen = usePaneStore((s) => s.sessionSidebarOpen)
+  const sessionSidebarWidth = usePaneStore((s) => s.sessionSidebarWidth)
+  const toggleSessionSidebar = usePaneStore((s) => s.toggleSessionSidebar)
+  const panes = usePaneStore((s) => s.panes)
+  const setPaneVisibility = usePaneStore((s) => s.setPaneVisibility)
 
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const fileTreeRef = useRef<WorkspaceExplorerHandle>(null)
+  const explorerRef = useRef<WorkspaceExplorerHandle>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadingTreeRef = useRef(false)
   const explorerResizingRef = useRef(false)
   const workspaceResizingRef = useRef(false)
   const resizeCleanupFns = useRef<(() => void)[]>([])
-  const modeSelectorBtnRef = useRef<HTMLButtonElement>(null)
-
   const panelCtrlRef = useRef<WorkspacePanelController | null>(null)
 
-  const activeMode = EXECUTION_MODES.find((m) => m.id === executionMode) || EXECUTION_MODES[0]
+  // ── Pane configs for PaneContainer ──
+  const visiblePanes = panes.filter((p) => p.visible && p.type !== "explorer" && p.type !== "chat" && p.type !== "terminal" && p.type !== "output")
+  const paneConfigs = useMemo(() => {
+    const paneRenderers: Record<string, () => React.ReactNode> = {
+      code: () => <ErrorBoundary name="CodeWorkspace"><CodeWorkspace /></ErrorBoundary>,
+      browser: () => <ErrorBoundary name="BrowserWorkspace"><BrowserWorkspace /></ErrorBoundary>,
+      design: () => <ErrorBoundary name="DesignWorkspace"><DesignWorkspace /></ErrorBoundary>,
+      diff: () => <ErrorBoundary name="DiffViewerPane"><DiffViewerPane /></ErrorBoundary>,
+      preview: () => <ErrorBoundary name="PreviewPane"><PreviewPane /></ErrorBoundary>,
+    }
+    return visiblePanes.map((p) => ({
+      id: p.id,
+      type: p.type,
+      title: p.type.charAt(0).toUpperCase() + p.type.slice(1),
+      children: paneRenderers[p.type]?.() ?? null,
+    }))
+  }, [visiblePanes])
 
   const commandPaletteContext = useMemo(() => ({
     navigate,
@@ -232,6 +245,8 @@ export function CodeCanvasPage() {
   useEffect(() => {
     if (!rootPath) return
     if (fileTree.length > 0) return
+    if (loadingTreeRef.current) return
+    loadingTreeRef.current = true
     console.log("[CodeCanvas] rootPath set but fileTree empty — loading tree", { rootPath })
     setLoading(true)
     loadFileTree(rootPath).then((tree) => {
@@ -241,6 +256,8 @@ export function CodeCanvasPage() {
     }).catch((err) => {
       console.error("[CodeCanvas] Failed to load file tree:", err)
       setLoading(false)
+    }).finally(() => {
+      loadingTreeRef.current = false
     })
   }, [rootPath])
 
@@ -251,6 +268,20 @@ export function CodeCanvasPage() {
       if (e.is_dir) count += countAllNodes(e.children)
     }
     return count
+  }
+
+  async function loadRestoredFileContent(rp: string) {
+    const state = useWorkspaceStore.getState()
+    if (!state.activeFilePath) return
+    const rel = state.activeFilePath.replace(/\//g, "\\")
+    const absPath = `${rp}\\${rel}`
+    try {
+      const content = await readFile(absPath)
+      const name = state.activeFilePath.split("/").pop() || state.activeFilePath
+      useWorkspaceStore.getState().openFile({ path: state.activeFilePath, name, content, isDirty: false })
+    } catch {
+      // File may have been deleted — leave as-is
+    }
   }
 
   // ── Search index — rebuild when file tree changes ──
@@ -270,6 +301,8 @@ export function CodeCanvasPage() {
     }
     const storedRoot = localStorage.getItem('agentic-workspace-root')
     if (!storedRoot) return
+    if (loadingTreeRef.current) return
+    loadingTreeRef.current = true
     console.log('[CodeCanvas] Restoring workspace from localStorage:', storedRoot)
     setRootPath(storedRoot)
     setLoading(true)
@@ -278,9 +311,12 @@ export function CodeCanvasPage() {
       setFileTree(tree)
       startWatching(storedRoot)
       restoreWorkspaceState()
+      loadRestoredFileContent(storedRoot)
     }).catch((err) => {
       console.error('[CodeCanvas] Failed to restore file tree:', err)
       setLoading(false)
+    }).finally(() => {
+      loadingTreeRef.current = false
     })
   }, []) // only on mount
 
@@ -289,6 +325,7 @@ export function CodeCanvasPage() {
     if (rootPath) {
       localStorage.setItem('agentic-workspace-root', rootPath)
       restoreWorkspaceState()
+      loadRestoredFileContent(rootPath)
     }
   }, [rootPath, restoreWorkspaceState])
 
@@ -316,6 +353,32 @@ export function CodeCanvasPage() {
     startWatching(folder)
   }
 
+  async function handleNewFile() {
+    if (!rootPath) return
+    const name = prompt("File name:")
+    if (!name) return
+    try {
+      await createFile(`${rootPath}\\${name}`)
+      const tree = await loadFileTree(rootPath)
+      setFileTree(tree)
+    } catch (err) {
+      console.error("[CodeCanvas] Failed to create file:", err)
+    }
+  }
+
+  async function handleNewFolder() {
+    if (!rootPath) return
+    const name = prompt("Folder name:")
+    if (!name) return
+    try {
+      await createFolder(`${rootPath}\\${name}`)
+      const tree = await loadFileTree(rootPath)
+      setFileTree(tree)
+    } catch (err) {
+      console.error("[CodeCanvas] Failed to create folder:", err)
+    }
+  }
+
   async function refreshTree() {
     const rp = useWorkspaceStore.getState().rootPath
     if (!rp) return
@@ -337,16 +400,12 @@ export function CodeCanvasPage() {
     refreshTimerRef.current = setTimeout(() => refreshTree(), 150)
   }
 
-  async function handleNewFile() {
-    setExplorerCreating({ type: "file", parent: null })
-  }
-
   const handleSearchOpenFile = useCallback((path: string, line?: number) => {
     const rootPath = useWorkspaceStore.getState().rootPath
     const fetchAndOpen = async () => {
       try {
         const fullPath = rootPath ? rootPath + "\\" + path.replace(/\//g, "\\") : path
-        const { readFile } = await import("@/lib/workspace")
+        const { readFile } = await import("@/lib/filesystem")
         const content = await readFile(fullPath)
         const name = path.split("/").pop() || path
         useWorkspaceStore.getState().openFile({ path, name, content, isDirty: false })
@@ -357,49 +416,6 @@ export function CodeCanvasPage() {
     }
     fetchAndOpen()
   }, [])
-
-  async function handleNewFolder() {
-    setExplorerCreating({ type: "folder", parent: null })
-  }
-
-  async function handleCreateSubmit(fullPath: string, name: string) {
-    setExplorerCreating(null)
-    const sanitized = sanitizeFilename(name)
-    if (!sanitized) return
-    try {
-      if (explorerCreating?.type === "folder") {
-        await createFolder(fullPath)
-      } else {
-        await createFile(fullPath)
-        const rootPath = useWorkspaceStore.getState().rootPath
-        if (rootPath) {
-          const relativePath = fullPath.replace(rootPath, "").replace(/^[\\/]+/, "").replace(/\\/g, "/")
-          const content = await readFile(fullPath)
-          useWorkspaceStore.getState().openFile({ path: relativePath, name, content, isDirty: false })
-        }
-      }
-      useToastStore.getState().addToast(`Created ${name}`, "success", 2000)
-      await refreshTree()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      useToastStore.getState().addToast(`Failed to create ${name}: ${msg}`, "error", 5000)
-    }
-  }
-
-  function handleCreateCancel() {
-    setExplorerCreating(null)
-  }
-
-  async function handleDeleteEntry(entryPath: string) {
-    try {
-      await deleteEntry(entryPath)
-      useToastStore.getState().addToast(`Deleted ${entryPath}`, "info", 2000)
-      await refreshTree()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      useToastStore.getState().addToast(`Failed to delete: ${msg}`, "error", 5000)
-    }
-  }
 
   useEffect(() => {
     onFileChange((event) => {
@@ -496,6 +512,10 @@ export function CodeCanvasPage() {
   // ── Keyboard shortcuts ──
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "s") {
+        e.preventDefault()
+        toggleSessionSidebar()
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault()
         setExplorerOpen((p) => !p)
@@ -520,17 +540,11 @@ export function CodeCanvasPage() {
         e.preventDefault()
         panelCtrlRef.current?.handleManualTabClick("design")
       }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "t") {
-        e.preventDefault()
-        panelCtrlRef.current?.handleManualTabClick("terminal")
-      }
       if ((e.metaKey || e.ctrlKey) && e.key === "n" && !e.shiftKey && rootPath) {
         e.preventDefault()
-        handleNewFile()
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "n" && rootPath) {
         e.preventDefault()
-        handleNewFolder()
       }
       // ⌘W — close active tab
       if ((e.metaKey || e.ctrlKey) && e.key === "w") {
@@ -540,12 +554,12 @@ export function CodeCanvasPage() {
           state.closeFile(state.activeFilePath)
         }
       }
-      // ⌘P — command palette
+      // ⌘P — quick open (fuzzy file search)
       if ((e.metaKey || e.ctrlKey) && e.key === "p" && !e.shiftKey) {
         e.preventDefault()
-        setCommandPaletteOpen((p) => !p)
+        setQuickOpenOpen((p) => !p)
       }
-      // ⌘⇧P — command palette (same handler)
+      // ⌘⇧P — command palette
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "p") {
         e.preventDefault()
         setCommandPaletteOpen((p) => !p)
@@ -661,81 +675,46 @@ export function CodeCanvasPage() {
     })
   }, [])
 
-  // ── Render workspace panel content ──
-  function renderWorkspacePanelContent() {
-    switch (workspacePanel) {
-      case "code":
-        return <ErrorBoundary name="CodeWorkspace"><CodeWorkspace /></ErrorBoundary>
-      case "browser":
-        return <ErrorBoundary name="BrowserWorkspace"><BrowserWorkspace /></ErrorBoundary>
-      case "design":
-        return <ErrorBoundary name="DesignWorkspace"><DesignWorkspace /></ErrorBoundary>
-      case "history":
-        return (
-          <ErrorBoundary name="SnapshotBrowser">
-            <div className="flex flex-col h-full">
-              <ChatHistoryViewer />
-            </div>
-          </ErrorBoundary>
-        )
-      case "terminal":
-        return <ErrorBoundary name="TerminalWorkspace"><TerminalWorkspace /></ErrorBoundary>
-      case "agents":
-        return <ErrorBoundary name="AgentWorkspace"><AgentWorkspace /></ErrorBoundary>
-      default:
-        return <ErrorBoundary name="CodeWorkspace"><CodeWorkspace /></ErrorBoundary>
-    }
-  }
+
+
 
   return (
-    <div className="flex h-full flex-col bg-gradient-to-b from-[#0a0a0b] to-[#09090a]" role="main" aria-label="Code canvas workspace">
-      {/* Status banners */}
-      {runtimeStatus === "uninitialized" && (
-        <div className="flex items-center gap-2 border-b border-white/[0.06] bg-white/[0.02] px-4 py-2">
-          <Loader2 className="h-3 w-3 animate-spin text-blue-400" />
-          <span className="text-xs text-white/50">Initializing workspace runtime...</span>
-        </div>
-      )}
-      {runtimeStatus === "error" && (
-        <div className="flex items-center gap-2 border-b border-red-500/15 bg-red-500/[0.03] px-4 py-2">
-          <XCircle className="h-3.5 w-3.5 text-red-400" />
-          <span className="text-xs text-red-400">Runtime error: {runtimeError}</span>
-          <Button variant="outline" size="sm" className="h-6 text-[10px] ml-auto border-red-500/20 text-red-400" onClick={initializeRuntime}>
-            Retry
-          </Button>
-        </div>
-      )}
-      {runtimeStatus === "ready" && !runtimeReady && rootPath && (
-        <div className="flex items-center gap-2 border-b border-amber-500/15 bg-amber-500/[0.03] px-4 py-2">
-          <span className="text-xs text-amber-400">
-            {wiredRoles > 0
-              ? "Manager role needs a provider/model assignment in Settings → Roles to enable orchestration."
-              : "No roles are wired. Add providers and assign models to roles in Settings."}
-          </span>
-        </div>
-      )}
-
-      {/* Stale config warning — settings changed but runtime hasn't refreshed */}
-      {hasStaleConfig && runtimeReady && (
-        <div className="flex items-center gap-2 border-b border-yellow-500/20 bg-yellow-500/[0.04] px-4 py-2">
-          <AlertTriangle className="h-3.5 w-3.5 text-yellow-400 shrink-0" />
-          <span className="text-xs text-yellow-300/80">
-            Provider or role configuration changed — runtime will auto-refresh or{" "}
-            <button
-              onClick={() => refreshRuntime()}
-              className="underline font-medium text-yellow-300 hover:text-yellow-200 transition-colors"
-            >
-              refresh now
-            </button>
-          </span>
+    <div className="flex h-full flex-col bg-[#0a0a0b]" role="main" aria-label="Code canvas workspace">
+      {/* Compact status bar — single line for active notifications */}
+      {(runtimeStatus === "uninitialized" || runtimeStatus === "error" || (runtimeStatus === "ready" && !runtimeReady && rootPath) || (hasStaleConfig && runtimeReady)) && (
+        <div className={cn(
+          "flex items-center gap-2 border-b px-3 py-1.5 text-[10px]",
+          runtimeStatus === "error" ? "border-red-500/15 bg-red-500/[0.03] text-red-400" :
+          hasStaleConfig ? "border-yellow-500/15 bg-yellow-500/[0.03] text-yellow-400" :
+          runtimeStatus === "uninitialized" ? "border-white/[0.04] bg-white/[0.02] text-white/50" :
+          "border-amber-500/10 bg-amber-500/[0.02] text-amber-400",
+        )}>
+          {runtimeStatus === "uninitialized" && <><Loader2 className="h-2.5 w-2.5 animate-spin mr-1" />Initializing runtime...</>}
+          {runtimeStatus === "error" && <><XCircle className="h-3 w-3 mr-1 shrink-0" />{runtimeError}<Button variant="outline" size="sm" className="h-5 text-[9px] ml-auto border-red-500/20 text-red-400" onClick={initializeRuntime}>Retry</Button></>}
+          {runtimeStatus === "ready" && !runtimeReady && rootPath && (
+            <>{wiredRoles > 0 ? "Assign a provider to the Manager role in Settings" : "Add providers and assign models in Settings to enable orchestration."}</>
+          )}
+          {hasStaleConfig && runtimeReady && (
+            <>Configuration changed — <button onClick={() => refreshRuntime()} className="underline font-medium hover:text-yellow-200">refresh now</button></>
+          )}
         </div>
       )}
 
 
 
-      {/* ── MAIN 4-PANEL LAYOUT or Empty State ── */}
+      {/* ── MAIN PANEL LAYOUT or Empty State ── */}
       {rootPath && typeof rootPath === 'string' && rootPath.length > 0 ? (
       <div className="flex flex-1 overflow-hidden min-h-0">
+        {/* PANEL 0: Session Sidebar */}
+        {sessionSidebarOpen && (
+          <div
+            style={{ width: sessionSidebarWidth }}
+            className="flex-shrink-0 overflow-hidden border-r border-white/[0.06]"
+          >
+            <SessionSidebar />
+          </div>
+        )}
+
         {/* PANEL 1: Explorer (File Tree) */}
         <div
           style={{ width: explorerOpen ? explorerWidth : 0 }}
@@ -744,127 +723,31 @@ export function CodeCanvasPage() {
             explorerOpen && "border-r border-white/[0.06]",
           )}
         >
-          {/* Explorer header — always rendered, hidden via opacity when collapsed */}
+          {/* Explorer header — minimal */}
           <div className={cn(
-            "flex items-center justify-between px-1 py-2.5 border-b border-white/[0.04]",
+            "flex items-center gap-1.5 px-2 py-2 border-b border-white/[0.04]",
             explorerOpen ? "opacity-100" : "opacity-0 pointer-events-none",
           )}>
-            <div className="flex items-center gap-0.5 min-w-0">
-              <button
-                onClick={() => setExplorerOpen(false)}
-                className="rounded p-0.5 text-white/20 hover:text-white/50 hover:bg-white/[0.06] transition-all shrink-0"
-                title="Collapse explorer (⌘B)"
-                aria-label="Collapse explorer panel"
-              >
-                <ChevronLeft className="h-3 w-3" />
-              </button>
-              <span className="text-[9px] font-medium text-white/25 uppercase tracking-widest shrink-0">Explorer</span>
-              {typeof rootPath === 'string' && rootPath.length > 0 && (
-                <span className="text-[10px] text-white/40 truncate max-w-[120px]" title={rootPath}>
-                  {rootPath.split(/[/\\]/).pop()}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-0.5">
-              <Tooltip content="Open workspace folder">
-                <button onClick={openWorkspace} className="rounded p-0.5 text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-all">
-                  <FolderOpen className="h-3 w-3" />
-                </button>
-              </Tooltip>
-              <Tooltip content="New file (⌘N)">
-                <button
-                  onClick={handleNewFile}
-                  disabled={!rootPath}
-                  className={cn(
-                    "rounded p-0.5 transition-all",
-                    rootPath ? "text-white/25 hover:text-white/60 hover:bg-white/[0.06]" : "text-white/10 cursor-not-allowed",
-                  )}
-                >
-                  <FilePlus className="h-3 w-3" />
-                </button>
-              </Tooltip>
-              <Tooltip content="New folder (⌘⇧N)">
-                <button
-                  onClick={handleNewFolder}
-                  disabled={!rootPath}
-                  className={cn(
-                    "rounded p-0.5 transition-all",
-                    rootPath ? "text-white/25 hover:text-white/60 hover:bg-white/[0.06]" : "text-white/10 cursor-not-allowed",
-                  )}
-                >
-                  <FolderPlus className="h-3 w-3" />
-                </button>
-              </Tooltip>
-              <Tooltip content="Refresh (F5)">
-                <button
-                  onClick={debouncedRefresh}
-                  disabled={!rootPath || isRefreshing}
-                  className={cn(
-                    "rounded p-0.5 transition-all",
-                    rootPath && !isRefreshing ? "text-white/25 hover:text-white/60 hover:bg-white/[0.06]" : "text-white/10 cursor-not-allowed",
-                  )}
-                >
-                  {isRefreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                </button>
-              </Tooltip>
-              <Tooltip content="Search across files (⌘⇧F)">
-                <button
-                  onClick={() => setSearchOpen((p) => !p)}
-                  disabled={!rootPath}
-                  className={cn(
-                    "rounded p-0.5 transition-all",
-                    rootPath ? "text-white/25 hover:text-white/60 hover:bg-white/[0.06]" : "text-white/10 cursor-not-allowed",
-                  )}
-                >
-                  <Search className="h-3 w-3" />
-                </button>
-              </Tooltip>
-              <Tooltip content="Collapse all">
-                <button
-                  onClick={() => fileTreeRef.current?.collapseAll()}
-                  disabled={!rootPath}
-                  className={cn(
-                    "rounded p-0.5 transition-all",
-                    rootPath ? "text-white/25 hover:text-white/60 hover:bg-white/[0.06]" : "text-white/10 cursor-not-allowed",
-                  )}
-                >
-                  <ChevronsUpDown className="h-3 w-3" />
-                </button>
-              </Tooltip>
-            </div>
+            <button
+              onClick={() => setExplorerOpen(false)}
+              className="rounded p-0.5 text-white/20 hover:text-white/50 hover:bg-white/[0.06] transition-all shrink-0"
+              title="Collapse explorer (⌘B)"
+            >
+              <ChevronLeft className="h-3 w-3" />
+            </button>
+            <span className="text-[9px] font-medium text-white/25 uppercase tracking-widest">Explorer</span>
+            {rootPath && (
+              <span className="text-[10px] text-white/40 truncate max-w-[120px]" title={rootPath}>
+                {rootPath.split(/[/\\]/).pop()}
+              </span>
+            )}
           </div>
 
           {/* Explorer */}
           <div className={cn("flex-1 min-h-0", explorerOpen ? "opacity-100" : "opacity-0 pointer-events-none")}>
             <WorkspaceExplorer
-              ref={fileTreeRef}
+              ref={explorerRef}
               onOpenWorkspace={openWorkspace}
-              creatingType={explorerCreating?.type ?? null}
-              creatingParent={explorerCreating?.parent ?? null}
-              onCreateSubmit={handleCreateSubmit}
-              onCreateCancel={handleCreateCancel}
-              onDeleteEntry={handleDeleteEntry}
-              onRenameSubmit={async (oldPath, newPath, _newName) => {
-                try {
-                  const isMove = oldPath.replace(/[/\\][^/\\]+$/, "") !== newPath.replace(/[/\\][^/\\]+$/, "")
-                  let proceed = true
-                  if (isMove && rootPath) {
-                    const result = await updateImportsOnMove(rootPath, oldPath, newPath)
-                    if (result.updated > 0) {
-                      proceed = window.confirm(
-                        `Moving "${_newName}" will update ${result.updated} import(s) in:\n${result.files.slice(0, 5).join("\n")}${result.files.length > 5 ? `\n...and ${result.files.length - 5} more` : ""}\n\nContinue?`,
-                      )
-                    }
-                  }
-                  if (!proceed) return
-                  await renameEntry(oldPath, newPath)
-                  useToastStore.getState().addToast(`Renamed to ${_newName}`, "success", 2000)
-                  await refreshTree()
-                } catch (err: unknown) {
-                  const msg = err instanceof Error ? err.message : String(err)
-                  useToastStore.getState().addToast(`Rename failed: ${msg}`, "error", 5000)
-                }
-              }}
             />
           </div>
 
@@ -874,108 +757,65 @@ export function CodeCanvasPage() {
 
       {/* PANEL 2: Assistant Workspace */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0" role="region" aria-label="Assistant chat panel">
-        {/* Assistant header bar */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.06] bg-[#0c0c0d]">
-            <div className="flex items-center gap-2">
+        {/* Assistant header bar — minimal */}
+        <div className="flex items-center justify-between px-2 py-1 border-b border-white/[0.06] bg-[#0c0c0d]">
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => toggleSessionSidebar()}
+                className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+                title="Toggle session sidebar (⌘⇧S)"
+              >
+                <PanelRightClose className="h-3.5 w-3.5" />
+              </button>
               <button
                 onClick={() => setExplorerOpen(!explorerOpen)}
-                className="rounded-md p-1 text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition-all"
+                className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
                 title="Toggle explorer (⌘B)"
-                aria-label={explorerOpen ? "Close explorer panel" : "Open explorer panel"}
               >
-                {explorerOpen ? <PanelLeftClose className="h-3.5 w-3.5" aria-hidden="true" /> : <PanelLeft className="h-3.5 w-3.5" aria-hidden="true" />}
+                {explorerOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
               </button>
-              <span className="text-[10px] font-medium text-white/30">Assistant</span>
-
+              <span className="text-[10px] font-medium text-white/25">Assistant</span>
+              {/* Runtime dot */}
+              <span className={cn(
+                "inline-block h-1.5 w-1.5 rounded-full",
+                runtimeReady && runtimeHealth === "healthy" ? "bg-green-500" :
+                runtimeStatus === "error" ? "bg-red-500" :
+                runtimeStatus === "initializing" ? "bg-blue-400 animate-pulse" :
+                "bg-white/20"
+              )} title={runtimeReady ? "Runtime ready" : runtimeError || runtimeMessage || "Initializing"} />
             </div>
 
-            <div className="flex items-center gap-2">
-              {/* Runtime status indicator */}
-              <div
+            <div className="flex items-center gap-1.5">
+              {/* Context usage indicator */}
+              <ContextUsageIndicator />
+
+              {/* Toggle diff viewer pane */}
+              <button
+                onClick={() => setPaneVisibility("diff", !panes.find((p) => p.id === "diff")?.visible)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-medium border transition-all",
-                  runtimeReady && runtimeHealth === "healthy"
-                    ? "border-green-500/15 bg-green-500/[0.04] text-green-400"
-                    : runtimeReady && runtimeHealth === "degraded"
-                      ? "border-amber-500/15 bg-amber-500/[0.04] text-amber-400"
-                      : runtimeStatus === "initializing"
-                        ? "border-blue-500/15 bg-blue-500/[0.04] text-blue-400 hover:bg-blue-500/[0.08]"
-                        : runtimeStatus === "error"
-                          ? "border-red-500/15 bg-red-500/[0.04] text-red-400 hover:bg-red-500/[0.08]"
-                          : "border-white/[0.06] bg-white/[0.02] text-white/40 hover:bg-white/[0.06]"
+                  "rounded p-0.5 transition-all",
+                  panes.find((p) => p.id === "diff")?.visible
+                    ? "text-blue-400 bg-blue-500/10"
+                    : "text-white/30 hover:text-white/60 hover:bg-white/[0.06]"
                 )}
-                title="Runtime status (⌘⇧R)"
+                title="Toggle diff viewer"
               >
-                {runtimeStatus === "initializing" ? (
-                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                ) : runtimeReady && runtimeHealth === "healthy" ? (
-                  <CheckCircle2 className="h-2.5 w-2.5" />
-                ) : runtimeReady && runtimeHealth === "degraded" ? (
-                  <AlertTriangle className="h-2.5 w-2.5" />
-                ) : runtimeStatus === "error" ? (
-                  <XCircle className="h-2.5 w-2.5" />
-                ) : (
-                  <Activity className="h-2.5 w-2.5" />
-                )}
-                <span>
-                  {runtimeReady && runtimeHealth === "healthy" ? "Ready" :
-                   runtimeReady && runtimeHealth === "degraded" ? "Partial" :
-                   runtimeStatus === "initializing" ? "Init..." :
-                   runtimeError || runtimeMessage || "Runtime"}
-                </span>
-              </div>
+                <FileDiff className="h-3.5 w-3.5" />
+              </button>
 
-              {/* Execution mode selector */}
-              <div className="relative">
-                <button
-                  ref={modeSelectorBtnRef}
-                  onClick={() => setShowModeSelector(!showModeSelector)}
-                  className="flex items-center gap-1.5 rounded-lg bg-blue-500/[0.06] border border-blue-500/15 px-2 py-1 text-[10px] font-medium text-blue-400 hover:bg-blue-500/[0.1] transition-all"
-                >
-                  <activeMode.icon className={cn("h-2.5 w-2.5", activeMode.color)} />
-                  <span>{activeMode.label}</span>
-                </button>
-
-                {showModeSelector && modeSelectorBtnRef.current && createPortal(
-                  <div
-                    className="w-52 rounded-xl border border-white/[0.08] bg-[#0d0d0e] shadow-2xl z-50 p-1.5"
-                    style={{
-                      position: 'fixed',
-                      top: modeSelectorBtnRef.current.getBoundingClientRect().bottom + 6,
-                      right: window.innerWidth - modeSelectorBtnRef.current.getBoundingClientRect().right,
-                    }}
-                  >
-                    <p className="text-[9px] text-white/30 px-2 py-1 font-medium uppercase tracking-wider">Execution Mode</p>
-                    <div className="space-y-0.5">
-                      {EXECUTION_MODES.map((mode) => {
-                        const Icon = mode.icon
-                        return (
-                          <button
-                            key={mode.id}
-                            onClick={() => { setExecutionMode(mode.id); setShowModeSelector(false) }}
-                            className={cn(
-                              "flex items-center gap-2.5 w-full rounded-lg px-2.5 py-2 text-xs transition-all text-left",
-                              executionMode === mode.id
-                                ? "bg-blue-500/10 text-blue-400"
-                                : "text-white/40 hover:text-white/70 hover:bg-white/[0.04]"
-                            )}
-                          >
-                            <Icon className={cn("h-3.5 w-3.5 shrink-0", mode.color)} />
-                            <div className="flex flex-col">
-                              <span className="font-medium">{mode.label}</span>
-                              <span className="text-[9px] text-white/30">{mode.description}</span>
-                            </div>
-                            {executionMode === mode.id && (
-                              <span className="ml-auto h-1.5 w-1.5 rounded-full bg-blue-500" />
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>,
-                  document.body
+              {/* Toggle preview pane */}
+              <button
+                onClick={() => setPaneVisibility("preview", !panes.find((p) => p.id === "preview")?.visible)}
+                className={cn(
+                  "rounded p-0.5 transition-all",
+                  panes.find((p) => p.id === "preview")?.visible
+                    ? "text-blue-400 bg-blue-500/10"
+                    : "text-white/30 hover:text-white/60 hover:bg-white/[0.06]"
                 )}
-              </div>
+                title="Toggle preview pane"
+              >
+                <Eye className="h-3.5 w-3.5" />
+              </button>
 
               {/* Toggle docking area */}
               <button
@@ -984,19 +824,18 @@ export function CodeCanvasPage() {
                   setWorkspacePanelOpen(next)
                   panelCtrlRef.current?.syncOpenState(next)
                 }}
-                className="rounded-md p-1 text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition-all"
+                className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
                 title="Toggle docking area (⌘J)"
-                aria-label={workspacePanelOpen ? "Close docking area" : "Open docking area"}
               >
-                {workspacePanelOpen ? <PanelRightClose className="h-3.5 w-3.5" aria-hidden="true" /> : <PanelRight className="h-3.5 w-3.5" aria-hidden="true" />}
+                {workspacePanelOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
               </button>
-
             </div>
           </div>
 
-          {/* Activity summary strip — replaces 3 separate panels */}
-          <ExecutionTimeline />
-          <AgentStatusBar />
+          {/* Agent activity strip — visible during execution */}
+          <div className="shrink-0 border-b border-white/[0.04] overflow-hidden">
+            <AgentActivityPanel />
+          </div>
 
           {/* Assistant content */}
           <div className="flex-1 overflow-hidden min-h-0">
@@ -1007,7 +846,7 @@ export function CodeCanvasPage() {
         {/* Resize handle: Assistant | Docking Area */}
         {workspacePanelOpen && <ResizeHandle onMouseDown={handleWorkspaceResize} />}
 
-        {/* PANEL 3: Docking Area */}
+        {/* PANEL 3: Docking Area — multi-pane grid */}
         <div
           style={{ width: workspacePanelOpen ? workspacePanelWidth : 0 }}
           className={cn(
@@ -1015,45 +854,44 @@ export function CodeCanvasPage() {
             workspacePanelOpen && "border-l border-white/[0.06]",
           )}
           role="region"
-          aria-label={`${workspacePanel} docking area`}
+          aria-label="Docking area"
         >
-          {/* Docking Area tabs */}
-          <div className="flex items-center bg-[#0c0c0d] border-b border-white/[0.04] px-1.5" role="tablist" aria-label="Docking Area">
+          {/* Pane toggle bar */}
+          <div className="flex items-center bg-[#0c0c0d] border-b border-white/[0.04] px-1.5 overflow-x-auto shrink-0">
             {WORKSPACE_PANEL_OPTIONS.map((opt) => {
               const Icon = opt.icon
-              const isActive = workspacePanel === opt.id
+              const pane = panes.find((p) => p.type === opt.id)
+              const visible = pane?.visible ?? false
+              const isMainPanel = workspacePanel === opt.id
               return (
                 <button
                   key={opt.id}
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-controls={`workspace-panel-${opt.id}`}
-                   onClick={() => panelCtrlRef.current?.handleManualTabClick(opt.id)}
-                   className={cn(
-                     "flex items-center gap-1.5 flex-1 justify-center py-2.5 text-[11px] font-medium transition-all relative rounded-lg mx-0.5 my-1",
-                     isActive
-                       ? "text-white bg-white/[0.06] shadow-sm"
-                       : "text-white/25 hover:text-white/60 hover:bg-white/[0.03]"
-                   )}
-                >
-                  <Icon className={cn(
-                    "h-3.5 w-3.5 transition-all",
-                    isActive ? "text-blue-400" : "text-white/30"
-                  )} aria-hidden="true" />
-                  <span>{opt.label}</span>
-                  {isActive && (
-                    <span
-                      className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[2.5px] w-6 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-opacity"
-                    />
+                  onClick={() => {
+                    if (visible && isMainPanel) {
+                      setPaneVisibility(opt.id, false)
+                    } else if (!visible) {
+                      setPaneVisibility(opt.id, true)
+                      setWorkspacePanel(opt.id)
+                    }
+                    panelCtrlRef.current?.handleManualTabClick(opt.id)
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-all duration-150 shrink-0 border-b-2 border-transparent active:scale-95",
+                    visible
+                      ? "text-white border-blue-500"
+                      : "text-white/30 hover:text-white/50 hover:border-white/10"
                   )}
+                >
+                  <Icon className={cn("h-3.5 w-3.5", visible ? "text-blue-400" : "text-white/30")} />
+                  <span>{opt.label}</span>
                 </button>
               )
             })}
           </div>
 
-          {/* Workspace panel content */}
-          <div className="flex-1 overflow-hidden min-h-0" id={`workspace-panel-${workspacePanel}`} role="tabpanel">
-            {renderWorkspacePanelContent()}
+          {/* PaneContainer — all visible panes shown simultaneously */}
+          <div className="flex-1 overflow-hidden min-h-0">
+            <PaneContainer panes={paneConfigs} />
           </div>
         </div>
 
@@ -1087,6 +925,12 @@ export function CodeCanvasPage() {
         onOpenFile={handleSearchOpenFile}
       />
 
+      {/* Quick Open — overlay above everything */}
+      <QuickOpen
+        open={quickOpenOpen}
+        onClose={() => setQuickOpenOpen(false)}
+      />
+
       {/* Command Palette — overlay above everything */}
       <CommandPalette
         open={commandPaletteOpen}
@@ -1097,6 +941,8 @@ export function CodeCanvasPage() {
       {/* Execution Dock — always visible, survives navigation */}
       <ExecutionDock />
 
+      {/* Side Chat — Cmd+; overlay */}
+      <SideChat />
 
     </div>
   )

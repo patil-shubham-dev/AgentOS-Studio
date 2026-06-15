@@ -1,8 +1,7 @@
 import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
-import { useAgentStore } from "@/stores/agent-store"
 import { requestCommandApproval } from "@/runtime/approval-gate"
-import { requiresApproval, type ExecutionModeId } from "@/runtime/execution-mode"
+import { requiresApproval } from "@/runtime/execution-mode"
 import { TerminalRuntime, type TerminalStreamOptions } from "@/runtime/terminal/TerminalRuntime"
 import { EventBus } from "@/runtime/EventBus"
 import { emitTelemetry } from "@/lib/telemetry"
@@ -88,6 +87,7 @@ const TOOL_OPERATION_MAP: Record<string, "tool_execution" | "file_write" | "file
   browser_navigate: "browser_launch",
   browser_click: "browser_launch",
   browser_fill: "browser_launch",
+  browser_execute_js: "browser_launch",
   design_create_artifact: "design_create",
   design_add_version: "design_create",
 }
@@ -129,8 +129,8 @@ export class ToolExecutionSandbox {
     const roleConfig = useAppStore.getState().roleConfigs.find((cfg) =>
       cfg.runtimeRole === role || cfg.id === role,
     )
-    if (!roleConfig) return true
-    if (!roleConfig.toolPermissions?.length) return true
+    if (!roleConfig) return false
+    if (!roleConfig.toolPermissions?.length) return false
     return roleConfig.toolPermissions.includes(toolName)
   }
 
@@ -162,10 +162,9 @@ export class ToolExecutionSandbox {
       }
     }
 
-    const executionMode = useAgentStore.getState().executionMode
     const operationType = TOOL_OPERATION_MAP[toolName] ?? "tool_execution"
 
-    if (requiresApproval(executionMode as ExecutionModeId, operationType)) {
+    if (requiresApproval("autonomous", operationType)) {
       const approved = await requestCommandApproval({
         command: toolName === "run_command" ? command : buildApprovalSummary(toolName, args),
         operationType,

@@ -123,7 +123,7 @@ export class WorkspaceManager {
       const entries = readdirSync(dirPath, { withFileTypes: true })
       const result: FileEntry[] = []
       for (const entry of entries) {
-        if (entry.name.startsWith('.') && entry.name !== '.git') continue
+        if (entry.name.startsWith('.')) continue
         if (entry.name === 'node_modules' && currentDepth > 0) continue
         const fullPath = join(dirPath, entry.name)
         const stats = statSync(fullPath)
@@ -223,6 +223,37 @@ export class WorkspaceManager {
       watcher.close()
     }
     this.watchers.clear()
+  }
+
+  /**
+   * List the immediate children of a directory (non-recursive).
+   * Returns FileEntry objects with empty children arrays for directories.
+   */
+  listDirectory(dirPath: string): FileEntry[] {
+    try {
+      const entries = readdirSync(dirPath, { withFileTypes: true })
+      const result: FileEntry[] = []
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue
+        if (entry.name === 'node_modules') continue
+        const fullPath = join(dirPath, entry.name)
+        const stats = statSync(fullPath)
+        const isDir = entry.isDirectory()
+        result.push({
+          name: entry.name,
+          path: fullPath,
+          isDirectory: isDir,
+          isFile: entry.isFile(),
+          size: stats.size,
+          modified: stats.mtimeMs,
+          children: isDir ? [] : undefined,
+        })
+      }
+      return result.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+    } catch { return [] }
   }
 
   // File search

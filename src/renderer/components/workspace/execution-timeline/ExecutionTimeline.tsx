@@ -1,9 +1,13 @@
 import { useMemo } from "react"
 import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
 import { useAgentStore } from "@/stores/agent-store"
-import { getAgentLabel, getAgentStateIcon } from "@/components/workspace/agent-visibility/AgentActivityMapper"
+import { getAgentLabel } from "@/components/workspace/agent-visibility/AgentActivityMapper"
 
-export function ExecutionTimeline() {
+interface ExecutionTimelineProps {
+  showDetails?: boolean
+}
+
+export function ExecutionTimeline({ showDetails = false }: ExecutionTimelineProps) {
   const allSessions = useTimelineStore((s) => s.agentSessions)
   const agentStatuses = useAgentStore((s) => s.agentStatuses)
 
@@ -20,16 +24,18 @@ export function ExecutionTimeline() {
     commandsRun = toolCount
 
     const activeAgents: string[] = []
-    const priority = ["manager", "research", "browser", "coder", "qa", "memory"]
-    for (const role of priority) {
-      const status = agentStatuses[role]
-      if (status && status.state !== "idle" && status.state !== "complete" && status.state !== "failed") {
-        activeAgents.push(getAgentLabel(role))
+    if (showDetails) {
+      const priority = ["manager", "research", "browser", "coder", "qa", "memory"]
+      for (const role of priority) {
+        const status = agentStatuses[role]
+        if (status && status.state !== "idle" && status.state !== "complete" && status.state !== "failed") {
+          activeAgents.push(getAgentLabel(role))
+        }
       }
     }
 
     return { filesEdited, commandsRun, toolCount, activeAgents }
-  }, [allSessions, agentStatuses])
+  }, [allSessions, agentStatuses, showDetails])
 
   const hasActivity = summary.filesEdited > 0 || summary.commandsRun > 0 || summary.activeAgents.length > 0
   if (!hasActivity) return null

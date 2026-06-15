@@ -421,6 +421,34 @@ You collaborate with:
 - Browser Agent: for E2E test automation and browser interactions
 - Manager Agent: to report test results and quality metrics`
 
+export const VERIFICATION_PROMPT = `You are the Verification Agent inside AgenticOS — the FINAL AUTHORITY on whether code changes are correct.
+
+RESPONSIBILITIES:
+- Validating all code changes through the automated verification pipeline
+- Reviewing verification results (lint, typecheck, build, test, security, performance, regression)
+- Determining whether the goal has been achieved (GOAL_ACHIEVED)
+- Blocking incomplete or failing changes from being accepted
+
+VERIFICATION AUTHORITY:
+- Only YOU can declare GOAL_ACHIEVED.
+- Coding agents produce code — YOU validate it.
+- If verification fails, you must explain WHY and WHAT needs to be fixed.
+- Do NOT bypass verification stages.
+
+VERIFICATION APPROACH:
+1. Review the changed files and what they do
+2. Run the 8-stage verification pipeline
+3. Analyze any failures: lint errors, type errors, build errors, test failures
+4. Determine if failures are real regressions or pre-existing issues
+5. Escalate to coding agent if fixes are needed
+6. Only declare success when ALL required stages pass
+
+You collaborate with:
+- Coder Agent: to receive code changes and request fixes
+- QA Agent: to run detailed test suites
+- Browser Agent: to verify browser behavior
+- Manager Agent: to report final verification status`
+
 export const FAST_INFERENCE_PROMPT = `You are the Fast Inference Agent inside AgenticOS — optimized for quick, concise responses to simple queries and rapid prototyping.
 
 RESPONSIBILITIES:
@@ -701,6 +729,28 @@ const QA: RoleDefinition = define({
   executionMode: "worker",
 })
 
+const VERIFICATION: RoleDefinition = define({
+  id: "role-verification",
+  runtimeRole: "verification",
+  name: "Verification",
+  description: "Final authority on code correctness — validates all changes through the 8-stage pipeline",
+  color: "from-amber-500/20 to-orange-500/10",
+  icon: "ShieldCheck",
+  temperature: 0.1,
+  maxTokens: 16384,
+  systemPrompt: VERIFICATION_PROMPT,
+  capabilities: {
+    coding: false, browsing: false, planning: true, memory: false,
+    fileAccess: true, internetAccess: false, toolExecution: true,
+    sandboxEscape: false, vision: false, reasoning: true, orchestration: false,
+  },
+  toolPermissions: ["read", "execute", "analyze", "search"],
+  memoryScope: "session",
+  priority: 5,
+  collaborationTags: ["verification", "validation", "quality", "gate"],
+  executionMode: "verifier",
+})
+
 const MEMORY: RoleDefinition = define({
   id: "role-memory",
   runtimeRole: "memory",
@@ -726,6 +776,7 @@ const MEMORY: RoleDefinition = define({
 const CANONICAL_RUNTIME_ROLES: RuntimeRole[] = [
   "manager", "coder", "vision", "research", "runtime",
   "design", "qa", "browser", "memory", "fast-inference",
+  "verification",
 ]
 
 const LEGACY_ALIASES: Record<string, RuntimeRole> = {
@@ -739,6 +790,7 @@ const LEGACY_ALIASES: Record<string, RuntimeRole> = {
   "role-browser": "browser",
   "role-qa": "qa",
   "role-memory": "memory",
+  "role-verification": "verification",
 
   "Manager": "manager",
   "Coder": "coder",
@@ -749,6 +801,7 @@ const LEGACY_ALIASES: Record<string, RuntimeRole> = {
   "Fast Inference": "fast-inference",
   "Browser": "browser",
   "QA / Testing": "qa",
+  "Verification": "verification",
   "Memory": "memory",
 
   "coding": "coder",
@@ -778,7 +831,7 @@ export function normalizeRole(input: string): RuntimeRole | null {
 
 export const ALL_ROLES: RoleDefinition[] = [
   MANAGER, CODER, VISION, RESEARCH, RUNTIME,
-  DESIGN, FAST_INFERENCE, BROWSER, QA, MEMORY,
+  DESIGN, FAST_INFERENCE, BROWSER, QA, MEMORY, VERIFICATION,
 ]
 
 export function getRoleByRuntimeRole(runtimeRole: string): RoleDefinition | undefined {

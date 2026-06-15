@@ -41,10 +41,6 @@ export class ToolExecutionPolicy {
 
     if (tool.isReadOnly === undefined) return { allowed: true }
 
-    if (ctx.executionMode === 'safe_mode' && !tool.isReadOnly(ctx)) {
-      return { allowed: false, reason: 'Write operations disabled in safe mode' }
-    }
-
     if (policy.requireApproval && tool.isDestructive?.(ctx)) {
       return { allowed: false, reason: 'Destructive operation requires explicit approval' }
     }

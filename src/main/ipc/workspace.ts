@@ -1,7 +1,19 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { resolve, normalize } from 'path'
 import { WorkspaceManager } from '../WorkspaceManager'
-import { setAllowedWorkspacePath } from './path-utils'
+import { setAllowedWorkspacePath, addGitAllowedPath, assertPathAllowed } from './path-utils'
+
+function validatePath(p: unknown, name = 'path'): string {
+  if (typeof p !== 'string' || p.length === 0) throw new Error(`Invalid ${name}: must be a non-empty string`)
+  if (p.length > 4096) throw new Error(`Invalid ${name}: path too long (${p.length} chars)`)
+  return p
+}
+
+function validateString(v: unknown, name: string, maxLength = 10000): string {
+  if (typeof v !== 'string') throw new Error(`Invalid ${name}: must be a string`)
+  if (v.length > maxLength) throw new Error(`Invalid ${name}: exceeds max length (${v.length} > ${maxLength})`)
+  return v
+}
 
 let workspaceManager: WorkspaceManager
 
@@ -13,16 +25,17 @@ export function getWorkspaceManager(): WorkspaceManager {
 export function registerWorkspaceIpcHandlers(): void {
   const wm = getWorkspaceManager()
 
-  // Open folder dialog
+  // Open folder dialog — user-initiated, no validation needed
   ipcMain.handle('workspace:open-folder', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return null
     const folderPath = await wm.openFolderDialog(win)
     setAllowedWorkspacePath(folderPath)
+    if (folderPath) addGitAllowedPath(folderPath)
     return folderPath
   })
 
-  // Open workspace file dialog
+  // Open workspace file dialog — user-initiated, no validation needed
   ipcMain.handle('workspace:open-workspace', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return null
@@ -45,49 +58,67 @@ export function registerWorkspaceIpcHandlers(): void {
 
   // Get file tree
   ipcMain.handle('workspace:get-tree', async (_event, dirPath: string, maxDepth?: number) => {
-    const resolvedPath = resolve(normalize(dirPath))
-    console.log("[TRACE:IPC:workspace:get-tree] START dirPath=", dirPath, "resolved=", resolvedPath, "maxDepth=", maxDepth)
+    const validated = validatePath(dirPath, 'directory path')
+    const resolvedPath = resolve(normalize(validated))
     setAllowedWorkspacePath(resolvedPath)
-    const entries = wm.getFileTree(resolvedPath, maxDepth || 10)
-    console.log("[TRACE:IPC:workspace:get-tree] raw entries from WorkspaceManager:", entries.length, "first.name=", entries[0]?.name ?? "EMPTY")
+    addGitAllowedPath(resolvedPath)
+    const depth = maxDepth !== undefined ? Math.min(Math.max(1, maxDepth), 50) : 10
+    const entries = wm.getFileTree(resolvedPath, depth)
     const normalized = entries.map(toRendererEntry)
-    console.log("[TRACE:IPC:workspace:get-tree] normalized first entry:", normalized[0] ? JSON.stringify(normalized[0]).slice(0, 300) : "EMPTY")
     return normalized
   })
 
   // Read file
   ipcMain.handle('workspace:read-file', async (_event, filePath: string) => {
-    return wm.readFile(filePath)
+    const validated = validatePath(filePath)
+    assertPathAllowed(validated)
+    return wm.readFile(validated)
   })
 
   // Write file
   ipcMain.handle('workspace:write-file', async (_event, filePath: string, content: string) => {
-    return wm.writeFile(filePath, content)
+    const validated = validatePath(filePath)
+    assertPathAllowed(validated)
+    validateString(content, 'file content', 10 * 1024 * 1024)
+    return wm.writeFile(validated, content)
   })
 
   // Create file
   ipcMain.handle('workspace:create-file', async (_event, dirPath: string, name: string) => {
-    return wm.createFile(dirPath, name)
+    const validated = validatePath(dirPath)
+    assertPathAllowed(validated)
+    validateString(name, 'file name', 512)
+    return wm.createFile(validated, name)
   })
 
   // Create directory
   ipcMain.handle('workspace:create-directory', async (_event, dirPath: string, name: string) => {
-    return wm.createDirectory(dirPath, name)
+    const validated = validatePath(dirPath)
+    assertPathAllowed(validated)
+    validateString(name, 'directory name', 512)
+    return wm.createDirectory(validated, name)
   })
 
   // Rename entry
   ipcMain.handle('workspace:rename', async (_event, oldPath: string, newPath: string) => {
-    return wm.rename(oldPath, newPath)
+    const oldValidated = validatePath(oldPath, 'old path')
+    const newValidated = validatePath(newPath, 'new path')
+    assertPathAllowed(oldValidated)
+    assertPathAllowed(newValidated)
+    return wm.rename(oldValidated, newValidated)
   })
 
   // Delete entry
   ipcMain.handle('workspace:delete', async (_event, targetPath: string) => {
-    return wm.deleteEntry(targetPath)
+    const validated = validatePath(targetPath)
+    assertPathAllowed(validated)
+    return wm.deleteEntry(validated)
   })
 
   // Start file watcher
   ipcMain.handle('workspace:start-watcher', async (_event, dirPath: string) => {
-    const resolvedPath = resolve(normalize(dirPath))
+    const validated = validatePath(dirPath, 'directory to watch')
+    const resolvedPath = resolve(normalize(validated))
     return wm.startWatching(resolvedPath, (_eventType, filePath) => {
       const windows = BrowserWindow.getAllWindows()
       for (const w of windows) {
@@ -100,7 +131,8 @@ export function registerWorkspaceIpcHandlers(): void {
 
   // Stop file watcher
   ipcMain.handle('workspace:stop-watcher', async (_event, dirPath: string) => {
-    wm.stopWatching(dirPath)
+    const validated = validatePath(dirPath, 'directory to watch')
+    wm.stopWatching(validated)
   })
 
   // Recent workspaces
@@ -109,22 +141,36 @@ export function registerWorkspaceIpcHandlers(): void {
   })
 
   ipcMain.handle('workspace:add-recent', async (_event, folderPath: string) => {
-    wm.addRecentWorkspace(folderPath)
+    wm.addRecentWorkspace(validatePath(folderPath, 'folder path'))
     return true
   })
 
   ipcMain.handle('workspace:remove-recent', async (_event, folderPath: string) => {
-    wm.removeRecentWorkspace(folderPath)
+    wm.removeRecentWorkspace(validatePath(folderPath, 'folder path'))
     return true
   })
 
   ipcMain.handle('workspace:pin-recent', async (_event, folderPath: string, pinned: boolean) => {
-    wm.pinRecentWorkspace(folderPath, pinned)
+    wm.pinRecentWorkspace(validatePath(folderPath, 'folder path'), pinned)
     return true
+  })
+
+  // List directory (non-recursive, immediate children only)
+  ipcMain.handle('workspace:list-dir', async (_event, dirPath: string) => {
+    const validated = validatePath(dirPath, 'directory path')
+    const resolvedPath = resolve(normalize(validated))
+    setAllowedWorkspacePath(resolvedPath)
+    addGitAllowedPath(resolvedPath)
+    const entries = wm.listDirectory(resolvedPath)
+    const normalized = entries.map(toRendererEntry)
+    return normalized
   })
 
   // Search files
   ipcMain.handle('workspace:search-files', async (_event, rootDir: string, query: string, maxResults?: number) => {
-    return wm.searchFiles(rootDir, query, maxResults || 100)
+    validatePath(rootDir, 'search root directory')
+    validateString(query, 'search query', 500)
+    const results = maxResults !== undefined ? Math.min(Math.max(1, maxResults), 1000) : 100
+    return wm.searchFiles(rootDir, query, results)
   })
 }

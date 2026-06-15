@@ -29,6 +29,23 @@ export type ExecutionEventType =
   | "SYNTHESIS_COMPLETE"
   | "TOOLS_EXPOSED"
   | "FALLBACK_ACTIVATED"
+  | "VERIFY_PASSED"
+  | "VERIFY_FAILED"
+  | "GOAL_ACHIEVED"
+
+  // ── Browser Events ──
+  | "BROWSER_SESSION_CREATED"
+  | "BROWSER_SESSION_RESTORED"
+  | "BROWSER_NAVIGATE"
+  | "BROWSER_CLICK"
+  | "BROWSER_TYPE"
+  | "BROWSER_SCROLL"
+  | "BROWSER_SCREENSHOT"
+  | "BROWSER_DOM_CAPTURE"
+  | "BROWSER_JS_EXECUTED"
+  | "BROWSER_TAB_CREATED"
+  | "BROWSER_TAB_CLOSED"
+  | "BROWSER_ERROR"
 
 export interface ExecutionCreatedEvent {
   type: "EXECUTION_CREATED"
@@ -213,6 +230,8 @@ export interface MessageCompleteEvent {
   content: string
   finishReason: string | null
   timestamp: number
+  tokensIn?: number
+  tokensOut?: number
 }
 
 export interface ExecutionCompleteEvent {
@@ -282,37 +301,214 @@ export interface SynthesisCompleteEvent {
   timestamp: number
 }
 
+export interface VerifyPassedEvent {
+  type: "VERIFY_PASSED"
+  executionId: string
+  stepId: string
+  details: string[]
+  recovered?: boolean
+  timestamp: number
+}
+
+export interface VerifyFailedEvent {
+  type: "VERIFY_FAILED"
+  executionId: string
+  stepId: string
+  lintErrors: number
+  typeErrors: number
+  buildErrors: number
+  testFailures: number
+  details: string[]
+  autoFixApplied: boolean
+  timestamp: number
+}
+
+export interface GoalAchievedEvent {
+  type: "GOAL_ACHIEVED"
+  executionId: string
+  goalId: string
+  objective: string
+  iterations: number
+  stepsCompleted: number
+  reflectionsCount: number
+  timestamp: number
+}
+
+// ── Browser Events ──
+
+export interface BrowserSessionCreatedEvent {
+  type: "BROWSER_SESSION_CREATED"
+  executionId: string
+  sessionId: string
+  tier: "in_app" | "chrome_extension" | "plugin"
+  url?: string
+  timestamp: number
+}
+
+export interface BrowserSessionRestoredEvent {
+  type: "BROWSER_SESSION_RESTORED"
+  executionId: string
+  sessionId: string
+  tabCount: number
+  timestamp: number
+}
+
+export interface BrowserNavigateEvent {
+  type: "BROWSER_NAVIGATE"
+  executionId: string
+  sessionId: string
+  tabId: string
+  url: string
+  title: string
+  durationMs: number
+  timestamp: number
+}
+
+export interface BrowserClickEvent {
+  type: "BROWSER_CLICK"
+  executionId: string
+  sessionId: string
+  tabId: string
+  selector: string
+  x?: number
+  y?: number
+  durationMs: number
+  timestamp: number
+}
+
+export interface BrowserTypeEvent {
+  type: "BROWSER_TYPE"
+  executionId: string
+  sessionId: string
+  tabId: string
+  selector: string
+  textLength: number
+  durationMs: number
+  timestamp: number
+}
+
+export interface BrowserScrollEvent {
+  type: "BROWSER_SCROLL"
+  executionId: string
+  sessionId: string
+  tabId: string
+  x: number
+  y: number
+  timestamp: number
+}
+
+export interface BrowserScreenshotEvent {
+  type: "BROWSER_SCREENSHOT"
+  executionId: string
+  sessionId: string
+  tabId: string
+  dataSize: number
+  durationMs: number
+  timestamp: number
+}
+
+export interface BrowserDomCaptureEvent {
+  type: "BROWSER_DOM_CAPTURE"
+  executionId: string
+  sessionId: string
+  tabId: string
+  domLength: number
+  durationMs: number
+  timestamp: number
+}
+
+export interface BrowserJsExecutedEvent {
+  type: "BROWSER_JS_EXECUTED"
+  executionId: string
+  sessionId: string
+  tabId: string
+  scriptHash: string
+  scriptLength: number
+  resultSize: number
+  durationMs: number
+  timestamp: number
+}
+
+export interface BrowserTabCreatedEvent {
+  type: "BROWSER_TAB_CREATED"
+  executionId: string
+  sessionId: string
+  tabId: string
+  url: string
+  timestamp: number
+}
+
+export interface BrowserTabClosedEvent {
+  type: "BROWSER_TAB_CLOSED"
+  executionId: string
+  sessionId: string
+  tabId: string
+  timestamp: number
+}
+
+export interface BrowserErrorEvent {
+  type: "BROWSER_ERROR"
+  executionId: string
+  sessionId: string
+  tabId?: string
+  action: string
+  error: string
+  durationMs: number
+  timestamp: number
+}
+
+export interface ExecutionTraceable {
+  traceId?: string
+  spanId?: string
+  parentSpanId?: string
+}
+
 export type ExecutionEvent =
-  | ExecutionCreatedEvent
-  | AgentAssignedEvent
-  | ThinkingStartedEvent
-  | ThinkingUpdateEvent
-  | PlanCreatedEvent
-  | PlanUpdatedEvent
-  | ToolStartEvent
-  | ToolProgressEvent
-  | ToolCompleteEvent
-  | ToolErrorEvent
-  | FileReadEvent
-  | FileWriteEvent
-  | FileEditEvent
-  | ContextLoadingEvent
-  | ContextReadyEvent
-  | ProviderConnectingEvent
-  | ProviderConnectedEvent
-  | TokenEvent
-  | MessageUpdateEvent
-  | MessageCompleteEvent
-  | ExecutionCompleteEvent
-  | ExecutionFailedEvent
-  | CommandStartEvent
-  | CommandOutputEvent
-  | CommandCompleteEvent
-  | CommandErrorEvent
-  | ActionEvent
-  | SynthesisCompleteEvent
-  | FallbackActivatedEvent
-  | ToolsExposedEvent
+  | (ExecutionCreatedEvent & ExecutionTraceable)
+  | (AgentAssignedEvent & ExecutionTraceable)
+  | (ThinkingStartedEvent & ExecutionTraceable)
+  | (ThinkingUpdateEvent & ExecutionTraceable)
+  | (PlanCreatedEvent & ExecutionTraceable)
+  | (PlanUpdatedEvent & ExecutionTraceable)
+  | (ToolStartEvent & ExecutionTraceable)
+  | (ToolProgressEvent & ExecutionTraceable)
+  | (ToolCompleteEvent & ExecutionTraceable)
+  | (ToolErrorEvent & ExecutionTraceable)
+  | (FileReadEvent & ExecutionTraceable)
+  | (FileWriteEvent & ExecutionTraceable)
+  | (FileEditEvent & ExecutionTraceable)
+  | (ContextLoadingEvent & ExecutionTraceable)
+  | (ContextReadyEvent & ExecutionTraceable)
+  | (ProviderConnectingEvent & ExecutionTraceable)
+  | (ProviderConnectedEvent & ExecutionTraceable)
+  | (TokenEvent & ExecutionTraceable)
+  | (MessageUpdateEvent & ExecutionTraceable)
+  | (MessageCompleteEvent & ExecutionTraceable)
+  | (ExecutionCompleteEvent & ExecutionTraceable)
+  | (ExecutionFailedEvent & ExecutionTraceable)
+  | (CommandStartEvent & ExecutionTraceable)
+  | (CommandOutputEvent & ExecutionTraceable)
+  | (CommandCompleteEvent & ExecutionTraceable)
+  | (CommandErrorEvent & ExecutionTraceable)
+  | (ActionEvent & ExecutionTraceable)
+  | (SynthesisCompleteEvent & ExecutionTraceable)
+  | (FallbackActivatedEvent & ExecutionTraceable)
+  | (ToolsExposedEvent & ExecutionTraceable)
+  | (VerifyPassedEvent & ExecutionTraceable)
+  | (VerifyFailedEvent & ExecutionTraceable)
+  | (GoalAchievedEvent & ExecutionTraceable)
+  | (BrowserSessionCreatedEvent & ExecutionTraceable)
+  | (BrowserSessionRestoredEvent & ExecutionTraceable)
+  | (BrowserNavigateEvent & ExecutionTraceable)
+  | (BrowserClickEvent & ExecutionTraceable)
+  | (BrowserTypeEvent & ExecutionTraceable)
+  | (BrowserScrollEvent & ExecutionTraceable)
+  | (BrowserScreenshotEvent & ExecutionTraceable)
+  | (BrowserDomCaptureEvent & ExecutionTraceable)
+  | (BrowserJsExecutedEvent & ExecutionTraceable)
+  | (BrowserTabCreatedEvent & ExecutionTraceable)
+  | (BrowserTabClosedEvent & ExecutionTraceable)
+  | (BrowserErrorEvent & ExecutionTraceable)
 
 export type ExecutionEventHandler = (event: ExecutionEvent) => void
 export type ExecutionEventGenerator = AsyncGenerator<ExecutionEvent, void, void>

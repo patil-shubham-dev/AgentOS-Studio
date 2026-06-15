@@ -6,11 +6,11 @@ import { useWorkspaceStore } from '@/stores/workspace-store'
 
 async function readTextFile(path: string): Promise<string> {
   if (typeof window !== 'undefined' && (window as any).electronAPI) {
-    const { readTextFile: shimRead } = await import('@/lib/tauri-shims/fs')
-    return shimRead(path)
+      const { readTextFile: shimRead } = await import('@/lib/electron-api')
+      return shimRead(path)
   }
   try {
-    const fs = await import('@tauri-apps/plugin-fs')
+    const fs = await import('@/lib/electron-api')
     return await fs.readTextFile(path)
   } catch {
     throw new Error('File system not available in this environment')

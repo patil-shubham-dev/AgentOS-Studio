@@ -16,6 +16,7 @@ import {
   Layers,
 } from "lucide-react"
 import { PremiumEmptyState, getDesignEmptyState } from "./premium-empty-state"
+import { DesignPreviewSkeleton } from "@/components/ui/Skeleton"
 
 // ── Placeholder code for empty state (no fake artifacts) ──
 
@@ -228,6 +229,7 @@ export function DesignWorkspace() {
   const [previewMode, setPreviewMode] = useState<"code" | "visual" | "split">("split")
   const [devicePreset, setDevicePreset] = useState(DEVICE_PRESETS[0])
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [previewLoading, setPreviewLoading] = useState(false)
 
   const currentArtifact = useMemo(() => {
     return artifacts.find((a) => a.id === currentArtifactId) ?? null
@@ -248,6 +250,11 @@ export function DesignWorkspace() {
         a.tags.some((t) => t.toLowerCase().includes(q)),
     )
   }, [artifacts, search])
+
+  // ── Show loading skeleton when preview content changes ──
+  useEffect(() => {
+    setPreviewLoading(true)
+  }, [htmlPreviewSrc])
 
   // ── Create artifact from clipboard ──
   const handleImportClipboard = useCallback(async () => {
@@ -305,7 +312,7 @@ export function DesignWorkspace() {
 
       // Try Tauri invoke first
       try {
-        const { invoke } = await import("@tauri-apps/api/core")
+        const { invoke } = await import("@/lib/electron-api")
         await invoke("write_text_file", { path: targetPath, content })
       } catch {
         // Web fallback: download as blob
@@ -722,15 +729,18 @@ export function DesignWorkspace() {
                   </div>
                   <div className="flex-1 overflow-auto bg-muted/20 flex items-start justify-center p-4">
                     {currentVersionData ? (
-                      <div
-                        className="transition-all duration-200 overflow-hidden rounded-lg border border-white/[0.06]"
+                      <div className="relative transition-all duration-200 overflow-hidden rounded-lg border border-white/[0.06]"
                         style={{ width: Math.min(devicePreset.width, 750), height: Math.min(devicePreset.height, 500) }}
                       >
+                        {previewLoading && (
+                          <div className="absolute inset-0 z-10"><DesignPreviewSkeleton /></div>
+                        )}
                         <iframe
                           srcDoc={htmlPreviewSrc}
                           title="Design Preview"
                           className="w-full h-full bg-[#0a0a0b]"
                           sandbox="allow-scripts"
+                          onLoad={() => setPreviewLoading(false)}
                         />
                       </div>
                     ) : (

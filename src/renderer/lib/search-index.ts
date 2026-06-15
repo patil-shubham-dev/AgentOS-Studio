@@ -5,6 +5,7 @@ export interface IndexedFile {
   name: string
   extension: string
   size: number
+  mtime?: number
   cachedContent: string | null
 }
 
@@ -52,9 +53,7 @@ export function fuzzyMatch(query: string, text: string): FuzzyScore | null {
   while (queryIdx < queryLower.length && textIdx < textLower.length) {
     if (queryLower[queryIdx] === textLower[textIdx]) {
       matchPositions.push(textIdx)
-      if (textIdx === prevMatchEnd + 1) {
-        consecutiveBonus += 5
-      }
+      if (textIdx === prevMatchEnd + 1) consecutiveBonus += 5
       prevMatchEnd = textIdx
       queryIdx++
     }
@@ -76,9 +75,22 @@ export function fuzzyMatch(query: string, text: string): FuzzyScore | null {
 const MAX_CACHED_FILE_SIZE = 512 * 1024
 const MAX_MEMORY_CACHE = 200 * 1024 * 1024
 const SEARCH_BATCH_SIZE = 500
+const MAX_INDEXED_FILES = 50000
 
-const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "coverage", "vendor", ".next", ".cache", "__pycache__"])
-const SKIP_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".map", ".min.js", ".min.css"])
+const SKIP_DIRS = new Set([
+  "node_modules", ".git", "dist", "build", "coverage", "vendor",
+  ".next", ".cache", "__pycache__", ".yarn", ".pnp", ".turbo",
+  ".nuxt", ".output", ".vercel", "target", "out",
+])
+
+const SKIP_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
+  ".woff", ".woff2", ".ttf", ".eot", ".otf",
+  ".map", ".min.js", ".min.css",
+  ".mp4", ".webm", ".ogg", ".mp3", ".wav",
+  ".zip", ".tar", ".gz", ".rar",
+  ".wasm", ".pyc", ".exe", ".dll", ".so", ".dylib",
+])
 
 function shouldSkipDir(name: string): boolean {
   return SKIP_DIRS.has(name) || name.startsWith(".")
@@ -169,6 +181,8 @@ export class SearchIndex {
   private ready = false
   private scanning = false
   private contentCache = new LRUContentCache(MAX_MEMORY_CACHE)
+  private incrementalFileSet = new Set<string>()
+  private dirtyFiles = new Set<string>()
 
   get isReady(): boolean {
     return this.ready
@@ -182,15 +196,21 @@ export class SearchIndex {
     return this.contentCache.count
   }
 
-  async initialize(entries: FileEntry[], rootPath: string | null, signal?: AbortSignal): Promise<void> {
+  async initialize(
+    entries: FileEntry[],
+    rootPath: string | null,
+    signal?: AbortSignal
+  ): Promise<void> {
     this.scanning = true
     this.files = []
     this.contentCache.clear()
+    this.incrementalFileSet.clear()
+    this.dirtyFiles.clear()
 
     const flat = flattenFileTree(entries)
     const batchSize = 50
 
-    for (let i = 0; i < flat.length; i += batchSize) {
+    for (let i = 0; i < Math.min(flat.length, MAX_INDEXED_FILES); i += batchSize) {
       if (signal?.aborted) {
         this.scanning = false
         this.ready = true
@@ -200,6 +220,7 @@ export class SearchIndex {
       const indexed = await Promise.all(
         batch.map(async (entry) => {
           const ext = entry.name.split(".").pop()?.toLowerCase() ?? ""
+          this.incrementalFileSet.add(entry.path)
           return {
             path: entry.path,
             name: entry.name,
@@ -207,7 +228,7 @@ export class SearchIndex {
             size: entry.size ?? 0,
             cachedContent: null,
           } as IndexedFile
-        }),
+        })
       )
       this.files.push(...indexed)
     }
@@ -216,7 +237,10 @@ export class SearchIndex {
     this.scanning = false
   }
 
-  async ensureContentCached(filePath: string, rootPath: string | null): Promise<string | null> {
+  async ensureContentCached(
+    filePath: string,
+    rootPath: string | null
+  ): Promise<string | null> {
     const cached = this.contentCache.get(filePath)
     if (cached !== undefined) return cached
 
@@ -226,7 +250,9 @@ export class SearchIndex {
     if (file.size > MAX_CACHED_FILE_SIZE) return null
 
     try {
-      const fullPath = rootPath ? `${rootPath}\\${filePath.replace(/\//g, "\\")}` : filePath
+      const fullPath = rootPath
+        ? `${rootPath}\\${filePath.replace(/\//g, "\\")}`
+        : filePath
       const content = await readFileContent(fullPath)
       this.contentCache.set(filePath, content)
       file.cachedContent = content
@@ -236,34 +262,44 @@ export class SearchIndex {
     }
   }
 
-  async ensureBatchContentCached(filePaths: string[], rootPath: string | null): Promise<void> {
-    const uncached = filePaths.filter((fp) => this.contentCache.get(fp) === undefined)
+  async ensureBatchContentCached(
+    filePaths: string[],
+    rootPath: string | null
+  ): Promise<void> {
+    const uncached = filePaths.filter(
+      (fp) => this.contentCache.get(fp) === undefined
+    )
     if (uncached.length === 0) return
 
     const batch = uncached.slice(0, 50)
     await Promise.all(
       batch.map(async (fp) => {
         const file = this.files.find((f) => f.path === fp)
-        if (!file || shouldSkipFile(file.name) || file.size > MAX_CACHED_FILE_SIZE) return
+        if (!file || shouldSkipFile(file.name) || file.size > MAX_CACHED_FILE_SIZE)
+          return
         try {
-          const fullPath = rootPath ? `${rootPath}\\${fp.replace(/\//g, "\\")}` : fp
+          const fullPath = rootPath
+            ? `${rootPath}\\${fp.replace(/\//g, "\\")}`
+            : fp
           const content = await readFileContent(fullPath)
           this.contentCache.set(fp, content)
           file.cachedContent = content
         } catch {
           // skip
         }
-      }),
+      })
     )
   }
 
   async search(
     query: SearchQuery,
-    onProgress?: SearchCallback,
+    onProgress?: SearchCallback
   ): Promise<SearchResult[]> {
     if (!query.query.trim()) return []
 
-    const needle = query.caseSensitive ? query.query.trim() : query.query.trim().toLowerCase()
+    const needle = query.caseSensitive
+      ? query.query.trim()
+      : query.query.trim().toLowerCase()
     const maxResults = query.maxResults ?? 200
     const results: SearchResult[] = []
     const startTime = Date.now()
@@ -281,7 +317,11 @@ export class SearchIndex {
       })
     }
 
-    if (query.mode === "filename" || query.mode === "fuzzy" || query.mode === "path") {
+    if (
+      query.mode === "filename" ||
+      query.mode === "fuzzy" ||
+      query.mode === "path"
+    ) {
       const fuzzy = query.mode === "fuzzy" || query.mode === "path"
       const q = query.query.trim()
       const scored: Array<{ result: SearchResult; score: number }> = []
@@ -294,7 +334,9 @@ export class SearchIndex {
         filesScanned++
 
         if (query.mode === "filename") {
-          const name = query.caseSensitive ? file.name : file.name.toLowerCase()
+          const name = query.caseSensitive
+            ? file.name
+            : file.name.toLowerCase()
           if (name.includes(needle)) {
             results.push({
               filePath: file.path,
@@ -308,7 +350,12 @@ export class SearchIndex {
           const text = query.mode === "path" ? file.path : file.name
           const match = fuzzyMatch(q, text)
           if (match) {
-            const nameOnly = query.mode === "fuzzy" && !file.path.includes("/") && !file.path.includes("\\") ? 10 : 0
+            const nameOnly =
+              query.mode === "fuzzy" &&
+              !file.path.includes("/") &&
+              !file.path.includes("\\")
+                ? 10
+                : 0
             scored.push({
               result: {
                 filePath: file.path,
@@ -322,9 +369,7 @@ export class SearchIndex {
           }
         }
 
-        if (filesScanned % SEARCH_BATCH_SIZE === 0) {
-          reportProgress("searching")
-        }
+        if (filesScanned % SEARCH_BATCH_SIZE === 0) reportProgress("searching")
       }
 
       if (fuzzy) {
@@ -345,7 +390,7 @@ export class SearchIndex {
 
       await this.ensureBatchContentCached(
         batch.filter((f) => !shouldSkipFile(f.name)).map((f) => f.path),
-        null,
+        null
       )
 
       for (const file of batch) {
@@ -353,18 +398,27 @@ export class SearchIndex {
         if (query.extension && file.extension !== query.extension) continue
         if (shouldSkipFile(file.name)) continue
 
-        const content = this.contentCache.get(file.path) ?? file.cachedContent
+        const content =
+          this.contentCache.get(file.path) ?? file.cachedContent
         if (content === null) continue
 
         const lines = content.split("\n")
-        const fileMatches: Array<{ line: number; lineContent: string; column?: number }> = []
+        const fileMatches: Array<{
+          line: number
+          lineContent: string
+          column?: number
+        }> = []
 
         for (let ln = 0; ln < lines.length; ln++) {
           const line = lines[ln]
           const haystack = query.caseSensitive ? line : line.toLowerCase()
           const col = haystack.indexOf(needle)
           if (col !== -1) {
-            fileMatches.push({ line: ln + 1, lineContent: line.trim(), column: col + 1 })
+            fileMatches.push({
+              line: ln + 1,
+              lineContent: line.trim(),
+              column: col + 1,
+            })
           }
         }
 
@@ -385,19 +439,40 @@ export class SearchIndex {
     return results
   }
 
-  async reindexFile(path: string, rootPath: string | null): Promise<void> {
+  reindexFile(path: string, rootPath: string | null): Promise<void> {
     const idx = this.files.findIndex((f) => f.path === path)
-    if (idx === -1) return
+    if (idx === -1) return Promise.resolve()
 
     const file = this.files[idx]
-    if (shouldSkipFile(file.name)) return
+    if (shouldSkipFile(file.name)) return Promise.resolve()
 
     this.contentCache.delete(path)
     file.cachedContent = null
+    return Promise.resolve()
+  }
+
+  markDirty(path: string): void {
+    this.dirtyFiles.add(path)
+  }
+
+  getDirtyFiles(): string[] {
+    return Array.from(this.dirtyFiles)
+  }
+
+  clearDirty(path?: string): void {
+    if (path) this.dirtyFiles.delete(path)
+    else this.dirtyFiles.clear()
   }
 
   addFile(path: string, name: string, size: number): void {
     if (this.files.some((f) => f.path === path)) return
+    if (this.files.length >= MAX_INDEXED_FILES) {
+      const oldest = this.files.shift()
+      if (oldest) {
+        this.contentCache.delete(oldest.path)
+        this.incrementalFileSet.delete(oldest.path)
+      }
+    }
     const ext = name.split(".").pop()?.toLowerCase() ?? ""
     this.files.push({
       path,
@@ -406,35 +481,48 @@ export class SearchIndex {
       size,
       cachedContent: null,
     })
+    this.incrementalFileSet.add(path)
   }
 
   removeFile(path: string): void {
     const idx = this.files.findIndex((f) => f.path === path)
-    if (idx !== -1) {
-      this.files.splice(idx, 1)
-    }
+    if (idx !== -1) this.files.splice(idx, 1)
     this.contentCache.delete(path)
+    this.incrementalFileSet.delete(path)
+    this.dirtyFiles.delete(path)
   }
 
   renameFile(oldPath: string, newPath: string, newName: string): void {
     const file = this.files.find((f) => f.path === oldPath)
     if (file) {
       this.contentCache.delete(oldPath)
+      this.incrementalFileSet.delete(oldPath)
       file.path = newPath
       file.name = newName
       file.extension = newName.split(".").pop()?.toLowerCase() ?? ""
+      this.incrementalFileSet.add(newPath)
     }
+  }
+
+  getFile(path: string): IndexedFile | undefined {
+    return this.files.find((f) => f.path === path)
   }
 
   getFileCount(): number {
     return this.files.length
   }
 
-  getStats(): { totalFiles: number; cachedFiles: number; memoryEstimateKB: number } {
+  getStats(): {
+    totalFiles: number
+    cachedFiles: number
+    memoryEstimateKB: number
+    incrementalSetSize: number
+  } {
     return {
       totalFiles: this.files.length,
       cachedFiles: this.contentCache.count,
       memoryEstimateKB: Math.round(this.contentCache.size / 1024),
+      incrementalSetSize: this.incrementalFileSet.size,
     }
   }
 
@@ -442,6 +530,8 @@ export class SearchIndex {
     this.files = []
     this.ready = false
     this.contentCache.clear()
+    this.incrementalFileSet.clear()
+    this.dirtyFiles.clear()
   }
 }
 
@@ -449,11 +539,11 @@ export const workspaceIndex = new SearchIndex()
 
 async function readFileContent(path: string): Promise<string> {
   try {
-    const fs = await import("@tauri-apps/plugin-fs")
+    const fs = await import("@/lib/electron-api")
     return await fs.readTextFile(path)
   } catch {
     try {
-      const core = await import("@tauri-apps/api/core")
+      const core = await import("@/lib/electron-api")
       return String(await core.invoke("read_text_file", { path }))
     } catch {
       throw new Error("Cannot read file")

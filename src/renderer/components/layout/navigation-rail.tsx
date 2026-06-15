@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   Code2,
   Users,
-  Smartphone,
   Settings,
   ScrollText,
   GitBranch,
@@ -16,6 +15,8 @@ import {
   User,
   Pin,
   PinOff,
+  Brain,
+  Activity,
 } from "lucide-react"
 
 interface NavItem {
@@ -29,6 +30,11 @@ const TOP_NAV_ITEMS: NavItem[] = [
   { id: "control-center", label: "Dashboard", icon: <LayoutDashboard className="h-5 w-5" />, route: "/" },
   { id: "code-canvas", label: "Workspace", icon: <Code2 className="h-5 w-5" />, route: "/code-canvas" },
   { id: "agents", label: "Agents", icon: <Users className="h-5 w-5" />, route: "/agents" },
+]
+
+const MONITOR_NAV_ITEMS: NavItem[] = [
+  { id: "memory", label: "Memory", icon: <Brain className="h-5 w-5" />, route: "/memory" },
+  { id: "context", label: "Context", icon: <Activity className="h-5 w-5" />, route: "/context" },
 ]
 
 const BOTTOM_NAV_ITEMS: NavItem[] = [
@@ -148,6 +154,22 @@ export function NavigationRail() {
       {/* Top section: main navigation */}
       <div className="flex flex-col gap-0.5 px-2 pt-3 pb-2 flex-1">
         {TOP_NAV_ITEMS.map((item) => (
+          <NavItemButton
+            key={item.id}
+            item={item}
+            expanded={expanded}
+            isActive={isActive(item)}
+            onNavigate={navigate}
+          />
+        ))}
+
+        {/* Monitor section label */}
+        {expanded && (
+          <div className="px-3 pt-4 pb-1">
+            <span className="text-[9px] text-white/20 uppercase tracking-wider font-medium">Monitor</span>
+          </div>
+        )}
+        {MONITOR_NAV_ITEMS.map((item) => (
           <NavItemButton
             key={item.id}
             item={item}

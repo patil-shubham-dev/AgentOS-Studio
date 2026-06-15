@@ -1,12 +1,15 @@
 import { type ReactNode } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { NavigationRail } from '@/components/layout/navigation-rail'
-import { Toasts } from '@agentic-os/ui'
+import { Toasts } from '@/components/ui/Toasts'
 import { SafeErrorBoundary, SidebarBoundary, WorkspaceBoundary } from '../error-boundaries'
 import { useApprovalStore } from '../../runtime/approval-gate'
 import { useAgentStore } from '../../stores/agent-store'
 import { useLeakTracker } from '@/performance/leak-detector'
 import { ExecutionOrchestrator } from '@/runtime/execution/ExecutionOrchestrator'
+import { fadeInUp } from '@/lib/motion'
+import { useReducedMotion } from '@/lib/reduced-motion'
 
 function ApprovalToast() {
   const { pending, approve, reject } = useApprovalStore()
@@ -81,7 +84,9 @@ export function AppShell() {
       </SidebarBoundary>
       <WorkspaceBoundary>
         <main className="flex-1 overflow-hidden min-h-0 min-w-0">
-          <Outlet />
+          <AnimatePresence mode="wait">
+            <Outlet />
+          </AnimatePresence>
         </main>
       </WorkspaceBoundary>
       <Toasts />
@@ -93,7 +98,26 @@ export function AppShell() {
 
 export function RouteContainer({ children }: { children: ReactNode }) {
   useLeakTracker("RouteContainer")
-  return <SafeErrorBoundary name="Route">{children}</SafeErrorBoundary>
+  const location = useLocation()
+  const { reducedMotion } = useReducedMotion()
+  return (
+    <SafeErrorBoundary name="Route">
+      {reducedMotion ? (
+        <div className="h-full">{children}</div>
+      ) : (
+        <motion.div
+          key={location.pathname}
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          className="h-full"
+        >
+          {children}
+        </motion.div>
+      )}
+    </SafeErrorBoundary>
+  )
 }
 
 export { SafeErrorBoundary }

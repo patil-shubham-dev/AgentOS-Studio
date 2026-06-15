@@ -469,6 +469,17 @@ async function attemptStreamingRound(
     let pendingToolCalls: import("@agentic-os/providers").ToolCall[] = []
 
     return await new Promise((resolve, reject) => {
+      const onAbort = () => {
+        cleanup()
+        reject(new DOMException('Sub-agent streaming aborted', 'AbortError'))
+      }
+
+      signal?.addEventListener('abort', onAbort, { once: true })
+
+      const cleanup = () => {
+        signal?.removeEventListener('abort', onAbort)
+      }
+
       streamChatCompletion(
         endpoint,
         apiKey,
@@ -482,6 +493,7 @@ async function attemptStreamingRound(
             streamedContent += token
           },
           onDone: (fullContent: string, _meta) => {
+            cleanup()
             const meta = _meta as { toolCalls?: import("@agentic-os/providers").ToolCall[] } | undefined
             const toolCalls = meta?.toolCalls ?? pendingToolCalls
             resolve({
@@ -491,6 +503,7 @@ async function attemptStreamingRound(
             })
           },
           onError: (err: Error) => {
+            cleanup()
             reject(err)
           },
         },

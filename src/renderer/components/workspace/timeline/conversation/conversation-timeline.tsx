@@ -1,5 +1,5 @@
-import { useRef, useEffect, useMemo, useState } from "react"
-import { motion } from "framer-motion"
+import { useRef, useEffect, useMemo, useState, useCallback } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import { ChevronDown, Terminal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTimelineStore } from "../timeline-store"
@@ -9,6 +9,9 @@ import { TerminalPane } from "./TerminalPane"
 import type { UserMessageEvent } from "../types"
 import type { AgentSession } from "../timeline-store"
 import { QuickActions } from "../QuickActions"
+import { PremiumEmptyState, getTimelineEmptyState } from "@/components/workspace/premium-empty-state"
+import { getSpringConfig } from "@/lib/motion"
+import { useReducedMotion } from "@/lib/reduced-motion"
 
 interface ConversationTimelineProps {
   onSendMessage?: (prompt: string) => void
@@ -21,11 +24,14 @@ interface ConversationTurn {
 
 export function ConversationTimeline({ onSendMessage }: ConversationTimelineProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
   const events = useTimelineStore((s) => s.events)
   const agentSessions = useTimelineStore((s) => s.agentSessions)
+  const streamingTexts = useTimelineStore((s) => s.streamingTexts)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [terminalPaneOpen, setTerminalPaneOpen] = useState(false)
+  const reduced = useReducedMotion()
 
   const latestSessionWithTerminals = useMemo(() => {
     for (const [stepId, session] of agentSessions) {
@@ -34,6 +40,8 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
     return null
   }, [agentSessions])
 
+  // Smart scroll anchoring: auto-scroll to bottom when new content arrives,
+  // but only if user is already at or near the bottom.
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !isAtBottom) return
@@ -42,6 +50,12 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
     })
     return () => cancelAnimationFrame(raf)
   })
+
+  // Scroll to bottom smoothly on new event or text
+  useEffect(() => {
+    if (!isAtBottom || !bottomRef.current) return
+    bottomRef.current.scrollIntoView({ behavior: reduced ? "auto" : "smooth" })
+  }, [events.length, streamingTexts.size, isAtBottom, reduced])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -55,6 +69,13 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
     el.addEventListener("scroll", handleScroll, { passive: true })
     return () => el.removeEventListener("scroll", handleScroll)
   }, [])
+
+  const scrollToBottom = useCallback(() => {
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: reduced ? "auto" : "smooth",
+    })
+  }, [reduced])
 
   const hasItems = events.length > 0 || agentSessions.size > 0
 
@@ -96,7 +117,10 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
       >
         <div className="mx-auto max-w-[min(100%,44rem)]">
           {!hasItems ? (
-            <QuickActions onActionClick={(prompt) => onSendMessage?.(prompt)} className="py-20" />
+            <PremiumEmptyState
+              config={getTimelineEmptyState(onSendMessage ? (text) => onSendMessage(text) : undefined)}
+              className="py-20"
+            />
           ) : (
             <div className="py-3 space-y-3">
               {conversationTurns.map((turn, idx) => {
@@ -134,6 +158,7 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
                   </div>
                 )
               })}
+              <div ref={bottomRef} />
             </div>
           )}
         </div>
@@ -164,19 +189,21 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
       )}
 
       {/* Scroll anchor indicator - spring-animated */}
-      {showScrollButton && hasItems && (
-        <motion.button
-          initial={{ opacity: 0, y: 8, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 8, scale: 0.9 }}
-          transition={{ type: "spring", stiffness: 400, damping: 28 }}
-          onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-medium bg-[#0c0c0d]/95 backdrop-blur-xl border border-white/[0.08] text-white/50 hover:text-white/80 hover:border-white/[0.12] shadow-lg shadow-black/40 transition-colors z-20"
-        >
-          <ChevronDown className="h-3 w-3" />
-          <span>New content below</span>
-        </motion.button>
-      )}
+      <AnimatePresence>
+        {showScrollButton && hasItems && (
+          <motion.button
+            initial={{ opacity: 0, y: 8, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.9 }}
+            transition={getSpringConfig("stiff")}
+            onClick={scrollToBottom}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-medium bg-[#0c0c0d]/95 backdrop-blur-xl border border-white/[0.08] text-white/50 hover:text-white/80 hover:border-white/[0.12] shadow-lg shadow-black/40 transition-colors z-20"
+          >
+            <ChevronDown className="h-3 w-3" />
+            <span>New content below</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

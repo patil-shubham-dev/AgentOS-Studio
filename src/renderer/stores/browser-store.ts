@@ -34,7 +34,8 @@ interface PersistableTab {
 }
 
 interface PersistableSession {
-  id: string; name: string; tabs: PersistableTab[]; activeTabId: string | null; createdAt: number; workspaceRoot?: string
+  id: string; name: string; tabs: PersistableTab[]; activeTabId: string | null; createdAt: number; workspaceRoot?: string;
+  screenshot: string | null; logs: string[]
 }
 
 interface BrowserStore {
@@ -233,6 +234,8 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
       activeTabId: s.activeTabId,
       createdAt: s.createdAt,
       workspaceRoot: s.workspaceRoot,
+      screenshot: s.screenshot,
+      logs: s.logs,
     }))
     try {
       localStorage.setItem(PERSIST_KEY, JSON.stringify({ sessions: persistable, activeSessionId, workspaceRoot }))
@@ -244,31 +247,39 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
       const raw = localStorage.getItem(PERSIST_KEY)
       if (!raw) return
       const data = JSON.parse(raw) as {
-        sessions: PersistableSession[]
+        sessions: unknown
         activeSessionId: string | null
         workspaceRoot: string | null
       }
+      if (!Array.isArray(data.sessions)) {
+        console.warn("[browser-store] restoreState: sessions is not an array, resetting")
+        return
+      }
       const { workspaceRoot } = get()
-      const filtered = workspaceRoot
-        ? data.sessions.filter((s) => s.workspaceRoot === workspaceRoot)
-        : data.sessions
+      const filtered = workspaceRoot && Array.isArray(data.sessions)
+        ? (data.sessions as PersistableSession[]).filter((s) => s.workspaceRoot === workspaceRoot)
+        : (data.sessions as PersistableSession[])
       set({
         sessions: filtered.map((s) => ({
           id: s.id,
           name: s.name,
-          tabs: s.tabs.map((t) => ({
-            id: t.id, url: t.url, title: t.title, history: t.history, historyIndex: t.historyIndex,
-          })),
+          tabs: Array.isArray(s.tabs)
+            ? s.tabs.map((t) => ({
+                id: t.id, url: t.url, title: t.title, history: t.history, historyIndex: t.historyIndex,
+              }))
+            : [],
           activeTabId: s.activeTabId,
-          screenshot: null,
-          logs: [],
+          screenshot: s.screenshot ?? null,
+          logs: Array.isArray(s.logs) ? s.logs : [],
           createdAt: s.createdAt,
           workspaceRoot: s.workspaceRoot,
         })),
         activeSessionId: data.activeSessionId,
         workspaceRoot: data.workspaceRoot,
       })
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn("[browser-store] restoreState failed:", err)
+    }
   },
 
   persistResearch: () => {

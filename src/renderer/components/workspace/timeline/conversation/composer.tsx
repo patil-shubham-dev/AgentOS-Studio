@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect, type KeyboardEvent } from "react"
+import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import {
   Send, Square, Slash, AtSign, Code2, Palette,
   Globe, Bug, Search, RefreshCw, FileText,
-  Terminal, Paperclip, Loader2,
+  Terminal, Paperclip, Loader2, Sparkles,
 } from "lucide-react"
 
 const SLASH_COMMANDS = [
@@ -16,6 +16,7 @@ const SLASH_COMMANDS = [
   { id: "/design", label: "Design", icon: Palette, description: "Generate UI designs" },
   { id: "/browse", label: "Browse", icon: Globe, description: "Browse or scrape a URL" },
   { id: "/terminal", label: "Terminal", icon: Terminal, description: "Run a terminal command" },
+  { id: "/plan", label: "Plan", icon: Sparkles, description: "Plan approach before executing" },
 ]
 
 const AGENT_MENTIONS = [
@@ -152,15 +153,28 @@ export function Composer({
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={{ duration: 0.12, ease: "easeOut" }}
             role="listbox"
+            aria-label="Slash commands"
             className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-white/[0.06] bg-[#0c0c0d]/98 backdrop-blur-2xl shadow-2xl shadow-black/60 overflow-hidden z-50"
           >
-            <div className="px-3 py-1.5 text-[8px] text-white/15 font-medium uppercase tracking-wider border-b border-white/[0.03]">Commands</div>
-            <div className="max-h-48 overflow-y-auto p-1">
+            <div className="px-3 py-1.5 text-[8px] text-white/15 font-medium uppercase tracking-wider border-b border-white/[0.03]">
+              Commands
+              <span className="ml-2 text-white/10 font-normal normal-case">Tab to select, Esc to close</span>
+            </div>
+            <div className="max-h-48 overflow-y-auto p-1" role="presentation">
               {filteredCommands.map((cmd, idx) => {
                 const Icon = cmd.icon
                 return (
-                  <button key={cmd.id} role="option" aria-selected={idx === selectedIndex} onClick={() => insertCommand(cmd.id)} onMouseEnter={() => setSelectedIndex(idx)}
-                    className={cn("flex w-full items-center gap-2.5 px-2.5 py-2 text-left rounded-lg transition-all", idx === selectedIndex ? "bg-blue-500/10" : "hover:bg-white/[0.03]")}>
+                  <button
+                    key={cmd.id}
+                    role="option"
+                    aria-selected={idx === selectedIndex}
+                    onClick={() => insertCommand(cmd.id)}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 px-2.5 py-2 text-left rounded-lg transition-all",
+                      idx === selectedIndex ? "bg-blue-500/10" : "hover:bg-white/[0.03]"
+                    )}
+                  >
                     <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-blue-500/10 shrink-0">
                       <Icon className="h-3 w-3 text-blue-400" />
                     </div>
@@ -189,15 +203,28 @@ export function Composer({
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={{ duration: 0.12, ease: "easeOut" }}
             role="listbox"
+            aria-label="Agent mentions"
             className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-white/[0.06] bg-[#0c0c0d]/98 backdrop-blur-2xl shadow-2xl shadow-black/60 overflow-hidden z-50"
           >
-            <div className="px-3 py-1.5 text-[8px] text-white/15 font-medium uppercase tracking-wider border-b border-white/[0.03]">Agents</div>
-            <div className="max-h-48 overflow-y-auto p-1">
+            <div className="px-3 py-1.5 text-[8px] text-white/15 font-medium uppercase tracking-wider border-b border-white/[0.03]">
+              Agents
+              <span className="ml-2 text-white/10 font-normal normal-case">@mention an agent</span>
+            </div>
+            <div className="max-h-48 overflow-y-auto p-1" role="presentation">
               {filteredMentions.map((agent, idx) => {
                 const Icon = agent.icon
                 return (
-                  <button key={agent.id} role="option" aria-selected={idx === selectedIndex} onClick={() => insertMention(agent.id)} onMouseEnter={() => setSelectedIndex(idx)}
-                    className={cn("flex w-full items-center gap-2.5 px-2.5 py-2 text-left rounded-lg transition-all", idx === selectedIndex ? "bg-purple-500/10" : "hover:bg-white/[0.03]")}>
+                  <button
+                    key={agent.id}
+                    role="option"
+                    aria-selected={idx === selectedIndex}
+                    onClick={() => insertMention(agent.id)}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 px-2.5 py-2 text-left rounded-lg transition-all",
+                      idx === selectedIndex ? "bg-purple-500/10" : "hover:bg-white/[0.03]"
+                    )}
+                  >
                     <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-purple-500/10 shrink-0">
                       <Icon className="h-3 w-3 text-purple-400" />
                     </div>
@@ -230,13 +257,14 @@ export function Composer({
         }}
         className="relative rounded-2xl border transition-colors duration-200 bg-[#0c0c0d]"
       >
-        <div className={cn("absolute inset-0 rounded-2xl transition-opacity duration-500 pointer-events-none", isFocused ? "opacity-[0.03]" : "opacity-0")}>
+        <div className={cn(
+          "absolute inset-0 rounded-2xl transition-opacity duration-500 pointer-events-none",
+          isFocused ? "opacity-[0.03]" : "opacity-0"
+        )}>
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500 via-purple-500 to-cyan-500" />
         </div>
 
         <div className="relative px-3.5 pt-2.5 pb-1.5">
-
-
           {/* Processing indicator - subtle inline, no blocking overlay */}
           {isProcessing && (
             <div className="absolute top-2.5 right-3.5">
@@ -254,6 +282,7 @@ export function Composer({
             placeholder={isProcessing ? "" : placeholder}
             disabled={isProcessing}
             aria-label="Message input"
+            aria-describedby={showCommands ? "composer-commands" : showMentions ? "composer-mentions" : undefined}
             className={cn(
               "w-full resize-none bg-transparent outline-none transition-colors",
               "text-[13.5px] text-foreground/85 placeholder:text-foreground/10",
@@ -282,18 +311,21 @@ export function Composer({
               </>
             )}
             {!isProcessing && input.length === 0 && (
-              <button className="rounded p-0.5 text-white/10 hover:text-white/25 transition-colors">
+              <button className="rounded p-0.5 text-white/10 hover:text-white/25 transition-colors" aria-label="Attach file">
                 <Paperclip className="h-3 w-3" />
               </button>
             )}
             {isCancelling && (
-              <span className="text-[9px] text-red-400/60 font-medium animate-pulse mr-1">Cancelling...</span>
+              <span className="text-[9px] text-red-400/60 font-medium animate-pulse mr-1" role="status" aria-live="polite">Cancelling...</span>
             )}
             {input.length > 0 && (
-              <span className={cn(
-                "text-[9px] font-mono transition-colors",
-                input.length > 3800 ? "text-red-400/50" : input.length > 3000 ? "text-amber-400/40" : "text-white/12"
-              )}>
+              <span
+                className={cn(
+                  "text-[9px] font-mono transition-colors",
+                  input.length > 3800 ? "text-red-400/50" : input.length > 3000 ? "text-amber-400/40" : "text-white/12"
+                )}
+                aria-live="polite"
+              >
                 {input.length}/4000
               </span>
             )}
@@ -301,9 +333,9 @@ export function Composer({
 
           <div className="flex items-center gap-1.5">
             {input.length > 0 && (
-              <span className="flex items-center gap-1 text-[7px] text-white/12 font-mono">
-                <kbd className="h-3.5 min-w-[14px] px-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-white/20 flex items-center justify-center text-[6px]">⌘</kbd>
-                <kbd className="h-3.5 min-w-[14px] px-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-white/20 flex items-center justify-center text-[6px]">↵</kbd>
+              <span className="flex items-center gap-1 text-[7px] text-white/12 font-mono" aria-hidden="true">
+                <kbd className="h-3.5 min-w-[14px] px-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-white/20 flex items-center justify-center text-[6px]">\u2318</kbd>
+                <kbd className="h-3.5 min-w-[14px] px-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-white/20 flex items-center justify-center text-[6px]">\u21B5</kbd>
                 <span className="text-white/8">send</span>
               </span>
             )}

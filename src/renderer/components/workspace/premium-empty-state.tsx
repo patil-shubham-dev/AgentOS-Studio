@@ -240,10 +240,73 @@ function BrowserIllustration() {
   )
 }
 
+function DesignIllustration() {
+  return (
+    <svg viewBox="0 0 120 80" className="w-24 h-16" fill="none">
+      <motion.rect
+        x="10" y="12" width="100" height="56" rx="6"
+        className="fill-white/[0.02] stroke-white/[0.08]" strokeWidth="1"
+        initial={{ opacity: 0, scaleY: 0.9 }}
+        animate={{ opacity: 1, scaleY: 1 }}
+        transition={{ duration: 0.4 }}
+      />
+      <motion.rect
+        x="16" y="18" width="88" height="6" rx="2"
+        className="fill-purple-400/[0.07] stroke-purple-400/[0.1]" strokeWidth="0.5"
+        initial={{ width: 0 }} animate={{ width: 88 }}
+        transition={{ duration: 0.4, delay: 0.15 }}
+      />
+      <motion.circle
+        cx="22" cy="21" r="1.5"
+        className="fill-purple-400/40"
+        animate={{ opacity: [0.3, 0.8, 0.3] }}
+        transition={{ duration: 2, repeat: Infinity }}
+      />
+      <motion.line
+        x1="16" y1="30" x2="104" y2="30"
+        className="stroke-white/[0.04]" strokeWidth="1"
+        initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
+        transition={{ duration: 0.3, delay: 0.3 }}
+      />
+      <motion.rect
+        x="18" y="36" width="40" height="24" rx="3"
+        className="fill-purple-400/[0.04] stroke-purple-400/[0.08]" strokeWidth="0.5"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3, delay: 0.4 }}
+      />
+      <motion.rect
+        x="62" y="36" width="40" height="10" rx="2"
+        className="fill-white/[0.04]"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+        transition={{ duration: 0.3, delay: 0.5 }}
+      />
+      <motion.rect
+        x="62" y="50" width="30" height="4" rx="2"
+        className="fill-white/[0.03]"
+        animate={{ opacity: [0.2, 0.6, 0.2] }}
+        transition={{ duration: 2.5, delay: 0.6, repeat: Infinity }}
+      />
+      <motion.rect
+        x="62" y="56" width="22" height="4" rx="2"
+        className="fill-white/[0.02]"
+        animate={{ opacity: [0.15, 0.45, 0.15] }}
+        transition={{ duration: 2.5, delay: 0.8, repeat: Infinity }}
+      />
+      <motion.circle
+        cx="104" cy="66" r="3"
+        className="fill-purple-400/30"
+        animate={{ opacity: [0.2, 0.7, 0.2] }}
+        transition={{ duration: 2, delay: 0.5, repeat: Infinity }}
+      />
+    </svg>
+  )
+}
+
 const ILLUSTRATIONS: Record<string, () => JSX.Element> = {
   code: CodeIllustration,
   browser: BrowserIllustration,
-  design: CodeIllustration,
+  design: DesignIllustration,
   chat: ChatIllustration,
   search: SearchIllustration,
   folder: FolderIllustration,

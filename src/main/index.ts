@@ -8,6 +8,7 @@ import { setupUpdater } from './updater'
 import { registerAllIpcHandlers } from './ipc/index'
 import { BrowserManager } from './services/browser-manager'
 import { TerminalManager } from './services/terminal-manager'
+import { initializeMainProcessObservability } from './observability'
 
 let windowManager: WindowManager
 let browserManager: BrowserManager
@@ -29,6 +30,9 @@ function sendToWindow(wc: Electron.WebContents | null | undefined, channel: stri
 }
 
 app.whenReady().then(async () => {
+  // Initialize main process observability
+  initializeMainProcessObservability()
+
   // Initialize managers
   browserManager = new BrowserManager()
   terminalManager = new TerminalManager()

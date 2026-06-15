@@ -1,4 +1,4 @@
-import type { FileEntry, FileChangeEvent } from "@/types"
+import type { FileChangeEvent } from "@/types"
 
 // ── Electron bridge ──
 const eapi = (typeof window !== 'undefined' && (window as any).electronAPI) ? (window as any).electronAPI : null
@@ -18,15 +18,6 @@ export function sanitizeFilename(name: string): string {
   return trimmed
 }
 
-// ── Tauri helpers (legacy) ──
-
-async function hasTauri(): Promise<boolean> {
-  try {
-    const { invoke } = await import("@tauri-apps/api/core")
-    return typeof invoke === "function"
-  } catch { return false }
-}
-
 // ── Web-mode helpers ──
 
 async function requestWebDirectory(): Promise<{ handle: FileSystemDirectoryHandle; path: string } | null> {
@@ -41,68 +32,6 @@ async function requestWebDirectory(): Promise<{ handle: FileSystemDirectoryHandl
   } catch { return null }
 }
 
-type DirHandle = FileSystemDirectoryHandle & { entries: () => AsyncIterableIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]> }
-
-async function* walkDirectory(dir: FileSystemDirectoryHandle, parentPath: string): AsyncGenerator<FileEntry> {
-  for await (const [name, handle] of (dir as DirHandle).entries()) {
-    const entryPath = parentPath ? `${parentPath}\\${name}` : name
-    if (handle.kind === "directory") {
-      const children: FileEntry[] = []
-      for await (const child of walkDirectory(handle as FileSystemDirectoryHandle, entryPath)) {
-        children.push(child)
-      }
-      yield { name, path: entryPath, is_dir: true, children }
-    } else {
-      yield { name, path: entryPath, is_dir: false, children: [] }
-    }
-  }
-}
-
-async function loadWebFileTree(): Promise<FileEntry[]> {
-  if (!_webRootHandle) return []
-  const entries: FileEntry[] = []
-  for await (const entry of walkDirectory(_webRootHandle, "")) {
-    entries.push(entry)
-  }
-  return entries
-}
-
-async function resolveWebHandle(pathSegments: string[]): Promise<FileSystemDirectoryHandle | FileSystemFileHandle | null> {
-  if (!_webRootHandle) return null
-  let current: FileSystemDirectoryHandle | FileSystemFileHandle = _webRootHandle
-  for (let i = 0; i < pathSegments.length; i++) {
-    const seg = pathSegments[i]
-    if (current.kind !== "directory") return null
-    const dir = current as FileSystemDirectoryHandle
-    if (i === pathSegments.length - 1) {
-      try { return await dir.getFileHandle(seg) }
-      catch { try { return await dir.getDirectoryHandle(seg) } catch { return null } }
-    } else {
-      try { current = await dir.getDirectoryHandle(seg) } catch { return null }
-    }
-  }
-  return current
-}
-
-async function readWebFile(path: string): Promise<string> {
-  const segs = path.split(/[/\\]+/).filter(Boolean)
-  const fileHandle = await resolveWebHandle(segs)
-  if (!fileHandle || fileHandle.kind !== "file") throw new Error(`File not found: ${path}`)
-  const file = await (fileHandle as FileSystemFileHandle).getFile()
-  return await file.text()
-}
-
-async function getWebDirHandle(path: string): Promise<FileSystemDirectoryHandle | null> {
-  const segs = path.split(/[/\\]+/).filter(Boolean)
-  if (segs.length === 0) return _webRootHandle
-  let current = _webRootHandle
-  if (!current) return null
-  for (const seg of segs) {
-    try { current = await current.getDirectoryHandle(seg) } catch { return null }
-  }
-  return current
-}
-
 // ── Public API ──
 
 export async function pickWorkspaceFolder(): Promise<string | null> {
@@ -112,8 +41,8 @@ export async function pickWorkspaceFolder(): Promise<string | null> {
   }
   // Tauri second
   try {
-    const { open } = await import("@tauri-apps/plugin-dialog")
-    const selected = await open({ directory: true, multiple: false, title: "Select Workspace Folder" })
+    const { dialogOpen } = await import("@/lib/electron-api")
+    const selected = await dialogOpen({ directory: true, multiple: false, title: "Select Workspace Folder" })
     if (selected) {
       _webRootHandle = null
       _webRootPath = null
@@ -126,148 +55,13 @@ export async function pickWorkspaceFolder(): Promise<string | null> {
   }
 }
 
-export async function loadFileTree(rootPath: string): Promise<FileEntry[]> {
-  console.log("[TRACE:loadFileTree] START rootPath=", rootPath, "isElectron=", isElectron())
-  // Electron first
-  if (isElectron()) {
-    const result = await eapi.workspaceGetTree(rootPath)
-    console.log("[TRACE:loadFileTree] Electron response length=", result.length, "first=", result[0] ? JSON.stringify(result[0]).slice(0, 200) : "EMPTY")
-    return result
-  }
-  // Tauri second
-  try {
-    const { invoke } = await import("@tauri-apps/api/core")
-    const result = await invoke<FileEntry[]>("list_directory", { path: rootPath })
-    console.log("[TRACE:loadFileTree] Tauri response length=", result.length)
-    return result
-  } catch {
-    console.warn("[TRACE:loadFileTree] Tauri not available, falling back to web")
-    return await loadWebFileTree()
-  }
-}
-
-export async function readFile(filePath: string): Promise<string> {
-  if (isElectron()) {
-    return await eapi.workspaceReadFile(filePath)
-  }
-  try {
-    const { readTextFile } = await import("@tauri-apps/plugin-fs")
-    return await readTextFile(filePath)
-  } catch {
-    return await readWebFile(filePath)
-  }
-}
-
-export async function createFile(absolutePath: string, content = ""): Promise<void> {
-  if (isElectron()) {
-    const dirParts = absolutePath.replace(/\\/g, '/').split('/')
-    const fileName = dirParts.pop()
-    const dirPath = dirParts.join('\\')
-    const result = await eapi.workspaceCreateFile(dirPath, fileName)
-    if (!result) throw new Error(`Failed to create file: ${absolutePath}`)
-    if (content) {
-      await eapi.workspaceWriteFile(absolutePath, content)
-    }
-    return
-  }
-  try {
-    const { writeTextFile } = await import("@tauri-apps/plugin-fs")
-    await writeTextFile(absolutePath, content)
-    return
-  } catch (err: unknown) {
-    if (await hasTauri()) {
-      const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(`Failed to create file: ${msg}`)
-    }
-  }
-  const segs = absolutePath.split(/[/\\]+/).filter(Boolean)
-  const fileName = segs.pop()
-  if (!fileName) throw new Error("Invalid path")
-  const parentDir = await getWebDirHandle(segs.join("\\"))
-  if (!parentDir) throw new Error("Parent directory not found")
-  const handle = await parentDir.getFileHandle(fileName, { create: true })
-  const writable = await handle.createWritable()
-  await writable.write(content)
-  await writable.close()
-}
-
-export async function createFolder(absolutePath: string): Promise<void> {
-  if (isElectron()) {
-    const dirParts = absolutePath.replace(/\\/g, '/').split('/')
-    const folderName = dirParts.pop()
-    const parentPath = dirParts.join('\\')
-    const result = await eapi.workspaceCreateDirectory(parentPath, folderName)
-    if (!result) throw new Error(`Failed to create folder: ${absolutePath}`)
-    return
-  }
-  try {
-    const { mkdir } = await import("@tauri-apps/plugin-fs")
-    await mkdir(absolutePath)
-    return
-  } catch (err: unknown) {
-    if (await hasTauri()) {
-      const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(`Failed to create folder: ${msg}`)
-    }
-  }
-  const segs = absolutePath.split(/[/\\]+/).filter(Boolean)
-  const folderName = segs.pop()
-  if (!folderName) throw new Error("Invalid path")
-  const parentDir = await getWebDirHandle(segs.join("\\"))
-  if (!parentDir) throw new Error("Parent directory not found")
-  await parentDir.getDirectoryHandle(folderName, { create: true })
-}
-
-export async function deleteEntry(absolutePath: string): Promise<void> {
-  if (isElectron()) {
-    await eapi.workspaceDelete(absolutePath)
-    return
-  }
-  try {
-    const { remove } = await import("@tauri-apps/plugin-fs")
-    await remove(absolutePath, { recursive: true })
-    return
-  } catch (err: unknown) {
-    if (await hasTauri()) {
-      const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(`Failed to delete entry: ${msg}`)
-    }
-  }
-  const segs = absolutePath.split(/[/\\]+/).filter(Boolean)
-  const entryName = segs.pop()
-  if (!entryName) throw new Error("Invalid path")
-  const parentDir = await getWebDirHandle(segs.join("\\"))
-  if (!parentDir) throw new Error("Parent directory not found")
-  await parentDir.removeEntry(entryName, { recursive: true })
-}
-
-export async function renameEntry(oldPath: string, newPath: string): Promise<void> {
-  if (isElectron()) {
-    await eapi.workspaceRename(oldPath, newPath)
-    return
-  }
-  try {
-    const { rename } = await import("@tauri-apps/plugin-fs")
-    await rename(oldPath, newPath)
-    return
-  } catch (err: unknown) {
-    if (await hasTauri()) {
-      const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(`Failed to rename: ${msg}`)
-    }
-  }
-  const content = await readFile(oldPath)
-  await createFile(newPath, content)
-  await deleteEntry(oldPath)
-}
-
 export async function startWatching(rootPath: string): Promise<void> {
   if (isElectron()) {
     await eapi.workspaceStartWatcher(rootPath)
     return
   }
   try {
-    const { invoke } = await import("@tauri-apps/api/core")
+    const { invoke } = await import("@/lib/electron-api")
     await invoke("watch_directory", { path: rootPath })
   } catch { /* web mode: watching not supported */ }
 }
@@ -281,7 +75,7 @@ export async function onFileChange(callback: (event: FileChangeEvent) => void): 
     return unsub
   }
   try {
-    const { listen } = await import("@tauri-apps/api/event")
+    const { listen } = await import("@/lib/electron-api")
     const unlisten = await listen<FileChangeEvent>("file-changed", (event) => {
       callback(event.payload)
     })

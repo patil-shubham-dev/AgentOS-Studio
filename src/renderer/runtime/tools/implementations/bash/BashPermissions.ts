@@ -1,6 +1,6 @@
 import { parseShellCommand, CommandType } from './ShellAST'
 
-export type PermissionLevel = 'allow' | 'ask' | 'deny'
+export type PermissionLevel = 'allow' | 'ask' | 'deny' | 'ask_once_per_session' | 'ask_for_duration'
 
 export interface BashPermissionResult {
   level: PermissionLevel
@@ -9,6 +9,13 @@ export interface BashPermissionResult {
 }
 
 const COMMAND_OVERRIDES = new Map<string, PermissionLevel>()
+const SESSION_ALLOWED_COMMANDS = new Map<string, Set<string>>()
+const DURATION_ALLOWED_COMMANDS = new Map<string, { expiresAt: number }>()
+let currentSessionId: string | null = null
+
+export function setSessionId(sessionId: string | null): void {
+  currentSessionId = sessionId
+}
 
 export function setCommandOverride(command: string, level: PermissionLevel): void {
   COMMAND_OVERRIDES.set(command.toLowerCase(), level)
@@ -18,13 +25,52 @@ export function clearOverrides(): void {
   COMMAND_OVERRIDES.clear()
 }
 
+export function clearSessionPermissions(sessionId: string): void {
+  SESSION_ALLOWED_COMMANDS.delete(sessionId)
+}
+
+export function clearExpiredDurationPermissions(): void {
+  const now = Date.now()
+  for (const [key, { expiresAt }] of DURATION_ALLOWED_COMMANDS) {
+    if (now >= expiresAt) {
+      DURATION_ALLOWED_COMMANDS.delete(key)
+    }
+  }
+}
+
+export function approveForSession(command: string, sessionId?: string): void {
+  const sid = sessionId ?? currentSessionId
+  if (!sid) return
+  const existing = SESSION_ALLOWED_COMMANDS.get(sid) ?? new Set()
+  existing.add(command.toLowerCase())
+  SESSION_ALLOWED_COMMANDS.set(sid, existing)
+}
+
+export function approveForDuration(command: string, durationMs: number = 5 * 60 * 1000): void {
+  clearExpiredDurationPermissions()
+  DURATION_ALLOWED_COMMANDS.set(command.toLowerCase(), { expiresAt: Date.now() + durationMs })
+}
+
 export function classifyBashPermission(
   command: string,
   mode: 'default' | 'strict' | 'readonly' | 'permissive' = 'default',
 ): BashPermissionResult {
+  const cmdLower = command.toLowerCase()
+  const sessionApproved = currentSessionId && SESSION_ALLOWED_COMMANDS.get(currentSessionId)?.has(cmdLower)
+  if (sessionApproved) return { level: 'allow', reason: 'Approved for this session', commandType: parseShellCommand(command).type }
+
+  const durationApproved = DURATION_ALLOWED_COMMANDS.get(cmdLower)
+  if (durationApproved && Date.now() < durationApproved.expiresAt) {
+    return { level: 'allow', reason: 'Approved for duration', commandType: parseShellCommand(command).type }
+  }
   const parsed = parseShellCommand(command)
   const override = COMMAND_OVERRIDES.get(parsed.commands[0])
-  if (override) return { level: override, reason: `Override set for "${parsed.commands[0]}"`, commandType: parsed.type }
+  if (override === 'allow' || override === 'deny') {
+    return { level: override, reason: `Override set for "${parsed.commands[0]}"`, commandType: parsed.type }
+  }
+  if (override === 'ask_once_per_session' || override === 'ask_for_duration') {
+    return { level: 'ask', reason: `Override requires approval for "${parsed.commands[0]}"`, commandType: parsed.type }
+  }
 
   if (parsed.isDangerous) return { level: 'deny', reason: `Dangerous pattern detected in command`, commandType: parsed.type }
 

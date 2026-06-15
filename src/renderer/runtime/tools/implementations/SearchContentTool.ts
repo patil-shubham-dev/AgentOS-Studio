@@ -7,10 +7,10 @@ import { useWorkspaceStore } from '@/stores/workspace-store'
 async function readTextFile(path: string): Promise<string | null> {
   try {
     if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      const { readTextFile: shimRead } = await import('@/lib/tauri-shims/fs')
-      return shimRead(path)
+      const { readTextFile: shimRead } = await import('@/lib/electron-api')
+        return shimRead(path)
     }
-    const fs = await import('@tauri-apps/plugin-fs')
+    const fs = await import('@/lib/electron-api')
     return await fs.readTextFile(path)
   } catch {
     return null
@@ -52,7 +52,7 @@ async function findFiles(rootPath: string, includePatterns: string[], excludePat
           }
         }
       } else {
-        const fs = await import('@tauri-apps/plugin-fs')
+        const fs = await import('@/lib/electron-api')
         const entries = await fs.readDir(dir)
         for (const entry of entries) {
           const fullPath = `${dir}/${entry.name}`

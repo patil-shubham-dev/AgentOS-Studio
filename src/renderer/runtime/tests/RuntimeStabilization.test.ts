@@ -19,18 +19,21 @@ globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
 globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id)
 globalThis.performance = globalThis.performance ?? Date.now() as any
 
-vi.mock("@/lib/agents/orchestrator", () => ({
-  fastChatCompletion: vi.fn(async (
-    _baseUrl, _apiKey, _model, _input, _history, signal, onToken,
-  ) => {
-    const tokens = ["Hello", "! ", "I", " am", " an", " AI", " assistant", "."]
-    for (const t of tokens) {
-      if (signal.aborted) throw new DOMException("Aborted", "AbortError")
-      onToken(t)
-      await new Promise(r => setTimeout(r, 1))
-    }
-    return { response: "Hello! I am an AI assistant.", usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 } }
-  }),
+vi.mock("@/runtime/providers/ProviderRuntime", () => ({
+  ProviderRuntime: vi.fn().mockImplementation(() => ({
+    setDefaultModel: vi.fn(),
+    stream: vi.fn().mockImplementation(async function* () {
+      const tokens = ["Hello", "! ", "I", " am", " an", " AI", " assistant", "."]
+      let fullText = "Hello! I am an AI assistant."
+      for (const t of tokens) {
+        yield { type: 'token', text: t }
+        await new Promise(r => setTimeout(r, 1))
+      }
+      yield { type: 'done', fullText }
+    }),
+    chat: vi.fn().mockResolvedValue({ content: "Hello! I am an AI assistant.", model: 'test', tokensIn: 10, tokensOut: 8, duration: 10 }),
+    hasApiKey: vi.fn().mockReturnValue(true),
+  })),
 }))
 
 function setupStores() {

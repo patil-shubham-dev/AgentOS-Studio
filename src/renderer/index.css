@@ -25,6 +25,75 @@
   --radius: 0.5rem;
   --font-sans: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', ui-monospace, monospace;
+  --motion-fast: 100ms;
+  --motion-normal: 200ms;
+  --motion-slow: 300ms;
+  --motion-easing: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Surface hierarchy ── */
+  --surface-app: #0a0a0b;
+  --surface-panel: #0c0c0d;
+  --surface-elevated: #111113;
+  --surface-overlay: #1a1a1f;
+
+  /* ── Panel accent colors ── */
+  --accent-code: #3b82f6;
+  --accent-browser: #06b6d4;
+  --accent-design: #a855f7;
+  --accent-diff: #10b981;
+  --accent-preview: #f59e0b;
+
+  /* ── Text hierarchy ── */
+  --text-primary: rgba(255, 255, 255, 0.95);
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-tertiary: rgba(255, 255, 255, 0.40);
+  --text-quaternary: rgba(255, 255, 255, 0.25);
+
+  /* ── Border hierarchy ── */
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-hover: rgba(255, 255, 255, 0.12);
+
+  /* ── Typography scale ── */
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-base: 12px;
+  --font-size-md: 13px;
+  --font-size-lg: 14px;
+  --font-size-xl: 15px;
+  --font-size-2xl: 18px;
+  --font-size-3xl: 24px;
+  --font-size-4xl: 36px;
+
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+  --leading-loose: 2;
+
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-wider: 0.06em;
+
+  /* ── Spacing scale ── */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 14px;
+  --space-8: 16px;
+  --space-9: 20px;
+  --space-10: 24px;
+  --space-11: 28px;
+  --space-12: 32px;
+  --space-13: 40px;
+  --space-14: 48px;
+  --space-15: 64px;
+  --space-16: 80px;
 }
 
 .dark {
@@ -154,12 +223,6 @@ body {
   100% { transform: scale(0.95); opacity: 0.7; }
 }
 
-@keyframes gradient-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
 @keyframes connection-pulse {
   0% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -180,16 +243,43 @@ body {
   50% { opacity: 0.8; }
 }
 
+@utility motion-fast {
+  transition-duration: 100ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@utility motion-normal {
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@utility motion-slow {
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 @utility animate-fade-in {
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--motion-normal) var(--motion-easing);
+}
+
+@utility animate-fade-in-fast {
+  animation: fade-in var(--motion-fast) var(--motion-easing);
+}
+
+@utility animate-fade-in-slow {
+  animation: fade-in var(--motion-slow) var(--motion-easing);
 }
 
 @utility animate-slide-in {
-  animation: slide-in 0.2s ease-out;
+  animation: slide-in var(--motion-normal) var(--motion-easing);
 }
 
 @utility animate-slide-up {
-  animation: slide-up 0.2s ease-out;
+  animation: slide-up var(--motion-normal) var(--motion-easing);
+}
+
+@utility animate-slide-up-fast {
+  animation: slide-up var(--motion-fast) var(--motion-easing);
 }
 
 @utility animate-pulse-soft {
@@ -203,11 +293,15 @@ body {
 }
 
 @utility animate-scale-in {
-  animation: scale-in 0.15s ease-out;
+  animation: scale-in var(--motion-fast) var(--motion-easing);
+}
+
+@utility animate-scale-in-normal {
+  animation: scale-in var(--motion-normal) var(--motion-easing);
 }
 
 @utility animate-bounce-in {
-  animation: bounce-in 0.3s ease-out;
+  animation: bounce-in var(--motion-slow) var(--motion-easing);
 }
 
 @utility animate-spin-slow {

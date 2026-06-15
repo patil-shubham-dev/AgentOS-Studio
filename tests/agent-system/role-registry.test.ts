@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { ALL_ROLES, getSystemPromptForRole, normalizeRole, validateRegistryIntegrity } from "@/runtime/runtime-role-registry"
 
-describe("Role Registry — 10 Roles", () => {
-  it("defines exactly 10 roles", () => {
-    expect(ALL_ROLES.length).toBe(10)
+describe("Role Registry — 11 Roles", () => {
+  it("defines exactly 11 roles", () => {
+    expect(ALL_ROLES.length).toBe(11)
   })
 
   it("includes all required role ids", () => {
@@ -18,6 +18,7 @@ describe("Role Registry — 10 Roles", () => {
     expect(ids).toContain("browser")
     expect(ids).toContain("memory")
     expect(ids).toContain("fast-inference")
+    expect(ids).toContain("verification")
   })
 
   it("each role has a system prompt", () => {
@@ -30,7 +31,7 @@ describe("Role Registry — 10 Roles", () => {
 
   it("each role has unique id", () => {
     const ids = ALL_ROLES.map((r) => r.runtimeRole)
-    expect(new Set(ids).size).toBe(10)
+    expect(new Set(ids).size).toBe(11)
   })
 
   it("each role has a name and description", () => {

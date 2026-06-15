@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { spawn } from 'child_process'
+import { assertPathAllowed } from './path-utils'
 
 const ALLOWED_COMMANDS = new Set([
   'git', 'node', 'npm', 'npx', 'yarn', 'pnpm',
@@ -68,6 +69,9 @@ const runningStreams = new Map<string, { process: ReturnType<typeof spawn>; kill
 export function registerCommandHandlers(): void {
   ipcMain.handle('run-command', async (_event, options: RunCommandOptions): Promise<string> => {
     const { workingDir, command, args } = options
+    if (workingDir) {
+      try { assertPathAllowed(workingDir) } catch { return `Error: Working directory not in workspace` }
+    }
     const check = isCommandAllowed(command)
     if (!check.allowed) {
       console.warn(`[CommandAllowlist] Blocked command: "${command}" — ${check.reason}`)
@@ -93,6 +97,9 @@ export function registerCommandHandlers(): void {
 
   ipcMain.handle('run-command-stream', async (event, options: RunCommandStreamOptions): Promise<number> => {
     const { command, cwd, streamId, args, requiresInteraction } = options
+    if (cwd) {
+      try { assertPathAllowed(cwd) } catch { return -1 }
+    }
     const check = isCommandAllowed(command)
     if (!check.allowed) {
       console.warn(`[CommandAllowlist] Blocked stream command: "${command.slice(0, 120)}" — ${check.reason}`)

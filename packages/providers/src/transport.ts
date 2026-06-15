@@ -65,6 +65,17 @@ export class ProviderTransport {
         responseHeaders[key] = value
       })
 
+      if (!resp.ok) {
+        const errMsg = body ? body.slice(0, 500) : `HTTP ${resp.status} ${resp.statusText}`
+        throw new TransportError(
+          resp.status === 401 || resp.status === 403 ? "AUTH_ERROR" :
+          resp.status === 404 ? "NOT_FOUND" :
+          resp.status === 429 ? "RATE_LIMITED" :
+          resp.status >= 500 ? "SERVER_ERROR" : "HTTP_ERROR",
+          `Provider returned HTTP ${resp.status}: ${errMsg}`
+        )
+      }
+
       return {
         status: resp.status,
         ok: resp.ok,
@@ -96,7 +107,13 @@ export class ProviderTransport {
       runtime: adapterConfig.runtime,
     })
 
-    const models = adapter.parseModelsResponse(resp.body)
+    let models: { models: Array<{ id: string; name: string }> }
+    try {
+      models = adapter.parseModelsResponse(resp.body)
+    } catch {
+      // Discovery failed (404/connection error) — return empty list so caller falls back to presets
+      return { models: [], latencyMs: Math.round(performance.now() - t0) }
+    }
     return { models: models.models, latencyMs: Math.round(performance.now() - t0) }
   }
 

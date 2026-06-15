@@ -85,7 +85,7 @@ export class MemoryLoader {
   private async readFile(path: string): Promise<string | null> {
     try {
       if (isTauri()) {
-        const { readTextFile } = await import("@tauri-apps/plugin-fs")
+        const { readTextFile } = await import("@/lib/electron-api")
         return await readTextFile(path)
       }
       return null
@@ -97,7 +97,7 @@ export class MemoryLoader {
   private async loadRules(rulesDir: string): Promise<MemoryFile[]> {
     try {
       if (isTauri()) {
-        const { readDir, readTextFile } = await import("@tauri-apps/plugin-fs")
+        const { readDir, readTextFile } = await import("@/lib/electron-api")
         const entries = await readDir(rulesDir)
         const files: MemoryFile[] = []
         for (const entry of entries) {

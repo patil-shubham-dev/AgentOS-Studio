@@ -11,9 +11,12 @@ import { ResetPanel } from '@/pages/reset-panel'
 import { AgentsPage } from '@/pages/agents'
 import { LogsPage } from '@/pages/logs'
 import { GitPage } from '@/pages/git'
+import { MemoryPage } from '@/pages/memory'
+import { ContextDashboardPage } from '@/pages/context-dashboard'
 import { RuntimeHealthPanel } from '@/components/runtime/RuntimeHealthPanel'
 import { StressTestPage } from '@/pages/__stress-test'
 import { useLeakTracker } from '@/performance/leak-detector'
+import { ReducedMotionProvider } from '@/lib/reduced-motion'
 
 class RootErrorBoundary extends Component<
   { children: ReactNode },
@@ -71,6 +74,7 @@ export default function App() {
 
   return (
     <RootErrorBoundary>
+    <ReducedMotionProvider>
     <SafeErrorBoundary name="Application">
       <Routes>
         <Route element={<AppShell />}>
@@ -84,6 +88,8 @@ export default function App() {
           <Route path="/agents" element={<SafeErrorBoundary name="Agents"><RouteContainer><AgentsPage /></RouteContainer></SafeErrorBoundary>} />
           <Route path="/logs" element={<SafeErrorBoundary name="Logs"><RouteContainer><LogsPage /></RouteContainer></SafeErrorBoundary>} />
           <Route path="/git" element={<SafeErrorBoundary name="Git"><RouteContainer><GitPage /></RouteContainer></SafeErrorBoundary>} />
+          <Route path="/memory" element={<SafeErrorBoundary name="Memory"><RouteContainer><MemoryPage /></RouteContainer></SafeErrorBoundary>} />
+          <Route path="/context" element={<SafeErrorBoundary name="ContextDashboard"><RouteContainer><ContextDashboardPage /></RouteContainer></SafeErrorBoundary>} />
           {import.meta.env.DEV && (
             <>
               <Route path="/__health" element={<SafeErrorBoundary name="Health"><RuntimeHealthPanel /></SafeErrorBoundary>} />
@@ -94,6 +100,7 @@ export default function App() {
         </Route>
       </Routes>
     </SafeErrorBoundary>
+    </ReducedMotionProvider>
     </RootErrorBoundary>
   )
 }

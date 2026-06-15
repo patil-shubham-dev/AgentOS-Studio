@@ -5,9 +5,36 @@ type TraceEvent = {
   data?: Record<string, unknown>
 }
 
+const MAX_TRACES = 500
+const STALE_TTL_MS = 60 * 60 * 1000
+
 const traces = new Map<string, TraceEvent[]>()
 
+function evictStale(): void {
+  const cutoff = performance.now() - STALE_TTL_MS
+  for (const [id, events] of traces) {
+    const last = events[events.length - 1]
+    if (last && last.timestamp < cutoff) {
+      traces.delete(id)
+    }
+  }
+}
+
+function enforceMaxSize(): void {
+  if (traces.size > MAX_TRACES) {
+    const entries = Array.from(traces.entries())
+    const toRemove = entries.slice(0, entries.length - MAX_TRACES)
+    for (const [id] of toRemove) {
+      traces.delete(id)
+    }
+  }
+}
+
 export function startTrace(id: string) {
+  if (traces.size >= MAX_TRACES) {
+    evictStale()
+    enforceMaxSize()
+  }
   traces.set(id, [])
   emit(id, "trace_start")
 }
@@ -39,4 +66,25 @@ export function endTrace(id: string) {
   }
   lines.forEach(l => console.log(l))
   traces.delete(id)
+}
+
+export class TraceScope {
+  private id: string
+
+  constructor(id: string) {
+    this.id = id
+    startTrace(id)
+  }
+
+  trace(label: string, data?: Record<string, unknown>): void {
+    emit(this.id, label, data)
+  }
+
+  end(): void {
+    endTrace(this.id)
+  }
+
+  dispose(): void {
+    endTrace(this.id)
+  }
 }

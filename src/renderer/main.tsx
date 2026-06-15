@@ -16,6 +16,13 @@ import { isInSafeMode } from './core/crash-handling/safe-mode'
 import { RuntimeCleanupManager } from './runtime/RuntimeCleanupManager'
 import { ExecutionSessionManager } from './runtime/sessions/ExecutionSessionManager'
 import { tauriFetch } from '@agentic-os/providers/http-client'
+import { loader } from '@monaco-editor/react'
+
+const monacoBase = location.protocol === 'file:'
+  ? './monacoeditorwork/vs'
+  : '/monacoeditorwork/vs'
+loader.config({ paths: { vs: monacoBase } })
+
 import './index.css'
 
 window.addEventListener('error', (e) => {
@@ -66,7 +73,7 @@ function Root() {
     const init = async () => {
       // Phase 1: platform info
       try {
-        const { invoke } = await import('@tauri-apps/api/core')
+        const { invoke } = await import('@/lib/electron-api')
         const info: { first_launch: boolean } = await invoke('get_install_info')
         sessionStorage.setItem('first-launch', String(info.first_launch))
       } catch {

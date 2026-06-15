@@ -165,9 +165,9 @@ describe("PromptCompositionEngine", () => {
   })
 
   describe("5. Section Registry Integrity", () => {
-    it("all 21 default sections registered", () => {
+    it("all 20 default sections registered", () => {
       const sections = registry.getAll()
-      expect(sections.length).toBe(21)
+      expect(sections.length).toBe(20)
       const ids = sections.map(s => s.id)
       expect(ids).toContain("agent-identity")
       expect(ids).toContain("safety-policy")

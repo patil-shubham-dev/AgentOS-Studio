@@ -17,11 +17,11 @@ import { SkillRegistry } from './skills/SkillRegistry'
 import { SkillLoader } from './skills/SkillLoader'
 import { SkillExecutor } from './skills/SkillExecutor'
 
-import { MemoryManager } from './memory/MemoryManager'
+import { MemoryArchitecture } from './memory/unified/MemoryArchitecture'
 import { CostTracker } from './cost/CostTracker'
 import { DiskBackedResultStore } from './tools/storage/DiskBackedResultStore'
 
-import { registerBuiltinTools } from '@/lib/agents/agent-tools'
+import { ALL_BUILTIN_TOOLS } from '@/runtime/tools/implementations'
 import { RuntimeCleanupManager } from "./RuntimeCleanupManager"
 import { useWorkspaceStore } from '@/stores/workspace-store'
 
@@ -46,7 +46,7 @@ export class RuntimeOS {
   readonly skillLoader: SkillLoader
   readonly skillExecutor: SkillExecutor
 
-  readonly memoryManager: MemoryManager
+  readonly memoryArchitecture: MemoryArchitecture
   readonly costTracker: CostTracker
   readonly diskBackedStore: DiskBackedResultStore
 
@@ -73,7 +73,7 @@ export class RuntimeOS {
     this.skillLoader = new SkillLoader(this.skillRegistry)
     this.skillExecutor = new SkillExecutor(this.skillRegistry)
 
-    this.memoryManager = MemoryManager.getInstance()
+    this.memoryArchitecture = MemoryArchitecture.getInstance()
     this.costTracker = CostTracker.getInstance()
     this.diskBackedStore = DiskBackedResultStore.getInstance()
 
@@ -99,7 +99,19 @@ export class RuntimeOS {
 
   async initialize(mcpServers?: MCPClientConfig[]): Promise<void> {
     if (this.initialized) return
-    registerBuiltinTools()
+
+    const already = this.toolRegistry.size().builtin
+    if (already === 0) {
+      this.toolRegistry.registerMany(ALL_BUILTIN_TOOLS)
+      this.toolRegistry.registerBuiltinToolDefs(ALL_BUILTIN_TOOLS.map(t => ({
+        name: t.name,
+        aliases: (t as any).aliases,
+        description: t.description,
+        parameters: t.inputSchema as Record<string, unknown>,
+        isReadOnly: t.isReadOnly({}),
+        isConcurrencySafe: t.isConcurrencySafe({}),
+      })))
+    }
 
     this.toolConcurrencyPolicy.setDefaultLimit(5)
     this.toolExecutionPolicy.setGlobalPolicy({
@@ -122,7 +134,7 @@ export class RuntimeOS {
     const rootPath = useWorkspaceStore.getState().rootPath
     if (rootPath) {
       await this.skillLoader.loadProjectSkills(rootPath)
-      await this.memoryManager.initialize(rootPath)
+      await this.memoryArchitecture.initialize()
       await this.diskBackedStore.initialize(rootPath)
     }
     await this.skillLoader.loadUserSkills()
@@ -146,13 +158,12 @@ export class RuntimeOS {
     tools: { builtin: number; mcp: number; plugin: number; total: number }
     mcp: { servers: number; connected: number }
     skills: Record<string, number>
-    memory: { totalEntries: number; sessionEntries: number }
+    memory: { totalEntries: number }
     cost: { totalCost: string; totalTokens: string }
   } {
     const toolSizes = this.toolRegistry.size()
     const mcpClients = this.mcpRegistry.getAll()
     const skillSizes = this.skillRegistry.size()
-    const memoryStats = this.memoryManager.getCachedMemoryStats()
     const costSummary = this.costTracker.getSummary()
 
     return {
@@ -174,8 +185,7 @@ export class RuntimeOS {
         plugin: skillSizes.plugin,
       },
       memory: {
-        totalEntries: memoryStats.totalEntries,
-        sessionEntries: memoryStats.sessionEntries,
+        totalEntries: this.memoryArchitecture.isInitialized() ? 0 : 0,
       },
       cost: {
         totalCost: this.costTracker.formatCost(costSummary.totalCost),

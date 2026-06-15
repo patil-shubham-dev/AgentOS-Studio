@@ -3,6 +3,7 @@ import { createSectionDiagnostics, type SectionDiagnostics } from '../diagnostic
 import { PromptExecutionPlanner } from '../planner/PromptExecutionPlanner'
 import type { PromptExecutionPlan } from '../planner/PromptExecutionPlan'
 import { SectionCache } from '../caching/SectionCache'
+import { FeatureFlagManager } from '@/runtime/feature-flags/FeatureFlagManager'
 
 export class PromptRegistry {
   private sections: Map<string, SectionDefinition> = new Map()
@@ -62,7 +63,8 @@ export class PromptRegistry {
       const startTime = performance.now()
 
       try {
-        const cacheStrategy = section.cache ?? 'none'
+        const useCache = FeatureFlagManager.getInstance().isEnabled("contextCache")
+        const cacheStrategy = useCache ? (section.cache ?? 'none') : 'none'
         const cached = this.cache.get(section.id, cacheStrategy, ctx as unknown as Record<string, unknown>)
 
         if (cached !== null) {

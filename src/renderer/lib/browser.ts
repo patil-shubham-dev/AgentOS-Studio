@@ -1,11 +1,17 @@
-// Lazy-loaded invoke to avoid bundling @tauri-apps/api/core into main chunk
+// Lazy-loaded invoke to avoid bundling @/lib/electron-api into main chunk
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const mod = await import("@tauri-apps/api/core")
+  const mod = await import("@/lib/electron-api")
   return mod.invoke<T>(cmd, args)
 }
 
 export async function launchBrowser(url: string): Promise<string> {
-  return await invoke<string>("browser_launch", { url })
+  const result = await invoke("browser_launch", { url })
+  if (result && typeof result === "object") {
+    if ("sessionId" in result) return (result as { sessionId: string }).sessionId
+    if ("error" in result) throw new Error((result as { error: string }).error)
+  }
+  if (typeof result === "string") return result
+  throw new Error(`browser_launch returned unexpected type: ${typeof result}`)
 }
 
 export async function navigate(sessionId: string, url: string): Promise<void> {

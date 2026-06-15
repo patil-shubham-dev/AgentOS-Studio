@@ -1,3 +1,5 @@
+import type { GitStatusEntry } from "@pierre/trees"
+
 export interface GitStatus {
   branch: string
   changes: GitChange[]
@@ -23,7 +25,7 @@ const GIT_TIMEOUT_MS = 30_000
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   try {
-    const { invoke: tauriInvoke } = await import("@tauri-apps/api/core")
+    const { invoke: tauriInvoke } = await import("@/lib/electron-api")
     const result = await tauriInvoke<T>(cmd, args)
     return result
   } catch (err) {
@@ -78,5 +80,28 @@ export async function gitBranchList(workingDir: string): Promise<string[]> {
 }
 
 export async function gitCheckout(workingDir: string, branch: string): Promise<string> {
-  return withTimeout(invoke<string>("git_checkout", { workingDir, branch }), GIT_TIMEOUT_MS, "checkout")
+  return withTimeout(invoke<string[]>("git_checkout", { workingDir, branch }), GIT_TIMEOUT_MS, "checkout")
+}
+
+function porcelainToGitStatus(status: string): GitStatusEntry["status"] | null {
+  if (status === "??") return "untracked"
+  if (status.includes("A")) return "added"
+  if (status.includes("M")) return "modified"
+  if (status.includes("D")) return "deleted"
+  return null
+}
+
+export async function getGitStatus(rootPath: string): Promise<GitStatusEntry[]> {
+  try {
+    const raw = await invoke<Array<{ status: string; file: string }>>("git_status", { workingDir: rootPath })
+    if (!Array.isArray(raw)) return []
+    return raw
+      .map((c) => {
+        const treeStatus = porcelainToGitStatus(c.status)
+        return treeStatus ? { path: c.file.replace(/\\/g, "/"), status: treeStatus } : null
+      })
+      .filter((e): e is GitStatusEntry => e !== null)
+  } catch {
+    return []
+  }
 }

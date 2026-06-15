@@ -5,7 +5,6 @@ import { agentIdentitySection } from './agent-identity.section'
 import { executionMissionSection } from './execution-mission.section'
 import { executionProcessSection } from './execution-process.section'
 import { executionPolicySection } from './execution-policy.section'
-import { executionModeSection } from './execution-mode.section'
 import { behaviorConstraintsSection } from './behavior-constraints.section'
 import { toolsRegistrySection } from './tools-registry.section'
 import { toolsExecutionPolicySection } from './tools-execution-policy.section'
@@ -28,7 +27,6 @@ export const DEFAULT_SECTIONS: SectionDefinition[] = [
   safetyPolicySection,
   executionMissionSection,
   executionProcessSection,
-  executionModeSection,
   executionPolicySection,
   behaviorConstraintsSection,
   projectRulesSection,
@@ -56,7 +54,6 @@ export {
   executionMissionSection,
   executionProcessSection,
   executionPolicySection,
-  executionModeSection,
   behaviorConstraintsSection,
   toolsRegistrySection,
   toolsExecutionPolicySection,

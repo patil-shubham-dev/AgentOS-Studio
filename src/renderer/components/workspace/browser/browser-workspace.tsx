@@ -1,307 +1,310 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useBrowserStore } from "@/stores/browser-store"
+import { listen } from "@/lib/electron-api"
 import { cn } from "@/lib/utils"
-import { Button } from "@agentic-os/ui"
-import { TooltipSimple as Tooltip } from "@agentic-os/ui"
-import { BrowserActivityStream } from "./browser-activity-stream"
-import { getTitle as rawBrowserGetTitle } from "@/lib/browser"
-import { useHaptic } from "@/lib/haptics"
+import { Button, TooltipSimple as Tooltip } from "@agentic-os/ui"
 import {
-  launchSession,
-  navigate,
-  takeScreenshot,
-  clickSelector,
-  fillField,
-  executeJavaScript,
-  closeSession,
-  fetchConsoleLogs,
-  type BrowserAutomationStep,
-} from "./browser-automation"
-import {
-  Globe, ExternalLink, Loader2, X, Camera, Play,
-  MousePointer, Type, Terminal, RefreshCw, RotateCcw,
-  PanelRightOpen, PanelRightClose,
-  ChevronDown, ChevronUp, Sparkles, List,
-  AlertTriangle,
+  Globe, ExternalLink, Loader2, X, Play,
+  MousePointer, Type, Terminal, RefreshCw, ArrowLeft, ArrowRight,
+  ChevronDown, ChevronUp, AlertTriangle, Zap, Camera, ImageDown, Smartphone,
 } from "lucide-react"
-import { PremiumEmptyState, getBrowserEmptyState } from "../premium-empty-state"
+import { TabBar } from "./TabBar"
+import { StatusBar } from "./StatusBar"
+import { PremiumEmptyState, getBrowserEmptyState } from "@/components/workspace/premium-empty-state"
+import { useViewport, LiveViewportPlaceholder } from "./LiveWebView"
+import { ConsoleViewer } from "./ConsoleViewer"
+import { NetworkInspector } from "./NetworkInspector"
+import { AnnotationCard } from "./AnnotationCard"
+import { DeviceToolbar } from "./DeviceToolbar"
+import { BrowserViewportSkeleton } from "@/components/ui/Skeleton"
 
-type ViewMode = "screenshot" | "activity" | "split"
-type BrowserTool = "select" | "fill" | "inspect" | "none"
+interface Annotation {
+  id: string
+  x: number
+  y: number
+  selector: string
+  text: string
+  color?: string
+  timestamp: number
+}
+
+interface ActionEntry {
+  id: string
+  action: string
+  detail: string
+  url?: string
+  timestamp: number
+  status: "running" | "done" | "failed"
+}
 
 export function BrowserWorkspace() {
-  const sessions = useBrowserStore((s) => s.sessions)
   const activeSessionId = useBrowserStore((s) => s.activeSessionId)
   const isLaunching = useBrowserStore((s) => s.isLaunching)
   const addSession = useBrowserStore((s) => s.addSession)
   const removeSession = useBrowserStore((s) => s.removeSession)
-  const setActiveSession = useBrowserStore((s) => s.setActiveSession)
   const updateSession = useBrowserStore((s) => s.updateSession)
   const addTab = useBrowserStore((s) => s.addTab)
   const removeTab = useBrowserStore((s) => s.removeTab)
   const setActiveTab = useBrowserStore((s) => s.setActiveTab)
-  const updateTab = useBrowserStore((s) => s.updateTab)
-  const navigateTab = useBrowserStore((s) => s.navigateTab)
   const setLaunching = useBrowserStore((s) => s.setLaunching)
+  const persistState = useBrowserStore((s) => s.persistState)
+  const restoreState = useBrowserStore((s) => s.restoreState)
+  const sessions = useBrowserStore((s) => s.sessions)
 
-  const [url, setUrl] = useState("http://localhost:5173")
-  const [automationSteps, setAutomationSteps] = useState<BrowserAutomationStep[]>([])
-  const [viewMode, setViewMode] = useState<ViewMode>("screenshot")
-  const [activeTool, setActiveTool] = useState<BrowserTool>("none")
-  const [jsInput, setJsInput] = useState("")
-  const [jsResult, setJsResult] = useState("")
-  const [refreshing, setRefreshing] = useState(false)
-  const [showActionSidebar, setShowActionSidebar] = useState(true)
-  const [screenshotZoom, setScreenshotZoom] = useState(1)
-  const [showLogs, setShowLogs] = useState(false)
-  const [browserBackendAvailable, setBrowserBackendAvailable] = useState<boolean | null>(null)
-  const logIntervalRef = useRef<number | null>(null)
-  const screenshotRef = useRef<HTMLDivElement>(null)
-  const { pulse, notify } = useHaptic()
-
-  // Inline input state for selectors
-  const [selectorInput, setSelectorInput] = useState({ selector: "", value: "", tool: "none" as BrowserTool })
+  const [urlInput, setUrlInput] = useState("about:blank")
+  const [actions, setActions] = useState<ActionEntry[]>([])
+  const [showActions, setShowActions] = useState(false)
   const [showSelectorInput, setShowSelectorInput] = useState(false)
-  const selectorRef = useRef<HTMLInputElement>(null)
+  const [selectorValue, setSelectorValue] = useState("")
+  const [activeTool, setActiveTool] = useState<"select" | "fill" | "none">("none")
+  const [browserBackendAvailable, setBrowserBackendAvailable] = useState<boolean | null>(null)
+  const [annotationMode, setAnnotationMode] = useState(false)
+  const [annotations, setAnnotations] = useState<Annotation[]>([])
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
+  const [diffBefore, setDiffBefore] = useState<string | null>(null)
+  const [diffAfter, setDiffAfter] = useState<string | null>(null)
+  const [showDiff, setShowDiff] = useState(false)
+  const [showConsole, setShowConsole] = useState(false)
+  const [showDeviceToolbar, setShowDeviceToolbar] = useState(false)
+  const [viewportSize, setViewportSize] = useState<{ width: number; height: number } | null>(null)
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
   const activeTab = activeSession?.tabs.find((t) => t.id === activeSession.activeTabId) ?? activeSession?.tabs[0] ?? null
 
-  // ── Keyboard shortcut for selector input submit
-  useEffect(() => {
-    if (showSelectorInput && selectorRef.current) {
-      selectorRef.current.focus()
-    }
-  }, [showSelectorInput])
-
-  // ── Probe browser backend availability ──
-  useEffect(() => {
-    let cancelled = false
-    async function probe() {
-      try {
-        const core = await import("@tauri-apps/api/core")
-        if (typeof core.invoke !== "function") {
-          if (!cancelled) setBrowserBackendAvailable(false)
-          return
-        }
-        const result = await core.invoke("browser_launch", { url: "about:blank" }).catch(() => null)
-        if (result && typeof result === "string") {
-          core.invoke("browser_close", { sessionId: result }).catch(() => {})
-          if (!cancelled) setBrowserBackendAvailable(true)
-        } else {
-          if (!cancelled) setBrowserBackendAvailable(false)
-        }
-      } catch {
-        if (!cancelled) setBrowserBackendAvailable(false)
-      }
-    }
-    probe()
-    return () => { cancelled = true }
+  const trackAction = useCallback((entry: ActionEntry) => {
+    setActions((prev) => [entry, ...prev])
   }, [])
 
-  // ── Automation step tracking ──
-  const trackStep = useCallback((step: BrowserAutomationStep) => {
-    setAutomationSteps((prev) => [step, ...prev])
+  const {
+    containerRef,
+    viewportState,
+    createViewport,
+    destroyViewport,
+    navigate,
+    click,
+    type,
+    goBack,
+    goForward,
+    reload,
+    screenshot,
+    executeJs,
+    injectAnnotations,
+  } = useViewport()
+
+  useEffect(() => {
+    restoreState()
   }, [])
 
-  // ── Console log polling (only if backend is available) ──
   useEffect(() => {
-    if (activeSessionId && browserBackendAvailable) {
-      logIntervalRef.current = window.setInterval(async () => {
-        try {
-          const logs = await fetchConsoleLogs(activeSessionId)
-          if (logs.length > 0) {
-            updateSession(activeSessionId, {
-              logs: [
-                ...(useBrowserStore.getState().sessions.find((s) => s.id === activeSessionId)?.logs ?? []),
-                ...logs,
-              ],
-            })
-          }
-        } catch { /* ignore */ }
-      }, 2000)
+    const eapi = (window as any).electronAPI
+    if (eapi?.browserDetect) {
+      eapi.browserDetect().then((r: any) => setBrowserBackendAvailable(Array.isArray(r) && r.length > 0)).catch(() => setBrowserBackendAvailable(false))
+    } else {
+      setBrowserBackendAvailable(false)
     }
-    return () => {
-      if (logIntervalRef.current) {
-        clearInterval(logIntervalRef.current)
-        logIntervalRef.current = null
-      }
+  }, [])
+
+  const handleNavigate = useCallback(async (targetUrl?: string) => {
+    const navUrl = targetUrl || urlInput
+    if (!navUrl.trim()) return
+    await navigate(navUrl)
+    trackAction({ id: `nav-${Date.now()}`, action: "navigate", detail: navUrl, timestamp: Date.now(), status: "done" })
+    if (activeSessionId) {
+      const tabId = `tab_${Date.now()}`
+      addTab(activeSessionId, { id: tabId, url: navUrl, title: "", history: [navUrl], historyIndex: 0 })
+      setActiveTab(activeSessionId, tabId)
     }
-  }, [activeSessionId, updateSession])
+  }, [urlInput, navigate, trackAction, activeSessionId, addTab, setActiveTab])
 
-  // ── Auto-refresh screenshot after actions ──
-  const refreshScreenshot = useCallback(async () => {
-    if (!activeSessionId) return
-    setRefreshing(true)
-    try {
-      const { base64 } = await takeScreenshot(activeSessionId, trackStep)
-      updateSession(activeSessionId, { screenshot: base64 })
-    } catch { /* silent */ }
-    setRefreshing(false)
-  }, [activeSessionId, trackStep, updateSession])
+  const handleGoBack = useCallback(async () => {
+    await goBack()
+    trackAction({ id: `back-${Date.now()}`, action: "navigate_back", detail: "", timestamp: Date.now(), status: "done" })
+  }, [goBack, trackAction])
 
-  // ── Inline selector click ──
-  async function handleSelectorClick(selector: string) {
-    if (!activeSessionId || !selector.trim()) return
-    setSelectorInput({ selector: "", value: "", tool: "none" })
+  const handleGoForward = useCallback(async () => {
+    await goForward()
+    trackAction({ id: `fwd-${Date.now()}`, action: "navigate_forward", detail: "", timestamp: Date.now(), status: "done" })
+  }, [goForward, trackAction])
+
+  const handleReload = useCallback(async () => {
+    await reload()
+    trackAction({ id: `reload-${Date.now()}`, action: "reload", detail: "", timestamp: Date.now(), status: "done" })
+  }, [reload, trackAction])
+
+  const handleClick = useCallback(async (selector: string) => {
+    if (!selector.trim()) return
+    const result = await click(selector.trim())
+    trackAction({
+      id: `click-${Date.now()}`, action: "click", detail: selector.trim(),
+      url: viewportState.url, timestamp: Date.now(),
+      status: result.success ? "done" : "failed",
+    })
     setShowSelectorInput(false)
-    pulse("medium")
-    const step = await clickSelector(activeSessionId, selector.trim(), trackStep)
-    setAutomationSteps((prev) => [step, ...prev])
-    await refreshScreenshot()
-  }
+    setActiveTool("none")
+    setSelectorValue("")
+  }, [click, trackAction, viewportState.url])
 
-  // ── Inline fill action ──
-  async function handleSelectorFill(selector: string, value: string) {
-    if (!activeSessionId || !selector.trim() || !value) return
-    setSelectorInput({ selector: "", value: "", tool: "none" })
+  const handleType = useCallback(async (selector: string, text: string) => {
+    if (!selector.trim() || !text) return
+    const result = await type(selector.trim(), text)
+    trackAction({
+      id: `type-${Date.now()}`, action: "type", detail: `${selector.trim()} = "${text.slice(0, 50)}"`,
+      url: viewportState.url, timestamp: Date.now(),
+      status: result.success ? "done" : "failed",
+    })
     setShowSelectorInput(false)
-    pulse("medium")
-    const step = await fillField(activeSessionId, selector.trim(), value, trackStep)
-    setAutomationSteps((prev) => [step, ...prev])
-    await refreshScreenshot()
-  }
+    setActiveTool("none")
+    setSelectorValue("")
+  }, [type, trackAction, viewportState.url])
 
-  // ── Actions ──
-  async function handleLaunch() {
-    if (!url.trim() || isLaunching) return
+  const handleLaunch = useCallback(async (targetUrl?: string) => {
+    const launchUrl = targetUrl || urlInput
+    if (!launchUrl.trim() || isLaunching) return
     setLaunching(true)
     try {
-      const { sessionId, step } = await launchSession(url, trackStep)
+      const sessionId = `viewport-${Date.now()}`
       const tabId = `tab_${Date.now()}`
-      addSession({ id: sessionId, name: "", tabs: [{ id: tabId, url, title: "", history: [url], historyIndex: 0 }], activeTabId: tabId, screenshot: null, logs: [], createdAt: Date.now() })
-      const screenshot = await takeScreenshot(sessionId, trackStep)
-      updateSession(sessionId, { screenshot: screenshot.base64 })
-      setAutomationSteps((prev) => [step, ...prev])
+      addSession({
+        id: sessionId, name: "", tabs: [{ id: tabId, url: launchUrl, title: "", history: [launchUrl], historyIndex: 0 }],
+        activeTabId: tabId, screenshot: null, logs: [], createdAt: Date.now(),
+      })
+      await navigate(launchUrl)
+      await injectAnnotations()
+      trackAction({ id: `launch-${Date.now()}`, action: "launch", detail: launchUrl, timestamp: Date.now(), status: "done" })
+      persistState()
     } catch (e) {
       console.error("Launch failed:", e)
+      trackAction({ id: `launch-err-${Date.now()}`, action: "error", detail: String(e), timestamp: Date.now(), status: "failed" })
     }
     setLaunching(false)
-  }
+  }, [urlInput, isLaunching, setLaunching, addSession, navigate, injectAnnotations, trackAction, persistState])
 
-  async function handleNavigate() {
-    if (!activeSessionId || !url.trim()) return
-    const step = await navigate(activeSessionId, url, trackStep)
-    setAutomationSteps((prev) => [step, ...prev])
-    const title = await getSessionTitle(activeSessionId)
-    if (activeTab) {
-      updateTab(activeSessionId, activeTab.id, { url, title })
-      navigateTab(activeSessionId, activeTab.id, url)
-    }
-    await refreshScreenshot()
-  }
-
-  async function getSessionTitle(sessionId: string): Promise<string> {
-    try {
-      return await rawBrowserGetTitle(sessionId)
-    } catch {
-      return url
-    }
-  }
-
-  async function handleScreenshot() {
-    await refreshScreenshot()
-  }
-
-  async function handleClickAction() {
-    if (!activeSessionId) return
-    pulse("selection")
-    setSelectorInput({ selector: "", value: "", tool: "select" })
-    setShowSelectorInput(true)
-  }
-
-  async function handleFillAction() {
-    if (!activeSessionId) return
-    pulse("selection")
-    setSelectorInput({ selector: "", value: "", tool: "fill" })
-    setShowSelectorInput(true)
-  }
-
-  async function handleExecuteJs() {
-    if (!activeSessionId || !jsInput.trim()) return
-    pulse("light")
-    const { result, step } = await executeJavaScript(activeSessionId, jsInput, trackStep)
-    setJsResult(result)
-    setAutomationSteps((prev) => [step, ...prev])
-    updateSession(activeSessionId, {
-      logs: [
-        ...(useBrowserStore.getState().sessions.find((s) => s.id === activeSessionId)?.logs ?? []),
-        `> ${jsInput}`,
-        result,
-      ],
-    })
-  }
-
-  async function handleClose(id: string) {
-    try {
-      const step = await closeSession(id, trackStep)
-      setAutomationSteps((prev) => [step, ...prev])
-    } catch { /* ignore */ }
+  const handleCloseSession = useCallback((id: string) => {
     removeSession(id)
-  }
+    if (sessions.length <= 1) destroyViewport()
+    persistState()
+  }, [removeSession, sessions.length, destroyViewport, persistState])
 
-  // ── Keyboard shortcuts ──
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-        e.preventDefault()
-        if (activeSession) handleNavigate()
-        else handleLaunch()
-      }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "r") {
-        e.preventDefault()
-        handleScreenshot()
-      }
+  const handleScreenshot = useCallback(async () => {
+    if (!activeSessionId) return
+    const dataUrl = await screenshot()
+    if (dataUrl) updateSession(activeSessionId, { screenshot: dataUrl })
+  }, [activeSessionId, screenshot, updateSession])
+
+  const handleExecuteJs = useCallback(async (js: string) => {
+    if (!js.trim()) return
+    const result = await executeJs(js)
+    trackAction({
+      id: `js-${Date.now()}`, action: "js_execute", detail: js.slice(0, 80),
+      timestamp: Date.now(), status: result.success ? "done" : "failed",
+    })
+    if (activeSessionId) {
+      updateSession(activeSessionId, {
+        logs: [
+          ...(useBrowserStore.getState().sessions.find((s) => s.id === activeSessionId)?.logs ?? []),
+          `> ${js}`, JSON.stringify(result.result ?? result.error),
+        ],
+      })
     }
-    window.addEventListener("keydown", handleKey)
-    return () => window.removeEventListener("keydown", handleKey)
-  }, [activeSession, url])
+  }, [executeJs, trackAction, activeSessionId, updateSession])
 
-  const statusConfig = {
-    idle: { label: "Idle", color: "text-white/30", dot: "bg-white/20" },
-    launching: { label: "Launching", color: "text-blue-400", dot: "bg-blue-400 animate-pulse" },
-    connected: { label: "Connected", color: "text-green-400", dot: "bg-green-400" },
-    unavailable: { label: "Backend unavailable", color: "text-yellow-500/60", dot: "bg-yellow-500/40" },
-    error: { label: "Error", color: "text-red-400", dot: "bg-red-400" },
-  }
+  // ── Listen for annotation events from viewport ──
+  useEffect(() => {
+    const unsub = listen("viewport-annotation", (event: { payload: Annotation }) => {
+      setAnnotations((prev) => [...prev, event.payload])
+    })
+    return () => { unsub.then((fn) => fn()) }
+  }, [])
 
-  const browserStatus: "idle" | "launching" | "connected" | "unavailable" | "error" =
-    browserBackendAvailable === null ? "idle"
-    : browserBackendAvailable === false ? "unavailable"
-    : isLaunching ? "launching"
-    : activeSession ? "connected"
-    : "idle"
+  // ── Toggle annotation mode ──
+  const handleToggleAnnotationMode = useCallback(async () => {
+    const next = !annotationMode
+    setAnnotationMode(next)
+    if (next) {
+      await injectAnnotations()
+    }
+  }, [annotationMode, injectAnnotations])
 
-  const st = statusConfig[browserStatus]
+  // ── Update annotation ──
+  const handleUpdateAnnotation = useCallback((id: string, updates: { text?: string; color?: string }) => {
+    setAnnotations((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)))
+  }, [])
 
-  const runningSteps = automationSteps.filter((s) => s.status === "running").length
-  const failedSteps = automationSteps.filter((s) => s.status === "failed").length
+  // ── Delete annotation ──
+  const handleDeleteAnnotation = useCallback((id: string) => {
+    setAnnotations((prev) => prev.filter((a) => a.id !== id))
+    setSelectedAnnotationId((prev) => (prev === id ? null : prev))
+  }, [])
+
+  // ── Visual diff: capture before ──
+  const handleCaptureBefore = useCallback(async () => {
+    const dataUrl = await screenshot()
+    if (dataUrl) setDiffBefore(dataUrl)
+  }, [screenshot])
+
+  // ── Visual diff: capture after ──
+  const handleCaptureAfter = useCallback(async () => {
+    const dataUrl = await screenshot()
+    if (dataUrl) setDiffAfter(dataUrl)
+  }, [screenshot])
+
+  // ── Clear diff ──
+  const handleClearDiff = useCallback(() => {
+    setDiffBefore(null)
+    setDiffAfter(null)
+    setShowDiff(false)
+  }, [])
+
+  useEffect(() => {
+    if (viewportState.url && viewportState.url !== "about:blank") {
+      setUrlInput(viewportState.url)
+    }
+  }, [viewportState.url])
+
+  const hasLiveViewport = !!activeSession
+  const runningActions = actions.filter((a) => a.status === "running").length
 
   return (
     <div className="flex h-full flex-col bg-[#0a0a0b]">
-      {/* ── URL Bar ── */}
-      <div className="flex items-center gap-2 border-b border-white/[0.06] bg-[#0c0c0d] px-3 py-2">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <motion.span
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ duration: 2, repeat: browserStatus === "launching" ? Infinity : 0, ease: "easeInOut" }}
-            className={cn("inline-block h-1.5 w-1.5 rounded-full", st.dot)}
-          />
-          <span className={cn("text-[9px] font-medium", st.color)}>{st.label}</span>
-        </div>
+      {/* Navigation bar */}
+      <div className="flex items-center gap-2 border-b border-white/[0.06] bg-[#0c0c0d] px-3 py-1.5 shrink-0">
+        {hasLiveViewport && (
+          <div className="flex items-center gap-0.5 mr-1">
+            <Tooltip content="Back">
+              <button onClick={handleGoBack} disabled={!viewportState.canGoBack}
+                className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] disabled:opacity-20 transition-all">
+                <ArrowLeft className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Forward">
+              <button onClick={handleGoForward} disabled={!viewportState.canGoForward}
+                className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] disabled:opacity-20 transition-all">
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Reload">
+              <button onClick={handleReload}
+                className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all">
+                <RefreshCw className={cn("h-3.5 w-3.5", viewportState.isLoading && "animate-spin")} />
+              </button>
+            </Tooltip>
+          </div>
+        )}
 
+        {/* URL bar */}
         <div className="relative flex-1">
           <Globe className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-white/20" />
           <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                activeSession ? handleNavigate() : handleLaunch()
+                hasLiveViewport ? handleNavigate() : handleLaunch()
               }
             }}
-            placeholder="http://localhost:5173"
+            placeholder={hasLiveViewport ? "Enter URL..." : "Enter a URL to launch browser"}
+            aria-label="URL address bar"
             className={cn(
               "w-full h-7 rounded-lg border bg-white/[0.03] pl-7 pr-2 text-[11px] font-mono outline-none transition-all",
               "text-white/70 placeholder:text-white/20",
@@ -310,528 +313,345 @@ export function BrowserWorkspace() {
           />
         </div>
 
-        {activeSession ? (
-          <Tooltip content="Navigate (⌘↵)">
-            <Button size="sm" className="h-7 text-[10px] shrink-0" onClick={handleNavigate}>
+        {/* Action buttons */}
+        <div className="flex items-center gap-0.5">
+          {hasLiveViewport && (
+            <>
+              <Tooltip content="Click element">
+                <button onClick={() => { setActiveTool("select"); setShowSelectorInput(true) }}
+                  className={cn("rounded p-1 transition-all", activeTool === "select" ? "text-blue-400 bg-blue-500/10" : "text-white/30 hover:text-white/60")}>
+                  <MousePointer className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Fill field">
+                <button onClick={() => { setActiveTool("fill"); setShowSelectorInput(true) }}
+                  className={cn("rounded p-1 transition-all", activeTool === "fill" ? "text-blue-400 bg-blue-500/10" : "text-white/30 hover:text-white/60")}>
+                  <Type className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+              <div className="w-px h-4 bg-white/[0.06] mx-0.5" />
+              <Tooltip content={annotationMode ? "Exit annotation mode" : "Annotation mode (double-click page to pin)"}>
+                <button onClick={handleToggleAnnotationMode}
+                  className={cn("rounded p-1 transition-all", annotationMode ? "text-amber-400 bg-amber-500/10" : "text-white/30 hover:text-white/60")}>
+                  <Terminal className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+              {annotations.length > 0 && (
+                <span className="text-[9px] text-amber-400/60 font-mono">{annotations.length}</span>
+              )}
+              <Tooltip content="Visual diff — capture before/after screenshots">
+                <button onClick={() => setShowDiff(!showDiff)}
+                  className={cn("rounded p-1 transition-all", showDiff ? "text-white/60 bg-white/[0.06]" : "text-white/30 hover:text-white/60")}>
+                  <ImageDown className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+              <div className="w-px h-4 bg-white/[0.06] mx-0.5" />
+              <Tooltip content="Console logs">
+                <button onClick={() => setShowConsole(!showConsole)}
+                  className={cn("rounded p-1 transition-all", showConsole ? "text-white/60 bg-white/[0.06]" : "text-white/30 hover:text-white/60")}>
+                  <Terminal className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Device emulation">
+                <button onClick={() => setShowDeviceToolbar(!showDeviceToolbar)}
+                  className={cn("rounded p-1 transition-all", showDeviceToolbar ? "text-blue-400 bg-blue-500/10" : "text-white/30 hover:text-white/60")}>
+                  <Smartphone className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+            </>
+          )}
+          <Tooltip content="Action history">
+            <button onClick={() => setShowActions(!showActions)}
+              className={cn("rounded p-1 transition-all relative", showActions ? "text-white/60 bg-white/[0.06]" : "text-white/30 hover:text-white/60")}>
+              <Zap className="h-3.5 w-3.5" />
+              {runningActions > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
+              )}
+            </button>
+          </Tooltip>
+          {hasLiveViewport && (
+            <Button size="sm" className="h-7 text-[10px] shrink-0" onClick={() => handleNavigate()}>
               <Play className="h-3 w-3 mr-1" />
               Go
             </Button>
-          </Tooltip>
-        ) : (
-          <Tooltip content={browserBackendAvailable === false ? "Browser backend not available" : "Launch browser (⌘↵)"}>
-            <Button size="sm" className="h-7 text-[10px] shrink-0" onClick={handleLaunch} disabled={isLaunching || browserBackendAvailable === false}>
-              {isLaunching ? (
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              ) : (
-                <ExternalLink className="h-3 w-3 mr-1" />
-              )}
-              Launch
-            </Button>
-          </Tooltip>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* ── Session Tabs ── */}
-      {sessions.length > 0 && (
-        <div className="flex items-center gap-1 border-b border-white/[0.06] bg-[#0c0c0d]/50 px-3 py-1 overflow-x-auto" role="tablist" aria-label="Browser sessions">
-          {sessions.map((s) => (
-            <div
-              key={s.id}
-              role="tab"
-              aria-selected={activeSessionId === s.id}
-              aria-label={`Session: ${s.tabs[0]?.title || s.tabs[0]?.url || s.name}`}
-              tabIndex={activeSessionId === s.id ? 0 : -1}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] transition-all cursor-pointer",
-                activeSessionId === s.id
-                  ? "bg-blue-500/10 text-blue-400"
-                  : "text-white/30 hover:text-white/60 hover:bg-white/[0.04]",
-              )}
-              onClick={() => setActiveSession(s.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault()
-                  setActiveSession(s.id)
-                }
-              }}
-            >
-              <Globe className="h-3 w-3 shrink-0" aria-hidden="true" />
-              <span className="truncate max-w-24">{s.tabs[0]?.title || s.tabs[0]?.url || s.name}</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleClose(s.id)
+      {/* Selector input bar */}
+      <AnimatePresence>
+        {showSelectorInput && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="border-b border-white/[0.04] overflow-hidden"
+          >
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/[0.03]">
+              <span className="text-[9px] font-medium text-blue-400 uppercase shrink-0 whitespace-nowrap">
+                {activeTool === "select" ? "CSS Selector" : "Selector, Value"}
+              </span>
+              <input
+                autoFocus
+                value={selectorValue}
+                onChange={(e) => setSelectorValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (activeTool === "select") handleClick(selectorValue)
+                    else if (activeTool === "fill") {
+                      const parts = selectorValue.split(",")
+                      handleType(parts[0].trim(), parts.slice(1).join(",").trim())
+                    }
+                  }
+                  if (e.key === "Escape") { setShowSelectorInput(false); setActiveTool("none") }
                 }}
-                className="ml-0.5 rounded p-0.5 hover:bg-white/[0.06] hover:text-white/70 transition-colors"
-                aria-label={`Close ${s.tabs[0]?.title || s.tabs[0]?.url || s.name}`}
-              >
-                <X className="h-2.5 w-2.5" />
+                placeholder={activeTool === "select" ? "#button-id or .class-name" : "#input-id, text to type"}
+                className="flex-1 h-6 rounded bg-white/[0.04] border border-white/[0.06] px-2 text-[10px] font-mono text-white/60 outline-none focus:border-blue-500/30 placeholder:text-white/15"
+              />
+              <button onClick={() => { setShowSelectorInput(false); setActiveTool("none") }}
+                className="rounded p-0.5 text-white/30 hover:text-white/60">
+                <X className="h-3 w-3" />
               </button>
             </div>
-          ))}
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* ── Main Content ── */}
-      {activeSession ? (
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left: Screenshot / Activity */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.06] bg-[#0c0c0d]/30" role="toolbar" aria-label="Browser tools">
-              <div className="flex items-center gap-1">
-                {/* View mode */}
-                <div className="flex items-center gap-0.5 rounded-lg bg-white/[0.03] p-0.5" role="radiogroup" aria-label="View mode">
-                  <Tooltip content="Screenshot view">
-                    <button
-                      role="radio"
-                      aria-checked={viewMode === "screenshot"}
-                      onClick={() => setViewMode("screenshot")}
-                      className={cn(
-                        "rounded-md p-1 transition-all",
-                        viewMode === "screenshot"
-                          ? "bg-blue-500/10 text-blue-400"
-                          : "text-white/30 hover:text-white/60",
-                      )}
-                    >
-                      <Camera className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="Activity stream">
-                    <button
-                      role="radio"
-                      aria-checked={viewMode === "activity"}
-                      onClick={() => setViewMode("activity")}
-                      className={cn(
-                        "rounded-md p-1 transition-all",
-                        viewMode === "activity"
-                          ? "bg-blue-500/10 text-blue-400"
-                          : "text-white/30 hover:text-white/60",
-                      )}
-                    >
-                      <List className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="Split view">
-                    <button
-                      role="radio"
-                      aria-checked={viewMode === "split"}
-                      onClick={() => setViewMode("split")}
-                      className={cn(
-                        "rounded-md p-1 transition-all",
-                        viewMode === "split"
-                          ? "bg-blue-500/10 text-blue-400"
-                          : "text-white/30 hover:text-white/60",
-                      )}
-                    >
-                      <PanelRightOpen className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  </Tooltip>
+      {/* Main content */}
+      {hasLiveViewport ? (
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* Tab bar */}
+          {activeSession && activeSession.tabs.length > 0 && (
+            <TabBar
+              tabs={activeSession.tabs}
+              activeTabId={activeSession.activeTabId}
+              onSelectTab={(tabId) => setActiveTab(activeSessionId!, tabId)}
+              onCloseTab={(tabId) => removeTab(activeSessionId!, tabId)}
+              onNewTab={() => {
+                const tabId = `tab_${Date.now()}`
+                addTab(activeSessionId!, { id: tabId, url: "about:blank", title: "New Tab", history: ["about:blank"], historyIndex: 0 })
+                persistState()
+              }}
+            />
+          )}
+
+          {/* Live viewport */}
+          <div className="flex-1 relative overflow-hidden bg-white flex items-start justify-center">
+            <div
+              className={cn("relative h-full", viewportSize ? "border border-white/[0.08] shadow-2xl" : "flex-1")}
+              style={viewportSize ? { maxWidth: viewportSize.width, maxHeight: viewportSize.height, aspectRatio: `${viewportSize.width} / ${viewportSize.height}` } : undefined}
+            >
+              <LiveViewportPlaceholder containerRef={containerRef} className="absolute inset-0" />
+              {viewportState.isLoading && (
+                <div className="absolute inset-0 z-10 bg-[#0a0a0b]">
+                  <BrowserViewportSkeleton />
                 </div>
-
-                <span className="text-white/10 mx-1">|</span>
-
-                {/* Action tools */}
-                <Tooltip content="Click element">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleClickAction}
-                    className={cn(
-                      "rounded-md p-1 transition-all",
-                      selectorInput.tool === "select" && showSelectorInput
-                        ? "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30"
-                        : "text-white/30 hover:text-amber-400 hover:bg-amber-500/10",
-                    )}
-                    aria-label="Click element by CSS selector"
-                  >
-                    <MousePointer className="h-3 w-3" aria-hidden="true" />
-                  </motion.button>
-                </Tooltip>
-                <Tooltip content="Fill field">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleFillAction}
-                    className={cn(
-                      "rounded-md p-1 transition-all",
-                      selectorInput.tool === "fill" && showSelectorInput
-                        ? "bg-violet-500/15 text-violet-400 ring-1 ring-violet-500/30"
-                        : "text-white/30 hover:text-violet-400 hover:bg-violet-500/10",
-                    )}
-                    aria-label="Fill form field"
-                  >
-                    <Type className="h-3 w-3" aria-hidden="true" />
-                  </motion.button>
-                </Tooltip>
-
-                <span className="text-white/10 mx-1">|</span>
-
-                {/* Screenshot controls */}
-                <Tooltip content="Take screenshot (⌘⇧R)">
-                  <button
-                    onClick={handleScreenshot}
-                    disabled={refreshing}
-                    className="rounded-md p-1 text-white/30 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all disabled:opacity-50"
-                    aria-label="Take screenshot"
-                  >
-                    {refreshing ? (
-                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                    ) : (
-                      <RefreshCw className="h-3 w-3" aria-hidden="true" />
-                    )}
-                  </button>
-                </Tooltip>
-                <Tooltip content="Zoom out">
-                  <button
-                    onClick={() => setScreenshotZoom((z) => Math.max(0.25, z - 0.25))}
-                    className="rounded-md p-1 text-white/20 hover:text-white/60 transition-all text-[11px] font-mono"
-                    aria-label="Zoom out"
-                  >
-                    -
-                  </button>
-                </Tooltip>
-                <span className="text-[9px] text-white/25 font-mono w-8 text-center" aria-live="polite" aria-label={`Zoom ${Math.round(screenshotZoom * 100)}%`}>
-                  {Math.round(screenshotZoom * 100)}%
-                </span>
-                <Tooltip content="Zoom in">
-                  <button
-                    onClick={() => setScreenshotZoom((z) => Math.min(3, z + 0.25))}
-                    className="rounded-md p-1 text-white/20 hover:text-white/60 transition-all text-[11px] font-mono"
-                    aria-label="Zoom in"
-                  >
-                    +
-                  </button>
-                </Tooltip>
-                <Tooltip content="Reset zoom">
-                  <button
-                    onClick={() => setScreenshotZoom(1)}
-                    className="rounded-md p-1 text-white/20 hover:text-white/60 transition-all"
-                    aria-label="Reset zoom"
-                  >
-                    <RotateCcw className="h-3 w-3" aria-hidden="true" />
-                  </button>
-                </Tooltip>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Automation status */}
-                {runningSteps > 0 && (
-                  <span className="flex items-center gap-1 text-[9px] text-blue-400/60">
-                    <span className="relative inline-flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-blue-500" />
-                    </span>
-                    {runningSteps} running
-                  </span>
-                )}
-                {failedSteps > 0 && (
-                  <span className="flex items-center gap-1 text-[9px] text-red-400/60">
-                    <AlertTriangle className="h-2.5 w-2.5" />
-                    {failedSteps} failed
-                  </span>
-                )}
-
-                <span className="text-white/10 mx-1">|</span>
-
-                <Tooltip content={`Toggle activity sidebar`}>
-                  <button
-                    onClick={() => setShowActionSidebar(!showActionSidebar)}
-                    className={cn(
-                      "rounded-md p-1 transition-all",
-                      showActionSidebar ? "text-blue-400" : "text-white/30 hover:text-white/60",
-                    )}
-                  >
-                    {showActionSidebar ? (
-                      <PanelRightClose className="h-3 w-3" />
-                    ) : (
-                      <PanelRightOpen className="h-3 w-3" />
-                    )}
-                  </button>
-                </Tooltip>
-              </div>
+              )}
             </div>
-
-            {/* Inline selector input bar */}
-          <AnimatePresence>
-            {showSelectorInput && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.12 }}
-                className="overflow-hidden"
-              >
-                <div className="flex items-center gap-2 border-b border-white/[0.06] bg-[#0c0c0d] px-3 py-2">
-                  <div className={cn(
-                    "flex items-center justify-center h-5 w-5 rounded-md shrink-0",
-                    selectorInput.tool === "select"
-                      ? "bg-amber-500/15 text-amber-400"
-                      : "bg-violet-500/15 text-violet-400",
-                  )}>
-                    {selectorInput.tool === "select"
-                      ? <MousePointer className="h-2.5 w-2.5" />
-                      : <Type className="h-2.5 w-2.5" />
-                    }
-                  </div>
-                  <span className="text-[9px] text-white/30 font-medium shrink-0">
-                    {selectorInput.tool === "select" ? "Click" : "Fill"}
-                  </span>
-                  <input
-                    ref={selectorRef}
-                    value={selectorInput.selector}
-                    onChange={(e) => setSelectorInput((s) => ({ ...s, selector: e.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && selectorInput.selector.trim()) {
-                        if (selectorInput.tool === "select") {
-                          handleSelectorClick(selectorInput.selector)
-                        } else {
-                          // For fill, stay open to collect value
-                        }
-                      }
-                      if (e.key === "Escape") {
-                        setShowSelectorInput(false)
-                        setSelectorInput({ selector: "", value: "", tool: "none" })
-                      }
-                    }}
-                    placeholder="CSS selector..."
-                    className="flex-1 rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-[10px] font-mono text-white/60 outline-none focus:border-blue-500/30 transition-all placeholder:text-white/20"
-                  />
-
-                  {selectorInput.tool === "fill" && (
-                    <>
-                      <span className="text-[8px] text-white/15">→</span>
-                      <input
-                        value={selectorInput.value}
-                        onChange={(e) => setSelectorInput((s) => ({ ...s, value: e.target.value }))}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && selectorInput.selector.trim() && selectorInput.value) {
-                            handleSelectorFill(selectorInput.selector, selectorInput.value)
-                          }
-                          if (e.key === "Escape") {
-                            setShowSelectorInput(false)
-                            setSelectorInput({ selector: "", value: "", tool: "none" })
-                          }
-                        }}
-                        placeholder="Value..."
-                        className="w-28 rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-[10px] font-mono text-white/60 outline-none focus:border-violet-500/30 transition-all placeholder:text-white/20"
-                      />
-                    </>
-                  )}
-
-                  {selectorInput.tool === "select" ? (
-                    <motion.button
-                      whileHover={{ scale: 1.03 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => handleSelectorClick(selectorInput.selector)}
-                      disabled={!selectorInput.selector.trim()}
-                      className="rounded-md bg-amber-500/15 border border-amber-500/25 px-2 py-1 text-[9px] text-amber-400 hover:bg-amber-500/25 transition-all disabled:opacity-40"
-                    >
-                      Click
-                    </motion.button>
-                  ) : (
-                    <motion.button
-                      whileHover={{ scale: 1.03 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => handleSelectorFill(selectorInput.selector, selectorInput.value)}
-                      disabled={!selectorInput.selector.trim() || !selectorInput.value}
-                      className="rounded-md bg-violet-500/15 border border-violet-500/25 px-2 py-1 text-[9px] text-violet-400 hover:bg-violet-500/25 transition-all disabled:opacity-40"
-                    >
-                      Apply
-                    </motion.button>
-                  )}
-
-                  <button
-                    onClick={() => {
-                      setShowSelectorInput(false)
-                      setSelectorInput({ selector: "", value: "", tool: "none" })
-                    }}
-                    className="rounded p-0.5 text-white/25 hover:text-white/60 transition-all"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              </motion.div>
+            {/* Loading bar */}
+            {viewportState.isLoading && (
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-blue-500/20 z-10">
+                <motion.div
+                  className="h-full bg-blue-500"
+                  initial={{ width: "0%" }}
+                  animate={{ width: "80%" }}
+                  transition={{ duration: 2, ease: "easeOut" }}
+                />
+              </div>
             )}
-          </AnimatePresence>
 
-          {/* Content area */}
-            <div className="flex-1 relative overflow-hidden">
-              {/* Screenshot view */}
-              {(viewMode === "screenshot" || viewMode === "split") && (
-                <div className="absolute inset-0 overflow-auto bg-[#0a0a0b]">
-                  {activeSession.screenshot ? (
-                    <div
-                      ref={screenshotRef}
-                      className="flex items-start justify-center p-4 min-h-full"
+            {/* Annotation pins overlay */}
+            {annotationMode && annotations.length > 0 && (
+              <div className="absolute inset-0 z-20">
+                {annotations.map((ann) => (
+                  <div key={ann.id}>
+                    <motion.div
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="absolute -translate-x-1/2 -translate-y-1/2"
+                      style={{ left: ann.x, top: ann.y }}
                     >
                       <div
-                        style={{
-                          transform: `scale(${screenshotZoom})`,
-                          transformOrigin: "top center",
-                        }}
-                        className="shrink-0"
+                        className="relative group cursor-pointer pointer-events-auto"
+                        onClick={() => setSelectedAnnotationId(selectedAnnotationId === ann.id ? null : ann.id)}
                       >
-                        <img
-                          src={`data:image/png;base64,${activeSession.screenshot}`}
-                          alt={`Browser screenshot of ${activeTab?.title || activeTab?.url || activeSession.name}`}
-                          className="w-full max-w-4xl rounded-lg border border-white/[0.06] shadow-2xl shadow-black/40"
-                          draggable={false}
+                        <div
+                          className="h-4 w-4 rounded-full border-2 shadow-lg"
+                          style={{
+                            backgroundColor: ann.color || "#f59e0b",
+                            borderColor: ann.color || "#f59e0b",
+                          }}
                         />
+                        <div className="absolute top-4 left-1/2 -translate-x-1/2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                          <div className="bg-[#0d0d0e] border border-white/[0.08] rounded-lg px-2 py-1 text-[9px] text-white/70 whitespace-nowrap shadow-xl max-w-[200px] truncate">
+                            {ann.text || ann.selector}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <div className="flex flex-col items-center gap-2">
-                        <Camera className="h-6 w-6 text-white/20" />
-                        <p className="text-xs text-white/30">Waiting for screenshot...</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Activity view */}
-              {(viewMode === "activity" || viewMode === "split") && (
-                <div
-                  className={cn(
-                    "overflow-y-auto",
-                    viewMode === "split"
-                      ? "absolute inset-y-0 right-0 w-1/2 border-l border-white/[0.06]"
-                      : "absolute inset-0",
-                  )}
-                  style={viewMode === "activity" ? { background: "#0a0a0b" } : undefined}
-                >
-                  <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.06] sticky top-0 bg-[#0c0c0d]/80 backdrop-blur-sm">
-                    <span className="text-[10px] font-medium text-white/30">Activity</span>
-                    <span className="text-[9px] text-white/20">{automationSteps.length} steps</span>
-                  </div>
-                  <BrowserActivityStream steps={automationSteps} />
-                </div>
-              )}
-            </div>
-
-            {/* Console/JS bar at bottom */}
-            <div className="border-t border-white/[0.06] bg-[#0c0c0d]/30">
-              <button
-                onClick={() => setShowLogs(!showLogs)}
-                className="flex items-center gap-1.5 px-3 py-1 text-[9px] text-white/30 hover:text-white/60 w-full transition-colors"
-              >
-                <Terminal className="h-2.5 w-2.5" />
-                <span>Console & JS</span>
-                <span className="text-white/15">
-                  ({activeSession.logs?.length ?? 0} entries)
-                </span>
-                <span className="ml-auto">
-                  {showLogs ? (
-                    <ChevronDown className="h-2.5 w-2.5" />
-                  ) : (
-                    <ChevronUp className="h-2.5 w-2.5" />
-                  )}
-                </span>
-              </button>
-
-              <AnimatePresence>
-                {showLogs && (
-                  <motion.div
-                    initial={{ height: 0 }}
-                    animate={{ height: "auto" }}
-                    exit={{ height: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="max-h-32 overflow-y-auto border-t border-white/[0.04] px-3 py-1.5 space-y-0.5">
-                      {(activeSession.logs ?? []).slice(-100).map((log, i) => (
-                        <pre
-                          key={i}
-                          className={cn(
-                            "text-[9px] font-mono whitespace-pre-wrap leading-relaxed",
-                            log.startsWith("[error]") ? "text-red-400/70" :
-                            log.startsWith("[warn]") ? "text-yellow-400/70" :
-                            log.startsWith("[action]") ? "text-blue-400/70" :
-                            log.startsWith(">") ? "text-green-400/70" :
-                            "text-white/25",
-                          )}
-                        >
-                          {log}
-                        </pre>
-                      ))}
-                      {(activeSession.logs ?? []).length === 0 && (
-                        <p className="text-[9px] text-white/15 italic">No console output yet</p>
-                      )}
-                    </div>
-
-                    {/* JS input */}
-                    <div className="flex items-center gap-1 border-t border-white/[0.04] px-3 py-1.5">
-                      <span className="text-[9px] text-green-400/50 font-mono shrink-0">&gt;</span>
-                      <input
-                        value={jsInput}
-                        onChange={(e) => setJsInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault()
-                            handleExecuteJs()
-                          }
-                        }}
-                        placeholder="JavaScript..."
-                        className="flex-1 bg-transparent text-[10px] font-mono text-white/60 outline-none placeholder:text-white/15"
+                    </motion.div>
+                    {selectedAnnotationId === ann.id && (
+                      <AnnotationCard
+                        id={ann.id}
+                        x={ann.x}
+                        y={ann.y}
+                        selector={ann.selector}
+                        text={ann.text}
+                        color={ann.color || "#f59e0b"}
+                        onUpdate={handleUpdateAnnotation}
+                        onDelete={handleDeleteAnnotation}
+                        onClose={() => setSelectedAnnotationId(null)}
                       />
-                      <Tooltip content="Execute JS (Enter)">
-                        <button
-                          onClick={handleExecuteJs}
-                          disabled={!jsInput.trim()}
-                          className="rounded-md p-1 text-white/30 hover:text-green-400 hover:bg-green-500/10 transition-all disabled:opacity-30"
-                        >
-                          <Play className="h-3 w-3" />
-                        </button>
-                      </Tooltip>
-                    </div>
-
-                    {jsResult && (
-                      <div className="border-t border-white/[0.04] px-3 py-1.5">
-                        <pre className="text-[9px] font-mono whitespace-pre-wrap text-green-400/60">
-                          {jsResult}
-                        </pre>
-                      </div>
                     )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-
-          {/* Right: Activity sidebar */}
-          <AnimatePresence>
-            {showActionSidebar && (
-              <motion.div
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: 260, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="flex-shrink-0 border-l border-white/[0.06] bg-[#0c0c0d]/50 overflow-hidden"
-              >
-                <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.06]">
-                  <span className="text-[10px] font-medium text-white/30 flex items-center gap-1">
-                    <Sparkles className="h-2.5 w-2.5" />
-                    Actions
-                  </span>
-                  {runningSteps > 0 && (
-                    <span className="flex items-center gap-1">
-                      <Loader2 className="h-2.5 w-2.5 animate-spin text-blue-400" />
-                    </span>
-                  )}
-                </div>
-                <div className="overflow-y-auto" style={{ height: "calc(100% - 32px)" }}>
-                  <BrowserActivityStream steps={automationSteps} compact maxVisible={100} />
-                </div>
-              </motion.div>
+                  </div>
+                ))}
+              </div>
             )}
-          </AnimatePresence>
+          </div>
         </div>
       ) : (
-        /* ── Premium Empty State ── */
-        <PremiumEmptyState config={getBrowserEmptyState(handleLaunch, isLaunching, url)} />
+        <div className="flex-1 flex items-center justify-center">
+          <PremiumEmptyState config={getBrowserEmptyState(
+            () => handleLaunch(),
+            isLaunching,
+            urlInput,
+          )} />
+        </div>
       )}
+
+      {/* Device emulation toolbar */}
+      {hasLiveViewport && (
+        <DeviceToolbar
+          onResize={(w, h) => setViewportSize({ width: w, height: h })}
+          onReset={() => setViewportSize(null)}
+          isActive={showDeviceToolbar}
+        />
+      )}
+
+      {/* Visual diff toolbar */}
+      <AnimatePresence>
+        {showDiff && hasLiveViewport && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 48, opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="border-t border-white/[0.06] bg-[#0c0c0d] overflow-hidden shrink-0"
+          >
+            <div className="flex items-center gap-2 px-3 h-full">
+              <span className="text-[9px] font-medium text-white/25 uppercase tracking-wider">Visual Diff</span>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" className={cn("h-6 text-[9px]", diffBefore ? "bg-green-500/10 text-green-400 border-green-500/20" : "")} onClick={handleCaptureBefore}>
+                  <Camera className="h-3 w-3 mr-1" />
+                  {diffBefore ? "✓ Before" : "Capture Before"}
+                </Button>
+                <Button size="sm" className={cn("h-6 text-[9px]", diffAfter ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "")} onClick={handleCaptureAfter} disabled={!diffBefore}>
+                  <Camera className="h-3 w-3 mr-1" />
+                  {diffAfter ? "✓ After" : "Capture After"}
+                </Button>
+              </div>
+              {diffBefore && diffAfter && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  <div className="w-px h-4 bg-white/[0.06]" />
+                  <span className="text-[9px] text-white/30">Diff ready</span>
+                  <div className="flex gap-1.5">
+                    <div className="flex border border-white/[0.08] rounded overflow-hidden h-8">
+                      <img src={diffBefore} className="h-full w-auto object-contain" alt="Before" />
+                      <img src={diffAfter} className="h-full w-auto object-contain" alt="After" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <button onClick={handleClearDiff} className="ml-auto rounded p-0.5 text-white/30 hover:text-white/60">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Actions timeline (collapsible) */}
+      <AnimatePresence>
+        {showActions && actions.length > 0 && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 160, opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="border-t border-white/[0.06] bg-[#0c0c0d]/50 overflow-hidden shrink-0"
+          >
+            <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.04]">
+              <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">Actions</span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setActions([])} className="text-[9px] text-white/20 hover:text-white/40 transition-colors">Clear</button>
+                <button onClick={() => setShowActions(false)} className="rounded p-0.5 text-white/30 hover:text-white/60">
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-y-auto h-full px-3 py-1.5 space-y-1">
+              {actions.slice(0, 50).map((entry) => {
+                const info = ACTION_LABELS[entry.action] || ACTION_LABELS.default
+                return (
+                  <div key={entry.id} className="flex items-start gap-2 text-[10px] leading-relaxed">
+                    <span className={cn(
+                      "shrink-0 font-mono mt-px",
+                      entry.status === "failed" ? "text-red-400" : info.color,
+                    )}>
+                      {entry.status === "running" ? "⟳" : entry.status === "failed" ? "!" : info.icon}
+                    </span>
+                    <span className="text-white/50 flex-1 min-w-0 truncate">
+                      <span className={cn("font-medium", entry.status === "failed" ? "text-red-400" : info.color)}>
+                        {info.label}
+                      </span>
+                      {entry.detail && (
+                        <span className="text-white/30 ml-1">— {entry.detail}</span>
+                      )}
+                    </span>
+                    <span className="text-[8px] text-white/15 shrink-0 font-mono">
+                      {new Date(entry.timestamp).toLocaleTimeString([], { minute: "2-digit", second: "2-digit" })}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Console viewer */}
+      {hasLiveViewport && activeSession && (
+        <ConsoleViewer
+          logs={activeSession.logs}
+          onClear={() => {
+            if (activeSessionId) {
+              useBrowserStore.getState().updateSession(activeSessionId, { logs: [] })
+            }
+          }}
+          open={showConsole}
+          onToggle={() => setShowConsole(!showConsole)}
+        />
+      )}
+
+      {/* Network inspector */}
+      {hasLiveViewport && <NetworkInspector />}
+
+      <StatusBar
+        activeSession={activeSession}
+        activeTab={activeTab}
+        isRunning={runningActions > 0}
+        connectionStatus={hasLiveViewport ? "connected" : isLaunching ? "busy" : browserBackendAvailable === false ? "disconnected" : "idle"}
+      />
     </div>
   )
+}
+
+const ACTION_LABELS: Record<string, { label: string; color: string; icon: string }> = {
+  launch: { label: "Browser launched", color: "text-green-400", icon: "●" },
+  navigate: { label: "Navigated to", color: "text-blue-400", icon: "→" },
+  navigate_back: { label: "Back", color: "text-blue-400", icon: "←" },
+  navigate_forward: { label: "Forward", color: "text-blue-400", icon: "→" },
+  reload: { label: "Reloaded", color: "text-cyan-400", icon: "↻" },
+  click: { label: "Clicked", color: "text-amber-400", icon: "↗" },
+  type: { label: "Typed into", color: "text-violet-400", icon: "✎" },
+  js_execute: { label: "Executed JS", color: "text-green-400", icon: ">" },
+  error: { label: "Action failed", color: "text-red-400", icon: "!" },
+  default: { label: "Action completed", color: "text-white/40", icon: "•" },
 }

@@ -62,11 +62,11 @@ function shouldSkipFile(name: string): boolean {
 
 async function readFileContent(path: string): Promise<string> {
   try {
-    const fs = await import("@tauri-apps/plugin-fs")
+    const fs = await import("@/lib/electron-api")
     return await fs.readTextFile(path)
   } catch {
     try {
-      const core = await import("@tauri-apps/api/core")
+      const core = await import("@/lib/electron-api")
       return String(await core.invoke("read_text_file", { path }))
     } catch {
       throw new Error("Cannot read file")

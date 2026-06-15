@@ -1,1 +1,0 @@
-# LifeOS Waitlist

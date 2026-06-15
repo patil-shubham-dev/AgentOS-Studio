@@ -1,6 +1,6 @@
 import type { StreamEvent, StreamState, StreamMetrics } from "./transport-types"
 import { TransportError } from "./transport-errors"
-import { tauriFetch } from "./http-client"
+import { tauriFetchStreaming } from "./http-client"
 
 export const TOOL_CALL_BUFFER_LIMIT = 100
 
@@ -254,6 +254,8 @@ export class SseParser {
   }
 }
 
+const STREAM_LOG = "[StreamTransport]"
+
 export async function streamingTransportFetch(
   options: StreamingTransportOptions,
   callbacks: StreamCallbacks,
@@ -263,6 +265,9 @@ export async function streamingTransportFetch(
   const firstChunkTimeout = options.firstChunkTimeoutMs ?? 30_000
   const idleChunkTimeout = options.idleChunkTimeoutMs ?? 60_000
   const maxDuration = options.maxDurationMs ?? 300_000
+  const shortUrl = options.url?.slice(0, 80)
+
+  console.log(`${STREAM_LOG} ▶ connect start (url=${shortUrl}, timeoutMs=${timeoutMs}, firstChunkMs=${firstChunkTimeout})`)
 
   const abortCtrl = new AbortController()
   const signal = options.signal
@@ -270,10 +275,12 @@ export async function streamingTransportFetch(
 
   if (signal) {
     if (signal.aborted) {
+      console.log(`${STREAM_LOG} ✗ signal already aborted before start (${Math.round(performance.now() - t0)}ms)`)
       callbacks.onError(new TransportError("CANCELLED", "Stream cancelled before start"))
       return
     }
     const abortHandler = () => {
+      console.log(`${STREAM_LOG} ✗ abort signal received (${Math.round(performance.now() - t0)}ms)`)
       abortCtrl.abort()
       callbacks.onError(new TransportError("CANCELLED", "Stream cancelled by user"))
     }
@@ -287,12 +294,14 @@ export async function streamingTransportFetch(
   try {
     const connectTimeout = setTimeout(() => abortCtrl.abort(), timeoutMs)
     try {
-      response = await tauriFetch(options.url, {
+      console.log(`${STREAM_LOG} ● calling tauriFetchStreaming (${Math.round(performance.now() - t0)}ms)`)
+      response = await tauriFetchStreaming(options.url, {
         method: options.method,
         headers: options.headers,
         body: options.body,
         signal: abortCtrl.signal,
       })
+      console.log(`${STREAM_LOG} ✓ tauriFetchStreaming returned (${Math.round(performance.now() - t0)}ms, status=${response.status})`)
     } finally {
       clearTimeout(connectTimeout)
     }
@@ -300,6 +309,8 @@ export async function streamingTransportFetch(
     removeAbortHandler?.()
     options.onStateChange?.("errored")
     const msg = err instanceof Error ? err.message : String(err)
+    const elapsed = Math.round(performance.now() - t0)
+    console.log(`${STREAM_LOG} ✗ connection failed (${elapsed}ms): ${msg}`)
     if (msg.includes("abort") && abortCtrl.signal.aborted) {
       callbacks.onError(new TransportError("CONNECTION_TIMEOUT", `Connection timed out after ${timeoutMs}ms`))
     } else {
@@ -315,6 +326,7 @@ export async function streamingTransportFetch(
     const text = await response.text().catch(() => "")
     const match = text.match(/"message"\s*:\s*"([^"]+)"/)
     const errMsg = match ? match[1] : text.slice(0, 200)
+    console.log(`${STREAM_LOG} ✗ HTTP error ${response.status} (${Math.round(performance.now() - t0)}ms): ${errMsg}`)
     callbacks.onError(new TransportError("HTTP_ERROR", `HTTP ${response.status}: ${errMsg}`, {
       statusCode: response.status,
       details: text.slice(0, 500),
@@ -325,6 +337,7 @@ export async function streamingTransportFetch(
   if (!response.body) {
     removeAbortHandler?.()
     options.onStateChange?.("errored")
+    console.log(`${STREAM_LOG} ✗ response body is null (${Math.round(performance.now() - t0)}ms)`)
     callbacks.onError(new TransportError("NO_BODY", "Response body is null"))
     return
   }
@@ -386,6 +399,7 @@ export async function streamingTransportFetch(
   let firstChunkReceived = false
   let lastChunkTime = performance.now()
   let overallDeadline = setTimeout(() => {
+    console.log(`${STREAM_LOG} ✗ max duration exceeded ${maxDuration}ms (${Math.round(performance.now() - t0)}ms)`)
     abortCtrl.abort()
     callbacks.onError(new TransportError("STREAM_DURATION_EXCEEDED", `Stream exceeded max duration of ${maxDuration}ms`))
   }, maxDuration)
@@ -394,6 +408,7 @@ export async function streamingTransportFetch(
   try {
     while (true) {
       if (abortCtrl.signal.aborted) {
+        console.log(`${STREAM_LOG} ✗ abort during read loop (${Math.round(performance.now() - t0)}ms, tokens=${metrics.totalTokens})`)
         break
       }
 
@@ -409,19 +424,23 @@ export async function streamingTransportFetch(
       } catch {
         if (abortCtrl.signal.aborted) break
         if (metrics.totalTokens > 0) {
+          console.log(`${STREAM_LOG} ✗ idle timeout ${idleTimeout}ms after ${metrics.totalTokens} tokens (${Math.round(performance.now() - t0)}ms)`)
           callbacks.onError(new TransportError("IDLE_CHUNK_TIMEOUT", `No data for ${idleTimeout}ms after ${metrics.totalTokens} tokens`))
         } else {
+          console.log(`${STREAM_LOG} ✗ first chunk timeout ${firstChunkTimeout}ms (${Math.round(performance.now() - t0)}ms)`)
           callbacks.onError(new TransportError("FIRST_CHUNK_TIMEOUT", `No data received within ${firstChunkTimeout}ms`))
         }
         break
       }
 
       if (abortCtrl.signal.aborted) {
+        console.log(`${STREAM_LOG} ✗ abort after chunk race (${Math.round(performance.now() - t0)}ms)`)
         break
       }
 
       const { done, value } = result
       if (done) {
+        console.log(`${STREAM_LOG} ✓ stream done (${Math.round(performance.now() - t0)}ms, chunks=${metrics.totalChunks}, tokens=${metrics.totalTokens})`)
         break
       }
 
@@ -432,6 +451,7 @@ export async function streamingTransportFetch(
       if (!firstChunkReceived) {
         firstChunkReceived = true
         metrics.ttfbMs = performance.now() - t0
+        console.log(`${STREAM_LOG} ✓ first chunk received at ${Math.round(metrics.ttfbMs)}ms (${value.byteLength} bytes)`)
       }
 
       const text = decoder.decode(value, { stream: true })
@@ -444,6 +464,7 @@ export async function streamingTransportFetch(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    console.log(`${STREAM_LOG} ✗ stream read error: ${msg.slice(0, 120)} (${Math.round(performance.now() - t0)}ms)`)
     if (abortCtrl.signal.aborted) {
       // already handled
     } else if (metrics.totalTokens > 0) {
@@ -465,6 +486,7 @@ export async function streamingTransportFetch(
 
   metrics.durationMs = performance.now() - t0
   options.onMetrics?.(metrics)
+  console.log(`${STREAM_LOG} ✓ complete (${Math.round(metrics.durationMs)}ms, chunks=${metrics.totalChunks}, tokens=${metrics.totalTokens}, ttfb=${Math.round(metrics.ttfbMs)}ms)`)
 
   if (abortCtrl.signal.aborted) {
     if (metrics.totalTokens > 0) {

@@ -27,9 +27,9 @@ describe("Manager Routing — Intent Classification", () => {
     expect(category).toBe("browser-task")
   })
 
-  it("falls back to coding for unrecognized technical text", () => {
+  it("falls back to conversation for unrecognized technical text", () => {
     const { category } = classifyIntent("we need to improve the system performance")
-    expect(category).toBe("coding")
+    expect(category).toBe("conversation")
   })
 
   it("classifies conversation for short direct keywords", () => {

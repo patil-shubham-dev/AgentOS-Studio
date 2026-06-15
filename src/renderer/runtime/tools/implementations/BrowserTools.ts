@@ -2,12 +2,50 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
+import { BrowserMemory } from '@/runtime/memory/BrowserMemory'
+import { isViewportSession, routeThroughViewport } from '@/lib/browser-controller'
+
+const VIEWPORT_ACTIONS: Record<string, string> = {
+  navigate: 'navigate',
+  browserClick: 'click',
+  browserFill: 'fill',
+  pressKey: 'press_key',
+  takeScreenshot: 'screenshot',
+  executeJs: 'execute_js',
+  reload: 'reload',
+  getUrl: 'get_url',
+  getTitle: 'get_title',
+}
 
 async function invokeBrowser<T>(method: string, args: Record<string, unknown>): Promise<T> {
+  const sessionId = String(args.sessionId ?? args.session_id ?? '')
+  const viewportAction = VIEWPORT_ACTIONS[method]
+
+  // Route through live viewport when session is __viewport__
+  if (isViewportSession(sessionId) && viewportAction) {
+    const result = await routeThroughViewport(viewportAction, args)
+    if (!result.success) throw new Error(result.error ?? 'Viewport action failed')
+    return result.result as T
+  }
+
   const b = await import('@/lib/browser')
   const m = (b as any)[method]
   if (typeof m !== 'function') throw new Error(`Browser method ${method} not found`)
-  return m(...Object.values(args)) as Promise<T>
+  const result = await m(...Object.values(args)) as Promise<T>
+
+  try {
+    BrowserMemory.getInstance().record({
+      action: method,
+      sessionId,
+      tabId: String(args.tabId ?? ''),
+      url: String(args.url ?? ''),
+      title: String(args.title ?? ''),
+      durationMs: 0,
+      timestamp: Date.now(),
+    })
+  } catch {}
+
+  return result
 }
 
 function sessionActivity(sessionId: string, action: string): string | null {
@@ -130,9 +168,10 @@ export const BrowserExecuteJsTool: AgentTool = buildTool({
     },
     required: ['session_id', 'js'],
   },
-  isReadOnly: () => true,
+  isReadOnly: () => false,
   isConcurrencySafe: () => false,
   requiredCapabilities: () => [ToolCapabilities.BROWSER_INTERACT],
+  permissions: async () => ({ behavior: 'ask', reason: 'Executing JavaScript in a browser page can read sensitive data, modify page content, or access local storage' }),
   getActivityDescription: (input) => sessionActivity((input as any)?.session_id, 'Executing JS'),
   execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const result = await invokeBrowser<string>('executeJs', { sessionId: input.session_id, js: input.js })

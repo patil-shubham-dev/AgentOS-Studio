@@ -24,6 +24,17 @@ function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && typeof (window as any).__TAURI_INTERNALS__ !== 'undefined'
 }
 
+function isElectronRuntime(): boolean {
+  return typeof window !== 'undefined' && typeof (window as any).electronAPI !== 'undefined'
+}
+
+function getFetchImpl(): typeof globalThis.fetch {
+  if (isTauriRuntime()) {
+    return globalThis.fetch
+  }
+  return globalThis.fetch
+}
+
 const encoder = new TextEncoder()
 
 // ── Stdio Transport ──
@@ -46,14 +57,67 @@ export class StdioMCPTransport implements MCPTransport {
   async connect(): Promise<void> {
     if (this.connected) return
 
-    if (!isTauriRuntime()) {
-      throw new Error('Stdio transport requires Tauri runtime')
-    }
+    const cmd = this.config.command
+    if (!cmd) throw new Error('Stdio transport requires a command')
 
     try {
-      const { Command } = await import('@tauri-apps/plugin-shell')
-      const cmd = this.config.command
-      if (!cmd) throw new Error('Stdio transport requires a command')
+      if (isElectronRuntime()) {
+        const eapi = (window as any).electronAPI
+        const streamId = `mcp-stdio-${Date.now()}`
+        const args = this.config.args ?? []
+
+        const lineHandler = (line: string) => {
+          this.buffer += line
+          const parts = this.buffer.split('\n')
+          this.buffer = parts.pop() ?? ""
+          for (const part of parts) {
+            const trimmed = part.trim()
+            if (!trimmed) continue
+            try {
+              const msg = JSON.parse(trimmed)
+              this.messageHandler?.(msg)
+            } catch {
+              this.errorHandler?.(new Error(`Invalid JSON from MCP server: ${trimmed.slice(0, 200)}`))
+            }
+          }
+        }
+
+        const completeHandler = (code: number) => {
+          cleanup()
+          if (this.connected) {
+            this.connected = false
+            this.closeHandler?.()
+          }
+        }
+
+        const unsubOutput = eapi.on(`terminal-output:${streamId}`, lineHandler)
+        const unsubComplete = eapi.on(`terminal-complete:${streamId}`, completeHandler)
+
+        const cleanup = () => {
+          unsubOutput?.()
+          unsubComplete?.()
+        }
+
+        await eapi.runCommandStream({
+          command: cmd,
+          cwd: null,
+          streamId,
+          args,
+        })
+
+        this.process = { streamId, kill: () => eapi.killCommand(streamId) }
+        this.stdinWriter = (data: string) => {
+          eapi.stdinInput({ streamId, input: data })
+        }
+        this.connected = true
+        return
+      }
+
+      if (!isTauriRuntime()) {
+        throw new Error('Stdio transport requires Tauri or Electron runtime')
+      }
+
+      const { Command } = await import('@/lib/electron-api')
 
       const command = Command.create(cmd, this.config.args ?? [], {
         env: this.config.env,
@@ -190,7 +254,7 @@ export class SSEMCPTransport implements MCPTransport {
 
     const body = JSON.stringify(message)
     const fetchFn = isTauriRuntime()
-      ? (await import('@tauri-apps/plugin-http')).fetch
+      ? (await import('@/lib/electron-api')).fetch
       : globalThis.fetch
 
     const response = await fetchFn(url, {
@@ -306,7 +370,7 @@ export class HTTPMCPTransport implements MCPTransport {
     this.connected = true
 
     const fetchFn = isTauriRuntime()
-      ? (await import('@tauri-apps/plugin-http')).fetch
+      ? (await import('@/lib/electron-api')).fetch
       : globalThis.fetch
 
     const poll = async () => {
@@ -349,7 +413,7 @@ export class HTTPMCPTransport implements MCPTransport {
 
     const body = JSON.stringify(message)
     const fetchFn = isTauriRuntime()
-      ? (await import('@tauri-apps/plugin-http')).fetch
+      ? (await import('@/lib/electron-api')).fetch
       : globalThis.fetch
 
     const response = await fetchFn(url, {

@@ -1,7 +1,7 @@
 import { useAppStore } from "@/stores/app-store"
 import type { GatewayProvider, AgentRoleConfig, RuntimeRole } from "@/types"
 import { normalizeRole } from "@/lib/role-identity"
-import { getGatewayProviderHealth } from "@agentic-os/providers"
+import { getGatewayProviderHealth, PROVIDER_PRESETS } from "@agentic-os/providers"
 import { emitTelemetry } from "@/lib/telemetry"
 
 export type RuntimeStatus = "uninitialized" | "initializing" | "ready" | "error"
@@ -97,7 +97,11 @@ function computeGraphRaw(
     }
 
     const provider = providers.find((p) => p.id === effectiveProviderId)
-    const effectiveModel = role.model ?? provider?.models[0]?.id ?? ""
+    let effectiveModel = role.model ?? provider?.models[0]?.id ?? ""
+    if (!effectiveModel && provider?.runtime) {
+      const preset = PROVIDER_PRESETS[provider.runtime]
+      if (preset?.defaultModel) effectiveModel = preset.defaultModel
+    }
 
     if (!effectiveModel) {
       diagnostics.push({

@@ -19,13 +19,31 @@ try {
   // node-pty not available (e.g., during dev without native module)
 }
 
+const ALLOWED_SHELLS = new Set([
+  'powershell.exe', 'pwsh.exe', 'cmd.exe', 'bash.exe', 'wsl.exe',
+  'bash', 'zsh', 'sh', 'fish', 'nu', 'elvish',
+])
+
+function isShellAllowed(shellPath: string): boolean {
+  const base = shellPath.split(/[/\\]/).pop()?.toLowerCase() || ''
+  if (ALLOWED_SHELLS.has(base)) return true
+  console.warn(`[TerminalManager] Blocked shell: "${shellPath}" — not in allowlist`)
+  return false
+}
+
 export class TerminalManager {
   private sessions: Map<string, TerminalSession> = new Map()
   private nextId = 1
 
   create(options?: { shellPath?: string; cwd?: string }): string {
-    const id = `terminal-${this.nextId++}`
-    const shellPath = options?.shellPath || (process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash')
+    let shellPath = options?.shellPath || (process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash')
+
+    // Validate shell path
+    if (options?.shellPath && !isShellAllowed(options.shellPath)) {
+      shellPath = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash')
+      console.warn(`[TerminalManager] Falling back to default shell (${shellPath})`)
+    }
+
     const cwd = options?.cwd || app.getPath('home')
 
     if (pty) {

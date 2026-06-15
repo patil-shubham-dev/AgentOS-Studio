@@ -110,8 +110,10 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
       /complex.*task|full.*stack|end.*to.*end/i,
       /build.*(app|system|project|service|platform)/i,
       /migrate|upgrade|convert.*from/i,
+      /comprehensive|thorough|extensive|complete.*solution/i,
+      /implement.*(feature|system|module).*(with|including).*(test|doc|validation)/i,
     ],
-    roles: ["coder", "research", "qa", "runtime"],
+    roles: ["coder", "research", "verification", "runtime"],
     delegatable: true,
   },
 }
@@ -160,10 +162,13 @@ export function classifyIntent(input: string): {
     }
   }
 
-  return { category: "coding", confidence: 0.5 }
+  return { category: "conversation", confidence: 0.5 }
 }
 
-export function route(input: string, wiredRoles: RuntimeRole[]): RoutingDecision {
+export function route(
+  input: string,
+  wiredRoles: RuntimeRole[],
+): RoutingDecision {
   const { category, confidence } = classifyIntent(input)
   const pattern = INTENT_PATTERNS[category]
   const isConversation = category === "conversation"
@@ -188,7 +193,18 @@ export function route(input: string, wiredRoles: RuntimeRole[]): RoutingDecision
     }
   }
 
-  const availableRoles = pattern.roles.filter((r) => wiredRoles.includes(r))
+  let availableRoles = pattern.roles.filter((r) => wiredRoles.includes(r))
+
+  // Input length escalation: long inputs indicate complex tasks that benefit from multi-agent
+  const inputWordCount = input.trim().split(/\s+/).length
+  if (inputWordCount > 60 && availableRoles.length === 1 && category !== "conversation") {
+    if (wiredRoles.includes("research" as RuntimeRole) && !availableRoles.includes("research" as RuntimeRole)) {
+      availableRoles.push("research" as RuntimeRole)
+    }
+    if (wiredRoles.includes("qa" as RuntimeRole) && !availableRoles.includes("qa" as RuntimeRole)) {
+      availableRoles.push("qa" as RuntimeRole)
+    }
+  }
 
   if (availableRoles.length === 0) {
     return {

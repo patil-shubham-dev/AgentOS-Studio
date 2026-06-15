@@ -120,7 +120,7 @@ export function GitPanel() {
   async function handleStageAll() {
     if (!rootPath || !status) return
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
+      const { invoke } = await import("@/lib/electron-api")
       for (const c of status.changes) {
         await invoke<string>("git_add", { workingDir: rootPath, file: c.path })
       }

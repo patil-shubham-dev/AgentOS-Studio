@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo, startTransition } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAgentStore } from "@/stores/agent-store"
 import { useAppStore } from "@/stores/app-store"
@@ -10,9 +10,11 @@ import { ConversationTimeline, Composer } from "./timeline/conversation"
 import { ContextBar } from "./timeline/context-bar"
 import { SessionBar } from "./timeline/SessionBar"
 import { ApprovalGate } from "./approval-gate"
+import { XtermTerminal, type XtermTerminalHandle } from "./xterm-terminal"
+import { InteractiveTerminalRuntime, getPlatformShell } from "@/runtime/terminal/InteractiveTerminalRuntime"
 import {
   Bot, AlertTriangle, Settings2, Plus, CheckCircle2, ArrowRight,
-  Loader2, CheckCircle, XCircle,
+  Loader2, CheckCircle, XCircle, Terminal as TerminalIcon,
 } from "lucide-react"
 
 const executionSessionManager = ExecutionSessionManager.getInstance()
@@ -97,6 +99,9 @@ export function ChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [currentSession, setCurrentSession] = useState<ExecutionSession | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const terminalHandleRef = useRef<XtermTerminalHandle | null>(null)
+  const terminalSessionRef = useRef<Awaited<ReturnType<InteractiveTerminalRuntime['spawn']>> | null>(null)
 
   const sessionRef = useRef<ExecutionSession | null>(null)
   const sendingRef = useRef(false)
@@ -134,26 +139,28 @@ export function ChatPanel() {
 
     const optimisticStepId = `optimistic_${correlationId}`
 
-    addMessage(activeRole, { role: "user", content: userInput, timestamp: ts })
-    useTimelineStore.getState().addEvent({
-      type: "user-message",
-      id: correlationId,
-      correlationId,
-      content: userInput,
-      timestamp: ts,
-    })
+    startTransition(() => {
+      addMessage(activeRole, { role: "user", content: userInput, timestamp: ts })
+      useTimelineStore.getState().addEvent({
+        type: "user-message",
+        id: correlationId,
+        correlationId,
+        content: userInput,
+        timestamp: ts,
+      })
 
-    // Optimistic: show agent narrative immediately — before any events arrive
-    useTimelineStore.getState().addOptimisticSession(optimisticStepId, correlationId)
-    useAgentStore.getState().setAgentStatus(activeRole, {
-      id: activeRole,
-      role: activeRole,
-      state: "planning",
-      currentTask: "Thinking through this",
-      lastAction: "Processing your request",
+      // Optimistic: show agent narrative immediately — before any events arrive
+      useTimelineStore.getState().addOptimisticSession(optimisticStepId, correlationId)
+      useAgentStore.getState().setAgentStatus(activeRole, {
+        id: activeRole,
+        role: activeRole,
+        state: "planning",
+        currentTask: "Thinking through this",
+        lastAction: "Processing your request",
+      })
+      setInput("")
+      useAgentStore.getState().setProcessing(true)
     })
-    setInput("")
-    useAgentStore.getState().setProcessing(true)
 
     // Fire-and-forget: execution runs in background, store updates drive UI
     executionSessionManager.start({
@@ -248,6 +255,34 @@ export function ChatPanel() {
     setIsCancelling(false)
   }, [])
 
+  // ── Embedded terminal lifecycle ──
+  useEffect(() => {
+    if (!terminalOpen || terminalSessionRef.current) return
+    let session: Awaited<ReturnType<InteractiveTerminalRuntime['spawn']>> | null = null
+    ;(async () => {
+      try {
+        const runtime = InteractiveTerminalRuntime.getInstance()
+        const shell = getPlatformShell()
+        session = await runtime.spawn(shell, rootPath ?? undefined)
+        terminalSessionRef.current = session
+        session.onData((data) => terminalHandleRef.current?.write(data))
+        session.onExit((code) => {
+          terminalHandleRef.current?.write(`\r\n\x1b[33mProcess exited with code ${code}\x1b[0m\r\n`)
+        })
+      } catch { /* terminal spawn failed */ }
+    })()
+    return () => {
+      session?.kill()
+      terminalSessionRef.current = null
+      terminalHandleRef.current = null
+    }
+  }, [terminalOpen, rootPath])
+
+  // ── Terminal onData handler — routes user input to PTY ──
+  const handleTerminalData = useCallback((data: string) => {
+    terminalSessionRef.current?.write(data)
+  }, [])
+
   return (
     <div className="flex h-full flex-col bg-gradient-to-b from-[#0a0a0b] to-[#09090a]">
       {/* Minimal header with pipeline diagnostics */}
@@ -286,6 +321,27 @@ export function ChatPanel() {
       {/* Approval Gate */}
       <div className="px-3 pt-2">
         <ApprovalGate />
+      </div>
+
+      {/* Embedded terminal toggle */}
+      <div className="border-t border-white/[0.04]">
+        <button
+          onClick={() => setTerminalOpen((v) => !v)}
+          className="flex items-center gap-2 w-full px-3 py-1.5 text-[11px] text-white/30 hover:text-white/60 hover:bg-white/[0.02] transition-all"
+        >
+          <TerminalIcon className="h-3 w-3" />
+          <span>Terminal</span>
+          <span className="ml-auto text-[10px] text-white/20">{terminalOpen ? "Hide" : "Show"}</span>
+        </button>
+        {terminalOpen && (
+          <div className="h-48 border-t border-white/[0.04]">
+            <XtermTerminal
+              sessionId="chat-terminal"
+              onData={handleTerminalData}
+              className="h-full"
+            />
+          </div>
+        )}
       </div>
 
       {/* Composer - floating bottom */}

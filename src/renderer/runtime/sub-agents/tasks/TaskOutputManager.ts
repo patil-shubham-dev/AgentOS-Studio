@@ -17,14 +17,14 @@ export class TaskOutputManager {
   }
 
   async writeOutput(taskId: string, data: string): Promise<void> {
-    const { writeTextFile } = await import('@/lib/tauri-shims/fs')
+    const { writeTextFile } = await import('@/lib/electron-api')
     const path = `${TASKS_DIR}/${taskId}.out`
     await writeTextFile(path, data)
   }
 
   async readOutput(taskId: string): Promise<string | null> {
     try {
-      const { readTextFile } = await import('@/lib/tauri-shims/fs')
+      const { readTextFile } = await import('@/lib/electron-api')
       return await readTextFile(`${TASKS_DIR}/${taskId}.out`)
     } catch {
       return null
@@ -32,14 +32,14 @@ export class TaskOutputManager {
   }
 
   async writeMeta(taskId: string, meta: Record<string, unknown>): Promise<void> {
-    const { writeTextFile } = await import('@/lib/tauri-shims/fs')
+    const { writeTextFile } = await import('@/lib/electron-api')
     const path = `${TASKS_DIR}/${taskId}.meta.json`
     await writeTextFile(path, JSON.stringify(meta, null, 2))
   }
 
   async readMeta(taskId: string): Promise<Record<string, unknown> | null> {
     try {
-      const { readTextFile } = await import('@/lib/tauri-shims/fs')
+      const { readTextFile } = await import('@/lib/electron-api')
       const raw = await readTextFile(`${TASKS_DIR}/${taskId}.meta.json`)
       return JSON.parse(raw)
     } catch {

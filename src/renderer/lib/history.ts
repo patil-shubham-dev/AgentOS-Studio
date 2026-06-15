@@ -27,7 +27,7 @@ export interface DiffResult {
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   try {
-    const { invoke: tauriInvoke } = await import("@tauri-apps/api/core")
+    const { invoke: tauriInvoke } = await import("@/lib/electron-api")
     return await tauriInvoke<T>(cmd, args)
   } catch {
     throw new Error(`Tauri command "${cmd}" not available in web mode`)

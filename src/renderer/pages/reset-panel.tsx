@@ -18,7 +18,7 @@ interface ResetAction {
 
 async function tauriInvoke(cmd: string): Promise<string> {
   if (typeof window !== "undefined" && window.electronAPI) {
-    const { invoke } = await import("@/lib/tauri-shims/core")
+    const { invoke } = await import("@/lib/electron-api")
     try {
       return await invoke(cmd)
     } catch {
@@ -26,7 +26,7 @@ async function tauriInvoke(cmd: string): Promise<string> {
     }
   }
   try {
-    const { invoke } = await import("@tauri-apps/api/core")
+    const { invoke } = await import("@/lib/electron-api")
     return await invoke<string>(cmd)
   } catch {
     return `${cmd}: Ok (simulated in web mode)`

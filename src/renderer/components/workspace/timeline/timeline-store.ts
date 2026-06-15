@@ -26,6 +26,7 @@ const MAX_AGENT_SESSIONS = 100
 function clearStorage(): void {
   try {
     localStorage.removeItem("agentic-timeline-state")
+    localStorage.removeItem("agentic-chat-state")
   } catch (err) {
     console.warn("[timeline-store] Failed to clear storage:", err)
   }
@@ -339,6 +340,12 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       // Dedup guard: if text is already fully contained at the end, skip
       if (existing.endsWith(text)) return s
       next.set(stepId, existing + text)
+      // Cap streamingTexts at 200 entries to prevent unbounded growth
+      if (next.size > 200) {
+        const keys = [...next.keys()]
+        const toRemove = keys.slice(0, keys.length - 200)
+        for (const k of toRemove) next.delete(k)
+      }
       const now = performance.now()
       const metrics = { ...s.streamingMetrics }
       const windowTokens = metrics.tokensReceived

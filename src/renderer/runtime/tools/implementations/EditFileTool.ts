@@ -7,11 +7,11 @@ import { FileHistoryManager } from '@/lib/file-history'
 
 async function readTextFile(path: string): Promise<string> {
   if (typeof window !== 'undefined' && (window as any).electronAPI) {
-    const { readTextFile: shimRead } = await import('@/lib/tauri-shims/fs')
-    return shimRead(path)
+      const { readTextFile: shimRead } = await import('@/lib/electron-api')
+        return shimRead(path)
   }
   try {
-    const fs = await import('@tauri-apps/plugin-fs')
+    const fs = await import('@/lib/electron-api')
     return await fs.readTextFile(path)
   } catch {
     throw new Error('File system not available in this environment')
@@ -20,11 +20,11 @@ async function readTextFile(path: string): Promise<string> {
 
 async function writeTextFile(path: string, content: string): Promise<void> {
   if (typeof window !== 'undefined' && (window as any).electronAPI) {
-    const { writeTextFile: shimWrite } = await import('@/lib/tauri-shims/fs')
-    return shimWrite(path, content)
+      const { writeTextFile: shimWrite } = await import('@/lib/electron-api')
+        return shimWrite(path, content)
   }
   try {
-    const fs = await import('@tauri-apps/plugin-fs')
+    const fs = await import('@/lib/electron-api')
     return await fs.writeTextFile(path, content)
   } catch {
     throw new Error('File system not available in this environment')

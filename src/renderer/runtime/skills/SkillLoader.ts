@@ -1,6 +1,5 @@
 import { join, basename, extname } from 'path'
-import { exists, readTextFile, readDir } from '@/lib/tauri-shims/fs'
-import { invoke } from '@/lib/tauri-shims/core'
+import { exists, readTextFile, readDir, invoke } from '@/lib/electron-api'
 import { SkillRegistry, type SkillDefinition } from './SkillRegistry'
 
 export class SkillLoader {

@@ -8,7 +8,7 @@
  * its next reasoning round.
  */
 
-import { getModeConfig, type ExecutionModeId } from "./execution-mode"
+import { getModeConfig } from "./execution-mode"
 import { TerminalRuntime } from "./terminal/TerminalRuntime"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
@@ -34,16 +34,13 @@ export class PostWriteVerifier {
   /**
    * Run post-write verification after file mutations.
    *
-   * @param executionMode — current mode; respects `runTestsAfterImpl` config
    * @param filesEdited   — list of file paths that were just written/edited
    * @returns structured result, or null if verification was skipped
    */
   static async verify(
-    executionMode: ExecutionModeId,
     filesEdited: string[],
   ): Promise<VerificationResult | null> {
-    // Respect execution mode: only verify in modes that want it
-    const config = getModeConfig(executionMode)
+    const config = getModeConfig()
     if (!config.runTestsAfterImpl) return null
 
     // Cooldown: don't verify too frequently in rapid-succession edits

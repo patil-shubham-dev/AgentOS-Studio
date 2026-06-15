@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import {
-  Command, File, Settings, Terminal, PanelLeft, X, ArrowUp, ArrowDown,
+  Command, File, Settings, PanelLeft, PanelRight, X, ArrowUp, ArrowDown,
   Globe, Palette, RefreshCw, Search, Logs, GitBranch, LayoutDashboard,
 } from "lucide-react"
 
@@ -67,11 +67,11 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
       category: "View",
     },
     {
-      id: "toggle-terminal",
-      label: "Toggle Terminal Panel",
-      description: "Show or hide the terminal/workspace panel",
+      id: "toggle-workspace-panel",
+      label: "Toggle Workspace Panel",
+      description: "Show or hide the right side workspace panel",
       shortcut: "Ctrl+J",
-      icon: <Terminal className="h-3.5 w-3.5" />,
+      icon: <PanelRight className="h-3.5 w-3.5" />,
       action: () => { context.toggleTerminal(); onClose() },
       category: "View",
     },
@@ -109,15 +109,6 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
       shortcut: "Ctrl+Shift+M",
       icon: <Palette className="h-3.5 w-3.5" />,
       action: () => { context.switchPanel("design"); onClose() },
-      category: "View",
-    },
-    {
-      id: "switch-terminal",
-      label: "Terminal Workspace",
-      description: "Switch to terminal / command panel",
-      shortcut: "Ctrl+Shift+T",
-      icon: <Terminal className="h-3.5 w-3.5" />,
-      action: () => { context.switchPanel("terminal"); onClose() },
       category: "View",
     },
     {

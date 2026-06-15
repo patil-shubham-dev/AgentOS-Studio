@@ -10,15 +10,6 @@ import {
   providerSupportsStreaming,
 } from './provider-gateway'
 
-// ── Mock Tauri IPC ──
-// All IPC-bound functions (testConnection, validateProvider, discoverModels,
-// providerChatCompletion) use invokeWithTimeout → safeInvoke →
-// import("@tauri-apps/api/core"). We must mock this module globally.
-
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
-}))
-
 // ── Helpers ──
 
 const OPENAI_BASE = 'https://api.openai.com/v1'

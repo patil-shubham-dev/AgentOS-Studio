@@ -3,6 +3,10 @@ import { EventBusService, StorageService, WorkspaceRuntimeService } from "./serv
 import { useAppStore } from "@/stores/app-store"
 import { validateRegistryIntegrity, printRuntimeDiagnostics } from "@/runtime/runtime-role-registry"
 import { detectSafeMode, isInSafeMode } from "@/core/crash-handling/safe-mode"
+import { ObservabilityManager } from "@/runtime/observability/ObservabilityManager"
+import { MemoryArchitecture } from "@/runtime/memory/unified/MemoryArchitecture"
+import { MemoryObserver } from "@/runtime/memory/MemoryObserver"
+
 import { RuntimeOS } from "@/runtime/RuntimeOS"
 import { RuntimeCleanupManager } from "@/runtime/RuntimeCleanupManager"
 import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
@@ -54,6 +58,24 @@ export async function bootRuntime(): Promise<BootReport> {
   }
   printRuntimeDiagnostics()
 
+  // Phase 2.5: initialize observability (execution replay, persistence)
+  try {
+    await ObservabilityManager.getInstance().init()
+    console.log("[Startup] Observability initialized")
+  } catch (err) {
+    console.warn("[Startup] Observability init failed (non-fatal):", err)
+  }
+
+  // Phase 2.6: initialize unified memory architecture
+  try {
+    const memory = MemoryArchitecture.getInstance()
+    await memory.initialize()
+    MemoryObserver.getInstance().enable()
+    console.log("[Startup] Memory architecture initialized")
+  } catch (err) {
+    console.warn("[Startup] Memory init failed (non-fatal):", err)
+  }
+
   // Phase 3: bootstrap kernel services
   const kernel = getKernel()
 
@@ -86,6 +108,5 @@ export async function shutdownRuntime(): Promise<void> {
   const kernel = getKernel()
   await RuntimeOS.destroy()
   await kernel.shutdown()
-  // Reset cleanup manager for fresh start on next boot
   RuntimeCleanupManager.getInstance().reset()
 }

@@ -9,6 +9,10 @@ import { normalizeError } from "@/lib/normalize-error"
 import { emitTelemetry } from "@/lib/telemetry"
 import { getStateForToolCall, getActivityForToolCall, getAgentLabel } from "@/components/workspace/agent-visibility/AgentActivityMapper"
 import { ReliabilityManager } from "@/runtime/reliability/ReliabilityManager"
+import { FeatureFlagManager } from "@/runtime/feature-flags/FeatureFlagManager"
+import { AutonomousGoalLoop } from "@/runtime/autonomous/AutonomousGoalLoop"
+import { ObservabilityManager } from "@/runtime/observability/ObservabilityManager"
+import { DeterministicToolRecorder } from "@/runtime/tools/execution/DeterministicToolRecord"
 
 export interface ExecutionSession {
   id: string
@@ -18,6 +22,7 @@ export interface ExecutionSession {
   status: "running" | "completed" | "failed" | "cancelled"
   input: string
   error?: string
+  goalId?: string
 }
 
 function generateId(): string {
@@ -38,6 +43,45 @@ export class ExecutionSessionManager {
   /** Tracks correlationIds that are currently being executed — prevents duplicate sends */
   private activeCorrelationIds = new Set<string>()
 
+  // ── Observability ──
+  private obsManager = ObservabilityManager.getInstance()
+  private toolRecorder = new DeterministicToolRecorder()
+  /** Maps toolId → TOOL_START args for matching with COMPLETE/ERROR */
+  private pendingToolArgs = new Map<string, { toolName: string; args: string; executionId: string }>()
+
+  // ── Priority 1: Runtime telemetry (side-by-side validation) ──
+  private runtimeTelemetry = {
+    /** How many executions went through each runtime */
+    goalLoopCount: 0,
+    legacyCount: 0,
+    /** Completion/success/failure stats */
+    goalLoopCompleted: 0,
+    legacyCompleted: 0,
+    goalLoopFailed: 0,
+    legacyFailed: 0,
+    goalLoopCancelled: 0,
+    legacyCancelled: 0,
+    /** Verification rates */
+    goalLoopVerificationsPassed: 0,
+    legacyVerificationsPassed: 0,
+    goalLoopVerificationsFailed: 0,
+    legacyVerificationsFailed: 0,
+    /** Tool success rates */
+    goalLoopToolCompletes: 0,
+    legacyToolCompletes: 0,
+    goalLoopToolErrors: 0,
+    legacyToolErrors: 0,
+    /** Execution duration (ms) */
+    goalLoopDurations: new Array<number>(),
+    legacyDurations: new Array<number>(),
+    /** Token usage */
+    goalLoopTokenCounts: new Array<number>(),
+    legacyTokenCounts: new Array<number>(),
+    /** Recovery rate (how often auto-fix or retry succeeded) */
+    goalLoopRecoveries: 0,
+    legacyRecoveries: 0,
+  }
+
   /** Max time to wait for first event before auto-cancelling */
   private static readonly FIRST_EVENT_TIMEOUT_MS = 45_000
   /** Max total session duration before force-cancel */
@@ -50,6 +94,10 @@ export class ExecutionSessionManager {
     return ExecutionSessionManager.instance
   }
 
+  async initObservability(): Promise<void> {
+    await this.obsManager.init()
+  }
+
   static cancelCurrent(): void {
     const inst = ExecutionSessionManager.getInstance()
     if (inst.activeSessionId) {
@@ -58,9 +106,14 @@ export class ExecutionSessionManager {
   }
 
   async start(options: ExecuteOptions): Promise<ExecutionSession> {
+    const mgrTag = "[SessionManager]"
+    const sessionStartTime = Date.now()
+    console.log(`${mgrTag} ▶ start (inputLen=${options.input.length}, role=${options.activeRole}, correlationId=${options.correlationId})`)
+
     // Dedup: reject if same correlationId is already executing
     if (options.correlationId) {
       if (this.activeCorrelationIds.has(options.correlationId)) {
+        console.log(`${mgrTag} ✗ duplicate correlationId ${options.correlationId}`)
         throw new Error("This message is already being processed")
       }
       this.activeCorrelationIds.add(options.correlationId)
@@ -69,6 +122,7 @@ export class ExecutionSessionManager {
       const existing = this.sessions.get(this.activeSessionId)
       if (existing?.status === "running") {
         if (options.correlationId) this.activeCorrelationIds.delete(options.correlationId)
+        console.log(`${mgrTag} ✗ already executing`)
         throw new Error("An execution is already in progress. Please wait for it to complete or cancel it.")
       }
     }
@@ -78,11 +132,15 @@ export class ExecutionSessionManager {
     }
     StreamManager.getInstance().resetCancelled()
     const id = generateId()
+    const ff = FeatureFlagManager.getInstance()
+    const useGoalLoop = ff.isEnabled("goalLoop") && !ff.isEnabled("legacyRuntime")
+    const goalId = useGoalLoop ? `goal_${options.correlationId ?? id}` : undefined
     this.activeSessionId = id
     const session: ExecutionSession = {
       id,
+      goalId,
       traceId: `msg_${Date.now()}`,
-      startedAt: Date.now(),
+      startedAt: sessionStartTime,
       status: "running",
       input: options.input,
     }
@@ -96,22 +154,55 @@ export class ExecutionSessionManager {
       })
     }
 
+    const observabilityEnabled = ff.isEnabled("observability")
+
     try {
-      const eventStream = this.orchestrator.execute(options)
+      // ── Runtime selection ──
+      if (useGoalLoop) {
+        this.runtimeTelemetry.goalLoopCount++
+        console.log(`[SessionManager] ▶ using GoalLoop (session=${id})`)
+      } else {
+        this.runtimeTelemetry.legacyCount++
+        console.warn(
+          `[SessionManager] ⚠ DEPRECATED: using legacy ExecutionOrchestrator (session=${id}). ` +
+          `GoalLoop is the primary runtime. Set "legacyRuntime" flag only for emergency rollback.`
+        )
+      }
+
+      const eventStream = useGoalLoop
+        ? AutonomousGoalLoop.getInstance().runGoal({
+            goalId: goalId!,
+            objective: options.input,
+            role: options.activeRole,
+            budget: { maxIterations: 10 },
+          }, options.signal)
+        : this.orchestrator.execute(options)
+
+      // ── Observability: start replay session + trace ──
+      if (observabilityEnabled) {
+        this.obsManager.startTrace(id)
+        await this.obsManager.getReplay().startSession(id)
+      }
 
       // Stall detection: cancel if no event received within timeout
       let firstEventReceived = false
       let stallTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
         if (!firstEventReceived) {
-          console.warn(`[SessionManager] No event received within ${ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS}ms — auto-cancelling`)
-          this.orchestrator.cancel()
+          console.warn(`${mgrTag} ✗ no event received within ${ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS}ms — auto-cancelling`)
+          if (useGoalLoop) {
+            AutonomousGoalLoop.getInstance().cancelAll()
+          } else {
+            this.orchestrator.cancel()
+          }
         }
-      }, ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS)
-      const sessionStartTime = Date.now()
+      }, useGoalLoop ? ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS * 2 : ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS)
 
+      let eventCount = 0
       for await (const event of eventStream) {
+        eventCount++
         if (!firstEventReceived) {
           firstEventReceived = true
+          console.log(`${mgrTag} ✓ first event received: ${event.type} (${Math.round(performance.now() - sessionStartTime)}ms)`)
           if (stallTimer !== null) {
             clearTimeout(stallTimer)
             stallTimer = null
@@ -120,13 +211,15 @@ export class ExecutionSessionManager {
 
         // Total session duration check
         if (Date.now() - sessionStartTime > ExecutionSessionManager.SESSION_MAX_DURATION_MS) {
-          console.warn(`[SessionManager] Session exceeded max duration — force-cancelling`)
+          console.warn(`${mgrTag} ✗ session exceeded max duration — force-cancelling (${Math.round(performance.now() - sessionStartTime)}ms, events=${eventCount})`)
           this.orchestrator.cancel()
           break
         }
 
         this.handleEvent(event, options)
       }
+
+      console.log(`${mgrTag} ✓ event stream ended (${Math.round(performance.now() - sessionStartTime)}ms, events=${eventCount})`)
 
       if (stallTimer !== null) {
         clearTimeout(stallTimer)
@@ -137,12 +230,26 @@ export class ExecutionSessionManager {
         session.status = "completed"
       }
       session.completedAt = Date.now()
+
+      this.recordRuntimeTelemetry(session, eventCount)
+
+      if (observabilityEnabled) {
+        this.obsManager.endTrace(id)
+        await this.obsManager.getReplay().endSession(`Session ${id}: ${eventCount} events, status=${session.status}`)
+      }
     } catch (e) {
       const msg = normalizeError(e, "Execution failed")
+      if (observabilityEnabled) {
+        this.obsManager.addSpan(id, "execution_error", { error: msg })
+        this.obsManager.endTrace(id)
+        await this.obsManager.getReplay().endSession(`Session ${id}: failed — ${msg}`)
+      }
       session.error = msg
       session.status = msg.includes("abort") || msg.includes("cancel") ? "cancelled" : "failed"
       session.completedAt = Date.now()
+      this.recordRuntimeTelemetry(session, 0)
 
+      console.log(`${mgrTag} ✗ ${session.status} at ${Math.round(performance.now() - sessionStartTime)}ms: ${msg}`)
         emitTelemetry({ type: "execution_complete", timestamp: Date.now(), durationMs: Date.now() - session.startedAt, error: msg, metadata: { status: session.status, sessionId: id } })
       if (msg.includes("abort") || msg.includes("cancel")) {
         emitTelemetry({ type: "cancellation", timestamp: Date.now(), metadata: { sessionId: id, reason: msg } })
@@ -181,11 +288,20 @@ export class ExecutionSessionManager {
     this.pruneSessions()
 
     this.activeSessionId = null
+    console.log(`${mgrTag} ✓ return session ${id} (${Date.now() - sessionStartTime}ms, status=${session.status})`)
     return session
   }
 
   private handleEvent(event: ExecutionEvent, options: ExecuteOptions): void {
     const timeline = useTimelineStore.getState()
+
+    // ── Observability: record every event ──
+    if (FeatureFlagManager.getInstance().isEnabled("observability")) {
+      this.obsManager.getReplay().recordEvent(event).catch((err) => {
+        console.error("[SessionManager] replay record error:", err)
+      })
+      this.recordObservabilityEvent(event)
+    }
 
     switch (event.type) {
       case "AGENT_ASSIGNED": {
@@ -267,6 +383,15 @@ export class ExecutionSessionManager {
           })
           this.execRoleMap.delete(event.executionId)
         }
+        // Track token usage per runtime
+        const tokens = (event as any).tokens ?? (event.content ? Math.round(event.content.length / 4) : 0)
+        if (tokens > 0) {
+          if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
+            this.runtimeTelemetry.goalLoopTokenCounts.push(tokens)
+          } else {
+            this.runtimeTelemetry.legacyTokenCounts.push(tokens)
+          }
+        }
         break
       }
 
@@ -311,6 +436,11 @@ export class ExecutionSessionManager {
             lastAction: `${getActivityForToolCall(event.toolName).label} completed`,
           })
         }
+        if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
+          this.runtimeTelemetry.goalLoopToolCompletes++
+        } else {
+          this.runtimeTelemetry.legacyToolCompletes++
+        }
         break
       }
 
@@ -329,6 +459,11 @@ export class ExecutionSessionManager {
             currentTask: "Handling error",
             lastAction: `Error: ${event.error?.slice(0, 80)}`,
           })
+        }
+        if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
+          this.runtimeTelemetry.goalLoopToolErrors++
+        } else {
+          this.runtimeTelemetry.legacyToolErrors++
         }
         break
       }
@@ -595,9 +730,246 @@ export class ExecutionSessionManager {
         break
       }
 
+      case "VERIFY_PASSED": {
+        const vpRole = this.execRoleMap.get(event.executionId)
+        if (vpRole) {
+          useAgentStore.getState().setAgentStatus(vpRole, {
+            state: "validating",
+            currentTask: "Verification passed",
+            lastAction: `All checks passed (${event.details.length} checks)`,
+          })
+        }
+        if (event.recovered) {
+          if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
+            this.runtimeTelemetry.goalLoopRecoveries++
+          } else {
+            this.runtimeTelemetry.legacyRecoveries++
+          }
+        }
+        if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
+          this.runtimeTelemetry.goalLoopVerificationsPassed++
+        } else {
+          this.runtimeTelemetry.legacyVerificationsPassed++
+        }
+        break
+      }
+
+      case "VERIFY_FAILED": {
+        const vfRole = this.execRoleMap.get(event.executionId)
+        if (vfRole) {
+          useAgentStore.getState().setAgentStatus(vfRole, {
+            state: "validating",
+            currentTask: "Verification failed",
+            lastAction: `Lint:${event.lintErrors} Type:${event.typeErrors} Build:${event.buildErrors} Test:${event.testFailures}`,
+          })
+        }
+        if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
+          this.runtimeTelemetry.goalLoopVerificationsFailed++
+        } else {
+          this.runtimeTelemetry.legacyVerificationsFailed++
+        }
+        break
+      }
+
+      case "GOAL_ACHIEVED": {
+        // Goal achieved — final cleanup
+        for (const [eid, stepId] of this.stepByExecId) {
+          StreamManager.getInstance().clearStep(stepId)
+          timeline.commitStreamingText(stepId)
+          timeline.updateAgentSession(stepId, { status: "complete", streamState: "completed" })
+        }
+        this.stepByExecId.clear()
+        useAgentStore.getState().addMessage(options.activeRole, {
+          role: "assistant",
+          content: `Goal achieved after ${event.iterations} iteration(s) and ${event.stepsCompleted} step(s).`,
+          timestamp: Date.now(),
+        })
+        break
+      }
+
       case "TOKEN":
       case "MESSAGE_UPDATE":
         break
+    }
+  }
+
+  /** Record an ExecutionEvent to ObservabilityManager spans + counters + DeterministicToolRecorder */
+  private recordObservabilityEvent(event: ExecutionEvent): void {
+    switch (event.type) {
+      case "AGENT_ASSIGNED":
+        this.obsManager.addSpan(event.executionId, "agent_assigned", { roleId: event.roleId, roleName: event.roleName })
+        this.obsManager.incrementCounter("agent_assignments")
+        break
+
+      case "TOOL_START":
+        this.pendingToolArgs.set(event.toolId, {
+          toolName: event.toolName,
+          args: event.args,
+          executionId: event.executionId,
+        })
+        this.obsManager.addSpan(event.executionId, `tool:${event.toolName}`, { toolId: event.toolId, args: event.args.slice(0, 200) })
+        this.obsManager.incrementCounter(`tool_start:${event.toolName}`)
+        this.obsManager.incrementCounter("tool_starts")
+        break
+
+      case "TOOL_COMPLETE": {
+        this.obsManager.incrementCounter(`tool_complete:${event.toolName}`)
+        this.obsManager.incrementCounter("tool_completes")
+        this.obsManager.recordHistogram(`tool_duration:${event.toolName}`, event.durationMs)
+
+        const pending = this.pendingToolArgs.get(event.toolId)
+        if (pending) {
+          this.pendingToolArgs.delete(event.toolId)
+          this.toolRecorder.record({
+            executionId: event.executionId,
+            action: event.toolName,
+            toolName: event.toolName,
+            inputHash: this.simpleHash(pending.args),
+            inputArgs: this.parseArgs(pending.args),
+            outputHash: this.simpleHash(event.result),
+            outputResult: event.result,
+            durationMs: event.durationMs,
+            sandboxMode: "workspace-write",
+          })
+        }
+        break
+      }
+
+      case "TOOL_ERROR": {
+        this.obsManager.incrementCounter(`tool_error:${event.toolName}`)
+        this.obsManager.incrementCounter("tool_errors")
+
+        const pending = this.pendingToolArgs.get(event.toolId)
+        if (pending) {
+          this.pendingToolArgs.delete(event.toolId)
+          this.toolRecorder.record({
+            executionId: event.executionId,
+            action: event.toolName,
+            toolName: event.toolName,
+            inputHash: this.simpleHash(pending.args),
+            inputArgs: this.parseArgs(pending.args),
+            outputHash: this.simpleHash(event.error),
+            outputResult: event.error,
+            durationMs: event.durationMs,
+            error: event.error,
+            sandboxMode: "workspace-write",
+          })
+        }
+        break
+      }
+
+      case "FILE_EDIT":
+        this.obsManager.incrementCounter("file_edits")
+        this.obsManager.addSpan(event.executionId, "file_edit", { path: event.path })
+        break
+
+      case "MESSAGE_COMPLETE":
+        this.obsManager.incrementCounter("messages_complete")
+        this.obsManager.recordHistogram("message_tokens", (event as any).tokens ?? 0)
+        break
+
+      case "EXECUTION_FAILED":
+        this.obsManager.incrementCounter("execution_failures")
+        this.obsManager.addSpan(event.executionId, "execution_failed", { error: event.error })
+        break
+
+      case "EXECUTION_CREATED":
+        this.obsManager.incrementCounter("executions_created")
+        break
+
+      case "EXECUTION_COMPLETE":
+        this.obsManager.incrementCounter("executions_complete")
+        break
+
+      case "VERIFY_PASSED":
+        this.obsManager.incrementCounter("verifications_passed")
+        this.obsManager.addSpan(event.executionId, "verify_passed")
+        break
+
+      case "VERIFY_FAILED":
+        this.obsManager.incrementCounter("verifications_failed")
+        this.obsManager.addSpan(event.executionId, "verify_failed", { lintErrors: event.lintErrors, typeErrors: event.typeErrors })
+        break
+
+      case "GOAL_ACHIEVED":
+        this.obsManager.incrementCounter("goals_achieved")
+        this.obsManager.addSpan(event.executionId, "goal_achieved", { objective: event.objective.slice(0, 100), iterations: event.iterations })
+        break
+    }
+  }
+
+  /** Record per-runtime telemetry for side-by-side validation */
+  private recordRuntimeTelemetry(session: ExecutionSession, eventCount: number): void {
+    const isGoalLoop = !!session.goalId
+    const duration = session.completedAt ? session.completedAt - session.startedAt : 0
+
+    if (isGoalLoop) {
+      if (session.status === "completed") this.runtimeTelemetry.goalLoopCompleted++
+      else if (session.status === "failed") this.runtimeTelemetry.goalLoopFailed++
+      else if (session.status === "cancelled") this.runtimeTelemetry.goalLoopCancelled++
+      if (duration > 0) this.runtimeTelemetry.goalLoopDurations.push(duration)
+    } else {
+      if (session.status === "completed") this.runtimeTelemetry.legacyCompleted++
+      else if (session.status === "failed") this.runtimeTelemetry.legacyFailed++
+      else if (session.status === "cancelled") this.runtimeTelemetry.legacyCancelled++
+      if (duration > 0) this.runtimeTelemetry.legacyDurations.push(duration)
+    }
+
+    // Log telemetry summary every 10 sessions for observability
+    const totalSessions = this.runtimeTelemetry.goalLoopCount + this.runtimeTelemetry.legacyCount
+    if (totalSessions > 0 && totalSessions % 10 === 0) {
+      emitTelemetry({
+        type: "runtime_telemetry",
+        timestamp: Date.now(),
+        metadata: {
+          goalLoop: {
+            count: this.runtimeTelemetry.goalLoopCount,
+            completed: this.runtimeTelemetry.goalLoopCompleted,
+            failed: this.runtimeTelemetry.goalLoopFailed,
+            cancelled: this.runtimeTelemetry.goalLoopCancelled,
+            verificationsPassed: this.runtimeTelemetry.goalLoopVerificationsPassed,
+            verificationsFailed: this.runtimeTelemetry.goalLoopVerificationsFailed,
+            toolCompletes: this.runtimeTelemetry.goalLoopToolCompletes,
+            toolErrors: this.runtimeTelemetry.goalLoopToolErrors,
+            avgDurationMs: this.runtimeTelemetry.goalLoopDurations.length > 0
+              ? Math.round(this.runtimeTelemetry.goalLoopDurations.reduce((a, b) => a + b, 0) / this.runtimeTelemetry.goalLoopDurations.length)
+              : 0,
+            recoveries: this.runtimeTelemetry.goalLoopRecoveries,
+          },
+          legacy: {
+            count: this.runtimeTelemetry.legacyCount,
+            completed: this.runtimeTelemetry.legacyCompleted,
+            failed: this.runtimeTelemetry.legacyFailed,
+            cancelled: this.runtimeTelemetry.legacyCancelled,
+            verificationsPassed: this.runtimeTelemetry.legacyVerificationsPassed,
+            verificationsFailed: this.runtimeTelemetry.legacyVerificationsFailed,
+            toolCompletes: this.runtimeTelemetry.legacyToolCompletes,
+            toolErrors: this.runtimeTelemetry.legacyToolErrors,
+            avgDurationMs: this.runtimeTelemetry.legacyDurations.length > 0
+              ? Math.round(this.runtimeTelemetry.legacyDurations.reduce((a, b) => a + b, 0) / this.runtimeTelemetry.legacyDurations.length)
+              : 0,
+            recoveries: this.runtimeTelemetry.legacyRecoveries,
+          },
+        },
+      })
+    }
+  }
+
+  private simpleHash(str: string): string {
+    let hash = 0
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash |= 0
+    }
+    return hash.toString(36)
+  }
+
+  private parseArgs(args: string): Record<string, unknown> {
+    try {
+      return JSON.parse(args)
+    } catch {
+      return { raw: args.slice(0, 500) }
     }
   }
 
@@ -611,8 +983,12 @@ export class ExecutionSessionManager {
     // 1. Stop all streams immediately
     StreamManager.getInstance().clearAll()
 
-    // 2. Abort the orchestrator
-    this.orchestrator.cancel()
+    // 2. Abort the orchestrator or goal loop
+    if (session.goalId) {
+      AutonomousGoalLoop.getInstance().cancelGoal(session.goalId)
+    } else {
+      this.orchestrator.cancel()
+    }
 
     // 3. Finalize all store state immediately
     const timeline = useTimelineStore.getState()
@@ -629,6 +1005,15 @@ export class ExecutionSessionManager {
     this.initStepIds.clear()
     this.sessionToExecId.delete(sessionId)
     this.activeSessionId = null
+
+    // Observability teardown on cancel
+    if (FeatureFlagManager.getInstance().isEnabled("observability")) {
+      this.obsManager.addSpan(sessionId, "execution_cancelled", { reason: "user_cancellation" })
+      this.obsManager.endTrace(sessionId)
+      this.obsManager.getReplay().endSession(`Session ${sessionId}: cancelled by user`).catch((err) => {
+        console.error("[SessionManager] replay endSession error on cancel:", err)
+      })
+    }
 
     // Background safety fallback: only runs if something is genuinely stuck
     this.forceStopTimer = setTimeout(() => {
@@ -686,6 +1071,8 @@ export class ExecutionSessionManager {
       this.sessions.delete(id)
       emitTelemetry({ type: "session_pruned", timestamp: Date.now(), metadata: { sessionId: id, status: pruned?.status, ageMs: pruned ? now - (pruned.completedAt ?? pruned.startedAt) : 0 } })
     }
+
+    this.pruneAuxiliaryMaps()
   }
 
   getSession(id: string): ExecutionSession | undefined {

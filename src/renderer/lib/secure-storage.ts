@@ -1,7 +1,7 @@
 const STORAGE_PREFIX = "agentic-secure:"
 const FALLBACK_KEY_PREFIX = "agentic-key:"
 
-type StorageBackend = "tauri" | "localstorage" | "none"
+type StorageBackend = "tauri" | "electron" | "localstorage" | "none"
 
 let backend: StorageBackend = "none"
 let tauriInvoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null
@@ -19,9 +19,20 @@ function warn(...args: unknown[]) {
 async function detectBackend(): Promise<StorageBackend> {
   if (backend !== "none") return backend
 
+  // Try Electron safeStorage via preload bridge
+  try {
+    if ((globalThis as any).window?.electronAPI?.safeStorageEncrypt) {
+      backend = "electron"
+      log("Using Electron safeStorage backend")
+      return backend
+    }
+  } catch {
+    // electron not available
+  }
+
   try {
     if ((globalThis as any).window?.__TAURI_INTERNALS__) {
-      const mod = await import("@tauri-apps/api/core")
+      const mod = await import("@/lib/electron-api")
       tauriInvoke = mod.invoke as (cmd: string, args?: Record<string, unknown>) => Promise<unknown>
       backend = "tauri"
       log("Using Tauri secure storage backend")
@@ -43,6 +54,24 @@ async function detectBackend(): Promise<StorageBackend> {
   }
 }
 
+async function encryptWithElectron(plaintext: string): Promise<string | null> {
+  try {
+    const result = await (globalThis as any).window?.electronAPI?.safeStorageEncrypt(plaintext)
+    return result || null
+  } catch {
+    return null
+  }
+}
+
+async function decryptWithElectron(ciphertext: string): Promise<string | null> {
+  try {
+    const result = await (globalThis as any).window?.electronAPI?.safeStorageDecrypt(ciphertext)
+    return result || null
+  } catch {
+    return null
+  }
+}
+
 export async function isSecureStorageAvailable(): Promise<boolean> {
   const b = await detectBackend()
   return b !== "none"
@@ -50,6 +79,19 @@ export async function isSecureStorageAvailable(): Promise<boolean> {
 
 export async function setApiKey(providerId: string, key: string): Promise<void> {
   const b = await detectBackend()
+
+  if (b === "electron") {
+    try {
+      const encrypted = await encryptWithElectron(key)
+      if (encrypted) {
+        localStorage.setItem(`${FALLBACK_KEY_PREFIX}${providerId}`, encrypted)
+        log(`API key stored for provider "${providerId}" via Electron safeStorage`)
+        return
+      }
+    } catch (err) {
+      warn(`Electron safeStorage encrypt failed for "${providerId}", falling back to localStorage:`, err)
+    }
+  }
 
   if (b === "tauri" && tauriInvoke) {
     try {
@@ -65,7 +107,7 @@ export async function setApiKey(providerId: string, key: string): Promise<void> 
     try {
       const encoded = btoa(key)
       localStorage.setItem(`${FALLBACK_KEY_PREFIX}${providerId}`, encoded)
-      log(`API key stored for provider "${providerId}" via localStorage (encoded)`)
+      log(`API key stored for provider "${providerId}" via localStorage (base64 encoded)`)
       return
     } catch (err) {
       warn(`localStorage set failed for "${providerId}":`, err)
@@ -77,6 +119,18 @@ export async function setApiKey(providerId: string, key: string): Promise<void> 
 
 export async function getApiKey(providerId: string): Promise<string | null> {
   const b = await detectBackend()
+  const stored = localStorage.getItem(`${FALLBACK_KEY_PREFIX}${providerId}`)
+  if (!stored) return null
+
+  // Try Electron safeStorage decryption first
+  if (b === "electron") {
+    try {
+      const decrypted = await decryptWithElectron(stored)
+      if (decrypted) return decrypted
+    } catch {
+      // Fall through to other methods
+    }
+  }
 
   if (b === "tauri" && tauriInvoke) {
     try {
@@ -87,16 +141,12 @@ export async function getApiKey(providerId: string): Promise<string | null> {
     }
   }
 
-  if (b === "localstorage") {
-    try {
-      const encoded = localStorage.getItem(`${FALLBACK_KEY_PREFIX}${providerId}`)
-      if (encoded) return atob(encoded)
-    } catch {
-      // Ignore
-    }
+  // Fallback to base64 decode (for keys stored before safeStorage was added)
+  try {
+    return atob(stored)
+  } catch {
+    return null
   }
-
-  return null
 }
 
 export async function removeApiKey(providerId: string): Promise<void> {

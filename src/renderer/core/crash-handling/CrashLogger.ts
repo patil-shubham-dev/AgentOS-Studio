@@ -44,11 +44,15 @@ export async function captureRuntimeSnapshot(): Promise<RuntimeSnapshot> {
   try {
     const { getSubscriptionRegistry, getTimerRegistry } = await import('@/performance/runtime-assertions')
     const subReg = getSubscriptionRegistry?.() ?? new Map()
+    let subCount = 0
     for (const [owner, keys] of subReg) {
+      if (subCount++ >= 50) break
       snapshot.subscriptions.push({ owner, keys: [...keys] })
     }
     const timerReg = getTimerRegistry?.() ?? new Map()
+    let timerCount = 0
     for (const owner of timerReg.keys()) {
+      if (timerCount++ >= 50) break
       snapshot.timers.push(owner)
     }
   } catch (err) {
@@ -107,7 +111,7 @@ export async function logCrash(entry: CrashEntry): Promise<void> {
   writeLog(entries)
 
   try {
-    const { writeTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+    const { writeTextFile, BaseDirectory } = await import('@/lib/electron-api')
     const date = new Date().toISOString().split('T')[0]
     let line = `[${entry.timestamp}] [${entry.type.toUpperCase()}] ${entry.error}`
     if (entry.stack) line += `\nStack:\n${entry.stack}`

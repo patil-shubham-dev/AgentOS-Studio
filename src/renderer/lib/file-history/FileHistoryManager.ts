@@ -48,7 +48,7 @@ export class FileHistoryManager {
     this.history.set(filePath, entry)
 
     try {
-      const { writeTextFile: shimWrite } = await import('@/lib/tauri-shims/fs')
+      const { writeTextFile: shimWrite } = await import('@/lib/electron-api')
       await shimWrite(backupPath, content)
     } catch {
       return snapshot
@@ -62,7 +62,7 @@ export class FileHistoryManager {
     const snapshot = entry.snapshots.find(s => s.version === version)
     if (!snapshot) return null
     try {
-      const { readTextFile: shimRead } = await import('@/lib/tauri-shims/fs')
+      const { readTextFile: shimRead } = await import('@/lib/electron-api')
       return await shimRead(snapshot.backupPath)
     } catch {
       return null
