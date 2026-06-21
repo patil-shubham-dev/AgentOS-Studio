@@ -25,10 +25,13 @@ export const useDiagnosticsStore = create<DiagnosticsStore>((set, get) => ({
 
   setDiagnostics: (diagnostics) => set({ diagnostics }),
 
+  /** Diagnostics capped at 500 entries (newest) */
   addDiagnostics: (diagnostics) =>
-    set((state) => ({
-      diagnostics: [...state.diagnostics, ...diagnostics],
-    })),
+    set((state) => {
+      const merged = [...state.diagnostics, ...diagnostics]
+      if (merged.length > 500) merged.splice(0, merged.length - 500)
+      return { diagnostics: merged }
+    }),
 
   clearDiagnostics: () => set({ diagnostics: [] }),
 

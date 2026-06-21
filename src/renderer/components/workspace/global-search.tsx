@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 import { emitTelemetry } from "@/lib/telemetry"
 import {
   Search, X, File, Loader2, ArrowUp, ArrowDown,
-  CaseSensitive, FileType, Filter,
+  CaseSensitive, FileType, Filter, SearchCode, Sparkles,
 } from "lucide-react"
 
 export interface SearchMatch {
@@ -21,9 +21,25 @@ interface SearchResult {
   filePath: string
   fileName: string
   matches: SearchMatch[]
+  /** Score from semantic search */
+  score?: number
+  /** Snippet from semantic search */
+  snippet?: string
 }
 
-type SearchMode = "filename" | "content"
+type SearchMode = "filename" | "content" | "semantic"
+
+const MAX_CONTENT_SEARCH_RESULTS = 2000
+
+// Lazy-import semantic search engine
+let semanticEngine: any = null
+async function getSemanticEngine() {
+  if (!semanticEngine) {
+    const mod = await import("@/lib/semantic-search")
+    semanticEngine = mod.semanticSearch
+  }
+  return semanticEngine
+}
 
 interface GlobalSearchProps {
   open: boolean
@@ -87,6 +103,7 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
   const [status, setStatus] = useState("")
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [hasSearched, setHasSearched] = useState(false)
+  const [useRegex, setUseRegex] = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
@@ -119,39 +136,76 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
 
     setSearching(false)
 
-    workspaceIndex.search({
-      query: q,
-      mode: m,
-      caseSensitive: cs,
-      extension: ext || undefined,
-      maxResults: 500,
-    }).then((searchResults) => {
-      const mapped = searchResults.map((r) => ({
-      filePath: r.filePath,
-      fileName: r.fileName,
-      matches: r.matches.map((m) => ({
-        file: r.filePath,
-        line: m.line,
-        lineContent: m.lineContent,
-        column: m.column,
-      })),
-    }))
+    const performSearch = async () => {
+      if (m === "semantic") {
+        // Use semantic search engine
+        const engine = await getSemanticEngine()
+        if (!engine || !engine.ready) {
+          setStatus("Semantic index not ready — indexing in progress...")
+          setHasSearched(true)
+          return
+        }
+        const semResults = engine.search(q, 50)
+        const mapped: SearchResult[] = semResults.map((r: any) => ({
+          filePath: r.filePath,
+          fileName: r.fileName,
+          matches: r.matchSnippet
+            ? [{ file: r.filePath, line: 0, lineContent: r.matchSnippet.split('\n')[0] || r.matchSnippet, snippet: r.matchSnippet }]
+            : [],
+          score: r.score,
+          snippet: r.matchSnippet,
+        }))
 
-    setResults(mapped)
+        setResults(mapped)
 
-    if (m === "filename") {
-      setStatus(mapped.length > 0 ? `${mapped.length} file${mapped.length !== 1 ? "s" : ""}` : "No files found")
-    } else {
-      setStatus(mapped.length > 0
-        ? `${mapped.reduce((a: number, r: any) => a + r.matches.length, 0)} matches in ${mapped.length} file${mapped.length !== 1 ? "s" : ""}`
-        : "No matches found")
-    }
-    setHasSearched(true)
-    }).catch((err) => {
-      emitTelemetry({ type: "search_failure", timestamp: Date.now(), error: String(err), metadata: { query: q } })
-      setSearching(false)
+        if (mapped.length > 0) {
+          setStatus(`${mapped.length} semantic result${mapped.length !== 1 ? "s" : ""}`)
+        } else if (!engine.ready) {
+          setStatus("Semantic index not ready")
+        } else {
+          setStatus("No semantic matches found")
+        }
+        setHasSearched(true)
+        return
+      }
+
+      workspaceIndex.search({
+        query: q,
+        mode: m,
+        caseSensitive: cs,
+        extension: ext || undefined,
+        maxResults: 2000,
+        useRegex: m === "content" ? useRegex : undefined,
+      }).then((searchResults) => {
+        const mapped = searchResults.map((r) => ({
+        filePath: r.filePath,
+        fileName: r.fileName,
+        matches: r.matches.map((m) => ({
+          file: r.filePath,
+          line: m.line,
+          lineContent: m.lineContent,
+          column: m.column,
+        })),
+      }))
+
+      setResults(mapped)
+
+      if (m === "filename") {
+        setStatus(mapped.length > 0 ? `${mapped.length} file${mapped.length !== 1 ? "s" : ""}` : "No files found")
+      } else {
+        setStatus(mapped.length > 0
+          ? `${mapped.reduce((a: number, r: any) => a + r.matches.length, 0)} matches in ${mapped.length} file${mapped.length !== 1 ? "s" : ""}`
+          : "No matches found")
+      }
       setHasSearched(true)
-    })
+      }).catch((err) => {
+        emitTelemetry({ type: "search_failure", timestamp: Date.now(), error: String(err), metadata: { query: q } })
+        setSearching(false)
+        setHasSearched(true)
+      })
+    }
+
+    performSearch()
   }, [])
 
   useEffect(() => {
@@ -164,13 +218,16 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
       return
     }
     doSearch(query, mode, caseSensitive, extension)
-  }, [query, mode, caseSensitive, extension, open, doSearch])
+  }, [query, mode, caseSensitive, extension, open, doSearch, useRegex])
 
   const flatResults = useMemo(() => {
-    const items: { type: "file" | "match"; filePath?: string; fileName?: string; match?: SearchMatch; matchCount?: number }[] = []
+    const items: { type: "file" | "match"; filePath?: string; fileName?: string; match?: SearchMatch & { snippet?: string }; matchCount?: number; score?: number }[] = []
     for (const r of results) {
-      if (mode === "filename") {
-        items.push({ type: "file", filePath: r.filePath, fileName: r.fileName })
+      if (mode === "filename" || mode === "semantic") {
+        items.push({ type: "file", filePath: r.filePath, fileName: r.fileName, score: r.score })
+        if (r.snippet && mode === "semantic") {
+          items.push({ type: "match", filePath: r.filePath, match: { file: r.filePath, line: 0, lineContent: r.snippet.split('\n')[0], snippet: r.snippet } })
+        }
       } else {
         items.push({ type: "file", filePath: r.filePath, fileName: r.fileName, matchCount: r.matches.length })
         for (const m of r.matches) {
@@ -277,14 +334,38 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
             <button
               onClick={() => setMode("content")}
               className={cn(
-                "rounded-md px-2 py-1 text-[10px] font-medium transition-all",
-                mode === "content" ? "bg-blue-500/15 text-blue-400" : "text-white/30 hover:text-white/60",
-              )}
-            >
-              <File className="h-3 w-3 inline mr-1" />
-              Content
-            </button>
+                "rounded-md px-2 py-1 text-[10px] font-medium transition-all",            mode === "content" ? "bg-blue-500/15 text-blue-400" : "text-white/30 hover:text-white/60",
+            )}
+          >
+            <File className="h-3 w-3 inline mr-1" />
+            Content
+          </button>
+          <button
+            onClick={() => setMode("semantic")}
+            className={cn(
+              "rounded-md px-2 py-1 text-[10px] font-medium transition-all",
+              mode === "semantic" ? "bg-purple-500/15 text-purple-400" : "text-white/30 hover:text-white/60",
+            )}
+          >
+            <Sparkles className="h-3 w-3 inline mr-1" />
+            Semantic
+          </button>
           </div>
+
+          {/* Regex toggle (content mode only) */}
+          {mode === "content" && (
+            <button
+              onClick={() => setUseRegex(!useRegex)}
+              className={cn(
+                "rounded-md p-1.5 transition-all",
+                useRegex ? "bg-amber-500/15 text-amber-400" : "text-white/30 hover:text-white/60",
+              )}
+              title="Use regex pattern"
+            >
+              <SearchCode className="h-3.5 w-3.5" />
+            </button>
+          )}
+
           <button
             onClick={() => setCaseSensitive(!caseSensitive)}
             className={cn(
@@ -333,10 +414,14 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
               {searching && <Loader2 className="h-3 w-3 animate-spin inline mr-1.5" />}
               {status}
             </span>
-            <span className="text-[9px] text-white/20 font-mono">
-              {workspaceIndex.isReady
-                ? `${workspaceIndex.getFileCount()} files indexed`
-                : `Indexing... ${workspaceIndex.getFileCount()} files scanned`}
+            <span className="text-[9px] text-white/20 font-mono flex items-center gap-2">
+              {useRegex && <span className="text-amber-400/40">Regex</span>}
+              {mode === "semantic" && <span className="text-purple-400/40">TF-IDF</span>}
+              <span>
+                {workspaceIndex.isReady
+                  ? `${workspaceIndex.getFileCount()} files indexed`
+                  : `Indexing... ${workspaceIndex.getFileCount()} files scanned`}
+              </span>
             </span>
           </div>
         )}
@@ -345,10 +430,10 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
         <div ref={resultsRef} className="flex-1 overflow-y-auto min-h-0 max-h-[50vh]">
           {hasSearched && flatResults.length === 0 && !searching && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Search className="h-8 w-8 text-white/10 mb-3" />
+              {mode === "semantic" ? <Sparkles className="h-8 w-8 text-purple-500/10 mb-3" /> : <Search className="h-8 w-8 text-white/10 mb-3" />}
               <p className="text-xs text-white/30">No results found</p>
               <p className="text-[10px] text-white/15 mt-1">
-                {mode === "filename" ? "Try a different filename" : "Try a different search term"}
+                {mode === "semantic" ? "Try different keywords or check the semantic index" : mode === "filename" ? "Try a different filename" : "Try a different search term"}
               </p>
             </div>
           )}
@@ -377,14 +462,21 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
                   onClick={() => handleResultClick(item)}
                   className={cn(
                     "flex items-center gap-2 w-full px-3 py-1.5 text-left transition-all",
-                    selectedIndex === idx ? "bg-blue-500/10" : "hover:bg-white/[0.03]",
+                    selectedIndex === idx ? mode === "semantic" ? "bg-purple-500/10" : "bg-blue-500/10" : "hover:bg-white/[0.03]",
                   )}
                 >
-                  <File className="h-3.5 w-3.5 text-blue-400/50 shrink-0" />
+                  {mode === "semantic" ? (
+                    <Sparkles className="h-3.5 w-3.5 text-purple-400/50 shrink-0" />
+                  ) : (
+                    <File className="h-3.5 w-3.5 text-blue-400/50 shrink-0" />
+                  )}
                   <div className="flex-1 min-w-0">
                     <span className="text-xs font-medium text-white/80">{item.fileName}</span>
                     <span className="text-[10px] text-white/30 ml-2">{item.filePath}</span>
                   </div>
+                  {item.score != null && (
+                    <span className="text-[9px] text-purple-400/50 font-mono">{item.score.toFixed(1)}</span>
+                  )}
                   {mode === "content" && item.matchCount != null && (
                     <span className="text-[9px] text-white/20 font-mono">{item.matchCount} match{item.matchCount !== 1 ? "es" : ""}</span>
                   )}
@@ -394,18 +486,28 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
 
             if (item.type === "match" && item.match) {
               const m = item.match
+              const isSemanticSnippet = mode === "semantic" && (m as any).snippet
               return (
                 <button
                   key={`match-${m.file}-${m.line}-${idx}`}
                   data-index={idx}
                   onClick={() => handleResultClick(item)}
                   className={cn(
-                    "flex items-center gap-2 w-full pl-8 pr-3 py-1 text-left transition-all",
-                    selectedIndex === idx ? "bg-blue-500/8" : "hover:bg-white/[0.02]",
+                    "flex items-start gap-2 w-full pl-8 pr-3 py-1 text-left transition-all",
+                    selectedIndex === idx ? "bg-purple-500/8" : "hover:bg-white/[0.02]",
                   )}
                 >
-                  <span className="text-[10px] text-blue-400/40 font-mono w-8 text-right shrink-0">{m.line}</span>
-                  <span className="text-[11px] font-mono text-white/70 truncate">{m.lineContent}</span>
+                  {isSemanticSnippet ? (
+                    <span className="flex flex-col w-full gap-0.5">
+                      <span className="text-[10px] text-purple-400/30 font-mono">Best match snippet</span>
+                      <code className="text-[10px] font-mono text-white/50 leading-relaxed whitespace-pre-wrap line-clamp-3">{(m as any).snippet}</code>
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-[10px] text-blue-400/40 font-mono w-8 text-right shrink-0">{m.line}</span>
+                      <span className="text-[11px] font-mono text-white/70 truncate">{m.lineContent}</span>
+                    </>
+                  )}
                 </button>
               )
             }

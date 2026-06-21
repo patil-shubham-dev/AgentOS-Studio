@@ -5,12 +5,25 @@ export interface SemanticSearchResult {
   fileName: string
   score: number
   matchSnippet?: string
+  matchLines?: number[]
+  /** How many terms from the query matched in this document (for hybrid ranking) */
+  matchedQueryTerms?: number
 }
 
 interface TermStats {
   tf: number
   docFreq: number
 }
+
+interface DocContentCache {
+  content: string
+  indexedAt: number
+}
+
+const MAX_FILE_SIZE = 512 * 1024
+const SNIPPET_LINES_BEFORE = 2
+const SNIPPET_LINES_AFTER = 2
+const MAX_SNIPPET_CHARS = 600
 
 const STOP_WORDS = new Set([
   "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
@@ -149,6 +162,8 @@ export class SemanticSearchEngine {
   private isReady = false
   private isBuilding = false
   private buildSignal: AbortController | null = null
+  // Content cache for snippet extraction
+  private docContentCache = new Map<string, DocContentCache>()
 
   get ready(): boolean {
     return this.isReady
@@ -203,6 +218,7 @@ export class SemanticSearchEngine {
             const { readTextFile } = await import("@/lib/electron-api")
             const content = await readTextFile(fullPath)
             this.indexDocument(entryPath, entry.name, content)
+            this.cacheContent(entryPath, content)
           } catch {
             this.indexDocument(entryPath, entry.name, "")
           }
@@ -248,6 +264,7 @@ export class SemanticSearchEngine {
 
     const stemmedQuery = queryTokens.map((t) => stem(t))
     const docScores = new Map<string, number>()
+    const docTermHits = new Map<string, Set<string>>()
 
     for (const qTerm of stemmedQuery) {
       const docMap = this.termIndex.get(qTerm)
@@ -259,9 +276,17 @@ export class SemanticSearchEngine {
       for (const [docPath, tf] of docMap) {
         const currentScore = docScores.get(docPath) || 0
         docScores.set(docPath, currentScore + tf * idf)
+
+        let hits = docTermHits.get(docPath)
+        if (!hits) {
+          hits = new Set()
+          docTermHits.set(docPath, hits)
+        }
+        hits.add(qTerm)
       }
     }
 
+    // Path/name bonus scoring
     const pathScoreBonus = new Map<string, number>()
     for (const docPath of docScores.keys()) {
       const name = this.docNames.get(docPath) || ""
@@ -278,12 +303,25 @@ export class SemanticSearchEngine {
     const results: SemanticSearchResult[] = []
     for (const [docPath, score] of docScores) {
       const bonus = pathScoreBonus.get(docPath) || 0
-      const total = score + bonus
+      const hits = docTermHits.get(docPath)
+      const matchedCount = hits ? hits.size : 0
+      // Bonus for matching more distinct query terms (hybrid boost)
+      const hybridBoost = matchedCount >= stemmedQuery.length ? 10 : matchedCount > 1 ? 5 : 0
+      const total = score + bonus + hybridBoost
       if (total <= 0) continue
+
+      // Try to extract a snippet
+      const snippet = this.docContentCache.get(docPath)
+      const matchSnippet = snippet
+        ? this.extractSnippet(snippet.content, queryTokens)
+        : undefined
+
       results.push({
         filePath: docPath,
         fileName: this.docNames.get(docPath) || docPath.split(/[/\\]/).pop() || docPath,
         score: total,
+        matchSnippet,
+        matchedQueryTerms: matchedCount,
       })
     }
 
@@ -304,6 +342,151 @@ export class SemanticSearchEngine {
     return result
   }
 
+  /**
+   * Re-index a single file incrementally without rebuilding the entire index.
+   * Removes the old document's terms and re-indexes the new content.
+   */
+  reindexFile(filePath: string, content: string): void {
+    // Remove old document's terms first
+    this.removeDocument(filePath)
+    // Re-index with new content
+    const name = filePath.split(/[/\\]/).pop() || filePath
+    this.indexDocument(filePath, name, content)
+    this.cacheContent(filePath, content)
+  }
+
+  /**
+   * Remove a document from the index entirely.
+   */
+  private removeDocument(path: string): void {
+    // Remove from doc metadata
+    this.docLengths.delete(path)
+    this.docNames.delete(path)
+    this.docContentCache.delete(path)
+
+    // Remove all term entries pointing to this document
+    for (const [, docMap] of this.termIndex) {
+      docMap.delete(path)
+    }
+
+    // Clean up empty term entries
+    for (const [term, docMap] of this.termIndex) {
+      if (docMap.size === 0) {
+        this.termIndex.delete(term)
+      }
+    }
+
+    this.totalDocs = Math.max(0, this.totalDocs - 1)
+  }
+
+  /**
+   * Remove a file from the index (e.g. the file was deleted in the workspace).
+   */
+  removeFile(filePath: string): void {
+    this.removeDocument(filePath)
+  }
+
+  /**
+   * Extract the best matching code snippet from a file's content given query tokens.
+   * Finds the line(s) with the highest density of matched terms.
+   */
+  private extractSnippet(content: string, queryTokens: string[]): string | undefined {
+    const lines = content.split("\n")
+    if (lines.length === 0) return undefined
+
+    const lowerTokens = queryTokens.map((t) => t.toLowerCase())
+
+    // Score each line for relevance to query tokens
+    const lineScores = lines.map((line, idx) => {
+      const lower = line.toLowerCase()
+      let score = 0
+      for (const token of lowerTokens) {
+        if (lower.includes(token)) score += 10
+        // Partial matches too
+        if (token.length >= 3 && lower.includes(token.substring(0, token.length - 1))) score += 3
+      }
+      // Boost lines with actual identifiers (not just whitespace)
+      if (/[a-zA-Z_]/.test(line)) score += 1
+      return { idx, score }
+    })
+
+    // Find the highest-scoring window
+    let bestStart = 0
+    let bestScore = 0
+    for (let i = 0; i < lineScores.length; i++) {
+      const end = Math.min(i + SNIPPET_LINES_BEFORE + 1 + SNIPPET_LINES_AFTER, lineScores.length)
+      const windowScore = lineScores
+        .slice(i, end)
+        .reduce((sum, ls) => sum + ls.score, 0)
+      if (windowScore > bestScore) {
+        bestScore = windowScore
+        bestStart = Math.max(0, i - SNIPPET_LINES_BEFORE)
+      }
+    }
+
+    if (bestScore === 0) return undefined
+
+    const endIdx = Math.min(bestStart + SNIPPET_LINES_BEFORE + 1 + SNIPPET_LINES_AFTER, lines.length)
+    let snippet = lines.slice(bestStart, endIdx).join("\n")
+    if (snippet.length > MAX_SNIPPET_CHARS) {
+      snippet = snippet.substring(0, MAX_SNIPPET_CHARS) + "..."
+    }
+    return snippet
+  }
+
+  /**
+   * Serialize the term index to a JSON-compatible structure for caching.
+   */
+  exportIndex(): object | null {
+    if (this.totalDocs === 0) return null
+    const terms: Record<string, [string, number][]> = {}
+    for (const [term, docMap] of this.termIndex) {
+      terms[term] = Array.from(docMap.entries())
+    }
+    return {
+      version: 1,
+      terms,
+      docLengths: Object.fromEntries(Array.from(this.docLengths.entries())),
+      docNames: Object.fromEntries(Array.from(this.docNames.entries())),
+      totalDocs: this.totalDocs,
+      indexedAt: Date.now(),
+    }
+  }
+
+  /**
+   * Deserialize a previously exported index.
+   */
+  importIndex(data: object): boolean {
+    try {
+      const d = data as any
+      if (d.version !== 1) return false
+
+      this.termIndex.clear()
+      this.docLengths.clear()
+      this.docNames.clear()
+      this.totalDocs = 0
+
+      for (const [term, entries] of Object.entries(d.terms)) {
+        const docMap = new Map<string, number>(entries as [string, number][])
+        this.termIndex.set(term, docMap)
+      }
+
+      for (const [path, length] of Object.entries(d.docLengths)) {
+        this.docLengths.set(path, length as number)
+      }
+
+      for (const [path, name] of Object.entries(d.docNames)) {
+        this.docNames.set(path, name as string)
+      }
+
+      this.totalDocs = d.totalDocs as number
+      this.isReady = true
+      return true
+    } catch {
+      return false
+    }
+  }
+
   getStats() {
     return {
       filesIndexed: this.totalDocs,
@@ -318,9 +501,23 @@ export class SemanticSearchEngine {
     this.termIndex.clear()
     this.docLengths.clear()
     this.docNames.clear()
+    this.docContentCache.clear()
     this.totalDocs = 0
     this.isReady = false
     this.isBuilding = false
+  }
+
+  cacheContent(filePath: string, content: string): void {
+    if (content.length > MAX_FILE_SIZE * 2) return
+    this.docContentCache.set(filePath, { content, indexedAt: Date.now() })
+  }
+
+  clearContentCache(): void {
+    this.docContentCache.clear()
+  }
+
+  getContentCacheSize(): number {
+    return this.docContentCache.size
   }
 }
 

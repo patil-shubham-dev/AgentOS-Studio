@@ -1,6 +1,7 @@
 import type { MemoryFile } from "./memory-types"
 import { isTauri, getRuntimeEnvironment } from "@/runtime/environment"
 import { withTimeoutFallback } from "@/runtime/with-timeout"
+import { configLoader } from "@/runtime/project-config/ConfigLoader"
 
 const DEFAULT_MEMORY_FILES = [
   { path: "~/.agentic-os/CLAUDE.md", source: "global" as const, priority: 0 },
@@ -12,6 +13,10 @@ export interface MemoryLoadResult {
   files: MemoryFile[]
   combined: string
   rules: MemoryFile[]
+  /** AGENTIC.md project config content */
+  projectConfig?: string
+  /** Hash of the AGENTIC.md content (for cache key) */
+  projectConfigHash?: string
 }
 
 const MEMORY_TIMEOUT_MS = 3_000
@@ -61,7 +66,14 @@ export class MemoryLoader {
     this.cachedFiles = new Map(loaded.map((f) => [f.path, f.content]))
     this.lastLoadTime = now
 
-    return this.buildResult()
+    // ── Load AGENTIC.md project config ──
+    const configResult = await configLoader.load(projectPath)
+
+    return {
+      ...this.buildResult(),
+      projectConfig: configResult.combined,
+      projectConfigHash: configResult.hash,
+    }
   }
 
   private buildResult(): MemoryLoadResult {
@@ -79,7 +91,7 @@ export class MemoryLoader {
       .map((f) => f.content)
       .join("\n\n")
     const rules = files.filter((f) => f.source === "rules")
-    return { files, combined, rules }
+    return { files, combined, rules, projectConfig: undefined, projectConfigHash: undefined }
   }
 
   private async readFile(path: string): Promise<string | null> {

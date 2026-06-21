@@ -24,6 +24,14 @@ import { DiskBackedResultStore } from './tools/storage/DiskBackedResultStore'
 import { ALL_BUILTIN_TOOLS } from '@/runtime/tools/implementations'
 import { RuntimeCleanupManager } from "./RuntimeCleanupManager"
 import { useWorkspaceStore } from '@/stores/workspace-store'
+import { PromptCacheManager } from '@/runtime/caching/PromptCacheManager'
+import { useAppStore } from '@/stores/app-store'
+import { configWatcher } from '@/runtime/project-config/ConfigWatcher'
+import { configLoader } from '@/runtime/project-config/ConfigLoader'
+import { sandboxPathMapper } from '@/runtime/tools/execution/SandboxPathMapper'
+import { pluginRegistry } from '@/runtime/plugins/PluginRegistry'
+import { pluginLoader } from '@/runtime/plugins/PluginLoader'
+import { sessionMemoryExtractor } from '@/runtime/memory/SessionMemoryExtractor'
 
 export class RuntimeOS {
   private static instance: RuntimeOS
@@ -51,6 +59,7 @@ export class RuntimeOS {
   readonly diskBackedStore: DiskBackedResultStore
 
   private unsubCleanup: (() => void) | null = null
+  private _cacheUnsubscribers: (() => void)[] = []
   private initialized = false
 
   private constructor() {
@@ -63,6 +72,7 @@ export class RuntimeOS {
     this.approvalManager = this.permissionEngine.getApprovalManager()
 
     this.toolExecutionPipeline = new ToolExecutionPipeline(this.toolRegistry, this.permissionEngine)
+    this.toolExecutionPipeline.registerPreHook(sandboxPathMapper)
     this.toolExecutionPolicy = new ToolExecutionPolicy()
     this.toolConcurrencyPolicy = new ToolConcurrencyPolicy()
 
@@ -100,6 +110,23 @@ export class RuntimeOS {
   async initialize(mcpServers?: MCPClientConfig[]): Promise<void> {
     if (this.initialized) return
 
+    // ── Wire prompt cache invalidation to config changes ──
+    const cacheManager = PromptCacheManager.getInstance()
+    const unsubProviders = useAppStore.subscribe(
+      (state) => state.providers,
+      () => {
+        cacheManager.invalidate('model')
+      },
+    )
+    const unsubRoles = useAppStore.subscribe(
+      (state) => state.roleConfigs,
+      () => {
+        cacheManager.invalidate('tools')
+      },
+    )
+    // Store unsubscribers for cleanup on shutdown
+    this._cacheUnsubscribers = [unsubProviders, unsubRoles]
+
     const already = this.toolRegistry.size().builtin
     if (already === 0) {
       this.toolRegistry.registerMany(ALL_BUILTIN_TOOLS)
@@ -136,21 +163,47 @@ export class RuntimeOS {
       await this.skillLoader.loadProjectSkills(rootPath)
       await this.memoryArchitecture.initialize()
       await this.diskBackedStore.initialize(rootPath)
+
+      // ── Start config file watcher (needs rootPath) ──
+      configWatcher.start(rootPath)
+      configWatcher.onChange((_source, _filePath) => {
+        // Invalidate caches on config change
+        PromptCacheManager.getInstance().invalidate('config')
+        configLoader.invalidateCache()
+      })
     }
     await this.skillLoader.loadUserSkills()
+
+    // Start listening for session completions for cross-session memory
+    sessionMemoryExtractor.startListening()
 
     await this.loadBuiltinPlugins()
     this.initialized = true
   }
 
   private async loadBuiltinPlugins(): Promise<void> {
-    // Placeholder for plugin loading
+    const rootPath = useWorkspaceStore.getState().rootPath
+    const result = await pluginLoader.loadAll(rootPath ?? undefined)
+    for (const plugin of result.loaded) {
+      pluginRegistry.register(plugin)
+    }
+    // Dispatch onInit hooks for all enabled plugins
+    await pluginRegistry.dispatchOnInit()
   }
 
   async shutdown(): Promise<void> {
     this.mcpServerManager.stopHealthChecks()
     await this.mcpRegistry.disconnectAll()
     this.toolConcurrencyPolicy.clear()
+    // Clean up cache subscription listeners
+    for (const unsub of this._cacheUnsubscribers) {
+      unsub()
+    }
+    this._cacheUnsubscribers = []
+    // Stop config file watcher
+    configWatcher.stop()
+    // Stop session memory listening
+    sessionMemoryExtractor.stopListening()
     this.initialized = false
   }
 

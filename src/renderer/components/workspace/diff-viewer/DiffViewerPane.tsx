@@ -1,73 +1,297 @@
-import { useMemo, useState } from "react"
+/**
+ * DiffViewerPane — full diff viewer panel for the docking area.
+ *
+ * Shows all pending file diffs with:
+ *   - File tree sidebar showing all changed files with status indicators
+ *   - Side-by-side Monaco DiffEditor for the selected file
+ *   - Per-file and per-hunk accept/reject controls
+ *   - Global Accept All / Reject All toolbar
+ *   - Summary statistics
+ *   - Integration with the diff-store for state management
+ */
+
+import { useState, useMemo, useCallback, useEffect } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { useDiffStore } from "@/stores/diff-store"
 import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
-import { MultiFileDiffCard } from "@/components/workspace/timeline/conversation/diff/MultiFileDiffCard"
-import { Code2, Eye, EyeOff } from "lucide-react"
+import { SideBySideDiff } from "./SideBySideDiff"
+import {
+  Code2, CheckCheck, XCircle, FileText, GitBranch,
+  Eye, EyeOff, ChevronLeft, ChevronRight, Loader2,
+  Check, X, AlertTriangle,
+} from "lucide-react"
 
 export function DiffViewerPane() {
-  const agentSessions = useTimelineStore((s) => s.agentSessions)
-  const [showAll, setShowAll] = useState(false)
+  const {
+    files,
+    acceptFile, rejectFile,
+    acceptHunk, rejectHunk,
+    acceptAll, rejectAll,
+    clear,
+  } = useDiffStore()
 
-  const allFileEdits = useMemo(() => {
-    const edits: { edit: import("@/components/workspace/timeline/step-card").FileEditRecord }[] = []
-    for (const session of agentSessions.values()) {
-      for (const edit of session.fileEdits ?? []) {
-        edits.push({ edit })
-      }
+  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [showSidebar, setShowSidebar] = useState(true)
+  const fileList = useMemo(() => Array.from(files.values()), [files])
+
+  // Auto-select first file when files change
+  useEffect(() => {
+    if (fileList.length > 0 && (!selectedPath || !files.has(selectedPath))) {
+      const first = fileList.find((f) => f.status === "pending") ?? fileList[0]
+      setSelectedPath(first.path)
     }
-    return edits
-  }, [agentSessions])
+  }, [fileList.length])
 
-  const uniqueEdits = useMemo(() => {
-    const seen = new Set<string>()
-    return allFileEdits.filter((e) => {
-      const key = `${e.edit.path}:${e.edit.additions}:${e.edit.deletions}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-  }, [allFileEdits])
+  const selectedFile = selectedPath ? files.get(selectedPath) ?? null : null
 
-  if (uniqueEdits.length === 0) {
+  const totals = useMemo(() => {
+    let files = 0, additions = 0, deletions = 0, pending = 0, accepted = 0, rejected = 0
+    for (const f of fileList) {
+      files++
+      for (const h of f.hunks) {
+        additions += h.additions
+        deletions += h.deletions
+      }
+      if (f.status === "pending") pending++
+      else if (f.status === "accepted") accepted++
+      else if (f.status === "rejected") rejected++
+    }
+    return { files, additions, deletions, pending, accepted, rejected }
+  }, [fileList])
+
+  // Compute hunk status summary text
+  const hunkSummary = useMemo(() => {
+    if (!selectedFile) return ""
+    const a = selectedFile.hunks.filter((h) => h.status === "accepted").length
+    const r = selectedFile.hunks.filter((h) => h.status === "rejected").length
+    const p = selectedFile.hunks.filter((h) => h.status === "pending").length
+    return `${a} accepted, ${r} rejected, ${p} pending`
+  }, [selectedFile])
+
+  if (fileList.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-8">
-        <Code2 className="h-8 w-8 text-white/10" />
-        <p className="text-[11px] text-white/20">No file changes yet</p>
-        <p className="text-[9px] text-white/15 max-w-[200px]">
-          File edits made by agents will appear here for review
-        </p>
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
+        <div className="flex items-center justify-center h-12 w-12 rounded-2xl bg-white/[0.03] border border-white/[0.06]">
+          <GitBranch className="h-6 w-6 text-white/20" />
+        </div>
+        <div>
+          <p className="text-[12px] font-medium text-white/40">No file changes yet</p>
+          <p className="text-[10px] text-white/20 mt-1 max-w-[220px]">
+            File edits made by agents will appear here for review with side-by-side diffs and per-change accept/reject controls
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.04] shrink-0">
+    <div className="flex flex-col h-full min-h-0">
+      {/* ── Global toolbar ── */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.06] bg-white/[0.02] shrink-0">
         <div className="flex items-center gap-2">
+          {/* Toggle sidebar */}
+          <button
+            onClick={() => setShowSidebar((v) => !v)}
+            className={cn(
+              "rounded p-0.5 transition-all",
+              showSidebar
+                ? "text-blue-400 bg-blue-500/10"
+                : "text-white/30 hover:text-white/50 hover:bg-white/[0.04]",
+            )}
+            title="Toggle file sidebar"
+          >
+            {showSidebar ? (
+              <ChevronLeft className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
+          </button>
+
+          {/* Summary stats */}
           <span className="text-[10px] font-medium text-white/30 uppercase tracking-widest">
             Changes
           </span>
           <span className="text-[9px] text-white/20 bg-white/[0.04] rounded px-1 py-0.5">
-            {uniqueEdits.length} file{uniqueEdits.length !== 1 ? "s" : ""}
+            {totals.files} file{totals.files !== 1 ? "s" : ""}
           </span>
-        </div>
-        <button
-          onClick={() => setShowAll(!showAll)}
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
-        >
-          {showAll ? (
-            <><EyeOff className="h-2.5 w-2.5" /> Collapse</>
-          ) : (
-            <><Eye className="h-2.5 w-2.5" /> Show all</>
+          <span className="text-[9px] text-green-400/60 font-mono">+{totals.additions}</span>
+          <span className="text-[9px] text-red-400/60 font-mono">-{totals.deletions}</span>
+          {totals.pending > 0 && (
+            <span className="text-[9px] text-amber-400/60 font-mono">{totals.pending} pending</span>
           )}
-        </button>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {/* File-sidebar toggle visibility */}
+          <button
+            onClick={() => setShowSidebar((v) => !v)}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
+          >
+            {showSidebar ? (
+              <><EyeOff className="h-2.5 w-2.5" /> Sidebar</>
+            ) : (
+              <><Eye className="h-2.5 w-2.5" /> Sidebar</>
+            )}
+          </button>
+
+          {/* Spacer */}
+          <div className="w-px h-4 bg-white/[0.06]" />
+
+          {/* Accept All / Reject All */}
+          <button
+            onClick={rejectAll}
+            disabled={totals.pending === 0}
+            className={cn(
+              "flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-all",
+              totals.pending > 0
+                ? "text-red-400/60 hover:text-red-400 hover:bg-red-500/10"
+                : "text-white/15 cursor-not-allowed",
+            )}
+          >
+            <XCircle className="h-2.5 w-2.5" />
+            Reject All
+          </button>
+          <button
+            onClick={acceptAll}
+            disabled={totals.pending === 0}
+            className={cn(
+              "flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-all",
+              totals.pending > 0
+                ? "text-green-400/60 hover:text-green-400 hover:bg-green-500/10"
+                : "text-white/15 cursor-not-allowed",
+            )}
+          >
+            <CheckCheck className="h-2.5 w-2.5" />
+            Accept All
+          </button>
+
+          {/* Clear */}
+          <div className="w-px h-4 bg-white/[0.06]" />
+          <button
+            onClick={clear}
+            className="rounded px-1.5 py-0.5 text-[9px] text-white/20 hover:text-white/50 hover:bg-white/[0.04] transition-all"
+          >
+            Clear
+          </button>
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0 px-2 py-1">
-        <MultiFileDiffCard
-          files={uniqueEdits}
-          onAcceptAll={() => {}}
-          onRevertAll={() => {}}
-        />
+
+      {/* ── Main content: sidebar + diff viewer ── */}
+      <div className="flex flex-1 min-h-0">
+        {/* File sidebar */}
+        <AnimatePresence>
+          {showSidebar && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 200, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.15, ease: "easeInOut" }}
+              className="flex-shrink-0 border-r border-white/[0.06] overflow-hidden"
+            >
+              <div className="flex flex-col h-full">
+                {/* Sidebar header */}
+                <div className="flex items-center justify-between px-2 py-1.5 border-b border-white/[0.04]">
+                  <span className="text-[9px] font-medium text-white/20 uppercase tracking-wider">
+                    Files
+                  </span>
+                  <span className="text-[8px] text-white/15">{fileList.length}</span>
+                </div>
+
+                {/* File list */}
+                <div className="flex-1 overflow-y-auto min-h-0 py-1">
+                  {fileList.map((file) => {
+                    const isSelected = selectedPath === file.path
+                    return (
+                      <button
+                        key={file.path}
+                        onClick={() => setSelectedPath(file.path)}
+                        className={cn(
+                          "flex items-center gap-2 w-full px-2.5 py-1.5 text-left transition-colors",
+                          isSelected
+                            ? "bg-blue-500/8"
+                            : "hover:bg-white/[0.03]",
+                        )}
+                      >
+                        {/* Status dot */}
+                        <div className={cn(
+                          "h-1.5 w-1.5 rounded-full shrink-0",
+                          file.status === "accepted" ? "bg-green-400" :
+                          file.status === "rejected" ? "bg-red-400" :
+                          "bg-amber-400",
+                        )} />
+
+                        {/* File name */}
+                        <div className="flex-1 min-w-0">
+                          <span className={cn(
+                            "text-[10px] font-mono truncate block",
+                            isSelected ? "text-white/80" : "text-white/50",
+                          )}>
+                            {file.path.split("/").pop()}
+                          </span>
+                          <span className="text-[8px] text-white/20 truncate block">
+                            {file.path}
+                          </span>
+                        </div>
+
+                        {/* Line counts */}
+                        <div className="text-right shrink-0">
+                          <div className="text-[8px] text-green-400/50 font-mono">
+                            +{file.hunks.reduce((s, h) => s + h.additions, 0)}
+                          </div>
+                          <div className="text-[8px] text-red-400/50 font-mono">
+                            -{file.hunks.reduce((s, h) => s + h.deletions, 0)}
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Diff content */}
+        <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-3">
+          {selectedFile ? (
+            <SideBySideDiff
+              key={selectedFile.path}
+              file={selectedFile}
+              onAcceptAll={acceptFile}
+              onRejectAll={rejectFile}
+              onAcceptHunk={acceptHunk}
+              onRejectHunk={rejectHunk}
+              expanded={true}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-[11px] text-white/20">
+              Select a file from the sidebar to view its diff
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Status bar ── */}
+      <div className="flex items-center gap-3 px-3 py-1 border-t border-white/[0.04] bg-white/[0.01] shrink-0">
+        <div className="flex items-center gap-1.5 text-[9px] text-white/25">
+          <Check className="h-2.5 w-2.5 text-green-400/50" />
+          <span>{totals.accepted} accepted</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[9px] text-white/25">
+          <X className="h-2.5 w-2.5 text-red-400/50" />
+          <span>{totals.rejected} rejected</span>
+        </div>
+        {totals.pending > 0 && (
+          <div className="flex items-center gap-1.5 text-[9px] text-white/25">
+            <AlertTriangle className="h-2.5 w-2.5 text-amber-400/50" />
+            <span>{totals.pending} pending</span>
+          </div>
+        )}
+        <div className="flex-1" />
+        {selectedFile && hunkSummary && (
+          <span className="text-[8px] text-white/15 font-mono">{hunkSummary}</span>
+        )}
       </div>
     </div>
   )

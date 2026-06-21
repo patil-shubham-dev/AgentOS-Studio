@@ -325,6 +325,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
+  /** Open files capped at 30 (newest) */
   openFile: (file) =>
     set((store) => {
       const exists = store.openFiles.find((f) => f.path === file.path)
@@ -340,7 +341,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         }
       }
       requestRefresh("workspace_change")
-      return { openFiles: [...store.openFiles, file], activeFilePath: file.path }
+      const openFiles = [...store.openFiles, file]
+      if (openFiles.length > 30) openFiles.splice(0, openFiles.length - 30)
+      return { openFiles, activeFilePath: file.path }
     }),
 
   closeFile: (path) =>

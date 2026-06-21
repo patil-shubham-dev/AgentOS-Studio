@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useBrowserStore } from "@/stores/browser-store"
+import { useWorkspaceStore } from "@/stores/workspace-store"
 import { listen } from "@/lib/electron-api"
 import { cn } from "@/lib/utils"
 import { Button, TooltipSimple as Tooltip } from "@agentic-os/ui"
@@ -8,6 +9,7 @@ import {
   Globe, ExternalLink, Loader2, X, Play,
   MousePointer, Type, Terminal, RefreshCw, ArrowLeft, ArrowRight,
   ChevronDown, ChevronUp, AlertTriangle, Zap, Camera, ImageDown, Smartphone,
+  RotateCcw,
 } from "lucide-react"
 import { TabBar } from "./TabBar"
 import { StatusBar } from "./StatusBar"
@@ -50,6 +52,9 @@ export function BrowserWorkspace() {
   const setLaunching = useBrowserStore((s) => s.setLaunching)
   const persistState = useBrowserStore((s) => s.persistState)
   const restoreState = useBrowserStore((s) => s.restoreState)
+  const isolateToWorkspace = useBrowserStore((s) => s.isolateToWorkspace)
+  const cleanupOrphanedSessions = useBrowserStore((s) => s.cleanupOrphanedSessions)
+  const setWorkspaceRoot = useBrowserStore((s) => s.setWorkspaceRoot)
   const sessions = useBrowserStore((s) => s.sessions)
 
   const [urlInput, setUrlInput] = useState("about:blank")
@@ -68,6 +73,9 @@ export function BrowserWorkspace() {
   const [showConsole, setShowConsole] = useState(false)
   const [showDeviceToolbar, setShowDeviceToolbar] = useState(false)
   const [viewportSize, setViewportSize] = useState<{ width: number; height: number } | null>(null)
+  const [showRestorePrompt, setShowRestorePrompt] = useState(false)
+  const [storedSessionCount, setStoredSessionCount] = useState(0)
+  const workspaceRoot = useWorkspaceStore((s) => s.rootPath)
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
   const activeTab = activeSession?.tabs.find((t) => t.id === activeSession.activeTabId) ?? activeSession?.tabs[0] ?? null
@@ -92,8 +100,47 @@ export function BrowserWorkspace() {
     injectAnnotations,
   } = useViewport()
 
+  // Initial load: restore persisted sessions (once on mount)
   useEffect(() => {
     restoreState()
+  }, [])
+
+  // Isolate to current workspace when root changes
+  useEffect(() => {
+    // Sync workspace root with browser store
+    setWorkspaceRoot(workspaceRoot)
+    if (workspaceRoot) {
+      // Isolate sessions to this workspace
+      isolateToWorkspace(workspaceRoot)
+      // Clean up orphaned sessions
+      cleanupOrphanedSessions()
+
+      // Check for stored sessions from previous workspace session
+      const count = useBrowserStore.getState().getStoredSessionCount(workspaceRoot)
+      const currentSessions = useBrowserStore.getState().sessions
+      if (count > 0 && currentSessions.length === 0) {
+        setStoredSessionCount(count)
+        setShowRestorePrompt(true)
+      }
+    }
+  }, [workspaceRoot])
+
+  // Handle restore of previous sessions
+  const handleRestoreSessions = useCallback(() => {
+    restoreState()
+    setShowRestorePrompt(false)
+    // Navigate viewport to first restored tab without creating a duplicate
+    const restoredSessions = useBrowserStore.getState().sessions
+    if (restoredSessions.length > 0 && restoredSessions[0]) {
+      const firstTab = restoredSessions[0].tabs[0]
+      if (firstTab?.url && firstTab.url !== 'about:blank') {
+        navigate(firstTab.url)
+      }
+    }
+  }, [restoreState, navigate])
+
+  const handleDismissRestore = useCallback(() => {
+    setShowRestorePrompt(false)
   }, [])
 
   useEffect(() => {
@@ -510,11 +557,38 @@ export function BrowserWorkspace() {
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
-          <PremiumEmptyState config={getBrowserEmptyState(
-            () => handleLaunch(),
-            isLaunching,
-            urlInput,
-          )} />
+          {showRestorePrompt && storedSessionCount > 0 ? (
+            <div className="flex flex-col items-center text-center max-w-sm">
+              <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-blue-500/10 mb-3">
+                <RotateCcw className="h-6 w-6 text-blue-400" />
+              </div>
+              <h3 className="text-sm font-semibold text-white/70 mb-1">Previous Browser Sessions Found</h3>
+              <p className="text-[11px] text-white/30 mb-4 leading-relaxed">
+                {storedSessionCount} browser session{storedSessionCount !== 1 ? 's' : ''} from your last workspace session {storedSessionCount !== 1 ? 'are' : 'is'} available to restore.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRestoreSessions}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-medium bg-blue-500/10 text-blue-300 border border-blue-500/20 hover:bg-blue-500/20 transition-all"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Restore {storedSessionCount} Session{storedSessionCount !== 1 ? 's' : ''}
+                </button>
+                <button
+                  onClick={handleDismissRestore}
+                  className="px-3 py-1.5 rounded-lg text-[10px] font-medium text-white/30 hover:text-white/50 border border-white/[0.06] hover:bg-white/[0.04] transition-all"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ) : (
+            <PremiumEmptyState config={getBrowserEmptyState(
+              () => handleLaunch(),
+              isLaunching,
+              urlInput,
+            )} />
+          )}
         </div>
       )}
 

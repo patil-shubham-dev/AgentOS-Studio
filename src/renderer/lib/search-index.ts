@@ -16,6 +16,8 @@ export interface SearchQuery {
   extension?: string
   maxResults?: number
   signal?: AbortSignal
+  /** If true, treat query as a regex pattern. Auto-detected if not set. */
+  useRegex?: boolean
 }
 
 export interface FuzzyScore {
@@ -383,6 +385,33 @@ export class SearchIndex {
       return results
     }
 
+    // ── Content search mode ──
+    // Supports both plain-text (indexOf) and regex matching
+    // Uses batched file reading with proactive content fetching
+
+    // Compile regex if the query looks like a regex pattern or useRegex is explicitly set
+    let useRegex = false
+    let regex: RegExp | null = null
+    const q = query.query.trim()
+
+    // Detect regex: explicit flag, starts/ends with /, or contains regex metacharacters
+    if (
+      query.useRegex ||
+      (q.startsWith("/") && q.endsWith("/") && q.length > 2) ||
+      /[.+*?^${}()|[\]\\]/.test(q)
+    ) {
+      try {
+        const pattern = q.startsWith("/") && q.endsWith("/")
+          ? q.slice(1, -1)
+          : q
+        regex = new RegExp(pattern, query.caseSensitive ? "g" : "gi")
+        useRegex = true
+      } catch {
+        // Regex compilation failed — fall back to plain text
+        useRegex = false
+      }
+    }
+
     for (let i = 0; i < this.files.length; i += SEARCH_BATCH_SIZE) {
       if (query.signal?.aborted) return []
       const batch = this.files.slice(i, i + SEARCH_BATCH_SIZE)
@@ -409,16 +438,33 @@ export class SearchIndex {
           column?: number
         }> = []
 
-        for (let ln = 0; ln < lines.length; ln++) {
-          const line = lines[ln]
-          const haystack = query.caseSensitive ? line : line.toLowerCase()
-          const col = haystack.indexOf(needle)
-          if (col !== -1) {
-            fileMatches.push({
-              line: ln + 1,
-              lineContent: line.trim(),
-              column: col + 1,
-            })
+        if (useRegex && regex) {
+          // Regex-based content matching
+          for (let ln = 0; ln < lines.length; ln++) {
+            const line = lines[ln]
+            regex.lastIndex = 0
+            const match = regex.exec(line)
+            if (match !== null) {
+              fileMatches.push({
+                line: ln + 1,
+                lineContent: line.trim(),
+                column: match.index + 1,
+              })
+            }
+          }
+        } else {
+          // Plain-text (indexOf) content matching
+          for (let ln = 0; ln < lines.length; ln++) {
+            const line = lines[ln]
+            const haystack = query.caseSensitive ? line : line.toLowerCase()
+            const col = haystack.indexOf(needle)
+            if (col !== -1) {
+              fileMatches.push({
+                line: ln + 1,
+                lineContent: line.trim(),
+                column: col + 1,
+              })
+            }
           }
         }
 

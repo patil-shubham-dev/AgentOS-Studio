@@ -33,6 +33,11 @@ export type ExecutionEventType =
   | "VERIFY_FAILED"
   | "GOAL_ACHIEVED"
 
+  // ── Plan Mode Events ──
+  | "PLAN_PROPOSED"
+  | "PLAN_APPROVED"
+  | "PLAN_REJECTED"
+
   // ── Browser Events ──
   | "BROWSER_SESSION_CREATED"
   | "BROWSER_SESSION_RESTORED"
@@ -100,6 +105,8 @@ export interface ToolStartEvent {
   toolId: string
   toolName: string
   args: string
+  /** Optional parallel group index — tools with the same index ran in parallel */
+  parallelGroup?: number
   timestamp: number
 }
 
@@ -213,6 +220,10 @@ export interface ToolsExposedEvent {
   executionId: string
   role: string
   tools: string[]
+  /** Total tools available in the registry before filtering */
+  totalAvailable: number
+  /** How many tools were filtered out by relevance matching */
+  totalFiltered: number
   timestamp: number
 }
 
@@ -331,6 +342,34 @@ export interface GoalAchievedEvent {
   iterations: number
   stepsCompleted: number
   reflectionsCount: number
+  timestamp: number
+}
+
+// ── Plan Mode Events ──
+
+export interface PlanProposedEvent {
+  type: "PLAN_PROPOSED"
+  executionId: string
+  planId: string
+  title: string
+  overview: string
+  steps: { id: string; title: string; description: string }[]
+  verificationCriteria: string[]
+  timestamp: number
+}
+
+export interface PlanApprovedEvent {
+  type: "PLAN_APPROVED"
+  executionId: string
+  planId: string
+  timestamp: number
+}
+
+export interface PlanRejectedEvent {
+  type: "PLAN_REJECTED"
+  executionId: string
+  planId: string
+  reason?: string
   timestamp: number
 }
 
@@ -497,6 +536,9 @@ export type ExecutionEvent =
   | (VerifyPassedEvent & ExecutionTraceable)
   | (VerifyFailedEvent & ExecutionTraceable)
   | (GoalAchievedEvent & ExecutionTraceable)
+  | (PlanProposedEvent & ExecutionTraceable)
+  | (PlanApprovedEvent & ExecutionTraceable)
+  | (PlanRejectedEvent & ExecutionTraceable)
   | (BrowserSessionCreatedEvent & ExecutionTraceable)
   | (BrowserSessionRestoredEvent & ExecutionTraceable)
   | (BrowserNavigateEvent & ExecutionTraceable)

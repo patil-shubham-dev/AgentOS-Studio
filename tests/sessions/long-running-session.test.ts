@@ -117,26 +117,35 @@ describe("Long Running Session Framework", () => {
 
   it("cleans up all resources after workload", async () => {
     const { useTimelineStore } = await import("@/components/workspace/timeline/timeline-store")
-    const store = useTimelineStore.getState()
-    // Force cleanup by clearing store collections
-    if (store.events) store.events.length = 0
-    store.agentSessions.clear()
-    store.streamingTexts.clear()
-    // Reset Zustand store to initial state
-    useTimelineStore.setState({ events: [], agentSessions: new Map(), streamingTexts: new Map() })
+
+    // Use the store's built-in clear() method which resets ALL fields
+    // (events, agentSessions, streamingTexts, sessionOrder,
+    //  sessionCreatedAtEventCount, collapsedSections, streamingMetrics,
+    //  messageReferences) and clears localStorage
+    useTimelineStore.getState().clear()
+
+    // Force GC to reclaim memory from freed objects
+    // Need a microtask yield between GC calls for V8 to collect cycles
+    if (global.gc) {
+      global.gc()
+      await new Promise((r) => setTimeout(r, 0))
+      global.gc()
+    }
 
     const after = useTimelineStore.getState()
     expect(after.events).toHaveLength(0)
     expect(after.agentSessions.size).toBe(0)
     expect(after.streamingTexts.size).toBe(0)
+    expect(after.sessionOrder).toHaveLength(0)
+    expect(after.messageReferences.size).toBe(0)
 
     const endMemory = Math.round((process.memoryUsage?.().heapUsed || 0) / (1024 * 1024))
     const baseline = snapshots[0]?.memoryMB ?? 0
     const delta = endMemory - baseline
     console.log(`[Cleanup] memory=${endMemory}MB (${delta >= 0 ? "+" : ""}${delta}MB from baseline)`)
 
-    // Memory should be close to baseline after cleanup (allow 50MB overhead)
-    if (delta > 50) {
+    // With proper clear() + explicit GC, memory should be close to baseline (allow 40MB overhead for vitest module overhead)
+    if (delta > 40) {
       console.warn(`WARNING: ${delta}MB above baseline after cleanup — possible retained references`)
     }
   })

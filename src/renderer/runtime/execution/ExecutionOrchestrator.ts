@@ -22,8 +22,14 @@ import { emitTelemetry } from "@/lib/telemetry"
 import { recordAgentExecution, recordToolExecution } from "@/lib/domain-telemetry"
 import { RuntimeCleanupManager } from "@/runtime/RuntimeCleanupManager"
 import { ReliabilityManager } from "@/runtime/reliability/ReliabilityManager"
+import { PlanGenerator } from "@/runtime/planning/PlanGenerator"
+import { ComplexityAnalyzer } from "@/runtime/planning/ComplexityAnalyzer"
+import { usePlanStore } from "@/stores/plan-store"
+import type { ImplementationPlan } from "@/runtime/planning/PlanTypes"
 import { WatchdogTargetType } from "@/runtime/reliability/Watchdog"
 import { recordExecutionStage, recordProviderCall, recordToolCallTelemetry } from "@/runtime/RuntimeTelemetry"
+import { WorktreeSandboxManager } from "@/lib/git/WorktreeSandbox"
+import { useSandboxStore } from "@/stores/sandbox-store"
 
 // Tool capabilities that require an active workspace
 const WORKSPACE_CAPABILITIES = {
@@ -208,12 +214,93 @@ export class ExecutionOrchestrator {
     })
 
     try {
+      // ── Plan Mode: generate plan before execution ──
+      if (this.shouldGeneratePlan(input)) {
+        console.log(`${orchTag} ● plan mode active — generating plan (${Math.round(performance.now() - t0)}ms)`)
+        yield { type: "THINKING_STARTED", executionId, label: "Planning approach", timestamp: Date.now() }
+
+        const plan = await PlanGenerator.getInstance().generatePlan(input, ctrl.signal)
+        const planId = plan.id
+
+        // Enrich plan with complexity analysis info
+        const complexityResult = ComplexityAnalyzer.getInstance().analyze(input)
+        const enrichedPlan: ImplementationPlan = {
+          ...plan,
+          complexityInfo: {
+            score: complexityResult.score,
+            signals: complexityResult.signals,
+            triggeredPlan: complexityResult.shouldPlan,
+          },
+        }
+
+        // Store plan in plan store
+        usePlanStore.getState().setPlan(enrichedPlan)
+
+        // Yield plan proposed event
+        yield {
+          type: "PLAN_PROPOSED",
+          executionId,
+          planId,
+          title: plan.title,
+          overview: plan.overview,
+          steps: plan.steps.map((s) => ({ id: s.id, title: s.title, description: s.description })),
+          verificationCriteria: plan.verificationCriteria,
+          timestamp: Date.now(),
+        }
+
+        // Wait for user approval via plan store promise
+        const approved = await this.waitForPlanApproval(planId, ctrl.signal)
+        if (!approved) {
+          yield {
+            type: "PLAN_REJECTED",
+            executionId,
+            planId,
+            reason: "User rejected the plan",
+            timestamp: Date.now(),
+          }
+          yield {
+            type: "EXECUTION_FAILED",
+            executionId,
+            error: "Plan was rejected by user",
+            durationMs: Math.round(performance.now() - t0),
+            timestamp: Date.now(),
+          }
+          usePlanStore.getState().clearPlan()
+          return
+        }
+
+        yield {
+          type: "PLAN_APPROVED",
+          executionId,
+          planId,
+          timestamp: Date.now(),
+        }
+
+        // Update plan status to executing
+        const currentPlan = usePlanStore.getState().currentPlan
+        if (currentPlan) {
+          usePlanStore.getState().setPlan({ ...currentPlan, status: "executing" })
+        }
+
+        console.log(`${orchTag} ✓ plan approved — proceeding with execution (${Math.round(performance.now() - t0)}ms)`)
+      }
+
       if (!decision.requiresDelegation || agentMode === "FAST") {
         console.log(`${orchTag} ● handleDirectResponse (${Math.round(performance.now() - t0)}ms)`)
         yield* this.handleDirectResponse(input, activeRole, ctrl, executionId, correlationId)
       } else {
         console.log(`${orchTag} ● handleDelegatedExecution (${Math.round(performance.now() - t0)}ms)`)
         yield* this.handleDelegatedExecution(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId)
+      }
+
+      // Mark plan as completed
+      if (usePlanStore.getState().currentPlan?.status === "executing") {
+        const plan = usePlanStore.getState().currentPlan
+        usePlanStore.getState().setPlan({
+          ...plan!,
+          status: "completed",
+          steps: plan!.steps.map((s) => ({ ...s, status: "completed" as const })),
+        })
       }
     } finally {
       wd.unregister(wdId)
@@ -437,6 +524,21 @@ export class ExecutionOrchestrator {
     const store = useAgentStore.getState()
     const runtimeState = useWorkspaceRuntime.getState()
 
+    // ── Sandbox: create an isolated worktree for file-write agents ──
+    const sandboxMode = useAppStore.getState().sandboxMode
+    const hasWriteAgent = decision.selectedRoles.some((r) => r === 'coder' || r === 'design' || r === 'manager')
+    const workspaceRoot = useWorkspaceStore.getState().rootPath
+    if (sandboxMode === 'on' && hasWriteAgent && workspaceRoot) {
+      const sandboxManager = WorktreeSandboxManager.getInstance()
+      const sandbox = await sandboxManager.create(workspaceRoot, executionId)
+      if (sandbox) {
+        console.log(`${orchTag} ✓ sandbox created: ${sandbox.id} (${sandbox.worktreePath})`)
+        useSandboxStore.getState().setActiveSandbox(sandbox)
+      } else {
+        console.log(`${orchTag} ○ sandbox not available — editing directly`)
+      }
+    }
+
     // ── Subtask pipeline ordering ──
     // Order agents so output flows: research → coder → browser → verification → manager synthesis
     const PIPELINE_ORDER: Record<string, number> = {
@@ -624,7 +726,51 @@ export class ExecutionOrchestrator {
     const agentDurationMs = Math.round(performance.now() - t0)
     recordExecutionStage("execution_completed", executionId, agentDurationMs, undefined, { filesEdited: totalFilesEdited, toolCalls: totalToolCalls, agents: agentResults.length })
     recordAgentExecution(agentDurationMs, 0, totalToolCalls)
+
+    // ── If sandbox was created, load diff for review ──
+    const activeSandbox = useSandboxStore.getState().activeSandbox
+    if (activeSandbox && activeSandbox.status === 'active') {
+      const sandboxManager = WorktreeSandboxManager.getInstance()
+      sandboxManager.getDiff(activeSandbox).then((diff) => {
+        useSandboxStore.getState().setDiff(diff)
+      }).catch((err) => {
+        console.warn(`${orchTag} Failed to load sandbox diff:`, err)
+      })
+    }
+
     yield { type: "EXECUTION_COMPLETE", executionId, content: agentResults.map((r) => r.content).join("\n"), filesEdited: totalFilesEdited, commandsRun: totalCommandsRun, toolCalls: totalToolCalls, durationMs: agentDurationMs, timestamp: Date.now() }
+  }
+
+  /**
+   * Wait for user to approve or reject the plan via the plan store.
+   * Polls every 200ms — resolves true on approve, false on reject, throws on abort.
+   */
+  private async waitForPlanApproval(planId: string, signal?: AbortSignal): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      const check = () => {
+        if (signal?.aborted) {
+          reject(new DOMException("Plan approval cancelled", "AbortError"))
+          return
+        }
+        const plan = usePlanStore.getState().currentPlan
+        if (!plan || plan.id !== planId) {
+          // Plan was cleared or replaced
+          resolve(false)
+          return
+        }
+        if (plan.status === "approved") {
+          resolve(true)
+          return
+        }
+        if (plan.status === "rejected") {
+          resolve(false)
+          return
+        }
+        setTimeout(check, 200)
+      }
+      // Give the UI a moment to render the plan before first check
+      setTimeout(check, 100)
+    })
   }
 
   /** Extract changed file paths from an agent's output content */
@@ -639,6 +785,23 @@ export class ExecutionOrchestrator {
       }
     }
     return files
+  }
+
+  /**
+   * Check if plan mode is active and the request is complex enough to need a plan
+   */
+  private shouldGeneratePlan(input?: string): boolean {
+    const planMode = useAppStore.getState().planMode
+    if (planMode === "never") return false
+    if (planMode === "always") return true
+
+    // auto mode: use ComplexityAnalyzer to determine if request is complex enough
+    const text = input ?? ""
+    if (!text.trim()) return false
+
+    const result = ComplexityAnalyzer.getInstance().analyze(text)
+    console.log("[Orchestrator] Complexity analysis:", result.score, result.signals.join(", "))
+    return result.shouldPlan
   }
 
   private getProcessedHistory(activeRole: RuntimeRole): any[] {

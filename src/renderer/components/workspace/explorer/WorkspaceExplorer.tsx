@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect, useMemo } from "react"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useTreeModel } from "./hooks/useTreeModel"
 import { useFileActions } from "./hooks/useFileActions"
@@ -56,6 +56,58 @@ interface FlatNode {
   hasChildren: boolean
 }
 
+/** Default height for a tree row without any indicators */
+const BASE_ROW_HEIGHT = 24
+/** Extra height added when a badge is present */
+const BADGE_EXTRA_HEIGHT = 4
+/** Extra height for rows with both git status and agent badge */
+const DUAL_INDICATOR_EXTRA = 6
+/** Min height to prevent zero-height rows */
+const MIN_ROW_HEIGHT = 20
+/** Max height to cap extremely tall rows */
+const MAX_ROW_HEIGHT = 48
+
+/**
+ * Dynamic row height measurement system.
+ * Stores measured heights keyed by row index, with a fallback estimate.
+ * Each VirtualTreeRow measures its own DOM height via ResizeObserver.
+ */
+class RowHeightCache {
+  private measurements = new Map<number, number>()
+
+  /** Get cached height or compute fallback estimate */
+  get(index: number, node: FlatNode): number {
+    const cached = this.measurements.get(index)
+    if (cached !== undefined) return clampHeight(cached)
+    return clampHeight(estimateRowHeight(node))
+  }
+
+  /** Store a measured height */
+  set(index: number, height: number): void {
+    this.measurements.set(index, clampHeight(height))
+  }
+
+  /** Clear all cached measurements (e.g. when tree changes) */
+  clear(): void {
+    this.measurements.clear()
+  }
+
+  /** Remove measurement for a specific index */
+  remove(index: number): void {
+    this.measurements.delete(index)
+  }
+
+  /** Get total number of cached measurements */
+  get size(): number {
+    return this.measurements.size
+  }
+}
+
+/** Clamp height within acceptable bounds */
+function clampHeight(h: number): number {
+  return Math.max(MIN_ROW_HEIGHT, Math.min(MAX_ROW_HEIGHT, Math.round(h)))
+}
+
 const AGENT_BADGE_STYLES: Record<string, { bg: string; text: string }> = {
   editing: { bg: "bg-amber-500/15", text: "text-amber-300" },
   reading: { bg: "bg-blue-500/15", text: "text-blue-300" },
@@ -72,10 +124,14 @@ const AGENT_BADGE_ICONS: Record<string, string> = {
 }
 
 function estimateRowHeight(node: FlatNode): number {
-  let h = 24
-  if (node.agentBadge) h += 4
+  let h = BASE_ROW_HEIGHT
+  if (node.agentBadge) h += BADGE_EXTRA_HEIGHT
+  if (node.agentBadge && node.gitStatus) h += DUAL_INDICATOR_EXTRA - BADGE_EXTRA_HEIGHT
   return h
 }
+
+/** Global height cache shared across the explorer instance */
+const rowHeightCache = new RowHeightCache()
 
 function VirtualTreeRow({
   node,
@@ -84,6 +140,7 @@ function VirtualTreeRow({
   onToggle,
   onSelect,
   onContextMenu,
+  rowIndex,
 }: {
   node: FlatNode
   style: React.CSSProperties
@@ -91,20 +148,39 @@ function VirtualTreeRow({
   onToggle: (path: string) => void
   onSelect: (path: string) => void
   onContextMenu: (e: React.MouseEvent, path: string) => void
+  rowIndex: number
 }) {
   const agentColor = node.isDir ? undefined : node.agentBadge?.color
   const badgeKey = node.agentBadge ? node.agentBadge.label.toLowerCase() : ""
   const badgeStyle = node.agentBadge ? AGENT_BADGE_STYLES[badgeKey] || AGENT_BADGE_STYLES.referenced : null
   const badgeIcon = node.agentBadge ? AGENT_BADGE_ICONS[badgeKey] || "○" : null
+  const measureRef = useRef<HTMLDivElement>(null)
+
+  // Measure actual row height after mount and when row content changes
+  useEffect(() => {
+    const el = measureRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        rowHeightCache.set(rowIndex, entry.contentRect.height)
+      }
+    })
+    observer.observe(el)
+    // Initial measurement
+    rowHeightCache.set(rowIndex, el.getBoundingClientRect().height)
+    return () => observer.disconnect()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowIndex, node.name, node.gitStatus, node.agentBadge?.label])
 
   return (
     <div
+      ref={measureRef}
       style={{
         ...style,
         borderLeft: agentColor ? `2px solid ${agentColor}` : isActiveFile ? "2px solid rgba(59,130,246,0.5)" : undefined,
       }}
       className={cn(
-        "flex items-center gap-1 px-1 text-xs cursor-pointer group select-none min-h-[24px]",
+        "flex items-center gap-1 px-1 text-xs cursor-pointer group select-none",
         isActiveFile ? "bg-blue-500/[0.06]" : agentColor ? "bg-white/[0.02]" : "hover:bg-white/[0.03]",
       )}
       onClick={() => (node.isDir ? onToggle(node.path) : onSelect(node.path))}
@@ -301,15 +377,23 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
       return flattenTree(fileTree, expandedPaths, gitStatusMap, fileActivityRecord)
     }, [fileTree, expandedPaths, gitStatusMap, fileActivityRecord, isSearching])
 
+    // Clear height cache when tree structure changes
+    useEffect(() => {
+      rowHeightCache.clear()
+    }, [flatTree.length])
+
     const virtualizer = useVirtualizer({
       count: flatTree.length,
       getScrollElement: () => scrollRef.current,
       estimateSize: (index) => {
         const node = flatTree[index]
-        if (!node) return 24
-        return estimateRowHeight(node)
+        if (!node) return BASE_ROW_HEIGHT
+        return rowHeightCache.get(index, node)
       },
       overscan: 20,
+      // Enable dynamic measurement by allowing the virtualizer to re-measure
+      // when the actual DOM size differs from the estimate
+      getItemKey: (index) => flatTree[index]?.id ?? index,
     })
 
     useEffect(() => {
@@ -590,6 +674,7 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
                 const node = flatTree[row.index]
                 if (!node) return null
                 const isActive = activeFilePath === node.path
+                const measuredHeight = rowHeightCache.get(row.index, node)
                 return (
                   <div
                     key={row.key}
@@ -599,7 +684,7 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
                       top: 0,
                       left: 0,
                       width: "100%",
-                      height: row.size,
+                      height: measuredHeight,
                       transform: `translateY(${row.start}px)`,
                     }}
                   >
@@ -610,6 +695,7 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
                       onToggle={handleToggle}
                       onSelect={handleSelect}
                       onContextMenu={handleContextMenu}
+                      rowIndex={row.index}
                     />
                   </div>
                 )

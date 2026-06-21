@@ -45,6 +45,7 @@ export const useSessionSidebarStore = create<SessionSidebarStoreState>()(
       filter: "all",
       searchQuery: "",
 
+      /** Sessions capped at 100 (newest). Also persisted to localStorage. */
       createSession: (label) => {
         const id = generateId()
         const session: SidebarSession = {
@@ -58,10 +59,11 @@ export const useSessionSidebarStore = create<SessionSidebarStoreState>()(
           toolCallCount: 0,
           messageCount: 0,
         }
-        set((s) => ({
-          sessions: [...s.sessions, session],
-          activeSessionId: id,
-        }))
+        set((s) => {
+          const sessions = [...s.sessions, session]
+          if (sessions.length > 100) sessions.splice(0, sessions.length - 100)
+          return { sessions, activeSessionId: id }
+        })
         return session
       },
 
@@ -154,14 +156,22 @@ export const useSessionSidebarStore = create<SessionSidebarStoreState>()(
     }),
     {
       name: "aos-session-sidebar",
-      partialize: (state) => ({
-        sessions: state.sessions.map((s) => ({
-          ...s,
-          status: s.status === "running" ? "idle" as const : s.status,
-        })),
-        activeSessionId: state.activeSessionId,
-        filter: state.filter,
-      }),
+      partialize: (state) => {
+        const sliced = state.sessions.slice(-100)
+        const validActiveId = sliced.some((s) => s.id === state.activeSessionId)
+          ? state.activeSessionId
+          : sliced.length > 0
+            ? sliced[sliced.length - 1].id
+            : null
+        return {
+          sessions: sliced.map((s) => ({
+            ...s,
+            status: s.status === "running" ? "idle" as const : s.status,
+          })),
+          activeSessionId: validActiveId,
+          filter: state.filter,
+        }
+      },
     }
   )
 )

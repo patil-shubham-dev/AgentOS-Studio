@@ -17,6 +17,10 @@ import {
   PinOff,
   Brain,
   Activity,
+  Palette,
+  BarChart3,
+  Puzzle,
+  Shield,
 } from "lucide-react"
 
 interface NavItem {
@@ -35,11 +39,15 @@ const TOP_NAV_ITEMS: NavItem[] = [
 const MONITOR_NAV_ITEMS: NavItem[] = [
   { id: "memory", label: "Memory", icon: <Brain className="h-5 w-5" />, route: "/memory" },
   { id: "context", label: "Context", icon: <Activity className="h-5 w-5" />, route: "/context" },
+  { id: "personas", label: "Personas", icon: <Palette className="h-5 w-5" />, route: "/personas" },
+  { id: "performance", label: "Performance", icon: <BarChart3 className="h-5 w-5" />, route: "/performance" },
+  { id: "plugins", label: "Plugins", icon: <Puzzle className="h-5 w-5" />, route: "/plugins" },
 ]
 
 const BOTTOM_NAV_ITEMS: NavItem[] = [
   { id: "logs", label: "Logs", icon: <ScrollText className="h-5 w-5" />, route: "/logs" },
   { id: "git", label: "Git", icon: <GitBranch className="h-5 w-5" />, route: "/git" },
+  { id: "audit", label: "Audit", icon: <Shield className="h-5 w-5" />, route: "/audit" },
   { id: "settings", label: "Settings", icon: <Settings className="h-5 w-5" />, route: "/settings" },
   { id: "updates", label: "Updates", icon: <ArrowUpCircle className="h-5 w-5" />, route: "/settings/update" },
 ]

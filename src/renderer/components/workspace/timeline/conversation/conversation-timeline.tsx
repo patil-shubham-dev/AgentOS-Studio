@@ -6,6 +6,7 @@ import { useTimelineStore } from "../timeline-store"
 import { AssistantResponse } from "./AssistantResponse"
 import { UserPill } from "./UserPill"
 import { TerminalPane } from "./TerminalPane"
+import { ReferenceChipRow } from "@/components/workspace/context-refs/ReferenceChip"
 import type { UserMessageEvent } from "../types"
 import type { AgentSession } from "../timeline-store"
 import { QuickActions } from "../QuickActions"
@@ -28,6 +29,7 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
   const events = useTimelineStore((s) => s.events)
   const agentSessions = useTimelineStore((s) => s.agentSessions)
   const streamingTexts = useTimelineStore((s) => s.streamingTexts)
+  const messageReferences = useTimelineStore((s) => s.messageReferences)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [terminalPaneOpen, setTerminalPaneOpen] = useState(false)
@@ -131,10 +133,18 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
                     className="space-y-1.5"
                   >
                     {turn.userEvent && (
-                      <UserPill
-                        content={turn.userEvent.content}
-                        timestamp={turn.userEvent.timestamp}
-                      />
+                      <>
+                        {(() => {
+                          const refs = messageReferences.get(turn.userEvent.correlationId ?? turn.userEvent.id)
+                          return refs && refs.length > 0 ? (
+                            <ReferenceChipRow references={refs} />
+                          ) : null
+                        })()}
+                        <UserPill
+                          content={turn.userEvent.content}
+                          timestamp={turn.userEvent.timestamp}
+                        />
+                      </>
                     )}
                     {turn.sessions.map((session, sIdx) => (
                       <AssistantResponse

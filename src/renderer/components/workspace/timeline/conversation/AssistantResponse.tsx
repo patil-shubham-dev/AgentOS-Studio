@@ -1,6 +1,6 @@
 import { memo, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { RotateCcw, ChevronDown, ChevronRight, Brain, Loader2 } from "lucide-react"
+import { RotateCcw, ChevronDown, ChevronRight, Brain, Loader2, Layers } from "lucide-react"
 import { useTimelineStore } from "../timeline-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useAgentStore } from "@/stores/agent-store"
@@ -309,7 +309,7 @@ export const AssistantResponse = memo(function AssistantResponse({
         <ThinkingBlock session={session} />
       )}
 
-      {/* Tool calls — compact animated cards */}
+      {/* Tool calls — grouped by parallel execution, compact animated cards */}
       <AnimatePresence mode="popLayout">
         {hasToolCalls && (
           <motion.div
@@ -320,11 +320,44 @@ export const AssistantResponse = memo(function AssistantResponse({
             exit="exit"
             variants={sectionVariants}
             transition={SECTION_SPRING}
-            className="py-0.5 space-y-0.5"
+            className="py-0.5 space-y-1"
           >
-            {session.toolCalls.map((tc, i) => (
-              <ToolCallCard key={tc.id} toolCall={tc} index={i} />
-            ))}
+            {(() => {
+              // Group tool calls by parallelGroup — tools with the same group index ran in parallel
+              const groups: { parallelGroup?: number; tools: typeof session.toolCalls }[] = []
+              let currentGroup: { parallelGroup?: number; tools: typeof session.toolCalls } | null = null
+
+              for (const tc of session.toolCalls) {
+                if (currentGroup && currentGroup.parallelGroup === tc.parallelGroup) {
+                  currentGroup.tools.push(tc)
+                } else {
+                  currentGroup = { parallelGroup: tc.parallelGroup, tools: [tc] }
+                  groups.push(currentGroup)
+                }
+              }
+
+              return groups.map((group, gi) => {
+                const isParallel = group.parallelGroup !== undefined && group.tools.length > 1
+                return (
+                  <div key={`group-${gi}`} className="space-y-0.5">
+                    {isParallel && (
+                      <div className="flex items-center gap-1.5 px-1 py-0.5">
+                        <Layers className="h-2.5 w-2.5 text-cyan-400/50" />
+                        <span className="text-[9px] font-medium text-cyan-400/40 uppercase tracking-wider">
+                          {group.tools.length} in parallel
+                        </span>
+                      </div>
+                    )}
+                    {group.tools.map((tc, ti) => (
+                      <ToolCallCard key={tc.id} toolCall={tc} index={ti} />
+                    ))}
+                    {isParallel && (
+                      <div className="ml-2 h-px bg-gradient-to-r from-cyan-500/10 via-transparent to-transparent" />
+                    )}
+                  </div>
+                )
+              })
+            })()}
           </motion.div>
         )}
       </AnimatePresence>

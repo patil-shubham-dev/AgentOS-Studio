@@ -5,7 +5,15 @@ import {
   Send, Square, Slash, AtSign, Code2, Palette,
   Globe, Bug, Search, RefreshCw, FileText,
   Terminal, Paperclip, Loader2, Sparkles,
+  FolderOpen, GitBranch, AlertTriangle, Braces, Link,
 } from "lucide-react"
+import {
+  ReferenceAutocomplete,
+  getAutocompleteState,
+  getFilteredCount,
+  insertAutocompleteItem,
+  type AutocompleteItem,
+} from "@/components/workspace/context-refs/ReferenceAutocomplete"
 
 const SLASH_COMMANDS = [
   { id: "/fix", label: "Fix", icon: Bug, description: "Fix bugs or errors in selected code" },
@@ -26,6 +34,17 @@ const AGENT_MENTIONS = [
   { id: "@debugger", label: "Debugger", icon: Bug, description: "Debug expert" },
   { id: "@qa", label: "QA", icon: Search, description: "Testing & verification" },
   { id: "@runtime", label: "Runtime", icon: Terminal, description: "Command execution" },
+]
+
+const CONTEXT_REFERENCES = [
+  { id: "@file", label: "File", icon: FileText, description: "Inject file content", example: "@file path/to/file.ts" },
+  { id: "@folder", label: "Folder", icon: FolderOpen, description: "List directory contents", example: "@folder src/" },
+  { id: "@web", label: "Web", icon: Globe, description: "Fetch web page", example: "@web https://..." },
+  { id: "@code", label: "Code", icon: Search, description: "Search code in project", example: "@code query" },
+  { id: "@lines", label: "Lines", icon: Braces, description: "Line range from file", example: "@lines 10-30 in file.ts" },
+  { id: "@symbol", label: "Symbol", icon: Link, description: "Find symbol definition", example: "@symbol AuthService" },
+  { id: "@git", label: "Git", icon: GitBranch, description: "Git status and changes", example: "@git" },
+  { id: "@problems", label: "Problems", icon: AlertTriangle, description: "Workspace diagnostics", example: "@problems" },
 ]
 
 interface ComposerProps {
@@ -56,7 +75,11 @@ export function Composer({
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [commandFilter, setCommandFilter] = useState("")
   const [mentionFilter, setMentionFilter] = useState("")
+  const [showContextRefs, setShowContextRefs] = useState(false)
+  const [contextRefFilter, setContextRefFilter] = useState("")
   const [isFocused, setIsFocused] = useState(false)
+  const [autocompleteState, setAutocompleteState] = useState<{ isOpen: boolean; filter: string; mode: "context" | "agent" | "all" }>({ isOpen: false, filter: "", mode: "all" })
+  const [autocompleteIndex, setAutocompleteIndex] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -82,6 +105,15 @@ export function Composer({
     setSelectedIndex(0)
   }, [commandFilter, mentionFilter])
 
+  // Sync @-autocomplete state when input changes
+  useEffect(() => {
+    const state = getAutocompleteState(input)
+    setAutocompleteState(state)
+    if (!state.isOpen) {
+      setAutocompleteIndex(0)
+    }
+  }, [input])
+
   function handleChange(value: string) {
     onInputChange(value)
     const lastWord = value.split(/\s/).pop() || ""
@@ -89,13 +121,22 @@ export function Composer({
       setShowCommands(true)
       setCommandFilter(lastWord.slice(1).toLowerCase())
       setShowMentions(false)
+      setShowContextRefs(false)
     } else if (lastWord.startsWith("@") && lastWord.length > 0) {
+      const afterAt = lastWord.slice(1).toLowerCase()
+      const isContextRef = CONTEXT_REFERENCES.some((r) => r.id.slice(1).startsWith(afterAt))
+      const isAgentMention = AGENT_MENTIONS.some((m) => m.id.slice(1).startsWith(afterAt))
+
+      // Show both context refs and agent mentions
+      setShowContextRefs(isContextRef || !isAgentMention)
       setShowMentions(true)
-      setMentionFilter(lastWord.slice(1).toLowerCase())
+      setContextRefFilter(afterAt)
+      setMentionFilter(afterAt)
       setShowCommands(false)
     } else {
       setShowCommands(false)
       setShowMentions(false)
+      setShowContextRefs(false)
     }
   }
 
@@ -112,6 +153,17 @@ export function Composer({
     words[words.length - 1] = mention + " "
     onInputChange(words.join(" ") + " ")
     setShowMentions(false)
+    setShowContextRefs(false)
+    setAutocompleteState({ isOpen: false, filter: "", mode: "all" })
+    textareaRef.current?.focus()
+  }
+
+  function handleAutocompleteSelect(item: AutocompleteItem) {
+    const newInput = insertAutocompleteItem(input, item)
+    onInputChange(newInput)
+    setShowMentions(false)
+    setShowContextRefs(false)
+    setAutocompleteState({ isOpen: false, filter: "", mode: "all" })
     textareaRef.current?.focus()
   }
 
@@ -121,6 +173,9 @@ export function Composer({
   const filteredMentions = AGENT_MENTIONS.filter((m) =>
     m.id.slice(1).startsWith(mentionFilter)
   )
+  const filteredContextRefs = CONTEXT_REFERENCES.filter((r) =>
+    r.id.slice(1).startsWith(contextRefFilter)
+  )
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (showCommands && filteredCommands.length > 0) {
@@ -129,11 +184,29 @@ export function Composer({
       if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); insertCommand(filteredCommands[selectedIndex]?.id || ""); return }
       if (e.key === "Escape") { setShowCommands(false); return }
     }
-    if (showMentions && filteredMentions.length > 0) {
-      if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex((p) => Math.min(p + 1, filteredMentions.length - 1)); return }
+    if (showMentions && (filteredMentions.length > 0 || filteredContextRefs.length > 0)) {
+      const allItems = [...filteredContextRefs, ...filteredMentions]
+      if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex((p) => Math.min(p + 1, allItems.length - 1)); return }
       if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex((p) => Math.max(p - 1, 0)); return }
-      if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); insertMention(filteredMentions[selectedIndex]?.id || ""); return }
-      if (e.key === "Escape") { setShowMentions(false); return }
+      if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault()
+        const item = allItems[selectedIndex]
+        if (item) insertMention(item.id)
+        return
+      }
+      if (e.key === "Escape") { setShowMentions(false); setShowContextRefs(false); setAutocompleteState({ isOpen: false, filter: "", mode: "all" }); return }
+    }
+    // @-autocomplete keyboard navigation
+    if (autocompleteState.isOpen) {
+      const totalItems = getFilteredCount(autocompleteState.filter, autocompleteState.mode)
+      if (totalItems > 0) {
+        if (e.key === "ArrowDown") { e.preventDefault(); setAutocompleteIndex((p) => Math.min(p + 1, totalItems - 1)); return }
+        if (e.key === "ArrowUp") { e.preventDefault(); setAutocompleteIndex((p) => Math.max(p - 1, 0)); return }
+        if (e.key === "Tab" || e.key === "Enter") {
+          // Let the existing mention/context ref handler deal with it
+          // Don't intercept
+        }
+      }
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -193,9 +266,20 @@ export function Composer({
         )}
       </AnimatePresence>
 
-      {/* Mentions dropup */}
+      {/* @-Autocomplete from ReferenceAutocomplete component */}
+      <ReferenceAutocomplete
+        isOpen={autocompleteState.isOpen}
+        filter={autocompleteState.filter}
+        mode={autocompleteState.mode}
+        selectedIndex={autocompleteIndex}
+        onSelectedIndexChange={setAutocompleteIndex}
+        onSelect={handleAutocompleteSelect}
+        onClose={() => setAutocompleteState({ isOpen: false, filter: "", mode: "all" })}
+      />
+
+      {/* Mentions dropup — only shown when ReferenceAutocomplete is not active */}
       <AnimatePresence>
-        {showMentions && filteredMentions.length > 0 && (
+        {!autocompleteState.isOpen && showMentions && (filteredContextRefs.length > 0 || filteredMentions.length > 0) && (
           <motion.div
             ref={menuRef}
             initial={{ opacity: 0, y: 8, scale: 0.96 }}
@@ -203,42 +287,86 @@ export function Composer({
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={{ duration: 0.12, ease: "easeOut" }}
             role="listbox"
-            aria-label="Agent mentions"
+            aria-label="Context references and agent mentions"
             className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-white/[0.06] bg-[#0c0c0d]/98 backdrop-blur-2xl shadow-2xl shadow-black/60 overflow-hidden z-50"
           >
-            <div className="px-3 py-1.5 text-[8px] text-white/15 font-medium uppercase tracking-wider border-b border-white/[0.03]">
-              Agents
-              <span className="ml-2 text-white/10 font-normal normal-case">@mention an agent</span>
-            </div>
-            <div className="max-h-48 overflow-y-auto p-1" role="presentation">
-              {filteredMentions.map((agent, idx) => {
-                const Icon = agent.icon
-                return (
-                  <button
-                    key={agent.id}
-                    role="option"
-                    aria-selected={idx === selectedIndex}
-                    onClick={() => insertMention(agent.id)}
-                    onMouseEnter={() => setSelectedIndex(idx)}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 px-2.5 py-2 text-left rounded-lg transition-all",
-                      idx === selectedIndex ? "bg-purple-500/10" : "hover:bg-white/[0.03]"
-                    )}
-                  >
-                    <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-purple-500/10 shrink-0">
-                      <Icon className="h-3 w-3 text-purple-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-semibold text-white/70 font-mono">{agent.id}</span>
-                        <span className="text-[9px] text-white/25">{agent.label}</span>
-                      </div>
-                      <p className="text-[8px] text-white/20 truncate mt-0.5">{agent.description}</p>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
+            {/* Context references section */}
+            {filteredContextRefs.length > 0 && (
+              <>
+                <div className="px-3 py-1.5 text-[8px] text-white/15 font-medium uppercase tracking-wider border-b border-white/[0.03]">
+                  Context References
+                  <span className="ml-2 text-white/10 font-normal normal-case">Inject files, code, web, git</span>
+                </div>
+                <div className="max-h-48 overflow-y-auto p-1" role="presentation">
+                  {filteredContextRefs.map((ref, idx) => {
+                    const Icon = ref.icon
+                    return (
+                      <button
+                        key={ref.id}
+                        role="option"
+                        aria-selected={idx === selectedIndex}
+                        onClick={() => insertMention(ref.id)}
+                        onMouseEnter={() => setSelectedIndex(idx)}
+                        className={cn(
+                          "flex w-full items-center gap-2.5 px-2.5 py-2 text-left rounded-lg transition-all",
+                          idx === selectedIndex ? "bg-cyan-500/10" : "hover:bg-white/[0.03]"
+                        )}
+                      >
+                        <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-cyan-500/10 shrink-0">
+                          <Icon className="h-3 w-3 text-cyan-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-semibold text-white/70 font-mono">{ref.id}</span>
+                            <span className="text-[9px] text-white/25">{ref.label}</span>
+                          </div>
+                          <p className="text-[8px] text-white/20 truncate mt-0.5">{ref.description} — {ref.example}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
+            {/* Agent mentions section */}
+            {filteredMentions.length > 0 && (
+              <>
+                <div className="px-3 py-1.5 text-[8px] text-white/15 font-medium uppercase tracking-wider border-b border-white/[0.03]">
+                  Agents
+                  <span className="ml-2 text-white/10 font-normal normal-case">@mention an agent</span>
+                </div>
+                <div className="max-h-48 overflow-y-auto p-1" role="presentation">
+                  {filteredMentions.map((agent, idx) => {
+                    const Icon = agent.icon
+                    return (
+                      <button
+                        key={agent.id}
+                        role="option"
+                        aria-selected={(idx + filteredContextRefs.length) === selectedIndex}
+                        onClick={() => insertMention(agent.id)}
+                        onMouseEnter={() => setSelectedIndex(idx + filteredContextRefs.length)}
+                        className={cn(
+                          "flex w-full items-center gap-2.5 px-2.5 py-2 text-left rounded-lg transition-all",
+                          (idx + filteredContextRefs.length) === selectedIndex ? "bg-purple-500/10" : "hover:bg-white/[0.03]"
+                        )}
+                      >
+                        <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-purple-500/10 shrink-0">
+                          <Icon className="h-3 w-3 text-purple-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-semibold text-white/70 font-mono">{agent.id}</span>
+                            <span className="text-[9px] text-white/25">{agent.label}</span>
+                          </div>
+                          <p className="text-[8px] text-white/20 truncate mt-0.5">{agent.description}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -306,7 +434,7 @@ export function Composer({
                 </span>
                 <span className="inline-flex items-center gap-1 rounded bg-white/[0.02] border border-white/[0.03] px-1 py-0.5">
                   <AtSign className="h-2 w-2 text-white/12" />
-                  <span className="text-[7px] text-white/12 font-medium">agents</span>
+                  <span className="text-[7px] text-white/12 font-medium">refs + agents</span>
                 </span>
               </>
             )}

@@ -147,6 +147,17 @@ export interface SubAgentCompleteEvent {
   timestamp: number
 }
 
+export interface SessionCompletedEvent {
+  type: "SESSION_COMPLETED"
+  sessionId: string
+  input: string
+  status: "completed" | "failed" | "cancelled"
+  eventCount: number
+  durationMs: number
+  rootPath?: string
+  events: import("@/runtime/ExecutionEvent").ExecutionEvent[]
+}
+
 export type RuntimeEvent =
   | TokenStreamEvent
   | ToolStartEvent
@@ -165,6 +176,7 @@ export type RuntimeEvent =
   | UserMessageEvent
   | SubAgentStartEvent
   | SubAgentCompleteEvent
+  | SessionCompletedEvent
 
 export const VALID_STATE_TRANSITIONS: Record<RuntimeState, RuntimeState[]> = {
   Idle: ["Planning"],

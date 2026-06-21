@@ -17,6 +17,7 @@ import { PaneContainer, Pane } from "@/components/workspace/pane-layout/PaneCont
 import { DiffViewerPane } from "@/components/workspace/diff-viewer/DiffViewerPane"
 import { PreviewPane } from "@/components/workspace/preview/PreviewPane"
 import { AgentActivityPanel } from "@/components/workspace/agent-visibility/AgentActivityPanel"
+import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
 
 import { GlobalSearch } from "@/components/workspace/global-search"
 import { CommandPalette } from "@/components/workspace/command-palette"
@@ -701,6 +702,9 @@ export function CodeCanvasPage() {
       )}
 
 
+
+      {/* ── AGENTIC.md Init Banner ── */}
+      <ConfigInitBanner />
 
       {/* ── MAIN PANEL LAYOUT or Empty State ── */}
       {rootPath && typeof rootPath === 'string' && rootPath.length > 0 ? (

@@ -13,6 +13,11 @@ import { FeatureFlagManager } from "@/runtime/feature-flags/FeatureFlagManager"
 import { AutonomousGoalLoop } from "@/runtime/autonomous/AutonomousGoalLoop"
 import { ObservabilityManager } from "@/runtime/observability/ObservabilityManager"
 import { DeterministicToolRecorder } from "@/runtime/tools/execution/DeterministicToolRecord"
+import { EventBus } from "@/runtime/EventBus"
+import type { SessionCompletedEvent } from "@/runtime/RuntimeTypes"
+import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useToolFilterStore } from "@/stores/tool-filter-store"
+import { pluginRegistry } from "@/runtime/plugins/PluginRegistry"
 
 export interface ExecutionSession {
   id: string
@@ -86,6 +91,23 @@ export class ExecutionSessionManager {
   private static readonly FIRST_EVENT_TIMEOUT_MS = 45_000
   /** Max total session duration before force-cancel */
   private static readonly SESSION_MAX_DURATION_MS = 300_000
+  /** Max events to buffer per session for memory extraction */
+  private static readonly MAX_BUFFERED_EVENTS = 1000
+
+  /** Buffers ExecutionEvents per session ID for cross-session memory extraction */
+  private sessionEventBuffer = new Map<string, ExecutionEvent[]>()
+
+  /**
+   * Buffer an ExecutionEvent for cross-session memory extraction.
+   * Caps at MAX_BUFFERED_EVENTS to prevent unbounded memory growth.
+   */
+  private bufferEvent(event: ExecutionEvent): void {
+    if (!this.activeSessionId) return
+    const buf = this.sessionEventBuffer.get(this.activeSessionId)
+    if (!buf) return
+    if (buf.length >= ExecutionSessionManager.MAX_BUFFERED_EVENTS) return
+    buf.push(event)
+  }
 
   static getInstance(): ExecutionSessionManager {
     if (!ExecutionSessionManager.instance) {
@@ -146,6 +168,7 @@ export class ExecutionSessionManager {
     }
 
     this.sessions.set(id, session)
+    this.sessionEventBuffer.set(id, [])
 
     if (!this.streamManagerFlushSet) {
       this.streamManagerFlushSet = true
@@ -155,6 +178,11 @@ export class ExecutionSessionManager {
     }
 
     const observabilityEnabled = ff.isEnabled("observability")
+
+    // ── Dispatch plugin onSessionStart hook ──
+    pluginRegistry.dispatchOnSessionStart(id, options.input).catch((err) => {
+      console.warn('[SessionManager] Plugin onSessionStart hook failed:', err)
+    })
 
     try {
       // ── Runtime selection ──
@@ -237,6 +265,32 @@ export class ExecutionSessionManager {
         this.obsManager.endTrace(id)
         await this.obsManager.getReplay().endSession(`Session ${id}: ${eventCount} events, status=${session.status}`)
       }
+
+      // ── Dispatch plugin onSessionEnd hook ──
+      pluginRegistry.dispatchOnSessionEnd(id, session.status).catch((err) => {
+        console.warn('[SessionManager] Plugin onSessionEnd hook failed:', err)
+      })
+
+      // ── Emit SESSION_COMPLETED on EventBus ──
+      // SessionMemoryExtractor subscribes to this event to extract and store
+      // session summaries asynchronously, decoupling extraction from execution
+      if (session.status === 'completed' || session.status === 'failed') {
+        const rootPath = useWorkspaceStore.getState().rootPath
+        const bufferedEvents = this.sessionEventBuffer.get(session.id) ?? []
+        const durationMs = (session.completedAt ?? Date.now()) - session.startedAt
+
+        const completedEvent: SessionCompletedEvent = {
+          type: "SESSION_COMPLETED",
+          sessionId: session.id,
+          input: session.input,
+          status: session.status,
+          eventCount,
+          durationMs,
+          rootPath,
+          events: bufferedEvents,
+        }
+        EventBus.getInstance().emit(completedEvent)
+      }
     } catch (e) {
       const msg = normalizeError(e, "Execution failed")
       if (observabilityEnabled) {
@@ -294,6 +348,9 @@ export class ExecutionSessionManager {
 
   private handleEvent(event: ExecutionEvent, options: ExecuteOptions): void {
     const timeline = useTimelineStore.getState()
+
+    // ── Buffer event for cross-session memory extraction ──
+    this.bufferEvent(event)
 
     // ── Observability: record every event ──
     if (FeatureFlagManager.getInstance().isEnabled("observability")) {
@@ -404,6 +461,7 @@ export class ExecutionSessionManager {
           name: event.toolName,
           args: argsStr,
           status: "running",
+          parallelGroup: (event as any).parallelGroup,
         }
         timeline.addToolCallToAgent(stepId, toolCall)
 
@@ -771,6 +829,34 @@ export class ExecutionSessionManager {
         break
       }
 
+      case "PLAN_PROPOSED": {
+        // Plan is already in the store via ExecutionOrchestrator
+        // Just set the phase on the timeline
+        const propStepId = this.stepByExecId.get(event.executionId)
+        if (propStepId) {
+          timeline.setPhase(propStepId, "Plan proposed — awaiting approval")
+        }
+        break
+      }
+
+      case "PLAN_APPROVED": {
+        const appStepId = this.stepByExecId.get(event.executionId)
+        if (appStepId) {
+          timeline.setPhase(appStepId, "Plan approved — executing")
+        }
+        break
+      }
+
+      case "PLAN_REJECTED": {
+        const rejStepId = this.stepByExecId.get(event.executionId)
+        if (rejStepId) {
+          timeline.setPhase(rejStepId, "Plan rejected")
+        }
+        // Clean up
+        this.stepByExecId.delete(event.executionId)
+        break
+      }
+
       case "GOAL_ACHIEVED": {
         // Goal achieved — final cleanup
         for (const [eid, stepId] of this.stepByExecId) {
@@ -783,6 +869,18 @@ export class ExecutionSessionManager {
           role: "assistant",
           content: `Goal achieved after ${event.iterations} iteration(s) and ${event.stepsCompleted} step(s).`,
           timestamp: Date.now(),
+        })
+        break
+      }
+
+      case "TOOLS_EXPOSED": {
+        useToolFilterStore.getState().setLatest({
+          totalAvailable: (event as any).totalAvailable ?? 0,
+          totalExposed: (event as any).tools?.length ?? 0,
+          totalFiltered: (event as any).totalFiltered ?? 0,
+          exposedTools: (event as any).tools ?? [],
+          role: (event as any).role ?? "",
+          lastUpdated: Date.now(),
         })
         break
       }
@@ -1013,7 +1111,8 @@ export class ExecutionSessionManager {
       this.obsManager.getReplay().endSession(`Session ${sessionId}: cancelled by user`).catch((err) => {
         console.error("[SessionManager] replay endSession error on cancel:", err)
       })
-    }
+    }      // Clear event buffer for this session
+    this.sessionEventBuffer.delete(sessionId)
 
     // Background safety fallback: only runs if something is genuinely stuck
     this.forceStopTimer = setTimeout(() => {
@@ -1069,6 +1168,7 @@ export class ExecutionSessionManager {
     for (const id of toDelete) {
       const pruned = this.sessions.get(id)
       this.sessions.delete(id)
+      this.sessionEventBuffer.delete(id)
       emitTelemetry({ type: "session_pruned", timestamp: Date.now(), metadata: { sessionId: id, status: pruned?.status, ageMs: pruned ? now - (pruned.completedAt ?? pruned.startedAt) : 0 } })
     }
 

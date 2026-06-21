@@ -3,7 +3,7 @@ import { motion } from "framer-motion"
 import { workspaceIndex } from "@/lib/search-index"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { cn } from "@/lib/utils"
-import { Search, File, X, ArrowUp, ArrowDown, Loader2 } from "lucide-react"
+import { Search, File, X, ArrowUp, ArrowDown, Loader2, Sparkles } from "lucide-react"
 import type { SearchResult } from "@/lib/search-index"
 
 interface QuickOpenProps {
@@ -48,6 +48,33 @@ export function QuickOpen({ open, onClose }: QuickOpenProps) {
       })
       setResults(res)
       setSelectedIndex(0)
+
+      // If few results, supplement with semantic search
+      if (res.length < 5 && q.trim().length >= 2) {
+        try {
+          const { semanticSearch } = await import("@/lib/semantic-search")
+          if (semanticSearch.ready) {
+            const semResults = semanticSearch.search(q.trim(), 5)              if (semResults.length > 0) {
+            // Merge semantic results that aren't already in filename results
+            const existingPaths = new Set(res.map((r) => r.filePath))
+            const newResults = semResults
+              .filter((sr) => !existingPaths.has(sr.filePath))
+              .map((sr) => ({
+                filePath: sr.filePath,
+                fileName: sr.fileName,
+                matches: [],
+                matchCount: 0,
+                _semantic: true as const,
+              }))
+            if (newResults.length > 0) {
+              setResults([...res, ...newResults as any])
+            }
+            }
+          }
+        } catch {
+          // Semantic search not available — noop
+        }
+      }
     } finally {
       setSearching(false)
     }
@@ -171,25 +198,35 @@ export function QuickOpen({ open, onClose }: QuickOpenProps) {
               <p className="text-[10px] text-white/15 mt-1">Try a different search term</p>
             </div>
           ) : (
-            flatResults.map((item, idx) => (
-              <button
-                key={item.filePath}
-                data-index={idx}
-                onClick={() => openFileByPath(item.filePath)}
-                onMouseEnter={() => setSelectedIndex(idx)}
-                className={cn(
-                  "flex items-center gap-2 w-full px-3 py-1.5 text-left transition-all",
-                  selectedIndex === idx ? "bg-blue-500/10" : "hover:bg-white/[0.03]",
-                )}
-              >
-                <File className="h-3.5 w-3.5 text-blue-400/50 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-medium text-white/80">{item.fileName}</span>
-                  <span className="text-[10px] text-white/30 ml-2">{item.filePath}</span>
-                </div>
-              </button>
-            ))
-          )}
+            flatResults.map((item, idx) => {
+              const isSemantic = (item as any)._semantic
+              return (
+                <button
+                  key={`${item.filePath}-${idx}`}
+                  data-index={idx}
+                  onClick={() => openFileByPath(item.filePath)}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  className={cn(
+                    "flex items-center gap-2 w-full px-3 py-1.5 text-left transition-all",
+                    selectedIndex === idx ? "bg-blue-500/10" : "hover:bg-white/[0.03]",
+                  )}
+                >
+                  {isSemantic ? (
+                    <Sparkles className="h-3 w-3 text-purple-400/50 shrink-0" />
+                  ) : (
+                    <File className="h-3.5 w-3.5 text-blue-400/50 shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-medium text-white/80">{item.fileName}</span>
+                    <span className="text-[10px] text-white/30 ml-2">{item.filePath}</span>
+                  </div>
+                  {isSemantic && (
+                    <span className="text-[8px] text-purple-400/40 font-mono">semantic</span>
+                  )}
+                </button>
+              )
+            })
+          )
         </div>
 
         {flatResults.length > 0 && (

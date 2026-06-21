@@ -6,6 +6,36 @@ import { ALL_ROLES, type RoleDefinition } from "@/runtime/runtime-role-registry"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
 
 const LOG_PREFIX = "[AppStore]"
+const PLAN_MODE_KEY = 'agentic-plan-mode'
+const SANDBOX_MODE_KEY = 'agentic-sandbox-mode'
+
+function loadPlanMode(): 'auto' | 'always' | 'never' {
+  try {
+    const stored = localStorage.getItem(PLAN_MODE_KEY)
+    if (stored === 'auto' || stored === 'always' || stored === 'never') return stored
+  } catch {}
+  return 'auto'
+}
+
+function persistPlanMode(mode: 'auto' | 'always' | 'never'): void {
+  try {
+    localStorage.setItem(PLAN_MODE_KEY, mode)
+  } catch {}
+}
+
+function loadSandboxMode(): 'on' | 'off' {
+  try {
+    const stored = localStorage.getItem(SANDBOX_MODE_KEY)
+    if (stored === 'on' || stored === 'off') return stored
+  } catch {}
+  return 'on'
+}
+
+function persistSandboxMode(mode: 'on' | 'off'): void {
+  try {
+    localStorage.setItem(SANDBOX_MODE_KEY, mode)
+  } catch {}
+}
 
 function log(...args: unknown[]) {
   console.log(LOG_PREFIX, ...args)
@@ -52,6 +82,10 @@ interface AppStore {
   ledger: LedgerEntry[]
   mcpServers: MCPConfig[]
   defaultsInitialized: boolean
+  planMode: "auto" | "always" | "never"
+  setPlanMode: (mode: "auto" | "always" | "never") => void
+  sandboxMode: "on" | "off"
+  setSandboxMode: (mode: "on" | "off") => void
   setAppState: (state: AppState) => void
   updateAgent: (agentId: string, updates: Partial<Agent>) => void
   addProvider: (provider: GatewayProvider) => void
@@ -93,6 +127,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
   ledger: [],
   mcpServers: [],
   defaultsInitialized: false,
+  planMode: loadPlanMode(),
+  setPlanMode: (mode) => {
+    persistPlanMode(mode)
+    set({ planMode: mode })
+  },
+  sandboxMode: loadSandboxMode(),
+  setSandboxMode: (mode) => {
+    persistSandboxMode(mode)
+    set({ sandboxMode: mode })
+  },
   setAppState: (state) => set({ appState: state }),
   updateAgent: (agentId, updates) =>
     set((store) => ({
@@ -165,8 +209,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
         mapping,
       ],
     })),
+
+  /** Keep ledger capped at 500 entries (newest) */
   addLedgerEntry: (entry) =>
-    set((store) => ({ ledger: [...store.ledger, entry] })),
+    set((store) => {
+      const ledger = [...store.ledger, entry]
+      if (ledger.length > 500) ledger.splice(0, ledger.length - 500)
+      return { ledger }
+    }),
   resetAllAgentUsage: () =>
     set((store) => ({
       agents: store.agents.map((a) => ({ ...a, tokenUsage: 0 })),

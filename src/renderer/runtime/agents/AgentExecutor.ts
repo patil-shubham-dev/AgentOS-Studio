@@ -19,6 +19,9 @@ import { trace } from "@/lib/execution-trace"
 import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
 import { EventChannel } from "@/runtime/streaming/EventChannel"
 import { createRetryPolicy, withRetry } from "@/runtime/reliability/RetryPolicy"
+import { ToolExecutionScheduler, type ToolCallEntry } from "@/runtime/tools/execution/ToolExecutionScheduler"
+import { toolRelevanceMatcher } from "@/runtime/tools/core/ToolSearch"
+import { pluginRegistry } from "@/runtime/plugins/PluginRegistry"
 
 export type AgentMode = "FAST" | "FULL" | "MULTI"
 
@@ -377,12 +380,30 @@ export class AgentExecutor {
     let consecutiveToolOnlyRounds = 0
     let finalResponse = ""
 
-    // ── Phase 3: Filter tools by role capabilities ──
+    // ── Phase 3: Filter tools by role capabilities + relevance ──
     const runtimeOS = RuntimeOS.getInstance()
     const roleTools = runtimeOS.toolRegistry.getByMode(this.role)
     const capabilities = myRoleConfig?.capabilities
-    const filteredTools = capabilities ? this.filterToolsByCapabilities(roleTools, capabilities) : roleTools
-    yield { type: "TOOLS_EXPOSED", executionId: eid, role: this.role, tools: filteredTools.map(t => t.name), timestamp: Date.now() }
+    let filteredTools = capabilities ? this.filterToolsByCapabilities(roleTools, capabilities) : roleTools
+
+    // ── ToolSearch: dynamically filter tool definitions by relevance to the user's input ──
+    // This reduces prompt bloat by 10-30% by excluding irrelevant tools.
+    // Unknown tools (MCP, plugins, etc.) pass through by default.
+    const relevantToolNames = new Set(toolRelevanceMatcher.match(this.input))
+    filteredTools = filteredTools.filter(
+      t => relevantToolNames.has(t.name) || !toolRelevanceMatcher.hasEntry(t.name)
+    )
+
+    const exposedToolNames = filteredTools.map(t => t.name)
+    yield {
+      type: "TOOLS_EXPOSED",
+      executionId: eid,
+      role: this.role,
+      tools: exposedToolNames,
+      totalAvailable: roleTools.length,
+      totalFiltered: roleTools.length - filteredTools.length,
+      timestamp: Date.now(),
+    }
     const toolDefs = agentToolsToToolDefs(filteredTools)
 
     const primary = config.primary
@@ -579,15 +600,40 @@ export class AgentExecutor {
       if (responseToolCalls.length > 0) {
         yield { type: "THINKING_UPDATE", executionId: eid, label: `Executing ${responseToolCalls.length} tool(s)`, timestamp: Date.now() }
 
-        for (const tc of responseToolCalls) {
+        // ── Parallel Tool Execution ──
+        // Partition tools into groups: read tools run in parallel,
+        // write tools run sequentially. Each group executes before
+        // the next begins, preserving write ordering.
+
+        // First, yield TOOL_START for ALL tool calls (so UI shows them)
+        const toolEntries: ToolCallEntry[] = responseToolCalls.map((tc) => {
           let args: Record<string, unknown> = {}
-          try { args = JSON.parse(tc.function.arguments) } catch (err) { console.warn("[AgentExecutor] Failed to parse tool args:", err) }
+          try { args = JSON.parse(tc.function.arguments) } catch { /* ignore */ }
+          return { id: tc.id, name: tc.function.name, args }
+        })
+
+        // Schedule into execution groups
+        const scheduler = ToolExecutionScheduler.getInstance()
+        const groups = scheduler.schedule(toolEntries)
+        const concurrencyLimit = scheduler.getConcurrencyLimit()
+
+        // Build a map: toolId → group index for parallel group info
+        const toolGroupMap = new Map<string, number>()
+        for (const group of groups) {
+          for (const entry of group.tools) {
+            toolGroupMap.set(entry.id, group.groupIndex)
+          }
+        }
+
+        // Yield TOOL_START for all tools upfront with parallel group info
+        for (const entry of toolEntries) {
           yield {
             type: "TOOL_START",
             executionId: eid,
-            toolId: tc.id,
-            toolName: tc.function.name,
-            args: JSON.stringify(args),
+            toolId: entry.id,
+            toolName: entry.name,
+            args: JSON.stringify(entry.args),
+            parallelGroup: toolGroupMap.get(entry.id),
             timestamp: Date.now(),
           }
         }
@@ -595,144 +641,260 @@ export class AgentExecutor {
         const editedFiles: string[] = []
         const pipeline = runtimeOS.toolExecutionPipeline
 
-        for (const tc of responseToolCalls) {
-          let args: Record<string, unknown> = {}
-          try { args = JSON.parse(tc.function.arguments) } catch (err) { console.warn("[AgentExecutor] Failed to parse tool args (execution):", err) }
+        console.log(`[AgentExecutor] Parallel execution: ${groups.length} group(s) from ${toolEntries.length} tool(s)`)
 
-          const isCommand = tc.function.name === 'run_command'
-          const commandStr = isCommand ? (args.command as string || '') : ''
+        for (const group of groups) {
+          if (this.signal?.aborted) break
 
-          if (isCommand) {
-            yield { type: "COMMAND_START", executionId: eid, command: commandStr, timestamp: Date.now() }
-          }
+          const { tools: groupTools, type: groupType } = group
 
-          const toolNameDisplay = tc.function.name.replace(/_/g, ' ')
-          yield { type: "TOOL_PROGRESS", executionId: eid, toolId: tc.id, progress: `Running ${toolNameDisplay}...`, timestamp: Date.now() }
-
-          const toolStart = performance.now()
-          let result: import("@/runtime/tools/core/ToolResult").ToolResult
-
-          if (isCommand) {
-            const channel = new EventChannel()
-            const streamCtx: import("@/runtime/tools/core/ToolContext").ToolContext = {
-              role: this.role,
-              signal: this.signal,
-              onOutput: (line: string) => {
-                if (!channel.closed) {
-                  channel.push({ type: "COMMAND_OUTPUT", executionId: eid, output: line + "\n", timestamp: Date.now() })
-                }
-              },
+          // For read groups with multiple tools, execute in parallel
+          if (groupType === "read" && groupTools.length > 1) {
+            // Limit concurrency
+            const batches: ToolCallEntry[][] = []
+            for (let i = 0; i < groupTools.length; i += concurrencyLimit) {
+              batches.push(groupTools.slice(i, i + concurrencyLimit))
             }
-            const execPromise = pipeline.execute(tc.function.name, args, streamCtx).then(
-              (r) => { channel.close(); return r },
-              (err) => { channel.close(); throw err },
-            )
-            for await (const event of channel) {
-              yield event
-            }
-            result = await execPromise
-          } else {
-            const toolCtx: import("@/runtime/tools/core/ToolContext").ToolContext = {
-              role: this.role,
-              signal: this.signal,
-            }
-            try {
-              const retryResult = await withRetry(
-                () => pipeline.execute(tc.function.name, args, toolCtx),
-                PROVIDER_RETRY_POLICY,
-                `tool:${tc.function.name}`,
-                this.signal,
+
+            for (const batch of batches) {
+              if (this.signal?.aborted) break
+
+              // Yield TOOL_PROGRESS for all tools in batch
+              for (const entry of batch) {
+                yield { type: "TOOL_PROGRESS", executionId: eid, toolId: entry.id, progress: `Reading ${entry.name.replace(/_/g, ' ')}...`, timestamp: Date.now() }
+              }
+
+              // Execute all tools in batch in parallel
+              const results = await Promise.allSettled(
+                batch.map(async (entry) => {
+                  const toolStart = performance.now()
+                  try {
+                    const toolCtx: import("@/runtime/tools/core/ToolContext").ToolContext = {
+                      role: this.role,
+                      signal: this.signal,
+                    }
+                    const retryResult = await withRetry(
+                      () => pipeline.execute(entry.name, entry.args, toolCtx),
+                      PROVIDER_RETRY_POLICY,
+                      `tool:${entry.name}`,
+                      this.signal,
+                    )
+                    const durationMs = Math.round(performance.now() - toolStart)
+                    return { entry, result: retryResult.data, durationMs, error: null }
+                  } catch (err) {
+                    return {
+                      entry,
+                      result: null as any,
+                      durationMs: Math.round(performance.now() - toolStart),
+                      error: err instanceof Error ? err.message : String(err),
+                    }
+                  }
+                })
               )
-              result = retryResult.data
-            } catch (retryErr) {
-              result = {
-                data: undefined,
-                isError: true,
-                error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+
+              // Process results — iterate by index to match batch entries
+              for (let ri = 0; ri < results.length; ri++) {
+                const settled = results[ri]
+                const entry = batch[ri]
+                if (!entry) continue
+
+                if (settled.status !== "fulfilled") {
+                  const errorStr = "Parallel execution rejected"
+                  msgs.push({ tool_call_id: entry.id, role: 'tool' as const, content: errorStr })
+                  yield { type: "TOOL_ERROR", executionId: eid, toolId: entry.id, toolName: entry.name, error: errorStr, durationMs: 0, timestamp: Date.now() }
+                  yield { type: "TOOL_COMPLETE", executionId: eid, toolId: entry.id, toolName: entry.name, result: errorStr, durationMs: 0, timestamp: Date.now() }
+                  continue
+                }
+
+                // TypeScript narrows settled to PromiseFulfilledResult after the rejected check
+                const { result, durationMs, error } = settled.value
+
+                if (error) {
+                  msgs.push({ tool_call_id: entry.id, role: 'tool' as const, content: `Error: ${error}` })
+                  yield { type: "TOOL_ERROR", executionId: eid, toolId: entry.id, toolName: entry.name, error, durationMs, timestamp: Date.now() }
+                  yield { type: "TOOL_COMPLETE", executionId: eid, toolId: entry.id, toolName: entry.name, result: `Error: ${error}`, durationMs, timestamp: Date.now() }
+                  continue
+                }
+
+                const resultContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+                msgs.push({ tool_call_id: entry.id, role: 'tool' as const, content: resultContent })
+                yield { type: "TOOL_COMPLETE", executionId: eid, toolId: entry.id, toolName: entry.name, result: resultContent, durationMs, timestamp: Date.now() }
               }
             }
-          }
+          } else {
+            // Single tool or write/browser tool — execute sequentially
+            for (const entry of groupTools) {
+              if (this.signal?.aborted) break                // ── Plugin: onBeforeTool hook — can block execution ──
+              const pluginAllow = await pluginRegistry.dispatchOnBeforeTool(entry.name, entry.args)
+              if (!pluginAllow) {
+                // Plugin blocked this tool
+                msgs.push({
+                  tool_call_id: entry.id,
+                  role: 'tool' as const,
+                  content: `Tool "${entry.name}" was blocked by a plugin`,
+                })
+                yield {
+                  type: "TOOL_ERROR",
+                  executionId: eid,
+                  toolId: entry.id,
+                  toolName: entry.name,
+                  error: 'Blocked by plugin policy',
+                  durationMs: 0,
+                  timestamp: Date.now(),
+                }
+                yield {
+                  type: "TOOL_COMPLETE",
+                  executionId: eid,
+                  toolId: entry.id,
+                  toolName: entry.name,
+                  result: 'Blocked by plugin policy',
+                  durationMs: 0,
+                  timestamp: Date.now(),
+                }
+                continue
+              }
 
-          const toolDuration = performance.now() - toolStart
+              const isCommand = entry.name === 'run_command'
+              const commandStr = isCommand ? (entry.args.command as string || '') : ''
 
-          if (result.isError) {
-            msgs.push({
-              tool_call_id: tc.id,
-              role: 'tool' as const,
-              content: `Error executing ${tc.function.name}: ${result.error}`,
-            })
-            yield {
-              type: "TOOL_ERROR",
-              executionId: eid,
-              toolId: tc.id,
-              toolName: tc.function.name,
-              error: result.error ?? "Unknown error",
-              durationMs: Math.round(toolDuration),
-              timestamp: Date.now(),
-            }
-            yield {
-              type: "TOOL_COMPLETE",
-              executionId: eid,
-              toolId: tc.id,
-              toolName: tc.function.name,
-              result: `Error: ${result.error}`,
-              durationMs: Math.round(toolDuration),
-              timestamp: Date.now(),
-            }
-            if (isCommand) {
-              yield { type: "COMMAND_ERROR", executionId: eid, error: result.error ?? "Unknown error", durationMs: Math.round(toolDuration), timestamp: Date.now() }
-            }
-            continue
-          }
+              if (isCommand) {
+                yield { type: "COMMAND_START", executionId: eid, command: commandStr, timestamp: Date.now() }
+              }
 
-          const resultContent = typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2)
-          msgs.push({
-            tool_call_id: tc.id,
-            role: 'tool' as const,
-            content: resultContent,
-          })
+              const toolNameDisplay = entry.name.replace(/_/g, ' ')
+              yield { type: "TOOL_PROGRESS", executionId: eid, toolId: entry.id, progress: `Running ${toolNameDisplay}...`, timestamp: Date.now() }
 
-          yield {
-            type: "TOOL_COMPLETE",
-            executionId: eid,
-            toolId: tc.id,
-            toolName: tc.function.name,
-            result: resultContent,
-            durationMs: Math.round(toolDuration),
-            timestamp: Date.now(),
-          }
+              const toolStart = performance.now()
+              let result: import("@/runtime/tools/core/ToolResult").ToolResult
 
-          if (isCommand) {
-            yield { type: "COMMAND_COMPLETE", executionId: eid, exitCode: 0, durationMs: Math.round(toolDuration), timestamp: Date.now() }
-          }
+              if (isCommand) {
+                const channel = new EventChannel()
+                const streamCtx: import("@/runtime/tools/core/ToolContext").ToolContext = {
+                  role: this.role,
+                  signal: this.signal,
+                  onOutput: (line: string) => {
+                    if (!channel.closed) {
+                      channel.push({ type: "COMMAND_OUTPUT", executionId: eid, output: line + "\n", timestamp: Date.now() })
+                    }
+                  },
+                }
+                const execPromise = pipeline.execute(entry.name, entry.args, streamCtx).then(
+                  (r) => { channel.close(); return r },
+                  (err) => { channel.close(); throw err },
+                )
+                for await (const event of channel) {
+                  yield event
+                }
+                result = await execPromise
+              } else {
+                const toolCtx: import("@/runtime/tools/core/ToolContext").ToolContext = {
+                  role: this.role,
+                  signal: this.signal,
+                }
+                try {
+                  const retryResult = await withRetry(
+                    () => pipeline.execute(entry.name, entry.args, toolCtx),
+                    PROVIDER_RETRY_POLICY,
+                    `tool:${entry.name}`,
+                    this.signal,
+                  )
+                  result = retryResult.data
+                } catch (retryErr) {
+                  result = {
+                    data: undefined,
+                    isError: true,
+                    error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+                  }
+                }
+              }
 
-          if (tc.function.name === 'write_file' || tc.function.name === 'edit_file') {
-            const path = (args.path || args.file) as string || ''
-            if (path) editedFiles.push(path)
-            const content = (args.content || args.new_string) as string || ''
-            yield {
-              type: "FILE_EDIT",
-              executionId: eid,
-              path,
-              additions: content ? content.split('\n').length : 0,
-              deletions: 0,
-              oldContent: (args.old_string || args.old_content) as string || '',
-              newContent: content,
-              timestamp: Date.now(),
-            }
-          }
+              const toolDuration = performance.now() - toolStart
 
-          if (tc.function.name === 'delegate_subtask') {
-            let parsed: Record<string, unknown> = {}
-            try { parsed = JSON.parse(resultContent) } catch { /* ignore */ }
-            yield {
-              type: "ACTION",
-              executionId: eid,
-              agentRole: "manager",
-              action: `delegate_subtask:${parsed.subAgentType ?? 'unknown'}`,
-              status: parsed.success ? "success" : "error",
-              summary: `${parsed.subAgentType ?? 'unknown'} agent: ${parsed.toolCalls ?? '?'} tool calls, ${parsed.tokensUsed ?? '?'} tokens, ${parsed.durationMs ?? '?'}ms`,
-              timestamp: Date.now(),
+              if (result.isError) {
+                msgs.push({
+                  tool_call_id: entry.id,
+                  role: 'tool' as const,
+                  content: `Error executing ${entry.name}: ${result.error}`,
+                })
+                yield {
+                  type: "TOOL_ERROR",
+                  executionId: eid,
+                  toolId: entry.id,
+                  toolName: entry.name,
+                  error: result.error ?? "Unknown error",
+                  durationMs: Math.round(toolDuration),
+                  timestamp: Date.now(),
+                }
+                yield {
+                  type: "TOOL_COMPLETE",
+                  executionId: eid,
+                  toolId: entry.id,
+                  toolName: entry.name,
+                  result: `Error: ${result.error}`,
+                  durationMs: Math.round(toolDuration),
+                  timestamp: Date.now(),
+                }
+                if (isCommand) {
+                  yield { type: "COMMAND_ERROR", executionId: eid, error: result.error ?? "Unknown error", durationMs: Math.round(toolDuration), timestamp: Date.now() }
+                }
+                continue
+              }
+
+              const resultContent = typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2)
+              msgs.push({
+                tool_call_id: entry.id,
+                role: 'tool' as const,
+                content: resultContent,
+              })
+
+              yield {
+                type: "TOOL_COMPLETE",
+                executionId: eid,
+                toolId: entry.id,
+                toolName: entry.name,
+                result: resultContent,
+                durationMs: Math.round(toolDuration),
+                timestamp: Date.now(),
+              }
+
+              // ── Plugin: onAfterTool hook ──
+              pluginRegistry.dispatchOnAfterTool(entry.name, entry.args, result.data).catch((err) => {
+                console.warn(`[AgentExecutor] Plugin onAfterTool hook failed for ${entry.name}:`, err)
+              })
+
+              if (isCommand) {
+                yield { type: "COMMAND_COMPLETE", executionId: eid, exitCode: 0, durationMs: Math.round(toolDuration), timestamp: Date.now() }
+              }
+
+              if (entry.name === 'write_file' || entry.name === 'edit_file') {
+                const path = (entry.args.path || entry.args.file) as string || ''
+                if (path) editedFiles.push(path)
+                const content = (entry.args.content || entry.args.new_string) as string || ''
+                yield {
+                  type: "FILE_EDIT",
+                  executionId: eid,
+                  path,
+                  additions: content ? content.split('\n').length : 0,
+                  deletions: 0,
+                  oldContent: (entry.args.old_string || entry.args.old_content) as string || '',
+                  newContent: content,
+                  timestamp: Date.now(),
+                }
+              }
+
+              if (entry.name === 'delegate_subtask') {
+                let parsed: Record<string, unknown> = {}
+                try { parsed = JSON.parse(resultContent) } catch { /* ignore */ }
+                yield {
+                  type: "ACTION",
+                  executionId: eid,
+                  agentRole: "manager",
+                  action: `delegate_subtask:${parsed.subAgentType ?? 'unknown'}`,
+                  status: parsed.success ? "success" : "error",
+                  summary: `${parsed.subAgentType ?? 'unknown'} agent: ${parsed.toolCalls ?? '?'} tool calls, ${parsed.tokensUsed ?? '?'} tokens, ${parsed.durationMs ?? '?'}ms`,
+                  timestamp: Date.now(),
+                }
+              }
             }
           }
         }

@@ -1,5 +1,6 @@
 import type { PermissionResult, PermissionBehavior } from '../tools/core/ToolPermissions'
 import type { PermissionContext } from './PermissionContext'
+import { auditLog } from '@/lib/audit/AuditLog'
 
 export type PolicyRule = {
   toolName: string | string[]
@@ -66,6 +67,13 @@ export class PolicyResolver {
     if (ctx.mode === 'autonomous') return { behavior: 'allow', reason: 'Autonomous mode' }
     if (ctx.mode === 'bypass') return { behavior: 'allow', reason: 'Permissions bypassed' }
 
-    return { behavior: 'ask', reason: 'No matching policy rule' }
+    // Default-deny: log and return deny for unknown tools
+    auditLog.recordPermissionDenied(
+      ctx.role,
+      toolName,
+      `Tool "${toolName}" denied for role "${ctx.role}" — no matching policy rule`,
+    )
+
+    return { behavior: 'deny', reason: `Tool "${toolName}" not permitted for role "${ctx.role}"` }
   }
 }

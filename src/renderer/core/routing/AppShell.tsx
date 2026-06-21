@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { NavigationRail } from '@/components/layout/navigation-rail'
 import { Toasts } from '@/components/ui/Toasts'
 import { SafeErrorBoundary, SidebarBoundary, WorkspaceBoundary } from '../error-boundaries'
+import { SandboxStatusIndicator } from '@/components/workspace/sandbox/SandboxStatusIndicator'
 import { useApprovalStore } from '../../runtime/approval-gate'
 import { useAgentStore } from '../../stores/agent-store'
 import { useLeakTracker } from '@/performance/leak-detector'
@@ -92,6 +93,7 @@ export function AppShell() {
       <Toasts />
       <ApprovalToast />
       <AgentActivityBadge />
+      <SandboxStatusIndicator />
     </div>
   )
 }

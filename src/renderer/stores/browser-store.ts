@@ -82,11 +82,13 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
   researchProjects: [],
   workspaceRoot: null,
 
+  /** Sessions capped at 20 (newest) */
   addSession: (session) =>
-    set((s) => ({
-      sessions: [...s.sessions, session],
-      activeSessionId: session.id,
-    })),
+    set((s) => {
+      const sessions = [...s.sessions, session]
+      if (sessions.length > 20) sessions.splice(0, sessions.length - 20)
+      return { sessions, activeSessionId: session.id }
+    }),
 
   removeSession: (id) =>
     set((s) => ({
@@ -146,9 +148,7 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
           ? { ...ss, tabs: ss.tabs.map((t) => (t.id === tabId ? { ...t, ...updates } : t)) }
           : ss
       ),
-    })),
-
-  navigateTab: (sessionId, tabId, url) =>
+    })),  navigateTab: (sessionId, tabId, url) =>
     set((s) => ({
       sessions: s.sessions.map((ss) =>
         ss.id === sessionId
@@ -156,12 +156,16 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
               ...ss,
               tabs: ss.tabs.map((t) =>
                 t.id === tabId
-                  ? {
-                      ...t,
-                      url,
-                      history: [...t.history.slice(0, t.historyIndex + 1), url],
-                      historyIndex: t.historyIndex + 1,
-                    }
+                  ? (() => {
+                      const newHistory = [...t.history.slice(0, t.historyIndex + 1), url]
+                      const sliced = newHistory.slice(-100)
+                      return {
+                        ...t,
+                        url,
+                        history: sliced,
+                        historyIndex: Math.min(t.historyIndex + 1, sliced.length - 1),
+                      }
+                    })()
                   : t
               ),
             }
@@ -201,8 +205,13 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
       ),
     })),
 
+  /** Research projects capped at 50 (newest) */
   addResearchProject: (project) =>
-    set((s) => ({ researchProjects: [...s.researchProjects, project] })),
+    set((s) => {
+      const researchProjects = [...s.researchProjects, project]
+      if (researchProjects.length > 50) researchProjects.splice(0, researchProjects.length - 50)
+      return { researchProjects }
+    }),
 
   removeResearchProject: (id) =>
     set((s) => ({
@@ -219,6 +228,73 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
     })),
 
   setWorkspaceRoot: (root) => set({ workspaceRoot: root }),
+
+  /** Get sessions belonging to a specific workspace */
+  getSessionsByWorkspace: (workspaceRoot: string): BrowserSession[] => {
+    return get().sessions.filter((s) => s.workspaceRoot === workspaceRoot)
+  },
+
+  /** Check if there are stored sessions for the current workspace that can be restored */
+  hasStoredSessions: (workspaceRoot: string): boolean => {
+    try {
+      const raw = localStorage.getItem(PERSIST_KEY)
+      if (!raw) return false
+      const data = JSON.parse(raw) as { sessions: PersistableSession[] }
+      if (!Array.isArray(data.sessions)) return false
+      return data.sessions.some((s) => s.workspaceRoot === workspaceRoot)
+    } catch {
+      return false
+    }
+  },
+
+  /** Get stored sessions count for a workspace */
+  getStoredSessionCount: (workspaceRoot: string): number => {
+    try {
+      const raw = localStorage.getItem(PERSIST_KEY)
+      if (!raw) return 0
+      const data = JSON.parse(raw) as { sessions: PersistableSession[] }
+      if (!Array.isArray(data.sessions)) return 0
+      return data.sessions.filter((s) => s.workspaceRoot === workspaceRoot).length
+    } catch {
+      return 0
+    }
+  },
+
+  /**
+   * Filter sessions to only those belonging to the given workspace.
+   * This is the core isolation function — ensures sessions from other
+   * workspaces are never visible or active in the current workspace context.
+   */
+  isolateToWorkspace: (workspaceRoot: string | null) => {
+    const { sessions, activeSessionId } = get()
+    if (!workspaceRoot) {
+      // No workspace — clear all sessions
+      set({ sessions: [], activeSessionId: null })
+      return
+    }
+    const filtered = sessions.filter((s) => s.workspaceRoot === workspaceRoot)
+    const activeStillValid = activeSessionId && filtered.some((s) => s.id === activeSessionId)
+    set({
+      sessions: filtered,
+      activeSessionId: activeStillValid ? activeSessionId : (filtered[0]?.id ?? null),
+    })
+  },
+
+  /**
+   * Remove sessions that don't belong to any known workspace (orphaned).
+   * These can accumulate if a workspace folder is deleted or moved.
+   */
+  cleanupOrphanedSessions: () => {
+    const { sessions, workspaceRoot } = get()
+    if (!workspaceRoot) return 0
+    const before = sessions.length
+    const filtered = sessions.filter((s) => s.workspaceRoot === workspaceRoot)
+    if (filtered.length < before) {
+      set({ sessions: filtered })
+      persistState()
+    }
+    return before - filtered.length
+  },
 
   persistState: () => {
     const { sessions, activeSessionId, workspaceRoot } = get()

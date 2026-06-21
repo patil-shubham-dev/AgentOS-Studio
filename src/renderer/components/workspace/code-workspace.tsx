@@ -21,6 +21,8 @@ import { debugService } from "@/lib/debug/debug-service"
 import { useDebugStore } from "@/stores/debug-store"
 import { gitStatus } from "@/lib/git"
 import type { GitStatus } from "@/lib/git"
+import { useHistoryStore } from "@/stores/history-store"
+import { HistoryPanel } from "@/components/workspace/file-history/HistoryPanel"
 
 import { requestRefresh } from "@/runtime/runtime-coordinator"
 import { useHaptic } from "@/lib/haptics"
@@ -28,7 +30,7 @@ import {
   WrapText, Minus, Plus, X, FileCode,
   Sparkles, Brain, Check, Save,
   Columns3, FileDown, Pencil, AlertCircle, AlertTriangle, GitBranch,
-  Bug, FileSearch, PanelRight, PanelRightClose, Terminal, Logs, FolderOpen, FilePlus,
+  Bug, FileSearch, PanelRight, PanelRightClose, Terminal, Logs, FolderOpen, FilePlus, History,
 } from "lucide-react"
 import { registerInlineCompletionProvider, unregisterInlineCompletionProvider, setupCompletionTracking, cleanupCompletionTracking } from "@/lib/completion/completion-provider"
 import { InlineEditOverlay } from "./inline-edit-overlay"
@@ -534,6 +536,8 @@ export function CodeWorkspace() {
   const [showTerminal, setShowTerminal] = useState(false)
   const [showOutput, setShowOutput] = useState(false)
   const [symbolSearchOpen, setSymbolSearchOpen] = useState(false)
+  const historyOpen = useHistoryStore((s) => s.open)
+  const toggleHistory = useHistoryStore((s) => s.toggleOpen)
   const [currentFileSymbols, setCurrentFileSymbols] = useState<SymbolItem[]>([])
   const [aiChanges, setAiChanges] = useState<AIChange[]>([])
   const [showAiOverlay, setShowAiOverlay] = useState(false)
@@ -1336,7 +1340,29 @@ export function CodeWorkspace() {
             </motion.button>
           </Tooltip>
 
-          {/* Debug panel toggle */}
+          {/* Debug panel toggle */}          {/* File History toggle */}
+          <Tooltip content="File History — view snapshots before agent edits">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => {
+                pulse("click")
+                toggleHistory()
+                if (!historyOpen && activeFilePath) {
+                  useHistoryStore.getState().loadFileHistory(activeFilePath)
+                }
+              }}
+              className={cn(
+                "rounded p-1 transition-colors",
+                historyOpen ? "text-amber-400 bg-amber-500/10" : "text-white/25 hover:text-white/60",
+              )}
+            >
+              <History className="h-3 w-3" />
+            </motion.button>
+          </Tooltip>
+
+          <span className="text-white/10 text-[8px]">|</span>
+
           <Tooltip content="Debug (⌘⇧D)">
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -1577,6 +1603,24 @@ export function CodeWorkspace() {
             <div className="h-full overflow-y-auto">
               <GitPanel />
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* File History panel at bottom */}
+      <AnimatePresence>
+        {historyOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="shrink-0"
+          >
+            <HistoryPanel
+              activeFilePath={activeFilePath}
+              onClose={() => useHistoryStore.getState().setOpen(false)}
+            />
           </motion.div>
         )}
       </AnimatePresence>

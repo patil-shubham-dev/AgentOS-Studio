@@ -12,7 +12,11 @@ import { AgentsPage } from '@/pages/agents'
 import { LogsPage } from '@/pages/logs'
 import { GitPage } from '@/pages/git'
 import { MemoryPage } from '@/pages/memory'
+import { PersonasPage } from '@/pages/personas'
 import { ContextDashboardPage } from '@/pages/context-dashboard'
+import { PerformanceDashboardPage } from '@/pages/performance-dashboard'
+import { PluginsPage } from '@/pages/plugins'
+import { AuditPage } from '@/pages/audit'
 import { RuntimeHealthPanel } from '@/components/runtime/RuntimeHealthPanel'
 import { StressTestPage } from '@/pages/__stress-test'
 import { useLeakTracker } from '@/performance/leak-detector'
@@ -89,7 +93,11 @@ export default function App() {
           <Route path="/logs" element={<SafeErrorBoundary name="Logs"><RouteContainer><LogsPage /></RouteContainer></SafeErrorBoundary>} />
           <Route path="/git" element={<SafeErrorBoundary name="Git"><RouteContainer><GitPage /></RouteContainer></SafeErrorBoundary>} />
           <Route path="/memory" element={<SafeErrorBoundary name="Memory"><RouteContainer><MemoryPage /></RouteContainer></SafeErrorBoundary>} />
+          <Route path="/personas" element={<SafeErrorBoundary name="Personas"><RouteContainer><PersonasPage /></RouteContainer></SafeErrorBoundary>} />
           <Route path="/context" element={<SafeErrorBoundary name="ContextDashboard"><RouteContainer><ContextDashboardPage /></RouteContainer></SafeErrorBoundary>} />
+          <Route path="/performance" element={<SafeErrorBoundary name="PerformanceDashboard"><RouteContainer><PerformanceDashboardPage /></RouteContainer></SafeErrorBoundary>} />
+          <Route path="/plugins" element={<SafeErrorBoundary name="Plugins"><RouteContainer><PluginsPage /></RouteContainer></SafeErrorBoundary>} />
+          <Route path="/audit" element={<SafeErrorBoundary name="Audit"><RouteContainer><AuditPage /></RouteContainer></SafeErrorBoundary>} />
           {import.meta.env.DEV && (
             <>
               <Route path="/__health" element={<SafeErrorBoundary name="Health"><RuntimeHealthPanel /></SafeErrorBoundary>} />

@@ -100,6 +100,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       currentArtifactId: s.currentArtifactId === id ? null : s.currentArtifactId,
     })),
 
+  /** Versions capped at 50 per artifact (newest) */
   addVersion: (artifactId, data) => {
     const state = get()
     const artifact = state.artifacts.find((a) => a.id === artifactId)
@@ -117,7 +118,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
         a.id === artifactId
           ? {
               ...a,
-              versions: [...a.versions, version],
+              versions: [...a.versions, version].slice(-50),
               currentVersion: nextVersion,
               updatedAt: Date.now(),
             }

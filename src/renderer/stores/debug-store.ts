@@ -104,10 +104,13 @@ export const useDebugStore = create<DebugStore>((set) => ({
   setCallStack: (stack) => set({ callStack: stack }),
   setVariables: (vars) => set({ variables: vars }),
 
+  /** Console output capped at 500 entries (newest) */
   addConsoleOutput: (entry) =>
-    set((state) => ({
-      consoleOutput: [...state.consoleOutput, { ...entry, timestamp: Date.now() }],
-    })),
+    set((state) => {
+      const consoleOutput = [...state.consoleOutput, { ...entry, timestamp: Date.now() }]
+      if (consoleOutput.length > 500) consoleOutput.splice(0, consoleOutput.length - 500)
+      return { consoleOutput }
+    }),
 
   clearConsole: () => set({ consoleOutput: [] }),
   setRunning: (running) => set({ isRunning: running }),

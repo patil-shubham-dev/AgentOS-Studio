@@ -14,9 +14,23 @@ import type {
   ExecutionStatus,
 } from "./types"
 import type { ToolCallRecord, FileEditRecord, TerminalRecord, FileOpRecord } from "./step-card"
+import type { ContextReference } from "@/lib/context-references/ReferenceParser"
+
+/** Resolved context reference with content for rendering as chips in timeline */
+export interface ResolvedReferenceChip {
+  type: ContextReference["type"]
+  target: string
+  qualifier?: string
+  content?: string
+  error?: string
+  durationMs?: number
+}
 
 const MAX_EVENTS = 500
 const MAX_AGENT_SESSIONS = 100
+const MAX_SESSION_ORDER = 200
+const MAX_MESSAGE_REFS = 200
+const MAX_COLLAPSED_SECTIONS = 500
 
 /**
  * Timeline state is persisted to localStorage so conversations survive restarts.
@@ -78,6 +92,8 @@ interface TimelineState {
   sessionCreatedAtEventCount: number[]  // events.length at session creation time
   collapsedSections: Set<string>
   streamingMetrics: StreamingMetrics
+  /** Resolved @-references per correlation ID — for rendering inline chips */
+  messageReferences: Map<string, ResolvedReferenceChip[]>
 
   addEvent: (event: TimelineEvent) => void
   updateEvent: (id: string, updates: Partial<TimelineEvent>) => void
@@ -143,6 +159,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   sessionOrder: [],
   sessionCreatedAtEventCount: [],
   collapsedSections: new Set(),
+  messageReferences: new Map(),
   streamingMetrics: {
     tokensReceived: 0,
     tokensPerSecond: 0,
@@ -174,8 +191,23 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       sessionCreatedAtEventCount: [],
       collapsedSections: new Set(),
       streamingMetrics: { tokensReceived: 0, tokensPerSecond: 0, lastTokenTimestamp: 0, firstTokenLatency: 0, totalLatency: 0 },
+      messageReferences: new Map(),
     })
     clearStorage()
+  },
+
+  setMessageReferences: (correlationId, refs) => {
+    set((s) => {
+      const next = new Map(s.messageReferences)
+      next.set(correlationId, refs)
+      // Prune oldest entries when over limit
+      if (next.size > MAX_MESSAGE_REFS) {
+        const keys = [...next.keys()]
+        const toRemove = keys.slice(0, keys.length - MAX_MESSAGE_REFS)
+        for (const k of toRemove) next.delete(k)
+      }
+      return { messageReferences: next }
+    })
   },
 
   restoreState: (state) => {
@@ -187,6 +219,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       sessionCreatedAtEventCount: state.sessionCreatedAtEventCount,
       collapsedSections: state.collapsedSections,
       streamingMetrics: { tokensReceived: 0, tokensPerSecond: 0, lastTokenTimestamp: 0, firstTokenLatency: 0, totalLatency: 0 },
+      messageReferences: new Map((state as any).messageReferences ?? []),
     })
   },
 
@@ -226,8 +259,8 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       }
       return {
         agentSessions: next,
-        sessionOrder: [...s.sessionOrder, session.stepId],
-        sessionCreatedAtEventCount: [...s.sessionCreatedAtEventCount, s.events.length],
+        sessionOrder: [...s.sessionOrder, session.stepId].slice(-MAX_SESSION_ORDER),
+        sessionCreatedAtEventCount: [...s.sessionCreatedAtEventCount, s.events.length].slice(-MAX_SESSION_ORDER),
       }
     })
   },
@@ -259,8 +292,8 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       })
       return {
         agentSessions: next,
-        sessionOrder: [...s.sessionOrder, stepId],
-        sessionCreatedAtEventCount: [...s.sessionCreatedAtEventCount, s.events.length],
+        sessionOrder: [...s.sessionOrder, stepId].slice(-MAX_SESSION_ORDER),
+        sessionCreatedAtEventCount: [...s.sessionCreatedAtEventCount, s.events.length].slice(-MAX_SESSION_ORDER),
       }
     })
   },
@@ -461,6 +494,12 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const next = new Set(s.collapsedSections)
       if (next.has(id)) next.delete(id)
       else next.add(id)
+      // Prune oldest entries when over limit (Set iteration order = insertion order)
+      if (next.size > MAX_COLLAPSED_SECTIONS) {
+        const entries = [...next]
+        const toRemove = entries.slice(0, entries.length - MAX_COLLAPSED_SECTIONS)
+        for (const k of toRemove) next.delete(k)
+      }
       return { collapsedSections: next }
     }),
 

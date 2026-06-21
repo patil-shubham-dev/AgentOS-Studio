@@ -16,6 +16,10 @@ import { getWorkspaceContextSnapshot } from '@/stores/workspace-store'
 import { useTimelineStore } from '@/components/workspace/timeline/timeline-store'
 import { workspaceIndex } from '@/lib/search-index'
 import { MemoryArchitecture } from '@/runtime/memory/unified/MemoryArchitecture'
+import { PromptCacheManager } from '@/runtime/caching/PromptCacheManager'
+import { usePersonaStore } from '@/stores/persona-store'
+import { configLoader } from '@/runtime/project-config/ConfigLoader'
+import { sessionMemoryExtractor } from '@/runtime/memory/SessionMemoryExtractor'
 
 export type ContextManagerConfig = {
   defaultModel?: string
@@ -28,7 +32,7 @@ export type ContextManagerConfig = {
   enableGitAwareness?: boolean
   enableActiveFileBoost?: boolean
   enableMemoryRanking?: boolean
-  enableWorkspaceAwareness?: boolean
+  enablePromptCaching?: boolean
 }
 
 const DEFAULT_CONFIG: ContextManagerConfig = {
@@ -43,6 +47,7 @@ const DEFAULT_CONFIG: ContextManagerConfig = {
   enableActiveFileBoost: true,
   enableMemoryRanking: true,
   enableWorkspaceAwareness: true,
+  enablePromptCaching: true,
 }
 
 export class ContextManager {
@@ -61,6 +66,7 @@ export class ContextManager {
   private migrationValidator: MigrationValidator
   private capabilityResolver: CapabilityResolver
   private runtimeOS: RuntimeOS | null = null
+  private cacheManager: PromptCacheManager
 
   static getInstance(config?: ContextManagerConfig): ContextManager {
     if (!ContextManager.instance) {
@@ -89,6 +95,8 @@ export class ContextManager {
     this.migrationValidator = new MigrationValidator()
     this.migrationValidator.setMode(this.config.migrationMode!)
     this.capabilityResolver = new CapabilityResolver()
+
+    this.cacheManager = PromptCacheManager.getInstance()
 
     this.runtimeOS = RuntimeOS.getInstance()
     try { this.runtimeOS.initialize() } catch { /* may fail in test env */ }
@@ -232,9 +240,57 @@ export class ContextManager {
 
   async assembleSystemPrompt(
     input: ContextAssemblyInput,
-    options?: { cacheOptimize?: boolean }
+    options?: { cacheOptimize?: boolean; skipCache?: boolean }
   ): Promise<ContextAssemblyResult> {
     const providerCapabilities = this.capabilityResolver.resolveFromModel(this.currentModel)
+
+    // Inject active persona instruction into custom instructions
+    const activePersona = usePersonaStore.getState().activePersona
+    const personaInstruction = activePersona && activePersona.id !== 'none'
+      ? `## Communication Style
+${activePersona.instruction}
+`
+      : ''
+
+    // ── Load AGENTIC.md project configuration ──
+    let projectConfigBlock = ''
+    let projectConfigHash = ''
+    const rootPath = getWorkspaceContextSnapshot()?.rootPath
+    if (rootPath) {
+      try {
+        const configResult = await configLoader.load(rootPath)
+        if (configResult.combined) {
+          projectConfigBlock = `## Project Configuration
+
+${configResult.combined}`
+          projectConfigHash = configResult.hash
+        }
+      } catch (err) {
+        console.warn('[ContextManager] Failed to load project config:', err)
+      }
+    }
+
+    // ── Load path-scoped rules for active file ──
+    let pathScopedBlock = ''
+    if (rootPath && input.activeFilePath) {
+      try {
+        const rules = await configLoader.loadPathScoped(rootPath, input.activeFilePath)
+        if (rules.length > 0) {
+          pathScopedBlock = `## Scoped Rules (${input.activeFilePath})
+
+${rules.map(r => r.content).join('
+
+')}`
+        }
+      } catch {}
+    }
+
+    const mergedInstructions = [
+      ...(input.customInstructions ? [input.customInstructions] : []),
+      ...(personaInstruction ? [personaInstruction] : []),
+      ...(projectConfigBlock ? [projectConfigBlock] : []),
+      ...(pathScopedBlock ? [pathScopedBlock] : []),
+    ]
 
     const resolveCtx: ResolutionContext = defaultContext({
       role: input.role,
@@ -242,7 +298,7 @@ export class ContextManager {
       provider: this.currentModel,
       providerCapabilities,
       memorySummary: input.memorySummary,
-      customInstructions: input.customInstructions ? [input.customInstructions] : undefined,
+      customInstructions: mergedInstructions.length > 0 ? mergedInstructions : undefined,
       environmentInfo: input.environmentInfo,
       isAutonomous: input.role === 'runtime' || input.role === 'memory',
       isMultiAgent: input.role === 'manager',
@@ -256,6 +312,19 @@ export class ContextManager {
     const gitContext = await this.getGitContext()
     const workspaceSummary = await this.getWorkspaceSummary()
 
+    // ── Inject recent session memories for cross-session continuity ──
+    let recentSessionsBlock = ''
+    if (rootPath) {
+      try {
+        const recentSessions = await sessionMemoryExtractor.loadRecentSessions(rootPath, 3)
+        if (recentSessions) {
+          recentSessionsBlock = recentSessions
+        }
+      } catch {
+        // Non-critical — session memory is best-effort
+      }
+    }
+
     const resolveCtxFinal: ResolutionContext = {
       ...resolveCtx,
       toolCount,
@@ -264,14 +333,77 @@ export class ContextManager {
       contextEstimate,
       gitContext: gitContext ?? undefined,
       workspaceSummary: workspaceSummary ?? undefined,
-      memorySummary: await this.injectMemorySummary(input.memorySummary),
+      memorySummary: await this.injectMemorySummary(
+        recentSessionsBlock
+          ? `${input.memorySummary ?? ''}\n\n${recentSessionsBlock}`
+          : input.memorySummary,
+      ),
     }
 
+    // ── Prompt Caching ──
+    // Check if we have a cached system prompt for this (role, model, workspace, config) combination.
+    // The cache key includes a workspace fingerprint so that switching files invalidates the cache.
+    const useCache = this.config.enablePromptCaching && !options?.skipCache
+    let cacheHit = false
+
+    if (useCache) {
+      // Build a lightweight fingerprint of the workspace context that affects the prompt.
+      // This ensures we don't return a stale prompt built for a different workspace state.
+      // Include project config hash in the cache key so AGENTIC.md changes invalidate the cache
+      // (projectConfigHash is loaded earlier in this method from configLoader)
+
+      const wsFingerprint = this.cacheManager.hash([
+        workspaceCtx.activeFilePath ?? '',
+        ...(workspaceCtx.openFiles ?? []).map(f => f.path).sort(),
+      ].join('|'))
+
+      const cacheKey = this.cacheManager.computeKey(
+        this.currentModel,
+        input.role,
+        resolveCtxFinal.customInstructions?.join('\n') ?? '',
+        String(toolCount),
+        wsFingerprint,
+        resolveCtxFinal.memorySummary ?? '',
+      )
+
+      const cached = this.cacheManager.get(cacheKey)
+      if (cached !== null) {
+        cacheHit = true
+        console.log(`[ContextManager] ✓ Prompt cache HIT for ${input.role}@${this.currentModel}`)
+        return {
+          systemPrompt: cached,
+          staticBlocks: [],
+          dynamicBlocks: [],
+          tokenEstimate: Math.round(cached.length / 4),
+          contextWindowSize: contextEstimate.total,
+          budgetRemaining: contextEstimate.remaining,
+        }
+      }
+    }
+
+    // Cache miss — compose the prompt
     const plan = this.promptRegistry.plan(resolveCtxFinal)
     const result = await this.compositionEngine.compose(plan, resolveCtxFinal)
 
     if (options?.cacheOptimize && result.promptText.length < 200) {
       this.compositionEngine.setCompressionLevel('none')
+    }
+
+    // Store in cache on miss
+    if (useCache && !cacheHit && result.promptText.length > 50) {
+      const cacheKey = this.cacheManager.computeKey(
+        this.currentModel,
+        input.role,
+        resolveCtxFinal.customInstructions?.join('\n') ?? '',
+        String(toolCount),
+        this.cacheManager.hash([
+          workspaceCtx.activeFilePath ?? '',
+          ...(workspaceCtx.openFiles ?? []).map(f => f.path).sort(),
+        ].join('|')),
+        resolveCtxFinal.memorySummary ?? '',
+      )
+      this.cacheManager.set(cacheKey, result.promptText)
+      console.log(`[ContextManager] ○ Prompt cache MISS for ${input.role}@${this.currentModel} — cached`)
     }
 
     return {
@@ -388,6 +520,7 @@ export class ContextManager {
 
   clearCaches(): void {
     this.promptRegistry.invalidateCache()
+    this.cacheManager.invalidate('all')
   }
 
   setCompactorConfig(config: Partial<CompactorConfig>): void {
@@ -402,6 +535,10 @@ export class ContextManager {
     return TokenEstimator.tokenCountWithEstimation(messages)
   }
 
+  getCacheManager(): PromptCacheManager {
+    return this.cacheManager
+  }
+
   getContextStats(): {
     model: string
     contextWindow: number
@@ -414,6 +551,7 @@ export class ContextManager {
     relevantFiles: number
     contextTarget: number
     compactStats: { autoCompactTokenThreshold: number; messageCountHardLimit: number; consecutiveCompactions: number; lastStrategy: string | null }
+    cacheStats: import('@/runtime/caching/PromptCacheManager').PromptCacheStats
   } {
     const budgetState = this.budgetTracker.getBudgetState()
     const config = this.resolver.getModelConfig(this.currentModel)
@@ -430,6 +568,7 @@ export class ContextManager {
       relevantFiles: relevant.length,
       contextTarget: this.config.contextTarget ?? 200000,
       compactStats: this.compactor.getCompactStats(),
+      cacheStats: this.cacheManager.getStats(),
     }
   }
 }
