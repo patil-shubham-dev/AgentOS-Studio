@@ -4,6 +4,7 @@ import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
 
 const DEFAULT_MAX_RESULTS = 200
+const ABSOLUTE_MAX_RESULTS = 500
 
 export const GlobTool: AgentTool = buildTool({
   name: 'glob_files',
@@ -29,7 +30,7 @@ export const GlobTool: AgentTool = buildTool({
     const pattern = String(input.pattern ?? '')
     if (!pattern) return { data: null, error: 'pattern is required', isError: true }
 
-    const maxResults = (input.maxResults as number) ?? DEFAULT_MAX_RESULTS
+    const maxResults = Math.min((input.maxResults as number) ?? DEFAULT_MAX_RESULTS, ABSOLUTE_MAX_RESULTS)
     const directory = input.directory as string | undefined
 
     const result = await globFiles(pattern)
