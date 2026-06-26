@@ -17,7 +17,7 @@ Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, wri
 // ── window.electronAPI mock (prevents unhandled rejections in tests that import runtime modules) ──
 const mockElectronAPI = {
   getAppInfo: () => Promise.resolve({ first_launch: false, version: '2.1.0' }),
-  getInstallInfo: () => Promise.resolve({ first_launch: false }),
+  getInstallInfo: () => Promise.resolve({ first_launch: false, build_date: "2026-06-23", git_commit: "test" }),
   exit: () => Promise.resolve(),
   restart: () => Promise.resolve(),
   getAppPaths: () => Promise.resolve({ home: '/tmp', appData: '/tmp/appdata', config: '/tmp/config', cache: '/tmp/cache' }),

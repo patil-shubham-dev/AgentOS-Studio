@@ -2,10 +2,21 @@ import type { Transition, Variants } from "framer-motion"
 
 // ── Duration tokens ──
 export const DURATION = {
+  /** 80ms — instant feedback */
   instant: 0.08,
+  /** 100ms — quick transitions (browser tab open/close etc.) */
+  quick: 0.1,
+  /** 120ms — fast, subtle transitions */
   fast: 0.12,
+  /** 180ms — standard micro-interaction */
+  standard: 0.18,
+  /** 200ms — normal UI transitions */
   normal: 0.2,
+  /** 260ms — deliberate, noticeable */
+  deliberate: 0.26,
+  /** 350ms — slow, emphasis */
   slow: 0.35,
+  /** 500ms — expressive, celebratory */
   expressive: 0.5,
 } as const
 
@@ -17,6 +28,18 @@ export const EASING = {
   spring: { type: "spring" as const, stiffness: 400, damping: 30 },
   springGentle: { type: "spring" as const, stiffness: 200, damping: 20 },
   springBouncy: { type: "spring" as const, stiffness: 500, damping: 15 },
+}
+
+// ── Transition table (duration × easing) ──
+export const TRANSITION = {
+  instant_fade: { duration: DURATION.instant, ease: EASING.default } as Transition,
+  fast_fade: { duration: DURATION.fast, ease: EASING.default } as Transition,
+  standard_fade: { duration: DURATION.standard, ease: EASING.default } as Transition,
+  standard_entrance: { duration: DURATION.standard, ease: EASING.entrance } as Transition,
+  standard_exit: { duration: DURATION.standard, ease: EASING.exit } as Transition,
+  deliberate_fade: { duration: DURATION.deliberate, ease: EASING.default } as Transition,
+  slow_fade: { duration: DURATION.slow, ease: EASING.default } as Transition,
+  slow_entrance: { duration: DURATION.slow, ease: EASING.entrance } as Transition,
 }
 
 // ── Transition presets ──
@@ -83,11 +106,12 @@ export const heightCollapse: Variants = {
 }
 
 // ── Spring config getter (used by ProjectMapPanel et al.) ──
-export function getSpringConfig(name: "default" | "gentle" | "bouncy" | "stiff" = "default"): Transition {
+export function getSpringConfig(name: "default" | "gentle" | "bouncy" | "stiff" | "snappy" = "default"): Transition {
   switch (name) {
     case "gentle": return EASING.springGentle as unknown as Transition
     case "bouncy": return EASING.springBouncy as unknown as Transition
     case "stiff": return { type: "spring" as const, stiffness: 600, damping: 40 } as unknown as Transition
+    case "snappy": return { type: "spring" as const, stiffness: 600, damping: 28 } as unknown as Transition
     default: return EASING.spring as unknown as Transition
   }
 }

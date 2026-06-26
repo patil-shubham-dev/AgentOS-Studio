@@ -48,6 +48,12 @@ function clearStorage(): void {
 
 export type StreamState = "not_started" | "streaming" | "completed" | "failed" | "fallback" | "cancelled"
 
+export interface SessionConfidence {
+  overall: number
+  category: "high" | "medium" | "low"
+  explanations?: string[]
+}
+
 export interface AgentSession {
   stepId: string
   roleId: string
@@ -68,6 +74,7 @@ export interface AgentSession {
   tokenAppended: number  // monotonic counter for dedup guard
   currentPhase?: string
   phaseHistory?: PhaseEntry[]
+  confidence?: SessionConfidence
 }
 
 export interface PhaseEntry {
@@ -88,6 +95,10 @@ interface TimelineState {
   agentSessions: Map<string, AgentSession>
   /** Live streaming text — updated per-token, decoupled from structural agentSessions */
   streamingTexts: Map<string, string>
+  /** Recovery buffer for streaming text whose session hasn't been created yet.
+   *  Flushed into the session when `addAgentSession` or `upgradeOptimisticSession` runs.
+   *  Also used by `commitStreamingText` and `appendAgentStreamText` to avoid dropping tokens. */
+  pendingStreamTexts: Map<string, string>
   sessionOrder: string[]  // tracks insertion order of agent sessions for turn correlation
   sessionCreatedAtEventCount: number[]  // events.length at session creation time
   collapsedSections: Set<string>
@@ -102,6 +113,7 @@ interface TimelineState {
     events: TimelineEvent[]
     agentSessions: Map<string, AgentSession>
     streamingTexts: Map<string, string>
+    pendingStreamTexts?: Map<string, string>
     sessionOrder: string[]
     sessionCreatedAtEventCount: number[]
     collapsedSections: Set<string>
@@ -120,6 +132,8 @@ interface TimelineState {
   appendStreamingText: (stepId: string, text: string) => void
   /** On stream completion: move text from streamingTexts into agentSession, remove from streamingTexts */
   commitStreamingText: (stepId: string) => void
+  /** Flush pending streaming text into session for the given stepId (recovery) */
+  flushPendingText: (stepId: string) => void
   setPhase: (stepId: string, phase: string) => void
   addToolCallToAgent: (stepId: string, toolCall: ToolCallRecord) => void
   updateToolCall: (stepId: string, toolId: string, updates: Partial<ToolCallRecord>) => void
@@ -156,6 +170,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   events: [],
   agentSessions: new Map(),
   streamingTexts: new Map(),
+  pendingStreamTexts: new Map(),
   sessionOrder: [],
   sessionCreatedAtEventCount: [],
   collapsedSections: new Set(),
@@ -187,6 +202,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       events: [],
       agentSessions: new Map(),
       streamingTexts: new Map(),
+      pendingStreamTexts: new Map(),
       sessionOrder: [],
       sessionCreatedAtEventCount: [],
       collapsedSections: new Set(),
@@ -215,6 +231,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       events: state.events,
       agentSessions: state.agentSessions,
       streamingTexts: state.streamingTexts,
+      pendingStreamTexts: new Map((state as any).pendingStreamTexts ?? []),
       sessionOrder: state.sessionOrder,
       sessionCreatedAtEventCount: state.sessionCreatedAtEventCount,
       collapsedSections: state.collapsedSections,
@@ -244,21 +261,74 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     })
   },
 
+  /** Flush any pending streaming text from `pendingStreamTexts` and `streamingTexts`
+   *  into the session for the given stepId. Used after session creation/upgrade to
+   *  recover text that arrived before the session existed. */
+  flushPendingText: (stepId: string) => {
+    set((s) => {
+      const pendingTextParts: string[] = []
+
+      // Recover from pendingStreamTexts buffer
+      const pending = s.pendingStreamTexts.get(stepId)
+      if (pending !== undefined) {
+        pendingTextParts.push(pending)
+      }
+
+      // Recover from streamingTexts (in case commitStreamingText was called before session existed)
+      const liveText = s.streamingTexts.get(stepId)
+      if (liveText !== undefined) {
+        pendingTextParts.push(liveText)
+      }
+
+      if (pendingTextParts.length === 0) return s
+
+      const recovered = pendingTextParts.join("")
+      const nextSessions = new Map(s.agentSessions)
+      const existing = nextSessions.get(stepId)
+      if (!existing) {
+        // Session doesn't exist yet — keep text in pendingStreamTexts for later recovery
+        return s
+      }
+      const nextPending = new Map(s.pendingStreamTexts)
+      nextPending.delete(stepId)
+      const nextStreaming = new Map(s.streamingTexts)
+      nextStreaming.delete(stepId)
+      nextSessions.set(stepId, { ...existing, streamingText: existing.streamingText + recovered })
+      return { pendingStreamTexts: nextPending, streamingTexts: nextStreaming, agentSessions: nextSessions }
+    })
+  },
+
   addAgentSession: (session, correlationId) => {
     set((s) => {
       const next = new Map(s.agentSessions)
       const sessionWithCorrelation = correlationId
         ? { ...session, correlationId, phaseHistory: session.phaseHistory ?? [] }
         : { ...session, phaseHistory: session.phaseHistory ?? [] }
+
+      // Check if there's pending streaming text to recover
+      const pendingText = s.pendingStreamTexts.get(session.stepId) ?? s.streamingTexts.get(session.stepId) ?? ""
+      if (pendingText) {
+        sessionWithCorrelation.streamingText = sessionWithCorrelation.streamingText + pendingText
+      }
+
       next.set(session.stepId, sessionWithCorrelation)
+
       // Prune oldest sessions when over limit
       if (next.size > MAX_AGENT_SESSIONS) {
         const keys = [...next.keys()]
         const toRemove = keys.slice(0, keys.length - MAX_AGENT_SESSIONS)
         for (const k of toRemove) next.delete(k)
       }
+
+      const nextPending = new Map(s.pendingStreamTexts)
+      nextPending.delete(session.stepId)
+      const nextStreaming = new Map(s.streamingTexts)
+      if (pendingText) nextStreaming.delete(session.stepId)
+
       return {
         agentSessions: next,
+        pendingStreamTexts: nextPending,
+        streamingTexts: nextStreaming,
         sessionOrder: [...s.sessionOrder, session.stepId].slice(-MAX_SESSION_ORDER),
         sessionCreatedAtEventCount: [...s.sessionCreatedAtEventCount, s.events.length].slice(-MAX_SESSION_ORDER),
       }
@@ -306,15 +376,30 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const existing = s.agentSessions.get(oldStepId)
       if (!existing) return s
       const nextSessions = new Map(s.agentSessions)
+
+      // Recover pending streaming text for both old and new stepIds
+      const pendingParts: string[] = []
+      const oldPending = s.pendingStreamTexts.get(oldStepId)
+      const newPending = s.pendingStreamTexts.get(newStepId)
+      if (oldPending) pendingParts.push(oldPending)
+      if (newPending) pendingParts.push(newPending)
+      const recoveredPending = pendingParts.join("")
+
       // Preserve any accumulated state, merge with new data
+      const liveFromStreaming = s.streamingTexts.get(oldStepId) ?? s.streamingTexts.get(newStepId) ?? ""
       const merged = {
         ...existing,
         ...updates,
         stepId: newStepId,
-        streamingText: s.streamingTexts.get(oldStepId) ?? existing.streamingText,
+        streamingText: liveFromStreaming + recoveredPending || existing.streamingText + recoveredPending,
       }
       nextSessions.delete(oldStepId)
       nextSessions.set(newStepId, merged)
+
+      const nextPending = new Map(s.pendingStreamTexts)
+      nextPending.delete(oldStepId)
+      nextPending.delete(newStepId)
+
       const nextStreaming = new Map(s.streamingTexts)
       const liveText = nextStreaming.get(oldStepId)
       if (liveText !== undefined) {
@@ -324,6 +409,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const nextOrder = s.sessionOrder.map(id => id === oldStepId ? newStepId : id)
       return {
         agentSessions: nextSessions,
+        pendingStreamTexts: nextPending,
         streamingTexts: nextStreaming,
         sessionOrder: nextOrder,
       }
@@ -359,7 +445,17 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       if (existing) {
         next.set(stepId, { ...existing, streamingText: existing.streamingText + text })
       } else {
-        console.warn(`[TimelineStore] appendAgentStreamText: unknown stepId "${stepId}" — tokens dropped`)
+        // Buffer in pendingStreamTexts for recovery when the session is created later
+        const nextPending = new Map(s.pendingStreamTexts)
+        const current = nextPending.get(stepId) ?? ""
+        nextPending.set(stepId, current + text)
+        // Cap pendingStreamTexts at 100 entries to prevent unbounded growth
+        if (nextPending.size > 100) {
+          const keys = [...nextPending.keys()]
+          const toRemove = keys.slice(0, keys.length - 100)
+          for (const k of toRemove) nextPending.delete(k)
+        }
+        return { agentSessions: next, pendingStreamTexts: nextPending }
       }
       return { agentSessions: next }
     })
@@ -409,8 +505,17 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const nextSessions = new Map(s.agentSessions)
       const session = nextSessions.get(stepId)
       if (!session) {
-        console.warn(`[TimelineStore] commitStreamingText: no session for stepId "${stepId}" — ${liveText.length} chars dropped`)
-        return { streamingTexts: nextStreaming, agentSessions: nextSessions }
+        // Session doesn't exist yet — buffer in pendingStreamTexts for recovery
+        const nextPending = new Map(s.pendingStreamTexts)
+        const current = nextPending.get(stepId) ?? ""
+        nextPending.set(stepId, current + liveText)
+        // Cap pendingStreamTexts at 100 entries to prevent unbounded growth
+        if (nextPending.size > 100) {
+          const keys = [...nextPending.keys()]
+          const toRemove = keys.slice(0, keys.length - 100)
+          for (const k of toRemove) nextPending.delete(k)
+        }
+        return { streamingTexts: nextStreaming, agentSessions: nextSessions, pendingStreamTexts: nextPending }
       }
       nextSessions.set(stepId, { ...session, streamingText: liveText, streamState: "completed", completedAt: Date.now() })
       return { streamingTexts: nextStreaming, agentSessions: nextSessions }
@@ -422,9 +527,28 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const next = new Map(s.agentSessions)
       const existing = next.get(stepId)
       if (existing) {
+        const now = Date.now()
+        const tc = { ...toolCall, startedAt: toolCall.startedAt ?? now }
+        const name = tc.name?.toLowerCase() ?? ""
+        let phase: string | undefined
+        if (name.includes("edit") || name.includes("write")) phase = "Editing"
+        else if (name.includes("read") || name.includes("file")) phase = "Reading files"
+        else if (name.includes("grep") || name.includes("search") || name.includes("glob")) phase = "Searching"
+        else if (name.includes("build") || name.includes("compile")) phase = "Building"
+        else if (name.includes("test") || name.includes("verify") || name.includes("lint") || name.includes("check")) phase = "Verifying"
+        else if (name.includes("browser") || name.includes("navigate")) phase = "Browsing"
+        else if (name.includes("run") || name.includes("bash") || name.includes("command")) phase = "Running command"
+        else if (name.includes("impact") || name.includes("analyze")) phase = "Analyzing"
+        else if (name.includes("plan") || name.includes("delegate") || name.includes("route")) phase = "Planning"
+        else phase = "Processing"
+
         next.set(stepId, {
           ...existing,
-          toolCalls: [...existing.toolCalls, toolCall],
+          toolCalls: [...existing.toolCalls, tc],
+          currentPhase: phase,
+          phaseHistory: existing.currentPhase !== phase
+            ? [...(existing.phaseHistory ?? []), { label: phase, timestamp: Date.now() }]
+            : existing.phaseHistory,
         })
       }
       return { agentSessions: next }
@@ -436,11 +560,15 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const next = new Map(s.agentSessions)
       const existing = next.get(stepId)
       if (existing) {
+        const now = Date.now()
         next.set(stepId, {
           ...existing,
-          toolCalls: existing.toolCalls.map((tc) =>
-            tc.id === toolId ? { ...tc, ...updates } : tc
-          ),
+          toolCalls: existing.toolCalls.map((tc) => {
+            if (tc.id !== toolId) return tc
+            const completedAt = updates.status === "complete" || updates.status === "error" ? now : undefined
+            const durationMs = completedAt ? (completedAt - (tc.startedAt ?? now)) : undefined
+            return { ...tc, ...updates, completedAt: completedAt ?? tc.completedAt, durationMs: durationMs ?? updates.durationMs ?? tc.durationMs }
+          }),
         })
       }
       return { agentSessions: next }

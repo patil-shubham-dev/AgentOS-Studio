@@ -13,6 +13,15 @@ export type LogDomain =
   | "network"
   | "ui"
 
+const API_KEY_PATTERN = /(sk-[a-zA-Z0-9]{20,}|sk-[a-zA-Z0-9]{32,}|[a-zA-Z0-9]{40,}|api[-_]?key['"]?\s*[:=]\s*['"])[a-zA-Z0-9_-]+/gi
+const HOME_PATH_PATTERN = new RegExp(process.env.USERPROFILE?.replace(/\\/g, '\\\\') || 'C:\\\\Users\\\\[^\\\\]+', 'gi')
+
+export function piiScrub(value: string): string {
+  return value
+    .replace(API_KEY_PATTERN, '$1***REDACTED***')
+    .replace(HOME_PATH_PATTERN, '~')
+}
+
 export interface LogEntry {
   id: string
   timestamp: number
@@ -59,8 +68,8 @@ function makeEntry(level: LogLevel, domain: LogDomain, message: string, opts?: {
     timestamp: Date.now(),
     level,
     domain,
-    message,
-    error: opts?.error instanceof Error ? opts.error.message : opts?.error,
+    message: piiScrub(message),
+    error: opts?.error instanceof Error ? piiScrub(opts.error.message) : opts?.error ? piiScrub(String(opts.error)) : undefined,
     stack: opts?.error instanceof Error ? opts.error.stack : undefined,
     durationMs: opts?.durationMs,
     metadata: opts?.metadata,
@@ -143,6 +152,31 @@ export function getLogStats(): Record<string, number> {
 
 export function clearLogs(): void {
   logEntries = []
+}
+
+export function createFilePersistence(): { save(entry: LogEntry): Promise<void> } {
+  const pending: LogEntry[] = []
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+  return {
+    async save(entry: LogEntry): Promise<void> {
+      pending.push(entry)
+      if (!flushTimer) {
+        flushTimer = setTimeout(async () => {
+          flushTimer = null
+          const batch = pending.splice(0)
+          try {
+            const { invoke } = await import("@/lib/electron-api")
+            await invoke("write_text_file", {
+              path: `log-${Date.now()}.json`,
+              content: JSON.stringify(batch),
+            })
+          } catch {
+            // file persistence unavailable — skip
+          }
+        }, 5000)
+      }
+    },
+  }
 }
 
 export function getLogger(domain: LogDomain) {

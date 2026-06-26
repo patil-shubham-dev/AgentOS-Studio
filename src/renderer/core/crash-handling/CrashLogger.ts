@@ -1,4 +1,8 @@
 import type { RuntimeSnapshot, CrashEntry } from './types'
+import { getSubscriptionRegistry, getTimerRegistry } from '@/performance/runtime-assertions'
+import { getMutationTrace } from '@/runtime/runtime-diagnostics'
+import { EventBus } from '@/runtime/EventBus'
+import { useWorkspaceRuntime } from '@/runtime/workspace-runtime'
 
 const CRASH_LOG_KEY = 'agentic-os-crash-log'
 const MAX_ENTRIES = 100
@@ -41,51 +45,31 @@ export async function captureRuntimeSnapshot(): Promise<RuntimeSnapshot> {
     },
   }
 
-  try {
-    const { getSubscriptionRegistry, getTimerRegistry } = await import('@/performance/runtime-assertions')
-    const subReg = getSubscriptionRegistry?.() ?? new Map()
-    let subCount = 0
-    for (const [owner, keys] of subReg) {
-      if (subCount++ >= 50) break
-      snapshot.subscriptions.push({ owner, keys: [...keys] })
-    }
-    const timerReg = getTimerRegistry?.() ?? new Map()
-    let timerCount = 0
-    for (const owner of timerReg.keys()) {
-      if (timerCount++ >= 50) break
-      snapshot.timers.push(owner)
-    }
-  } catch (err) {
-    console.warn("[CrashLogger] Failed to capture subscription/timer snapshot:", err)
+  const subReg = getSubscriptionRegistry?.() ?? new Map()
+  let subCount = 0
+  for (const [owner, keys] of subReg) {
+    if (subCount++ >= 50) break
+    snapshot.subscriptions.push({ owner, keys: [...keys] })
+  }
+  const timerReg = getTimerRegistry?.() ?? new Map()
+  let timerCount = 0
+  for (const owner of timerReg.keys()) {
+    if (timerCount++ >= 50) break
+    snapshot.timers.push(owner)
   }
 
-  try {
-    const { getMutationTrace } = await import('@/runtime/runtime-diagnostics')
-    snapshot.mutationTrace = (getMutationTrace?.() ?? []).slice(-20)
-  } catch (err) {
-    console.warn("[CrashLogger] Failed to capture mutation trace:", err)
+  snapshot.mutationTrace = (getMutationTrace?.() ?? []).slice(-20)
+
+  const bus = EventBus.getInstance()
+  snapshot.eventBus = {
+    listenerCount: bus.getListenerCount(),
+    types: bus.getListenerTypes(),
   }
 
-  try {
-    const { EventBus } = await import('@/runtime/EventBus')
-    const bus = EventBus.getInstance()
-    snapshot.eventBus = {
-      listenerCount: bus.getListenerCount(),
-      types: bus.getListenerTypes(),
-    }
-  } catch (err) {
-    console.warn("[CrashLogger] Failed to capture EventBus snapshot:", err)
-  }
-
-  try {
-    const { useWorkspaceRuntime } = await import('@/runtime/workspace-runtime')
-    const state = useWorkspaceRuntime.getState()
-    snapshot.storeStatus = {
-      workspaceRuntime: state.status,
-      workspaceRuntimeHealth: state.health,
-    }
-  } catch (err) {
-    console.warn("[CrashLogger] Failed to capture store status:", err)
+  const state = useWorkspaceRuntime.getState()
+  snapshot.storeStatus = {
+    workspaceRuntime: state.status,
+    workspaceRuntimeHealth: state.health,
   }
 
   try {
@@ -97,7 +81,7 @@ export async function captureRuntimeSnapshot(): Promise<RuntimeSnapshot> {
         usedJSHeapSize: perf.memory.usedJSHeapSize,
       }
     }
-  } catch {}
+  } catch { console.warn("[CrashLogger] Failed to capture memory snapshot") }
 
   return snapshot
 }

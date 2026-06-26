@@ -3,7 +3,7 @@ import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
 import { BrowserMemory } from '@/runtime/memory/BrowserMemory'
-import { isViewportSession, routeThroughViewport } from '@/lib/browser-controller'
+import { isViewportSession, routeThroughViewport, retryBrowserAction } from '@/lib/browser-controller'
 
 const VIEWPORT_ACTIONS: Record<string, string> = {
   navigate: 'navigate',
@@ -17,13 +17,21 @@ const VIEWPORT_ACTIONS: Record<string, string> = {
   getTitle: 'get_title',
 }
 
+const RETRYABLE_VIEWPORT_ACTIONS = new Set(['click', 'fill', 'press_key'])
+
 async function invokeBrowser<T>(method: string, args: Record<string, unknown>): Promise<T> {
   const sessionId = String(args.sessionId ?? args.session_id ?? '')
   const viewportAction = VIEWPORT_ACTIONS[method]
 
   // Route through live viewport when session is __viewport__
   if (isViewportSession(sessionId) && viewportAction) {
-    const result = await routeThroughViewport(viewportAction, args)
+    const isRetryable = RETRYABLE_VIEWPORT_ACTIONS.has(viewportAction)
+    const doRoute = () => routeThroughViewport(viewportAction, args)
+
+    const result = isRetryable
+      ? await retryBrowserAction(doRoute, { maxRetries: 1, baseDelay: 300, timeout: 8000 })
+      : await doRoute()
+
     if (!result.success) throw new Error(result.error ?? 'Viewport action failed')
     return result.result as T
   }

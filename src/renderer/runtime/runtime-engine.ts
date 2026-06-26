@@ -59,7 +59,7 @@ function warn(...args: unknown[]) {
   console.warn(LOG_PREFIX, "[WARN]", ...args)
 }
 
-function computeGraphRaw(
+export function computeGraphRaw(
   providers: GatewayProvider[],
   roleConfigs: AgentRoleConfig[],
   providerHealth?: Map<string, { lastSuccess: number; lastFailure: number; avgLatencyMs: number; samples: number; streamingSupported: boolean | null }>,

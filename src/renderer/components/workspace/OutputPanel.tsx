@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react"
 import { motion } from "framer-motion"
 import { useOutputStore, type LogEntry } from "@/stores/output-store"
 import { cn } from "@/lib/utils"
+import { safeCapitalize } from "@/lib/safeCapitalize"
 import { Terminal, X, Trash2, Filter, AlertCircle, AlertTriangle, Info } from "lucide-react"
 
 type LogLevel = "all" | "info" | "warn" | "error"
@@ -72,7 +73,7 @@ export function OutputPanel({ open, onClose }: OutputPanelProps) {
                     : "text-white/30 hover:text-white/50",
                 )}
               >
-                {l === "all" ? "All" : l.charAt(0).toUpperCase() + l.slice(1)}
+                {l === "all" ? "All" : safeCapitalize(l, "")}
               </button>
             ))}
           </div>

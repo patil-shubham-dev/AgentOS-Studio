@@ -5,6 +5,7 @@ import { CopyButton } from "@/components/ui/CopyButton"
 import { parseDiff, detectLanguage, applyHighlighting } from "./diff-utils"
 import type { DiffHunk } from "./diff-utils"
 import type { FileEditRecord } from "../../step-card"
+import DOMPurify from "dompurify"
 
 interface DiffCardProps {
   filePath: string
@@ -71,7 +72,7 @@ const DiffLineRow = memo(function DiffLineRow({
         className=        "flex-1 px-2.5 overflow-hidden"
         dangerouslySetInnerHTML={
           highlighted
-            ? { __html: highlighted || " " }
+            ? { __html: DOMPurify.sanitize(highlighted || " ") }
             : undefined
         }
       >

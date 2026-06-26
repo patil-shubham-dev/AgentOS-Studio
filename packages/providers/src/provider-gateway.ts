@@ -1217,7 +1217,7 @@ function parseGeminiFinishReason(raw: string | null): string | null {
 }
 
 function parseGeminiUsage(json: any): UsageInfo | undefined {
-  if (!json.usageMetadata) return undefined
+  if (!json?.usageMetadata) return undefined
   return {
     prompt_tokens: json.usageMetadata.promptTokenCount ?? 0,
     completion_tokens: json.usageMetadata.candidatesTokenCount ?? 0,

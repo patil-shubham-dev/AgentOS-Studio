@@ -68,6 +68,7 @@ export class BrowserManager {
 
       return { sessionId }
     } catch (err: any) {
+      console.warn("[BrowserManager] createSession failed:", err.message)
       return { error: err.message }
     }
   }
@@ -121,7 +122,7 @@ export class BrowserManager {
         session.lastActivity = Date.now()
       }
       return true
-    } catch { return false }
+    } catch { console.warn("[BrowserManager] navigate failed"); return false }
   }
 
   async reload(sessionId: string): Promise<boolean> {
@@ -130,7 +131,7 @@ export class BrowserManager {
     try {
       win.webContents.reload()
       return true
-    } catch { return false }
+    } catch { console.warn("[BrowserManager] reload failed"); return false }
   }
 
   async newTab(sessionId: string, url?: string, _showWindow = false): Promise<string | null> {
@@ -154,7 +155,7 @@ export class BrowserManager {
       session.activeTabId = tabId
       session.lastActivity = Date.now()
       return tabId
-    } catch { return null }
+    } catch { console.warn("[BrowserManager] newTab failed"); return null }
   }
 
   async closeTab(sessionId: string, tabId: string): Promise<boolean> {
@@ -188,7 +189,7 @@ export class BrowserManager {
         })()
       `)
       return true
-    } catch { return false }
+    } catch { console.warn("[BrowserManager] click failed"); return false }
   }
 
   async type(sessionId: string, selector: string, text: string): Promise<boolean> {
@@ -213,7 +214,7 @@ export class BrowserManager {
         })()
       `)
       return true
-    } catch { return false }
+    } catch { console.warn("[BrowserManager] type failed"); return false }
   }
 
   async doubleClick(sessionId: string, selector: string): Promise<boolean> {
@@ -229,7 +230,7 @@ export class BrowserManager {
         })()
       `)
       return true
-    } catch { return false }
+    } catch { console.warn("[BrowserManager] doubleClick failed"); return false }
   }
 
   async hover(sessionId: string, selector: string): Promise<boolean> {
@@ -246,7 +247,7 @@ export class BrowserManager {
         })()
       `)
       return true
-    } catch { return false }
+    } catch { console.warn("[BrowserManager] hover failed"); return false }
   }
 
   async pressKey(sessionId: string, key: string): Promise<boolean> {
@@ -280,7 +281,7 @@ export class BrowserManager {
         })()
       `)
       return true
-    } catch { return false }
+    } catch { console.warn("[BrowserManager] pressKey failed"); return false }
   }
 
   async waitForElement(sessionId: string, selector: string, timeout = 5000): Promise<boolean> {
@@ -304,7 +305,7 @@ export class BrowserManager {
         })()
       `)
       return true
-    } catch { return false }
+    } catch { console.warn("[BrowserManager] waitForElement failed"); return false }
   }
 
   async getConsoleLogs(sessionId: string): Promise<string[]> {
@@ -318,7 +319,7 @@ export class BrowserManager {
           return logs || [];
         })()
       `)
-    } catch { return [] }
+    } catch { console.warn("[BrowserManager] getConsoleLogs failed"); return [] }
   }
 
   async screenshot(sessionId: string): Promise<string | null> {
@@ -329,7 +330,7 @@ export class BrowserManager {
     try {
       const image = await win.webContents.capturePage()
       return image.toPNG().toString('base64')
-    } catch { return null }
+    } catch { console.warn("[BrowserManager] screenshot failed"); return null }
   }
 
   async executeJs(sessionId: string, js: string): Promise<any> {
@@ -356,31 +357,31 @@ export class BrowserManager {
       console.warn(`[BrowserManager] Blocked JS execution: pattern not allowed (${trimmed.slice(0, 80)})`)
       return null
     }
-    try { return await win.webContents.executeJavaScript(js) } catch { return null }
+    try { return await win.webContents.executeJavaScript(js) } catch { console.warn("[BrowserManager] executeJs failed"); return null }
   }
 
   async getText(sessionId: string): Promise<string | null> {
     const win = this.getPage(sessionId)
     if (!win) return null
-    try { return await win.webContents.executeJavaScript('document.body.innerText') } catch { return null }
+    try { return await win.webContents.executeJavaScript('document.body.innerText') } catch { console.warn("[BrowserManager] getText failed"); return null }
   }
 
   async getUrl(sessionId: string): Promise<string | null> {
     const win = this.getPage(sessionId)
     if (!win) return null
-    try { return win.webContents.getURL() } catch { return null }
+    try { return win.webContents.getURL() } catch { console.warn("[BrowserManager] getUrl failed"); return null }
   }
 
   async getTitle(sessionId: string): Promise<string | null> {
     const win = this.getPage(sessionId)
     if (!win) return null
-    try { return win.webContents.getTitle() } catch { return null }
+    try { return win.webContents.getTitle() } catch { console.warn("[BrowserManager] getTitle failed"); return null }
   }
 
   async getContent(sessionId: string): Promise<string | null> {
     const win = this.getPage(sessionId)
     if (!win) return null
-    try { return await win.webContents.executeJavaScript('document.documentElement.outerHTML') } catch { return null }
+    try { return await win.webContents.executeJavaScript('document.documentElement.outerHTML') } catch { console.warn("[BrowserManager] getContent failed"); return null }
   }
 
   async detectBrowsers(): Promise<Array<{ name: string; path: string; version: string }>> {
@@ -398,7 +399,7 @@ export class BrowserManager {
       }))
       writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf-8')
       return true
-    } catch { return false }
+    } catch { console.warn("[BrowserManager] saveState failed"); return false }
   }
 
   async loadState(filePath: string): Promise<{ sessionId: string; restoredTabs: number } | null> {
@@ -431,7 +432,7 @@ export class BrowserManager {
       }
       session.lastActivity = Date.now()
       return { sessionId, restoredTabs: restored }
-    } catch { return null }
+    } catch { console.warn("[BrowserManager] loadState failed"); return null }
   }
 
   cleanup(): void {

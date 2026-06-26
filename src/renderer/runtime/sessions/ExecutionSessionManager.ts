@@ -1,4 +1,5 @@
-import { ExecutionOrchestrator, type ExecuteOptions } from "@/runtime/execution/ExecutionOrchestrator"
+import type { ExecuteOptions } from "@/runtime/execution/ExecutionOrchestrator"
+import { ExecutionOrchestrator } from "@/runtime/execution/ExecutionOrchestrator"
 import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
 import { useAgentStore } from "@/stores/agent-store"
 import { useLedgerStore } from "@/stores/ledger-store"
@@ -10,7 +11,6 @@ import { emitTelemetry } from "@/lib/telemetry"
 import { getStateForToolCall, getActivityForToolCall, getAgentLabel } from "@/components/workspace/agent-visibility/AgentActivityMapper"
 import { ReliabilityManager } from "@/runtime/reliability/ReliabilityManager"
 import { FeatureFlagManager } from "@/runtime/feature-flags/FeatureFlagManager"
-import { AutonomousGoalLoop } from "@/runtime/autonomous/AutonomousGoalLoop"
 import { ObservabilityManager } from "@/runtime/observability/ObservabilityManager"
 import { DeterministicToolRecorder } from "@/runtime/tools/execution/DeterministicToolRecord"
 import { EventBus } from "@/runtime/EventBus"
@@ -54,37 +54,19 @@ export class ExecutionSessionManager {
   /** Maps toolId → TOOL_START args for matching with COMPLETE/ERROR */
   private pendingToolArgs = new Map<string, { toolName: string; args: string; executionId: string }>()
 
-  // ── Priority 1: Runtime telemetry (side-by-side validation) ──
+  // ── Runtime telemetry ──
   private runtimeTelemetry = {
-    /** How many executions went through each runtime */
-    goalLoopCount: 0,
-    legacyCount: 0,
-    /** Completion/success/failure stats */
-    goalLoopCompleted: 0,
-    legacyCompleted: 0,
-    goalLoopFailed: 0,
-    legacyFailed: 0,
-    goalLoopCancelled: 0,
-    legacyCancelled: 0,
-    /** Verification rates */
-    goalLoopVerificationsPassed: 0,
-    legacyVerificationsPassed: 0,
-    goalLoopVerificationsFailed: 0,
-    legacyVerificationsFailed: 0,
-    /** Tool success rates */
-    goalLoopToolCompletes: 0,
-    legacyToolCompletes: 0,
-    goalLoopToolErrors: 0,
-    legacyToolErrors: 0,
-    /** Execution duration (ms) */
-    goalLoopDurations: new Array<number>(),
-    legacyDurations: new Array<number>(),
-    /** Token usage */
-    goalLoopTokenCounts: new Array<number>(),
-    legacyTokenCounts: new Array<number>(),
-    /** Recovery rate (how often auto-fix or retry succeeded) */
-    goalLoopRecoveries: 0,
-    legacyRecoveries: 0,
+    count: 0,
+    completed: 0,
+    failed: 0,
+    cancelled: 0,
+    verificationsPassed: 0,
+    verificationsFailed: 0,
+    toolCompletes: 0,
+    toolErrors: 0,
+    durations: new Array<number>(),
+    tokenCounts: new Array<number>(),
+    recoveries: 0,
   }
 
   /** Max time to wait for first event before auto-cancelling */
@@ -154,9 +136,7 @@ export class ExecutionSessionManager {
     }
     StreamManager.getInstance().resetCancelled()
     const id = generateId()
-    const ff = FeatureFlagManager.getInstance()
-    const useGoalLoop = ff.isEnabled("goalLoop") && !ff.isEnabled("legacyRuntime")
-    const goalId = useGoalLoop ? `goal_${options.correlationId ?? id}` : undefined
+    const goalId = `goal_${options.correlationId ?? id}`
     this.activeSessionId = id
     const session: ExecutionSession = {
       id,
@@ -177,7 +157,7 @@ export class ExecutionSessionManager {
       })
     }
 
-    const observabilityEnabled = ff.isEnabled("observability")
+    const observabilityEnabled = FeatureFlagManager.getInstance().isEnabled("observability")
 
     // ── Dispatch plugin onSessionStart hook ──
     pluginRegistry.dispatchOnSessionStart(id, options.input).catch((err) => {
@@ -185,26 +165,12 @@ export class ExecutionSessionManager {
     })
 
     try {
-      // ── Runtime selection ──
-      if (useGoalLoop) {
-        this.runtimeTelemetry.goalLoopCount++
-        console.log(`[SessionManager] ▶ using GoalLoop (session=${id})`)
-      } else {
-        this.runtimeTelemetry.legacyCount++
-        console.warn(
-          `[SessionManager] ⚠ DEPRECATED: using legacy ExecutionOrchestrator (session=${id}). ` +
-          `GoalLoop is the primary runtime. Set "legacyRuntime" flag only for emergency rollback.`
-        )
-      }
-
-      const eventStream = useGoalLoop
-        ? AutonomousGoalLoop.getInstance().runGoal({
-            goalId: goalId!,
-            objective: options.input,
-            role: options.activeRole,
-            budget: { maxIterations: 10 },
-          }, options.signal)
-        : this.orchestrator.execute(options)
+      // ── Always use ExecutionOrchestrator (with EditPreview enforcement) ──
+      console.log(`[SessionManager] ▶ using ExecutionOrchestrator (session=${id})`)
+      const eventStream = this.orchestrator.execute({
+        ...options,
+        goalId,
+      })
 
       // ── Observability: start replay session + trace ──
       if (observabilityEnabled) {
@@ -217,13 +183,9 @@ export class ExecutionSessionManager {
       let stallTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
         if (!firstEventReceived) {
           console.warn(`${mgrTag} ✗ no event received within ${ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS}ms — auto-cancelling`)
-          if (useGoalLoop) {
-            AutonomousGoalLoop.getInstance().cancelAll()
-          } else {
-            this.orchestrator.cancel()
-          }
+          this.orchestrator.cancel()
         }
-      }, useGoalLoop ? ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS * 2 : ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS)
+      }, ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS)
 
       let eventCount = 0
       for await (const event of eventStream) {
@@ -312,9 +274,10 @@ export class ExecutionSessionManager {
       const timeline = useTimelineStore.getState()
       for (const [execId, stepId] of this.stepByExecId) {
         StreamManager.getInstance().clearStep(stepId)
+        // pendingStreamTexts recovery buffer preserves text if session doesn't exist yet
         timeline.commitStreamingText(stepId)
+        timeline.flushPendingText(stepId)
         timeline.updateAgentSession(stepId, { status: "complete", streamState: "cancelled" })
-        timeline.streamingTexts.delete(stepId)
       }
       for (const [execId, initStepId] of this.initStepIds) {
         timeline.updateAgentSession(initStepId, { status: "complete", streamState: "cancelled" })
@@ -326,12 +289,13 @@ export class ExecutionSessionManager {
       if (options.correlationId) {
         const optimisticStepId = `optimistic_${options.correlationId}`
         if (timeline.agentSessions.has(optimisticStepId)) {
+          // Flush any pending text before marking as failed
+          timeline.flushPendingText(optimisticStepId)
           timeline.updateAgentSession(optimisticStepId, {
             status: "error",
             streamState: "failed",
             error: msg,
           })
-          timeline.streamingTexts.delete(optimisticStepId)
         }
       }
     } finally {
@@ -443,11 +407,7 @@ export class ExecutionSessionManager {
         // Track token usage per runtime
         const tokens = (event as any).tokens ?? (event.content ? Math.round(event.content.length / 4) : 0)
         if (tokens > 0) {
-          if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
-            this.runtimeTelemetry.goalLoopTokenCounts.push(tokens)
-          } else {
-            this.runtimeTelemetry.legacyTokenCounts.push(tokens)
-          }
+          this.runtimeTelemetry.tokenCounts.push(tokens)
         }
         break
       }
@@ -494,11 +454,7 @@ export class ExecutionSessionManager {
             lastAction: `${getActivityForToolCall(event.toolName).label} completed`,
           })
         }
-        if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
-          this.runtimeTelemetry.goalLoopToolCompletes++
-        } else {
-          this.runtimeTelemetry.legacyToolCompletes++
-        }
+        this.runtimeTelemetry.toolCompletes++
         break
       }
 
@@ -518,11 +474,7 @@ export class ExecutionSessionManager {
             lastAction: `Error: ${event.error?.slice(0, 80)}`,
           })
         }
-        if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
-          this.runtimeTelemetry.goalLoopToolErrors++
-        } else {
-          this.runtimeTelemetry.legacyToolErrors++
-        }
+        this.runtimeTelemetry.toolErrors++
         break
       }
 
@@ -643,7 +595,7 @@ export class ExecutionSessionManager {
             error: wasCancelled ? undefined : event.error,
           })
           if (wasCancelled) {
-            timeline.streamingTexts.delete(efStepId)
+            timeline.flushPendingText(efStepId)
           }
           this.stepByExecId.delete(event.executionId)
         }
@@ -798,17 +750,9 @@ export class ExecutionSessionManager {
           })
         }
         if (event.recovered) {
-          if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
-            this.runtimeTelemetry.goalLoopRecoveries++
-          } else {
-            this.runtimeTelemetry.legacyRecoveries++
-          }
+          this.runtimeTelemetry.recoveries++
         }
-        if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
-          this.runtimeTelemetry.goalLoopVerificationsPassed++
-        } else {
-          this.runtimeTelemetry.legacyVerificationsPassed++
-        }
+        this.runtimeTelemetry.verificationsPassed++
         break
       }
 
@@ -821,11 +765,7 @@ export class ExecutionSessionManager {
             lastAction: `Lint:${event.lintErrors} Type:${event.typeErrors} Build:${event.buildErrors} Test:${event.testFailures}`,
           })
         }
-        if (this.activeSessionId && this.sessions.get(this.activeSessionId)?.goalId) {
-          this.runtimeTelemetry.goalLoopVerificationsFailed++
-        } else {
-          this.runtimeTelemetry.legacyVerificationsFailed++
-        }
+        this.runtimeTelemetry.verificationsFailed++
         break
       }
 
@@ -998,56 +938,32 @@ export class ExecutionSessionManager {
 
   /** Record per-runtime telemetry for side-by-side validation */
   private recordRuntimeTelemetry(session: ExecutionSession, eventCount: number): void {
-    const isGoalLoop = !!session.goalId
     const duration = session.completedAt ? session.completedAt - session.startedAt : 0
 
-    if (isGoalLoop) {
-      if (session.status === "completed") this.runtimeTelemetry.goalLoopCompleted++
-      else if (session.status === "failed") this.runtimeTelemetry.goalLoopFailed++
-      else if (session.status === "cancelled") this.runtimeTelemetry.goalLoopCancelled++
-      if (duration > 0) this.runtimeTelemetry.goalLoopDurations.push(duration)
-    } else {
-      if (session.status === "completed") this.runtimeTelemetry.legacyCompleted++
-      else if (session.status === "failed") this.runtimeTelemetry.legacyFailed++
-      else if (session.status === "cancelled") this.runtimeTelemetry.legacyCancelled++
-      if (duration > 0) this.runtimeTelemetry.legacyDurations.push(duration)
-    }
+    if (session.status === "completed") this.runtimeTelemetry.completed++
+    else if (session.status === "failed") this.runtimeTelemetry.failed++
+    else if (session.status === "cancelled") this.runtimeTelemetry.cancelled++
+    if (duration > 0) this.runtimeTelemetry.durations.push(duration)
 
     // Log telemetry summary every 10 sessions for observability
-    const totalSessions = this.runtimeTelemetry.goalLoopCount + this.runtimeTelemetry.legacyCount
-    if (totalSessions > 0 && totalSessions % 10 === 0) {
+    this.runtimeTelemetry.count++
+    if (this.runtimeTelemetry.count > 0 && this.runtimeTelemetry.count % 10 === 0) {
       emitTelemetry({
         type: "runtime_telemetry",
         timestamp: Date.now(),
         metadata: {
-          goalLoop: {
-            count: this.runtimeTelemetry.goalLoopCount,
-            completed: this.runtimeTelemetry.goalLoopCompleted,
-            failed: this.runtimeTelemetry.goalLoopFailed,
-            cancelled: this.runtimeTelemetry.goalLoopCancelled,
-            verificationsPassed: this.runtimeTelemetry.goalLoopVerificationsPassed,
-            verificationsFailed: this.runtimeTelemetry.goalLoopVerificationsFailed,
-            toolCompletes: this.runtimeTelemetry.goalLoopToolCompletes,
-            toolErrors: this.runtimeTelemetry.goalLoopToolErrors,
-            avgDurationMs: this.runtimeTelemetry.goalLoopDurations.length > 0
-              ? Math.round(this.runtimeTelemetry.goalLoopDurations.reduce((a, b) => a + b, 0) / this.runtimeTelemetry.goalLoopDurations.length)
-              : 0,
-            recoveries: this.runtimeTelemetry.goalLoopRecoveries,
-          },
-          legacy: {
-            count: this.runtimeTelemetry.legacyCount,
-            completed: this.runtimeTelemetry.legacyCompleted,
-            failed: this.runtimeTelemetry.legacyFailed,
-            cancelled: this.runtimeTelemetry.legacyCancelled,
-            verificationsPassed: this.runtimeTelemetry.legacyVerificationsPassed,
-            verificationsFailed: this.runtimeTelemetry.legacyVerificationsFailed,
-            toolCompletes: this.runtimeTelemetry.legacyToolCompletes,
-            toolErrors: this.runtimeTelemetry.legacyToolErrors,
-            avgDurationMs: this.runtimeTelemetry.legacyDurations.length > 0
-              ? Math.round(this.runtimeTelemetry.legacyDurations.reduce((a, b) => a + b, 0) / this.runtimeTelemetry.legacyDurations.length)
-              : 0,
-            recoveries: this.runtimeTelemetry.legacyRecoveries,
-          },
+          count: this.runtimeTelemetry.count,
+          completed: this.runtimeTelemetry.completed,
+          failed: this.runtimeTelemetry.failed,
+          cancelled: this.runtimeTelemetry.cancelled,
+          verificationsPassed: this.runtimeTelemetry.verificationsPassed,
+          verificationsFailed: this.runtimeTelemetry.verificationsFailed,
+          toolCompletes: this.runtimeTelemetry.toolCompletes,
+          toolErrors: this.runtimeTelemetry.toolErrors,
+          avgDurationMs: this.runtimeTelemetry.durations.length > 0
+            ? Math.round(this.runtimeTelemetry.durations.reduce((a, b) => a + b, 0) / this.runtimeTelemetry.durations.length)
+            : 0,
+          recoveries: this.runtimeTelemetry.recoveries,
         },
       })
     }
@@ -1081,19 +997,15 @@ export class ExecutionSessionManager {
     // 1. Stop all streams immediately
     StreamManager.getInstance().clearAll()
 
-    // 2. Abort the orchestrator or goal loop
-    if (session.goalId) {
-      AutonomousGoalLoop.getInstance().cancelGoal(session.goalId)
-    } else {
-      this.orchestrator.cancel()
-    }
+    // 2. Abort any active runtime
+    this.orchestrator.cancel()
 
     // 3. Finalize all store state immediately
     const timeline = useTimelineStore.getState()
     for (const [execId, stepId] of this.stepByExecId) {
       timeline.commitStreamingText(stepId)
+      timeline.flushPendingText(stepId)
       timeline.updateAgentSession(stepId, { status: "complete", streamState: "cancelled", completedAt: Date.now() })
-      timeline.streamingTexts.delete(stepId)
     }
     for (const [execId, initStepId] of this.initStepIds) {
       timeline.updateAgentSession(initStepId, { status: "complete", streamState: "cancelled", completedAt: Date.now() })

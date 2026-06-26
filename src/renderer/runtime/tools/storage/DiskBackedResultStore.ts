@@ -1,5 +1,10 @@
 import { join, relative } from 'path'
-import { readTextFile, writeTextFile, exists, mkdir, remove, readDir, invoke } from '@/lib/electron-api'
+
+let electronApi: Promise<typeof import("@/lib/electron-api")> | undefined
+async function getElectronApi() {
+  if (!electronApi) electronApi = import("@/lib/electron-api")
+  return electronApi
+}
 
 export interface StoredResult {
   id: string
@@ -32,6 +37,7 @@ export class DiskBackedResultStore {
   async initialize(workspaceRoot: string): Promise<void> {
     if (this.initialized) return
     this.resultsDir = join(workspaceRoot, RESULTS_DIR_NAME)
+    const { exists, mkdir } = await getElectronApi()
     const dirExists = await exists(this.resultsDir)
     if (!dirExists) {
       await mkdir(this.resultsDir)
@@ -43,6 +49,7 @@ export class DiskBackedResultStore {
   private async scanExisting(): Promise<void> {
     if (!this.resultsDir) return
     try {
+      const { readDir, readTextFile, remove } = await getElectronApi()
       const entries = await readDir(this.resultsDir)
       for (const entry of entries) {
         if (entry.isDirectory) continue
@@ -98,6 +105,7 @@ export class DiskBackedResultStore {
       createdAt: Date.now(),
       toolName,
     }
+    const { writeTextFile } = await getElectronApi()
     await writeTextFile(result.filePath, JSON.stringify({ content, ...result }))
     this.store.set(id, result)
     this.totalBytes += content.length
@@ -110,6 +118,7 @@ export class DiskBackedResultStore {
     if (!meta) return null
     try {
       if (meta.filePath) {
+        const { exists, readTextFile } = await getElectronApi()
         const fileExists = await exists(meta.filePath)
         if (fileExists) {
           const raw = await readTextFile(meta.filePath)
@@ -140,6 +149,7 @@ export class DiskBackedResultStore {
     if (!meta) return false
     try {
       if (meta.filePath) {
+        const { exists, remove } = await getElectronApi()
         const fileExists = await exists(meta.filePath)
         if (fileExists) {
           await remove(meta.filePath)

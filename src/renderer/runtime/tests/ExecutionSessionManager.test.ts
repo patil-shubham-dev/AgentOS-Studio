@@ -210,7 +210,7 @@ describe("StreamManager — no stale streams after complete", () => {
     StreamManager.getInstance().append("test-step", "hello")
     StreamManager.getInstance().complete("test-step")
     const state = StreamManager.getInstance().getState()
-    expect(state.activeStreams).toBe(1) // still tracked but inactive
+    expect(state.activeStreams).toBe(0) // stream removed from buffer after complete+flush
     expect(state.pendingTokens).toBe(0)
   })
 })

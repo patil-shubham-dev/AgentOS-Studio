@@ -20,6 +20,7 @@ import { semanticSearch, type SemanticSearchResult } from "@/lib/semantic-search
 import type { FileEntry } from "@/types"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
+import { readFile } from "@/lib/filesystem"
 import { getSpringConfig } from "@/lib/motion"
 
 function ContextMenuItem({ label, onClick, icon, className }: {
@@ -54,6 +55,7 @@ interface FlatNode {
   gitStatus?: string
   agentBadge?: { label: string; color: string; icon?: string }
   hasChildren: boolean
+  isRelevant?: boolean
 }
 
 /** Default height for a tree row without any indicators */
@@ -219,11 +221,14 @@ function VirtualTreeRow({
         )}
       </div>
 
+      {node.isRelevant && !node.isDir && (
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-400/50 shrink-0" title="Task-relevant file" />
+      )}
       <span className={cn(
         "truncate text-[11px]",
         isActiveFile ? "text-blue-300 font-medium" : node.isDir ? "text-white/60 font-medium" : "text-white/45",
       )}>
-        {node.name}
+        {typeof node.name === "string" ? node.name : String(node.name ?? "")}
       </span>
 
       {node.gitStatus && (
@@ -239,7 +244,7 @@ function VirtualTreeRow({
         </span>
       )}
 
-      {node.agentBadge && badgeStyle && (
+      {node.agentBadge && badgeStyle && badgeKey !== "error" && badgeKey !== "relevant" && (
         <span className={cn(
           "ml-auto flex items-center gap-0.5 text-[8px] px-1 rounded truncate max-w-[72px]",
           badgeStyle.bg, badgeStyle.text,
@@ -248,6 +253,11 @@ function VirtualTreeRow({
           {badgeKey === "editing" ? "Editing" :
            badgeKey === "reading" ? "Reading" :
            badgeKey === "reviewing" ? "QA" : "Ref"}
+        </span>
+      )}
+      {badgeKey === "error" && (
+        <span className="ml-auto flex items-center gap-0.5 text-[8px] px-1.5 rounded bg-red-500/15 text-red-400/70 font-medium">
+          Error
         </span>
       )}
     </div>
@@ -282,6 +292,7 @@ function flattenTree(
       gitStatus: gitStatus[entryPath],
       agentBadge: activity,
       hasChildren: entry.is_dir && entry.children.length > 0,
+      isRelevant: activity?.label === "Relevant",
     })
     if (entry.is_dir && isExpanded && entry.children) {
       result.push(...flattenTree(entry.children, expandedPaths, gitStatus, fileActivities, depth + 1))
@@ -333,7 +344,7 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
       }
       for (const entry of gitStatus) {
         const absPath = `${normRoot}/${entry.path}`
-        map[absPath] = STATUS_CHAR[entry.status] || entry.status[0]?.toUpperCase() || "?"
+        map[absPath] = STATUS_CHAR[entry.status] || (entry.status?.[0]?.toUpperCase() ?? "?")
       }
       return map
     }, [gitStatus, rootPath])
@@ -430,7 +441,7 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
       let symResults: SymbolInfo[] = []
       try {
         symResults = workspaceSymbolIndex.fuzzySearchSymbols(searchQuery).slice(0, 15)
-      } catch {}
+      } catch { console.warn("[WorkspaceExplorer] Symbol search failed") }
 
       setFileSearchResults(fileResults.slice(0, 100))
       setSymbolResults(symResults)
@@ -457,7 +468,6 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
       if (entry && !entry.is_dir && rootPath) {
         const loadContent = async () => {
           try {
-            const { readFile } = await import("@/lib/filesystem")
             const content = await readFile(path)
             openFile({ path, name: entry.name, content, isDirty: false })
           } catch {

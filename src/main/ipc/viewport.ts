@@ -33,7 +33,7 @@ export function registerViewportHandlers(
   const sendToWindow = (channel: string, ...args: unknown[]) => {
     const mw = windowManager.getMainWindow()
     if (mw && !mw.isDestroyed() && mw.webContents) {
-      try { mw.webContents.send(channel, ...args) } catch {}
+      try { mw.webContents.send(channel, ...args) } catch { console.warn("[IPC] Failed to send message to window") }
     }
   }
 

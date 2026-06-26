@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { safeCapitalize } from "@/lib/safeCapitalize"
 import { Badge, TooltipSimple as Tooltip } from "@agentic-os/ui"
 import { useAppStore } from "@/stores/app-store"
 import { useModelBenchmarks, type ModelBenchmarkData } from "@/hooks/use-model-benchmarks"
@@ -162,12 +163,12 @@ function ProviderGroup({
             ? "border-green-500/20 bg-green-500/10 text-green-400"
             : "border-blue-500/20 bg-blue-500/10 text-blue-400",
         )}>
-          {provider.name.charAt(0).toUpperCase()}
+          {safeCapitalize(provider.name, "?")[0]}
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-white">{provider.name}</span>
+            <span className="text-sm font-semibold text-white">{provider.name ?? "Unnamed Provider"}</span>
             <Badge variant={provider.isLocal ? "info" : "default"} size="sm" className="text-[10px]">
               {provider.isLocal ? "Local" : "Remote"}
             </Badge>
@@ -274,10 +275,10 @@ function BenchmarkCard({
             ? "border-green-500/20 bg-green-500/10 text-green-400"
             : "border-blue-500/20 bg-blue-500/10 text-blue-400",
         )}>
-          {provider.name.charAt(0).toUpperCase()}
+          {safeCapitalize(provider.name, "?")[0]}
         </div>
         <div>
-          <div className="text-sm font-semibold text-white">{provider.name}</div>
+          <div className="text-sm font-semibold text-white">{provider.name ?? "Unnamed Provider"}</div>
           <div className="text-[10px] text-white/30 font-mono">{provider.baseUrl}</div>
         </div>
       </div>

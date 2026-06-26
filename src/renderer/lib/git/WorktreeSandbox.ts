@@ -140,22 +140,20 @@ export class WorktreeSandboxManager {
 
   /** Map a file path from the workspace root to the worktree path */
   mapPath(sandbox: Sandbox, originalPath: string): string {
-    // Normalize separators
     const normalized = originalPath.replace(/\\/g, "/")
+    const worktreePath = sandbox.worktreePath.replace(/\\/g, "/")
     const root = sandbox.workspaceRoot.replace(/\\/g, "/")
 
-    if (normalized.startsWith(root)) {
-      const relative = normalized.slice(root.length)
-      return sandbox.worktreePath.replace(/\\/g, "/") + relative
-    }
-
-    // If the path is already absolute but within the worktree, return as-is
-    if (normalized.startsWith(sandbox.worktreePath.replace(/\\/g, "/"))) {
+    if (normalized.startsWith(worktreePath)) {
       return normalized
     }
 
-    // Fallback: assume it's a relative path
-    return `${sandbox.worktreePath.replace(/\\/g, "/")}/${normalized}`
+    if (normalized.startsWith(root)) {
+      const relative = normalized.slice(root.length)
+      return worktreePath + relative
+    }
+
+    return `${worktreePath}/${normalized}`
   }
 
   /** Get the diff between main and the sandbox branch */

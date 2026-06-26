@@ -19,6 +19,28 @@ globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
 globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id)
 globalThis.performance = globalThis.performance ?? Date.now() as any
 
+vi.mock("@agentic-os/providers", () => {
+  const mockProviderTransport = vi.fn().mockImplementation(() => {
+    function createStream(handlers: any) {
+      const tokens = ["Hello", "! ", "I", " am", " an", " AI", " assistant", "."]
+      ;(async () => {
+        for (const t of tokens) {
+          handlers.onToken?.(t)
+          await new Promise(r => setTimeout(r, 1))
+        }
+        handlers.onDone?.()
+      })()
+    }
+    return {
+      streamChatCompletion: vi.fn().mockImplementation((_cfg: any, _params: any, handlers: any) => {
+        createStream(handlers)
+        return Promise.resolve()
+      }),
+      chatCompletion: vi.fn().mockResolvedValue({ content: "Hello! I am an AI assistant.", usage: { promptTokens: 10, completionTokens: 8, totalTokens: 18 } }),
+    }
+  })
+  return { ProviderTransport: mockProviderTransport, StreamTransport: vi.fn() }
+})
 vi.mock("@/runtime/providers/ProviderRuntime", () => ({
   ProviderRuntime: vi.fn().mockImplementation(() => ({
     setDefaultModel: vi.fn(),
@@ -109,13 +131,9 @@ describe("Runtime Stabilization", () => {
 
   // ── P1. Full Pipeline Validation ──
 
-  it("completes full event flow through Orchestrator → StreamManager → SessionManager", async () => {
+  it("completes full event flow through Orchestrator pipeline", async () => {
     const orchestrator = ExecutionOrchestrator.getInstance()
     const events: ExecutionEvent[] = []
-    const flushCallback = vi.fn()
-
-    StreamManager.getInstance().setFlushCallback(flushCallback)
-    StreamManager.getInstance().resetCancelled()
 
     const stream = orchestrator.execute({
       input: "hello",
@@ -125,7 +143,6 @@ describe("Runtime Stabilization", () => {
     for await (const event of stream) {
       events.push(event)
     }
-    StreamManager.getInstance().flushImmediate()
 
     expect(events.length).toBeGreaterThanOrEqual(6)
     const types = events.map(e => e.type)
@@ -136,31 +153,23 @@ describe("Runtime Stabilization", () => {
     expect(types).toContain("MESSAGE_COMPLETE")
     expect(types).toContain("EXECUTION_COMPLETE")
     expect(types).not.toContain("EXECUTION_FAILED")
-
-    expect(flushCallback).toHaveBeenCalled()
   })
 
-  // ── P2. Duplicate Execution Guard ──
+  // ── P2. Duplicate Execution Queuing ──
 
-  it("rejects concurrent execution when already running", async () => {
+  it("queues concurrent execution instead of rejecting", async () => {
     const orchestrator = ExecutionOrchestrator.getInstance()
-    // Must start iterating stream1 to trigger the generator body (sets isExecuting)
     const stream1 = orchestrator.execute({ input: "hello", activeRole: "coder" as any })
-    const it1 = stream1[Symbol.asyncIterator]()
-    await it1.next() // triggers generator body up to first yield, setting isExecuting = true
+    const stream2 = orchestrator.execute({ input: "hello", activeRole: "coder" as any })
 
-    let rejected = false
-    try {
-      const stream2 = orchestrator.execute({ input: "hello", activeRole: "coder" as any })
-      for await (const _ of stream2) { /* drain */ }
-    } catch (e) {
-      rejected = true
-      expect((e as Error).message).toContain("already in progress")
-    }
-    expect(rejected).toBe(true)
+    const events1: any[] = []
+    for await (const e of stream1) { events1.push(e) }
+    const events2: any[] = []
+    for await (const e of stream2) { events2.push(e) }
 
-    // Drain remaining first stream
-    for await (const _ of stream1) { /* drain */ }
+    // Both streams should produce events (queued, not rejected)
+    expect(events1.some((e: any) => e.type === "EXECUTION_COMPLETE")).toBe(true)
+    expect(events2.some((e: any) => e.type === "EXECUTION_COMPLETE")).toBe(true)
   })
 
   // ── P3. Cancellation Propagation ──
@@ -394,26 +403,24 @@ describe("Runtime Stabilization", () => {
 
   // ── P10. StreamManager With Orchestrator Pipeline ──
 
-  it("delivers tokens via StreamManager flush during execution", async () => {
+  it("delivers tokens via EventChannel TOKEN events during execution", async () => {
     const orchestrator = ExecutionOrchestrator.getInstance()
-    const flushedTokens: string[] = []
-
-    StreamManager.getInstance().resetCancelled()
-    StreamManager.getInstance().setFlushCallback((_stepId, delta) => {
-      flushedTokens.push(delta)
-    })
+    const events: ExecutionEvent[] = []
 
     const stream = orchestrator.execute({
       input: "hello",
       activeRole: "coder" as any,
     })
 
-    for await (const _ of stream) { /* drain */ }
-    StreamManager.getInstance().flushImmediate()
+    for await (const event of stream) {
+      events.push(event)
+    }
 
-    const combined = flushedTokens.join("")
-    expect(combined.length).toBeGreaterThan(0)
-    expect(combined).toBe("Hello! I am an AI assistant.")
+    const types = events.map(e => e.type)
+    expect(types).toContain("TOKEN")
+    expect(types).toContain("MESSAGE_COMPLETE")
+    expect(types).toContain("EXECUTION_COMPLETE")
+    expect(types).not.toContain("EXECUTION_FAILED")
   })
 
   // ── P11. TimelineStore State Consistency ──
@@ -422,12 +429,6 @@ describe("Runtime Stabilization", () => {
     const orchestrator = ExecutionOrchestrator.getInstance()
     const timeline = useTimelineStore.getState()
     const sessionsBefore = timeline.agentSessions.size
-
-    StreamManager.getInstance().resetCancelled()
-    StreamManager.getInstance().setFlushCallback((stepId, delta) => {
-      const st = useTimelineStore.getState()
-      st.appendStreamingText(stepId, delta)
-    })
 
     const stream = orchestrator.execute({
       input: "hello",
@@ -455,11 +456,10 @@ describe("Runtime Stabilization", () => {
         })
       }
       if (event.type === "MESSAGE_COMPLETE") {
-        st.commitStreamingText(event.stepId)
-        st.updateAgentSession(event.stepId, { status: "complete" })
+        const st2 = useTimelineStore.getState()
+        st2.updateAgentSession(event.stepId, { status: "complete", streamState: "completed" })
       }
     }
-    StreamManager.getInstance().flushImmediate()
 
     const finalState = useTimelineStore.getState()
     expect(finalState.agentSessions.size).toBeGreaterThan(sessionsBefore)

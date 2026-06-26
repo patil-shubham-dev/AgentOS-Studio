@@ -42,7 +42,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 function getStatusColor(code?: number): string {
   if (!code) return "text-white/30"
-  return STATUS_COLORS[String(code).charAt(0)] ?? "text-white/30"
+  return STATUS_COLORS[String(code)[0]] ?? "text-white/30"
 }
 
 const FILTERS: { id: FilterMode; label: string }[] = [
@@ -123,7 +123,7 @@ export function NetworkInspector() {
         const newLogs = logs.filter((r: NetworkRequest) => !ids.has(r.id))
         return newLogs.length > 0 ? [...newLogs, ...prev] : prev
       })
-    } catch {}
+    } catch { console.warn("[NetworkInspector] Failed to load network logs") }
   }, [])
 
   useEffect(() => { loadInitial() }, [loadInitial])

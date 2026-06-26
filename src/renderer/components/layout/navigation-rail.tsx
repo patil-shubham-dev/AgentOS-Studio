@@ -21,6 +21,7 @@ import {
   BarChart3,
   Puzzle,
   Shield,
+  Layers,
 } from "lucide-react"
 
 interface NavItem {
@@ -39,6 +40,7 @@ const TOP_NAV_ITEMS: NavItem[] = [
 const MONITOR_NAV_ITEMS: NavItem[] = [
   { id: "memory", label: "Memory", icon: <Brain className="h-5 w-5" />, route: "/memory" },
   { id: "context", label: "Context", icon: <Activity className="h-5 w-5" />, route: "/context" },
+  { id: "orchestration", label: "Orchestration", icon: <Layers className="h-5 w-5" />, route: "/orchestration" },
   { id: "personas", label: "Personas", icon: <Palette className="h-5 w-5" />, route: "/personas" },
   { id: "performance", label: "Performance", icon: <BarChart3 className="h-5 w-5" />, route: "/performance" },
   { id: "plugins", label: "Plugins", icon: <Puzzle className="h-5 w-5" />, route: "/plugins" },

@@ -6,6 +6,8 @@ const ACTIVITY_LABELS: Record<string, string> = {
   reading: "Reading",
   referencing: "Referenced",
   reviewing: "Reviewing",
+  relevant: "Relevant",
+  error: "Error",
 }
 
 const ACTIVITY_COLORS: Record<string, string> = {
@@ -13,6 +15,8 @@ const ACTIVITY_COLORS: Record<string, string> = {
   reading: "text-blue-400",
   referencing: "text-purple-400",
   reviewing: "text-cyan-400",
+  relevant: "text-white/30",
+  error: "text-red-400",
 }
 
 export function useAgentFileBadges(rootPath: string | null): {

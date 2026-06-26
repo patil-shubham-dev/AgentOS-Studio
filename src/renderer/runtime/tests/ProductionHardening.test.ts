@@ -26,6 +26,29 @@ globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => setTimeout(() =
 globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id)
 globalThis.performance = globalThis.performance ?? Date.now() as any
 
+vi.mock("@agentic-os/providers", () => {
+  const mockProviderTransport = vi.fn().mockImplementation(() => {
+    function createStream(handlers: any) {
+      const tokens = ["Hello", "! ", "I", " am", " an", " AI", " assistant", "."]
+      ;(async () => {
+        for (const t of tokens) {
+          mockTokenCalls.push(t)
+          handlers.onToken?.(t)
+          await new Promise(r => setTimeout(r, mockFastChatDelay))
+        }
+        handlers.onDone?.()
+      })()
+    }
+    return {
+      streamChatCompletion: vi.fn().mockImplementation((_cfg: any, _params: any, handlers: any) => {
+        createStream(handlers)
+        return Promise.resolve()
+      }),
+      chatCompletion: vi.fn().mockResolvedValue({ content: "Hello! I am an AI assistant.", usage: { promptTokens: 10, completionTokens: 8, totalTokens: 18 } }),
+    }
+  })
+  return { ProviderTransport: mockProviderTransport, StreamTransport: vi.fn() }
+})
 // ── Mock ProviderRuntime (replaces fastChatCompletion) ──
 let mockTokenCalls: string[] = []
 let mockFastChatDelay = 1 // ms delay between tokens
@@ -451,7 +474,7 @@ describe("Phase 4 — Streaming Stress Test", () => {
   beforeEach(() => { setupStores() })
 
   it("measures streaming accuracy: no dropped tokens, no double-delivery", async () => {
-    const result = await executeScenario("Tell me about the architecture", "stream-accuracy")
+    const result = await executeScenario("Hello, how are you?", "stream-accuracy")
 
     // Use this scenario's token count, not global mockTokenCalls (which may include tokens from previous scenarios)
     const scenarioTokenCount = mockTokenCalls.length

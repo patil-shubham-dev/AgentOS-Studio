@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { configGenerator } from "@/runtime/project-config/ConfigGenerator"
 import { configLoader } from "@/runtime/project-config/ConfigLoader"
+import { loadFileTree } from "@/lib/filesystem"
 import {
   FileText,
   Sparkles,
@@ -143,6 +144,8 @@ export function ConfigInitBanner() {
       if (written) {
         setResult("success")
         configLoader.invalidateCache()
+        const tree = await loadFileTree(rootPath)
+        useWorkspaceStore.getState().setFileTree(tree)
         setTimeout(() => setVisible(false), 2000)
       } else {
         setResult("error")

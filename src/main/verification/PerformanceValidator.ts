@@ -100,7 +100,7 @@ export class PerformanceValidator {
           if (ext.some((e) => entry.name.endsWith(e))) results.push(fullPath)
         }
       }
-    } catch {}
+    } catch { console.warn("[PerformanceValidator] Failed to walk directory:", dir) }
     return results
   }
 

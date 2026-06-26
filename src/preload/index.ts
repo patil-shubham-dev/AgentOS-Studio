@@ -134,10 +134,20 @@ const api = {
 
   // Uninstall
   uninstallDetectData: () => ipcRenderer.invoke('uninstall:detect-data'),
-  uninstallPerform: (level: string) => ipcRenderer.invoke('uninstall:perform', level),
+  uninstallPerform: (level: string | Record<string, boolean>) => ipcRenderer.invoke('uninstall:perform', level),
+  uninstallBackup: (options: { exportSettings: boolean; exportConfigs: boolean; exportWorkspaces: boolean }) => ipcRenderer.invoke('uninstall:backup', options),
+  uninstallRestore: (backupPath: string) => ipcRenderer.invoke('uninstall:restore', backupPath),
+  uninstallListBackups: () => ipcRenderer.invoke('uninstall:list-backups'),
+  uninstallFeedback: (reason: string, details?: string) => ipcRenderer.invoke('uninstall:feedback', reason, details),
+  uninstallCheckExisting: () => ipcRenderer.invoke('uninstall:check-existing'),
   uninstallOpenSystem: () => ipcRenderer.invoke('uninstall:open-system'),
   uninstallSelf: () => ipcRenderer.invoke('uninstall:self'),
   uninstallSetAutoLaunch: (enable: boolean) => ipcRenderer.invoke('uninstall:set-auto-launch', enable),
+
+  // Import Settings (VS Code, Cursor, Claude Desktop)
+  importSettingsScan: () => ipcRenderer.invoke('import-settings:scan'),
+  importSettingsRead: (sourceId: string) => ipcRenderer.invoke('import-settings:read', sourceId),
+  importSettingsReadFile: (filePath: string) => ipcRenderer.invoke('import-settings:read-file', filePath),
 
   // Auto-update
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
@@ -217,6 +227,9 @@ const api = {
   replayGetStats: () => ipcRenderer.invoke('replay-get-stats'),
   replayApplyRetention: (config: { maxAgeMs: number; maxSessions: number }) => ipcRenderer.invoke('replay-apply-retention', config),
 
+  // Dev tools
+  devRunBenchmark100: (category?: string) => ipcRenderer.invoke('dev:run-benchmark100', category),
+
   // Verification (runs in main process for Node API access)
   verificationRunCommand: (command: string, timeout?: number) => ipcRenderer.invoke('verification:run-command', command, timeout),
   verificationRunBenchmarks: () => ipcRenderer.invoke('verification:run-benchmarks'),
@@ -228,7 +241,7 @@ const api = {
 
   // File path utility (for drag-and-drop)
   getPathForFile: (file: File) => {
-    try { return webUtils.getPathForFile(file) } catch { return null }
+    try { return webUtils.getPathForFile(file) } catch { console.warn("[Preload] getPathForFile failed"); return null }
   }
 }
 

@@ -144,6 +144,10 @@ describe("ledger", () => {
   it("uses workspace path when a workspace is open", async () => {
     mockWorkspaceState.rootPath = "/home/user/project"
 
+    // Simulate filesystem write failure to test localStorage fallback
+    const origWriteTextFile = (window as any).electronAPI.writeTextFile
+    ;(window as any).electronAPI.writeTextFile = () => Promise.reject(new Error("simulated failure"))
+
     const { persistLedger } = await import("./ledger")
 
     const mockEntries = [
@@ -158,5 +162,7 @@ describe("ledger", () => {
     // Should have written to localStorage since Tauri not available
     const raw = localStorage.getItem("ledger.json")
     expect(raw).toBeTruthy()
+
+    ;(window as any).electronAPI.writeTextFile = origWriteTextFile
   })
 })

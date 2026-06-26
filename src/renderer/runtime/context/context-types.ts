@@ -75,6 +75,7 @@ export interface ContextEstimate {
 export type ContextAssemblyInput = {
   role: string
   userMessage: string
+  taskQuery?: string
   customInstructions?: string
   memorySummary?: string
   environmentInfo?: Record<string, string>

@@ -15,6 +15,28 @@ globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
 globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id)
 globalThis.performance = globalThis.performance ?? Date.now() as any
 
+vi.mock("@agentic-os/providers", () => {
+  const mockProviderTransport = vi.fn().mockImplementation(() => {
+    function createStream(handlers: any) {
+      const tokens = ["Hello", "! ", "I", " am", " an", " AI", " assistant", "."]
+      ;(async () => {
+        for (const t of tokens) {
+          handlers.onToken?.(t)
+          await new Promise(r => setTimeout(r, 1))
+        }
+        handlers.onDone?.()
+      })()
+    }
+    return {
+      streamChatCompletion: vi.fn().mockImplementation((_cfg: any, _params: any, handlers: any) => {
+        createStream(handlers)
+        return Promise.resolve()
+      }),
+      chatCompletion: vi.fn().mockResolvedValue({ content: "Hello! I am an AI assistant.", usage: { promptTokens: 10, completionTokens: 8, totalTokens: 18 } }),
+    }
+  })
+  return { ProviderTransport: mockProviderTransport, StreamTransport: vi.fn() }
+})
 let mockTokenCalls: string[] = []
 vi.mock("@/runtime/providers/ProviderRuntime", () => ({
   ProviderRuntime: vi.fn().mockImplementation(() => ({
@@ -215,8 +237,13 @@ describe("ExecutionEventFlow", () => {
           break
 
         case "TOKEN":
-          // In FAST mode, tokens go directly to StreamManager (not yielded as TOKEN events)
-          // First-token time is tracked via StreamManager flushCallback
+          if (firstTokenTime === null) {
+            firstTokenTime = Date.now() - startTs
+          }
+          if (event.stepId ?? capturedStepId) {
+            const sId = event.stepId ?? capturedStepId!
+            useTimelineStore.getState().appendStreamingText(sId, event.token)
+          }
           break
 
         case "MESSAGE_COMPLETE":
@@ -457,7 +484,8 @@ describe("ExecutionEventFlow", () => {
     expect(session.streamingText).toBe("Hello! I am an AI assistant.")
     expect(timeline.streamingTexts.size).toBe(0)
 
-    expect(allFlushed.length).toBeGreaterThan(0)
-    expect(allFlushed).toBe("Hello! I am an AI assistant.")
+    const sessionText = session.streamingText
+    expect(sessionText.length).toBeGreaterThan(0)
+    expect(sessionText).toBe("Hello! I am an AI assistant.")
   })
 })

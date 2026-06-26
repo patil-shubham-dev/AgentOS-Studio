@@ -94,7 +94,7 @@ export function createWindowManager(): WindowManager {
           if (config.bounds && mainWindow) {
             mainWindow.setBounds(config.bounds)
           }
-        } catch {}
+        } catch { console.warn("[WindowManager] Failed to restore window bounds") }
       }
     },
 

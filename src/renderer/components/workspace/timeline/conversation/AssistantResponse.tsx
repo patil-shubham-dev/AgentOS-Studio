@@ -1,10 +1,12 @@
-import { memo, useCallback } from "react"
+import { memo, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { RotateCcw, ChevronDown, ChevronRight, Brain, Loader2, Layers } from "lucide-react"
 import { useTimelineStore } from "../timeline-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useAgentStore } from "@/stores/agent-store"
 import { ResponseStream } from "./response-stream"
+import { ConfidenceBadge } from "@/components/workspace/execution/ConfidenceBadge"
+import { ExecutionConfidenceEngine } from "@/runtime/execution/ExecutionConfidenceEngine"
 import { TerminalBlock } from "./TerminalBlock"
 import { ToolCallCard } from "./ToolCallCard"
 import { MultiFileDiffCard, FileCreatedCard, FileDeletedCard } from "./diff"
@@ -38,16 +40,27 @@ function getActivityLabel(session: AgentSession, hasContent: boolean): string | 
   return "Thinking through this"
 }
 
-function buildExecutionSummary(session: AgentSession): string | null {
+function buildExecutionSummary(session: AgentSession): { main: string; details: string[] } | null {
   if (session.streamState !== "completed" && session.streamState !== "failed") return null
   const toolCount = session.toolCalls.length
   const editCount = session.fileEdits.length
   const termsCount = session.terminalOutputs.length
+  const opsCount = session.fileOps.length
   const parts: string[] = []
   if (editCount > 0) parts.push(`${editCount} file${editCount > 1 ? "s" : ""} edited`)
   if (termsCount > 0) parts.push(`${termsCount} command${termsCount > 1 ? "s" : ""} run`)
+  if (opsCount > 0) parts.push(`${opsCount} file op${opsCount > 1 ? "s" : ""}`)
   if (toolCount > 0 && parts.length === 0) parts.push(`${toolCount} step${toolCount > 1 ? "s" : ""}`)
-  return parts.length > 0 ? parts.join(", ") : null
+
+  const details: string[] = []
+  const duration = session.completedAt && session.startedAt ? Math.round((session.completedAt - session.startedAt) / 1000) : null
+  if (duration !== null) details.push(`${duration}s`)
+  if (session.modelName) details.push(session.modelName)
+
+  const errors = session.toolCalls.filter(tc => tc.status === "error")
+  if (errors.length > 0) details.push(`${errors.length} error${errors.length > 1 ? "s" : ""}`)
+
+  return parts.length > 0 ? { main: parts.join(", "), details } : { main: "Completed", details }
 }
 
 const AGENT_PRIORITY = ["manager", "research", "browser", "coder", "qa", "memory"]
@@ -211,7 +224,7 @@ export const AssistantResponse = memo(function AssistantResponse({
       const fs = await import("@/lib/electron-api")
       await fs.writeTextFile(fullPath, edit.oldContent)
       useWorkspaceStore.getState().notifyFileEdited(fullPath, edit.oldContent)
-    } catch {}
+    } catch { console.warn("[AssistantResponse] Failed to revert file edit") }
   }, [session.fileEdits])
 
   const handleRevertAll = useCallback(async () => {
@@ -224,6 +237,25 @@ export const AssistantResponse = memo(function AssistantResponse({
   const currentActivity = getActivityLabel(session, hasContent)
   const agentNarrative = isRunning && !hasContent ? getActiveAgentNarrative(agentStatuses) : null
   const executionSummary = isComplete ? buildExecutionSummary(session) : null
+
+  const sessionConfidence = useMemo(() => {
+    if (session.confidence) return session.confidence
+    if (!isComplete || session.fileEdits.length === 0) return null
+    try {
+      const engine = ExecutionConfidenceEngine.getInstance()
+      const editedFiles = session.fileEdits.map((fe) => fe.path)
+      const result = engine.scoreExecution(editedFiles)
+      const explanations = [
+        `Graph: ${result.graphConfidence}%`,
+        `Symbols: ${result.symbolConfidence}%`,
+        `Deps: ${result.dependencyConfidence}%`,
+        `Verification: ${result.verificationConfidence}%`,
+      ]
+      return { overall: result.overall, category: result.category, explanations }
+    } catch {
+      return null
+    }
+  }, [isComplete, session.confidence, session.fileEdits])
 
   return (
     <motion.div
@@ -272,7 +304,12 @@ export const AssistantResponse = memo(function AssistantResponse({
                 transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
               />
             </svg>
-            <span>{executionSummary}</span>
+            <span>{executionSummary.main}</span>
+            {executionSummary.details.length > 0 && (
+              <span className="text-[10px] text-white/20 ml-auto tabular-nums">
+                {executionSummary.details.join(" · ")}
+              </span>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -453,7 +490,19 @@ export const AssistantResponse = memo(function AssistantResponse({
 
       {/* Execution metrics */}
       {isComplete && (
-        <ExecutionMetrics session={session} />
+        <div className="flex items-center gap-2 mt-1">
+          <ExecutionMetrics session={session} />
+          {sessionConfidence && (
+            <div className="ml-auto">
+              <ConfidenceBadge
+                score={sessionConfidence.overall}
+                category={sessionConfidence.category}
+                explanations={sessionConfidence.explanations}
+                size="sm"
+              />
+            </div>
+          )}
+        </div>
       )}
 
       {/* Error state */}

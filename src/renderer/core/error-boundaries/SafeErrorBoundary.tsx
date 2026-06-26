@@ -3,6 +3,7 @@ import { logCrash } from '../crash-handling'
 import { cancelPendingRefresh } from '@/runtime/runtime-coordinator'
 import { useWorkspaceRuntime } from '@/runtime/workspace-runtime'
 import { emitTelemetry } from '@/lib/telemetry'
+import { HumanErrorTranslator } from '@/runtime/execution/HumanErrorTranslator'
 
 interface Props {
   children: ReactNode
@@ -100,6 +101,40 @@ export class SafeErrorBoundary extends Component<Props, State> {
           <p style={{ color: '#aaa', fontSize: '12px', lineHeight: '1.5', marginBottom: '16px' }}>
             {friendlyMessage(this.props.name)}
           </p>
+
+          {this.state.error && (() => {
+            const translated = HumanErrorTranslator.translate(this.state.error)
+            const recognizable = HumanErrorTranslator.isRecognized(this.state.error)
+            if (!recognizable) return null
+            return (
+              <div style={{
+                background: '#0d0d10',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '12px',
+                fontSize: '11px',
+                color: '#aaa',
+                lineHeight: '1.6',
+              }}>
+                <div style={{ marginBottom: '6px' }}>
+                  <span style={{ color: '#ef4444', fontWeight: 600 }}>Problem: </span>
+                  {translated.problem}
+                </div>
+                <div style={{ marginBottom: '6px' }}>
+                  <span style={{ color: '#f59e0b', fontWeight: 600 }}>Possible cause: </span>
+                  {translated.cause}
+                </div>
+                <div style={{ marginBottom: '6px' }}>
+                  <span style={{ color: '#22c55e', fontWeight: 600 }}>Suggested fix: </span>
+                  {translated.suggestedFix}
+                </div>
+                <div>
+                  <span style={{ color: '#3b82f6', fontWeight: 600 }}>Recovery: </span>
+                  {translated.recoveryAction}
+                </div>
+              </div>
+            )
+          })()}
 
           {this.state.showDetails && (
             <div style={{

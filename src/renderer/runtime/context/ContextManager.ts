@@ -13,13 +13,27 @@ import { CapabilityResolver } from '@/runtime/prompting/providers/CapabilityReso
 import { getFormatterForProvider } from '@/runtime/prompting/formatters'
 import { RuntimeOS } from '@/runtime/RuntimeOS'
 import { getWorkspaceContextSnapshot } from '@/stores/workspace-store'
+
 import { useTimelineStore } from '@/components/workspace/timeline/timeline-store'
 import { workspaceIndex } from '@/lib/search-index'
 import { MemoryArchitecture } from '@/runtime/memory/unified/MemoryArchitecture'
 import { PromptCacheManager } from '@/runtime/caching/PromptCacheManager'
 import { usePersonaStore } from '@/stores/persona-store'
 import { configLoader } from '@/runtime/project-config/ConfigLoader'
+import { formatForRole } from '@/runtime/project-config/ProjectConfigTypes'
 import { sessionMemoryExtractor } from '@/runtime/memory/SessionMemoryExtractor'
+import { VerificationPipeline } from '@/runtime/verification/VerificationPipeline'
+import { applyProjectConfig } from '@/lib/workspace-intelligence'
+import { semanticSearch, getDependencyGraph, getTypeContextForFiles } from '@/lib/workspace-intelligence'
+import { workspaceSymbolIndex } from '@/lib/symbol-index'
+import { ContextFileCache } from './ContextFileCache'
+import { ArchitectureAwareRanker } from '@/runtime/intelligence/ArchitectureAwareRanker'
+import { ArchitecturePlanningStrategy } from '@/runtime/intelligence/ArchitecturePlanningStrategy'
+import { ImpactAnalyzer } from '@/runtime/intelligence/ImpactAnalyzer'
+import { VerificationGraph } from '@/runtime/intelligence/VerificationGraph'
+import { EntryPointExplorer } from '@/runtime/intelligence/EntryPointExplorer'
+import { CrossFileReasoner } from '@/runtime/intelligence/CrossFileReasoner'
+import { RepositoryKnowledgeGraph } from '@/runtime/intelligence/RepositoryKnowledgeGraph'
 
 export type ContextManagerConfig = {
   defaultModel?: string
@@ -67,6 +81,8 @@ export class ContextManager {
   private capabilityResolver: CapabilityResolver
   private runtimeOS: RuntimeOS | null = null
   private cacheManager: PromptCacheManager
+  private fileCache: ContextFileCache
+  private sessionFileEditCache = new Set<string>()
 
   static getInstance(config?: ContextManagerConfig): ContextManager {
     if (!ContextManager.instance) {
@@ -97,6 +113,7 @@ export class ContextManager {
     this.capabilityResolver = new CapabilityResolver()
 
     this.cacheManager = PromptCacheManager.getInstance()
+    this.fileCache = new ContextFileCache()
 
     this.runtimeOS = RuntimeOS.getInstance()
     try { this.runtimeOS.initialize() } catch { /* may fail in test env */ }
@@ -115,10 +132,10 @@ export class ContextManager {
   }
 
   /**
-   * Score files by relevance to the current context.
-   * Uses active file, git changes, recent edits, conversation history, and symbol references.
+   * Score files by relevance to the current context (synchronous, basic).
+   * Uses active file, open tabs, and recent edits only.
    */
-  private scoreRelevantFiles(): ScoredFile[] {
+  private scoreRelevantFilesSync(): ScoredFile[] {
     const scored: Map<string, { relevance: number; reasons: string[] }> = new Map()
 
     try {
@@ -169,6 +186,109 @@ export class ContextManager {
   }
 
   /**
+   * Score files by relevance using the composite formula.
+   * Combines recency, task similarity (SemanticSearch), symbol relationships (SymbolIndex),
+   * and dependency proximity (DependencyScanner).
+   */
+  private async scoreRelevantFiles(taskQuery?: string): Promise<ScoredFile[]> {
+    const base = this.scoreRelevantFilesSync()
+    if (!taskQuery || !this.config.enableRelevanceScoring) return base
+
+    const scored = new Map<string, { relevance: number; reason: string; recencyScore: number }>()
+    for (const f of base) {
+      scored.set(f.path, { relevance: f.relevance, reason: f.reason, recencyScore: f.relevance })
+    }
+
+    let maxTaskScore = 0
+    const taskScores = new Map<string, number>()
+    try {
+      const results = await semanticSearch(taskQuery)
+      for (const r of results) {
+        if (r.score > maxTaskScore) maxTaskScore = r.score
+        taskScores.set(r.filePath, r.score)
+      }
+    } catch { }
+
+    const ws = getWorkspaceContextSnapshot()
+    const activeFile = ws?.activeFilePath ?? ''
+
+    let symbolRefs = new Map<string, number>()
+    try {
+      const activeSymbols = workspaceSymbolIndex.getSymbolsByFile(activeFile)
+      for (const sym of activeSymbols) {
+        const refs = workspaceSymbolIndex.findReferences(sym.name)
+        if (refs) {
+          for (const ref of refs.references) {
+            const existing = symbolRefs.get(ref.file) ?? 0
+            symbolRefs.set(ref.file, Math.max(existing, 0.3))
+          }
+        }
+        const hierarchy = workspaceSymbolIndex.getCallHierarchy(sym.name)
+        for (const c of hierarchy.callees) {
+          const existing = symbolRefs.get(c.file) ?? 0
+          symbolRefs.set(c.file, Math.max(existing, 0.2))
+        }
+        for (const c of hierarchy.callers) {
+          const existing = symbolRefs.get(c.file) ?? 0
+          symbolRefs.set(c.file, Math.max(existing, 0.2))
+        }
+      }
+    } catch { }
+
+    let depScores = new Map<string, number>()
+    try {
+      const graph = getDependencyGraph()
+      if (graph) {
+        const activeNode = graph.nodes.find(
+          n => activeFile.replace(/\\/g, '/').endsWith(n.path.replace(/\\/g, '/'))
+        )
+        if (activeNode) {
+          for (const imp of activeNode.imports) {
+            depScores.set(imp, 0.15)
+          }
+          for (const importer of activeNode.importedBy) {
+            const existing = depScores.get(importer) ?? 0
+            depScores.set(importer, Math.max(existing, 0.1))
+          }
+        }
+      }
+    } catch { }
+
+    const allPaths = new Set([...scored.keys(), ...taskScores.keys(), ...symbolRefs.keys(), ...depScores.keys()])
+    const result: ScoredFile[] = []
+
+    for (const path of allPaths) {
+      const baseEntry = scored.get(path)
+      const recencyScore = baseEntry?.recencyScore ?? 0
+
+      const taskSimilarityScore = maxTaskScore > 0
+        ? (taskScores.get(path) ?? 0) / maxTaskScore
+        : 0
+
+      const symbolRelationshipScore = symbolRefs.get(path) ?? 0
+      const dependencyProximityScore = depScores.get(path) ?? 0
+
+      const compositeScore =
+        0.10 * recencyScore +
+        0.40 * taskSimilarityScore +
+        0.30 * symbolRelationshipScore +
+        0.20 * dependencyProximityScore
+
+      if (compositeScore <= 0) continue
+
+      const reasons: string[] = []
+      if (baseEntry) reasons.push(baseEntry.reason)
+      if (taskSimilarityScore > 0) reasons.push(`Task similarity: ${(taskSimilarityScore * 100).toFixed(0)}%`)
+      if (symbolRelationshipScore > 0) reasons.push(`Symbol relationship: ${(symbolRelationshipScore * 100).toFixed(0)}%`)
+      if (dependencyProximityScore > 0) reasons.push(`Dependency proximity: ${(dependencyProximityScore * 100).toFixed(0)}%`)
+
+      result.push({ path, relevance: compositeScore, reason: reasons[0] ?? 'Composite relevance' })
+    }
+
+    return result.sort((a, b) => b.relevance - a.relevance).slice(0, 20)
+  }
+
+  /**
    * Estimate available context based on current model and budget.
    */
   private estimateAvailableContext(): { total: number; used: number; remaining: number } {
@@ -184,16 +304,8 @@ export class ContextManager {
   /**
    * Build git-aware context about recent changes.
    */
-  private async getGitContext(): Promise<string | null> {
-    if (!this.config.enableGitAwareness) return null
-    try {
-      const workspace = getWorkspaceContextSnapshot()
-      if (!workspace.rootPath) return null
-      const { gitStatusToString } = await import('@/lib/git')
-      return await gitStatusToString(workspace.rootPath)
-    } catch {
-      return null
-    }
+  private getGitContext(): null {
+    return null
   }
 
   /**
@@ -252,14 +364,20 @@ ${activePersona.instruction}
 `
       : ''
 
-    // ── Load AGENTIC.md project configuration ──
+    // ── Load AGENTIC.md project configuration (role-aware) ──
     let projectConfigBlock = ''
     let projectConfigHash = ''
     const rootPath = getWorkspaceContextSnapshot()?.rootPath
     if (rootPath) {
       try {
         const configResult = await configLoader.load(rootPath)
-        if (configResult.combined) {
+        if (configResult.structured) {
+          projectConfigBlock = formatForRole(configResult.structured, input.role)
+          projectConfigHash = configResult.hash
+          // Wire structured config into downstream systems
+          VerificationPipeline.getInstance().applyProjectConfig(configResult.structured)
+          applyProjectConfig(configResult.structured)
+        } else if (configResult.combined) {
           projectConfigBlock = `## Project Configuration
 
 ${configResult.combined}`
@@ -278,11 +396,9 @@ ${configResult.combined}`
         if (rules.length > 0) {
           pathScopedBlock = `## Scoped Rules (${input.activeFilePath})
 
-${rules.map(r => r.content).join('
-
-')}`
+${rules.map(r => r.content).join('\n\n')}`
         }
-      } catch {}
+      } catch { console.warn("[ContextManager] Failed to process rules") }
     }
 
     const mergedInstructions = [
@@ -307,10 +423,62 @@ ${rules.map(r => r.content).join('
 
     const toolCount = this.runtimeOS?.toolRegistry.size().builtin ?? 0
     const workspaceCtx = this.readWorkspaceContext()
-    const relevantFiles = this.scoreRelevantFiles()
+    const taskQuery = input.taskQuery ?? input.userMessage
+    const relevantFiles = await this.scoreRelevantFiles(taskQuery)
     const contextEstimate = this.estimateAvailableContext()
     const gitContext = await this.getGitContext()
     const workspaceSummary = await this.getWorkspaceSummary()
+
+    // ── Inject top relevant file contents ──
+    let relevantFilesBlock = ''
+    if (relevantFiles.length > 0) {
+      const root = getWorkspaceContextSnapshot()?.rootPath
+      const topFiles = relevantFiles.slice(0, 2)
+      let totalTokens = 0
+      const maxTokens = 4000
+      const lines: string[] = ['<relevant_files>']
+
+      for (const f of topFiles) {
+        const absPath = root ? `${root}\\${f.path.replace(/\//g, '\\')}` : f.path
+        try {
+          const cached = await this.fileCache.getContent(
+            absPath,
+            async (p) => {
+              const { readTextFile } = await import('@/lib/electron-api')
+              return readTextFile(p)
+            },
+          )
+          if (!cached) continue
+
+          const contentTokens = Math.round(cached.content.length / 4)
+          const clamped = contentTokens > 2000
+            ? cached.content.slice(0, 8000) + '\n[... truncated ...]'
+            : cached.content
+
+          const block = `<file path="${f.path}" relevance="${f.relevance.toFixed(2)}" reason="${f.reason ?? 'composite'}">\n${clamped}\n</file>`
+          const blockTokens = Math.round(block.length / 4)
+          if (totalTokens + blockTokens > maxTokens) break
+          totalTokens += blockTokens
+          lines.push(block)
+        } catch { console.warn("[ContextManager] Failed to count tokens for block") }
+      }
+
+      if (lines.length > 1) {
+        lines.push('</relevant_files>')
+        relevantFilesBlock = lines.join('\n')
+      }
+    }
+
+    // ── Inject type context for files being examined (P6) ──
+    let typeContextBlock = ''
+    if (relevantFiles.length > 0 || input.activeFilePath) {
+      const contextFiles: string[] = []
+      if (input.activeFilePath) contextFiles.push(input.activeFilePath)
+      for (const rf of relevantFiles.slice(0, 3)) {
+        if (!contextFiles.includes(rf.path)) contextFiles.push(rf.path)
+      }
+      typeContextBlock = getTypeContextForFiles(contextFiles, 10)
+    }
 
     // ── Inject recent session memories for cross-session continuity ──
     let recentSessionsBlock = ''
@@ -325,6 +493,49 @@ ${rules.map(r => r.content).join('
       }
     }
 
+    const memorySummaryFinal = await this.injectMemorySummary(
+      recentSessionsBlock
+        ? `${input.memorySummary ?? ''}\n\n${recentSessionsBlock}`
+        : input.memorySummary,
+    )
+
+    // ── Inject graph-driven architecture context (Phase 2) ──
+    let architectureContextBlock = ''
+    let verificationPlanBlock = ''
+    let impactContextBlock = ''
+    if (rootPath && (input.activeFilePath || taskQuery)) {
+      try {
+        const archRanker = new ArchitectureAwareRanker()
+        const archCtx = await archRanker.getArchitectureContext(taskQuery ?? '', input.activeFilePath)
+        if (archCtx) architectureContextBlock = archCtx
+
+        if (input.role === 'verification' || input.role === 'qa') {
+          const vGraph = new VerificationGraph()
+          const activeFile = input.activeFilePath
+          if (activeFile) {
+            const plan = await vGraph.planVerification([activeFile])
+            if (plan.mustVerify.length > 0) {
+              verificationPlanBlock = `<verification_plan risk="${plan.riskLevel}">
+  ${plan.mustVerify.slice(0, 5).map(v => `<target path="${v.path}" priority="${v.priority}">${v.reason}</target>`).join('\n  ')}
+</verification_plan>`
+            }
+          }
+        }
+
+        if (input.activeFilePath && (input.role === 'coder' || input.role === 'manager')) {
+          const impact = new ImpactAnalyzer()
+          const report = await impact.analyze(input.activeFilePath)
+          if (report.consumers.length > 0 || report.relatedTests.length > 0) {
+            impactContextBlock = `<impact file="${input.activeFilePath}" risk="${report.riskScore}">
+  ${report.summary}
+</impact>`
+          }
+        }
+      } catch (err) {
+        console.warn('[ContextManager] Failed to inject intelligence context:', err)
+      }
+    }
+
     const resolveCtxFinal: ResolutionContext = {
       ...resolveCtx,
       toolCount,
@@ -333,11 +544,15 @@ ${rules.map(r => r.content).join('
       contextEstimate,
       gitContext: gitContext ?? undefined,
       workspaceSummary: workspaceSummary ?? undefined,
-      memorySummary: await this.injectMemorySummary(
-        recentSessionsBlock
-          ? `${input.memorySummary ?? ''}\n\n${recentSessionsBlock}`
-          : input.memorySummary,
-      ),
+      memorySummary: memorySummaryFinal,
+      customInstructions: [
+        ...mergedInstructions,
+        ...(relevantFilesBlock ? [relevantFilesBlock] : []),
+        ...(typeContextBlock ? [typeContextBlock] : []),
+        ...(architectureContextBlock ? [architectureContextBlock] : []),
+        ...(verificationPlanBlock ? [verificationPlanBlock] : []),
+        ...(impactContextBlock ? [impactContextBlock] : []),
+      ],
     }
 
     // ── Prompt Caching ──
@@ -430,7 +645,7 @@ ${rules.map(r => r.content).join('
 
     const toolCount = this.runtimeOS?.toolRegistry.size().builtin ?? 0
     const workspaceCtx = this.readWorkspaceContext()
-    const relevantFiles = this.scoreRelevantFiles()
+    const relevantFiles = await this.scoreRelevantFiles(input)
     const contextEstimate = this.estimateAvailableContext()
 
     const resolveCtxFinal: ResolutionContext = {
@@ -468,7 +683,15 @@ ${rules.map(r => r.content).join('
   }
 
   getRelevantFiles(): ScoredFile[] {
-    return this.scoreRelevantFiles()
+    return this.scoreRelevantFilesSync()
+  }
+
+  invalidateFileCache(path: string): void {
+    this.fileCache.invalidate(path)
+  }
+
+  invalidateAllFileCaches(): void {
+    this.fileCache.invalidateAll()
   }
 
   shouldCompact(messages: MessageLike[]): boolean {
@@ -521,6 +744,7 @@ ${rules.map(r => r.content).join('
   clearCaches(): void {
     this.promptRegistry.invalidateCache()
     this.cacheManager.invalidate('all')
+    this.fileCache.invalidateAll()
   }
 
   setCompactorConfig(config: Partial<CompactorConfig>): void {
@@ -555,7 +779,7 @@ ${rules.map(r => r.content).join('
   } {
     const budgetState = this.budgetTracker.getBudgetState()
     const config = this.resolver.getModelConfig(this.currentModel)
-    const relevant = this.scoreRelevantFiles()
+    const relevant = this.scoreRelevantFilesSync()
     return {
       model: this.currentModel,
       contextWindow: config.contextWindow,

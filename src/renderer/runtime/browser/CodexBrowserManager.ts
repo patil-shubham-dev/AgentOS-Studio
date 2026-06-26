@@ -1,7 +1,7 @@
 import type { BrowserSession, BrowserTab } from "@/stores/browser-store"
 import { useBrowserStore } from "@/stores/browser-store"
-import { invoke } from "@/lib/electron-api"
 import { normalizeError } from "@/lib/normalize-error"
+import { getStructuredError, matchErrorToCode } from "@/lib/error-schema"
 
 export type BrowserTier = "in_app" | "chrome_extension" | "plugin"
 export type BrowserAction = "navigate" | "click" | "type" | "screenshot" | "execute_js" | "wait" | "get_text" | "get_dom" | "intercept_network" | "cookies" | "storage"
@@ -71,6 +71,13 @@ export interface PluginBrowserProvider {
   getTitle: () => Promise<string | undefined>
 }
 
+let invokePromise: Promise<typeof import("@/lib/electron-api")> | undefined
+
+async function getElectronApi() {
+  if (!invokePromise) invokePromise = import("@/lib/electron-api")
+  return invokePromise
+}
+
 export class CodexBrowserManager {
   private static instance: CodexBrowserManager
   private activeTabId: string | null = null
@@ -116,7 +123,7 @@ export class CodexBrowserManager {
 
   async listExtensions(): Promise<ExtensionInfo[]> {
     try {
-      const result = await invoke("browser_extension_list") as any[]
+      const result = await (await getElectronApi()).invoke("browser_extension_list") as any[]
       this.loadedExtensions = result.map((r: any) => ({
         id: r.id,
         name: r.name,
@@ -132,7 +139,7 @@ export class CodexBrowserManager {
 
   async loadExtension(extPath: string): Promise<ExtensionInfo | { error: string }> {
     try {
-      const result = await invoke("browser_extension_load", { extPath }) as any
+      const result = await (await getElectronApi()).invoke("browser_extension_load", { extPath }) as any
       if (result.error) return { error: result.error }
       const info: ExtensionInfo = {
         id: result.id,
@@ -148,16 +155,18 @@ export class CodexBrowserManager {
       }
       return info
     } catch (err) {
+      console.warn("[CodexBrowserManager] loadExtension failed:", normalizeError(err).message)
       return { error: normalizeError(err).message }
     }
   }
 
   async unloadExtension(extId: string): Promise<boolean> {
     try {
-      await invoke("browser_extension_unload", { extId })
+      await (await getElectronApi()).invoke("browser_extension_unload", { extId })
       this.loadedExtensions = this.loadedExtensions.filter((e) => e.id !== extId)
       return true
     } catch {
+      console.warn("[CodexBrowserManager] unloadExtension failed")
       return false
     }
   }
@@ -224,10 +233,13 @@ export class CodexBrowserManager {
       return provider.navigate(url)
     }
     try {
-      const result = await invoke("browser_navigate", { url, tabId, sessionId: tabId })
+      const result = await (await getElectronApi()).invoke("browser_navigate", { url, tabId, sessionId: tabId })
       return { success: true }
     } catch (err) {
-      return { success: false, error: normalizeError(err).message }
+      const msg = normalizeError(err).message
+      const structured = getStructuredError(matchErrorToCode(msg), "CodexBrowserManager.navigate")
+      console.warn("[CodexBrowserManager] navigate failed:", structured.problem)
+      return { success: false, error: structured.problem }
     }
   }
 
@@ -237,10 +249,13 @@ export class CodexBrowserManager {
       return provider.click(selector)
     }
     try {
-      await invoke("browser_click", { selector, tabId, sessionId: tabId })
+      await (await getElectronApi()).invoke("browser_click", { selector, tabId, sessionId: tabId })
       return { success: true }
     } catch (err) {
-      return { success: false, error: normalizeError(err).message }
+      const msg = normalizeError(err).message
+      const structured = getStructuredError(matchErrorToCode(msg), "CodexBrowserManager.click")
+      console.warn("[CodexBrowserManager] click failed:", structured.problem)
+      return { success: false, error: structured.problem }
     }
   }
 
@@ -250,10 +265,13 @@ export class CodexBrowserManager {
       return provider.type(selector, text)
     }
     try {
-      await invoke("browser_type", { selector, text, tabId, sessionId: tabId })
+      await (await getElectronApi()).invoke("browser_type", { selector, text, tabId, sessionId: tabId })
       return { success: true }
     } catch (err) {
-      return { success: false, error: normalizeError(err).message }
+      const msg = normalizeError(err).message
+      const structured = getStructuredError(matchErrorToCode(msg), "CodexBrowserManager.type")
+      console.warn("[CodexBrowserManager] type failed:", structured.problem)
+      return { success: false, error: structured.problem }
     }
   }
 
@@ -263,9 +281,11 @@ export class CodexBrowserManager {
       return provider.screenshot()
     }
     try {
-      const result = await invoke("browser_screenshot", { tabId, sessionId: tabId })
+      const result = await (await getElectronApi()).invoke("browser_screenshot", { tabId, sessionId: tabId })
       return result as string
-    } catch {
+    } catch (err) {
+      const structured = getStructuredError(matchErrorToCode(normalizeError(err).message), "CodexBrowserManager.screenshot")
+      console.warn("[CodexBrowserManager] screenshot failed:", structured.problem)
       return undefined
     }
   }
@@ -276,10 +296,13 @@ export class CodexBrowserManager {
       return provider.executeJs(code)
     }
     try {
-      const result = await invoke("browser_execute_js", { code, tabId, sessionId: tabId })
+      const result = await (await getElectronApi()).invoke("browser_execute_js", { code, tabId, sessionId: tabId })
       return { success: true, result }
     } catch (err) {
-      return { success: false, error: normalizeError(err).message }
+      const msg = normalizeError(err).message
+      const structured = getStructuredError(matchErrorToCode(msg), "CodexBrowserManager.executeJs")
+      console.warn("[CodexBrowserManager] executeJs failed:", structured.problem)
+      return { success: false, error: structured.problem }
     }
   }
 
@@ -312,7 +335,7 @@ export class CodexBrowserManager {
       return provider.getText()
     }
     try {
-      return await invoke("browser_get_text", { tabId, sessionId: tabId }) as string
+      return await (await getElectronApi()).invoke("browser_get_text", { tabId, sessionId: tabId }) as string
     } catch {
       return undefined
     }
@@ -324,7 +347,7 @@ export class CodexBrowserManager {
       return provider.getURL()
     }
     try {
-      return await invoke("browser_get_url", { tabId, sessionId: tabId }) as string
+      return await (await getElectronApi()).invoke("browser_get_url", { tabId, sessionId: tabId }) as string
     } catch {
       return undefined
     }
@@ -336,7 +359,7 @@ export class CodexBrowserManager {
       return provider.getTitle()
     }
     try {
-      return await invoke("browser_get_title", { tabId, sessionId: tabId }) as string
+      return await (await getElectronApi()).invoke("browser_get_title", { tabId, sessionId: tabId }) as string
     } catch {
       return undefined
     }
@@ -451,7 +474,7 @@ export class CodexBrowserManager {
 
   async newTab(url?: string): Promise<string | undefined> {
     try {
-      const result = await invoke("browser_new_tab", { url, sessionId: null })
+      const result = await (await getElectronApi()).invoke("browser_new_tab", { url, sessionId: null })
       return result as string
     } catch {
       return undefined
@@ -460,7 +483,7 @@ export class CodexBrowserManager {
 
   async listTabs(): Promise<Array<{ id: string; url: string; title: string }>> {
     try {
-      const result = await invoke("browser_list_tabs") as string
+      const result = await (await getElectronApi()).invoke("browser_list_tabs") as string
       return JSON.parse(result)
     } catch {
       return []
@@ -469,7 +492,7 @@ export class CodexBrowserManager {
 
   async closeTab(tabId: string): Promise<boolean> {
     try {
-      await invoke("browser_close_tab", { tabId, sessionId: null })
+      await (await getElectronApi()).invoke("browser_close_tab", { tabId, sessionId: null })
       return true
     } catch {
       return false
@@ -587,10 +610,13 @@ export class CodexBrowserManager {
 
     // For in_app or chrome_extension, use standard browser launch
     try {
-      const result = await invoke("browser_launch", { url }) as any
+      const result = await (await getElectronApi()).invoke("browser_launch", { url }) as any
       return typeof result === "object" ? result : { sessionId: result }
     } catch (err) {
-      return { error: normalizeError(err).message }
+      const msg = normalizeError(err).message
+      const structured = getStructuredError(matchErrorToCode(msg), "CodexBrowserManager.launchSessionWithTier")
+      console.warn("[CodexBrowserManager] launch failed:", structured.problem)
+      return { error: structured.problem }
     }
   }
 

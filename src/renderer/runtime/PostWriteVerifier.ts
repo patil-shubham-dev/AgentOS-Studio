@@ -1,26 +1,17 @@
-/**
- * PostWriteVerifier — automatically runs typecheck after file mutations
- * and feeds results back into the agent's context for self-correction.
- *
- * Built to Claude Code's verification-before-continue principle:
- * After every write_file or edit_file, the typecheck runs automatically
- * and errors are injected as a tool-like message the agent sees before
- * its next reasoning round.
- */
-
 import { getModeConfig } from "./execution-mode"
 import { TerminalRuntime } from "./terminal/TerminalRuntime"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import type { StructuredIssue } from "./verification/types"
 
 export interface VerificationResult {
   typeCheck: {
     passed: boolean
-    errors: string[]
+    issues: StructuredIssue[]
     output: string
   } | null
   lint: {
     passed: boolean
-    errors: string[]
+    issues: StructuredIssue[]
     output: string
   } | null
   filesEdited: string[]
@@ -28,22 +19,14 @@ export interface VerificationResult {
 
 export class PostWriteVerifier {
   private static lastRunAt = 0
-  /** Don't re-run within 2 seconds of the last verification */
   private static readonly COOLDOWN_MS = 2_000
 
-  /**
-   * Run post-write verification after file mutations.
-   *
-   * @param filesEdited   — list of file paths that were just written/edited
-   * @returns structured result, or null if verification was skipped
-   */
   static async verify(
     filesEdited: string[],
   ): Promise<VerificationResult | null> {
     const config = getModeConfig()
     if (!config.runTestsAfterImpl) return null
 
-    // Cooldown: don't verify too frequently in rapid-succession edits
     const now = Date.now()
     if (now - this.lastRunAt < this.COOLDOWN_MS && this.lastRunAt > 0) {
       console.log("[PostWriteVerifier] Skipped — cooldown active")
@@ -60,17 +43,22 @@ export class PostWriteVerifier {
 
     if (typeCheck?.passed) {
       console.log("[PostWriteVerifier] ✅ TypeScript check passed")
-      // Only run lint if typecheck passed (no point linting broken code)
       lintResult = await this.runLint()
       if (lintResult?.passed) {
         console.log("[PostWriteVerifier] ✅ Lint check passed")
       } else if (lintResult) {
-        console.log(`[PostWriteVerifier] ⚠️ Lint found ${lintResult.errors.length} issue(s)`)
+        if (lintResult.issues.length <= 10) {
+          console.log(`[PostWriteVerifier] ⚠️ Lint found ${lintResult.issues.length} issue(s) — attempting auto-fix...`)
+          await this.autoFix()
+          lintResult = await this.runLint()
+        } else {
+          console.log(`[PostWriteVerifier] ⚠️ Lint found ${lintResult.issues.length} issue(s) — too many to auto-fix`)
+        }
       } else {
         console.log("[PostWriteVerifier] Lint unavailable — skipped")
       }
     } else if (typeCheck) {
-      console.log(`[PostWriteVerifier] ❌ TypeScript check failed (${typeCheck.errors.length} errors)`)
+      console.log(`[PostWriteVerifier] ❌ TypeScript check failed (${typeCheck.issues.length} errors)`)
     } else {
       console.log("[PostWriteVerifier] TypeCheck unavailable — skipped")
     }
@@ -82,7 +70,14 @@ export class PostWriteVerifier {
     }
   }
 
-  // ── Private ──
+  private static async autoFix(): Promise<boolean> {
+    try {
+      const { output } = await this.runTerminalCommand("npx eslint --fix --quiet --ext .ts,.tsx . 2>&1 || true")
+      return output.trim().length === 0 || !output.includes("error")
+    } catch {
+      return false
+    }
+  }
 
   private static async runTerminalCommand(cmd: string): Promise<{
     output: string
@@ -112,7 +107,7 @@ export class PostWriteVerifier {
 
   private static async runTypeCheck(): Promise<{
     passed: boolean
-    errors: string[]
+    issues: StructuredIssue[]
     output: string
   } | null> {
     try {
@@ -120,40 +115,31 @@ export class PostWriteVerifier {
         "npx tsc --noEmit 2>&1",
       )
 
-      // Check if output indicates success (empty or no error lines)
       if (!output || output.trim().length === 0) {
-        return { passed: true, errors: [], output: `✅ TypeScript check: 0 errors (${duration}ms)` }
+        return { passed: true, issues: [], output: `✅ TypeScript check: 0 errors (${duration}ms)` }
       }
 
-      // Parse TypeScript errors — each error line contains "error TS..."
-      // Standard TS format: "src/file.ts:10:5 - error TS2322: Type 'X' is not assignable..."
-      const errorLines = output
-        .split("\n")
-        .filter((l) => l.includes("error TS"))
-        .slice(0, 30) // Limit to 30 errors to avoid token bloat
+      const issues = this.parseTscOutput(output)
 
-      if (errorLines.length === 0 && !output.includes("Found ") && !output.includes("error")) {
-        return { passed: true, errors: [], output: `✅ TypeScript check: 0 errors (${duration}ms)` }
+      if (issues.length === 0 && !output.includes("Found ") && !output.includes("error")) {
+        return { passed: true, issues: [], output: `✅ TypeScript check: 0 errors (${duration}ms)` }
       }
 
+      const errorCount = issues.filter((i) => i.severity === "error").length
       return {
-        passed: false,
-        errors: errorLines,
+        passed: errorCount === 0,
+        issues: issues.slice(0, 30),
         output: this.truncateOutput(output),
       }
-    } catch (e) {
-      // tsc not available, timeout, or environment doesn't support terminal execution
-      console.warn(
-        "[PostWriteVerifier] TypeCheck unavailable:",
-        e instanceof Error ? e.message : String(e),
-      )
+    } catch {
+      console.warn("[PostWriteVerifier] TypeCheck unavailable")
       return null
     }
   }
 
   private static async runLint(): Promise<{
     passed: boolean
-    errors: string[]
+    issues: StructuredIssue[]
     output: string
   } | null> {
     try {
@@ -162,27 +148,96 @@ export class PostWriteVerifier {
       )
 
       if (!output || output.trim().length === 0) {
-        return { passed: true, errors: [], output: `✅ ESLint: 0 issues (${duration}ms)` }
+        return { passed: true, issues: [], output: `✅ ESLint: 0 issues (${duration}ms)` }
       }
 
-      // Parse eslint issues (format: "path/file.ts:line:col: error Message")
-      const issueLines = output
-        .split("\n")
-        .filter((l) => l.includes(": error ") || l.includes(": warning "))
-        .slice(0, 20)
+      const issues = this.parseEslintOutput(output)
+      const errorCount = issues.filter((i) => i.severity === "error").length
 
       return {
-        passed: false,
-        errors: issueLines,
+        passed: errorCount === 0,
+        issues: issues.slice(0, 20),
         output: this.truncateOutput(output),
       }
-    } catch (e) {
-      console.warn(
-        "[PostWriteVerifier] Lint unavailable:",
-        e instanceof Error ? e.message : String(e),
-      )
+    } catch {
+      console.warn("[PostWriteVerifier] Lint unavailable")
       return null
     }
+  }
+
+  private static parseTscOutput(output: string): StructuredIssue[] {
+    const issues: StructuredIssue[] = []
+    const lines = output.split("\n")
+    const tscLinePattern = /^([^(]+)\((\d+),(\d+)\):\s+(error|warning)\s+(TS\d+):\s+(.+)$/
+    const altPattern = /^(.+?):(\d+):(\d+)\s+-\s+(error|warning)\s+(TS\d+):\s+(.+)$/
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+
+      let match = trimmed.match(tscLinePattern)
+      if (match) {
+        issues.push({
+          file: match[1].trim(),
+          line: parseInt(match[2], 10),
+          column: parseInt(match[3], 10),
+          code: match[5],
+          message: match[6].trim(),
+          severity: match[4] === "error" ? "error" : "warning",
+          source: "typescript",
+        })
+        continue
+      }
+
+      match = trimmed.match(altPattern)
+      if (match) {
+        issues.push({
+          file: match[1].trim(),
+          line: parseInt(match[2], 10),
+          column: parseInt(match[3], 10),
+          code: match[5],
+          message: match[6].trim(),
+          severity: match[4] === "error" ? "error" : "warning",
+          source: "typescript",
+        })
+        continue
+      }
+
+      if (trimmed.startsWith("error") || trimmed.startsWith("Error:")) {
+        issues.push({
+          message: trimmed,
+          severity: "error",
+          source: "typescript",
+        })
+      }
+    }
+
+    return issues
+  }
+
+  private static parseEslintOutput(output: string): StructuredIssue[] {
+    const issues: StructuredIssue[] = []
+    const lines = output.split("\n")
+    const eslintLinePattern = /^(.+?):(\d+):(\d+):\s+(error|warning)\s+(.+)$/
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+
+      const match = trimmed.match(eslintLinePattern)
+      if (match) {
+        issues.push({
+          file: match[1].trim(),
+          line: parseInt(match[2], 10),
+          column: parseInt(match[3], 10),
+          message: match[5].trim(),
+          severity: match[4] as "error" | "warning",
+          source: "eslint",
+        })
+      }
+    }
+
+    return issues
   }
 
   private static truncateOutput(output: string): string {
@@ -193,36 +248,43 @@ export class PostWriteVerifier {
     )
   }
 
-  /** Format verification results as a compact message for the agent's context */
   static formatForAgent(result: VerificationResult): string {
     const parts: string[] = ["━━━ Auto-Verification Results ━━━"]
 
     if (result.typeCheck) {
       if (result.typeCheck.passed) {
         parts.push(result.typeCheck.output)
-        // Append lint results if they ran
         if (result.lint) {
           if (result.lint.passed) {
             parts.push("✅ ESLint: 0 issues")
           } else {
-            parts.push(`⚠️ ESLint found ${result.lint.errors.length} issue(s):`)
-            const sample = result.lint.errors.slice(0, 6)
+            const errorCount = result.lint.issues.filter((i) => i.severity === "error").length
+            const warnCount = result.lint.issues.filter((i) => i.severity === "warning").length
+            parts.push(`⚠️ ESLint found ${errorCount} error(s), ${warnCount} warning(s):`)
+            const sample = result.lint.issues.slice(0, 6)
             parts.push("```")
-            parts.push(sample.join("\n"))
-            if (result.lint.errors.length > 6) {
-              parts.push(`... and ${result.lint.errors.length - 6} more issues`)
+            for (const iss of sample) {
+              const loc = iss.file ? `${iss.file}:${iss.line ?? "?"}` : ""
+              parts.push(`  ${loc} ${iss.message}`)
+            }
+            if (result.lint.issues.length > 6) {
+              parts.push(`  ... and ${result.lint.issues.length - 6} more issues`)
             }
             parts.push("```")
           }
         }
       } else {
-        parts.push(`❌ TypeScript check FAILED (${result.typeCheck.errors.length} errors):`)
-        // Only include the first 8 error lines to keep the context concise
-        const sample = result.typeCheck.errors.slice(0, 8)
+        const errorCount = result.typeCheck.issues.filter((i) => i.severity === "error").length
+        parts.push(`❌ TypeScript check FAILED (${errorCount} errors):`)
+        const sample = result.typeCheck.issues.slice(0, 8)
         parts.push("```")
-        parts.push(sample.join("\n"))
-        if (result.typeCheck.errors.length > 8) {
-          parts.push(`... and ${result.typeCheck.errors.length - 8} more errors`)
+        for (const iss of sample) {
+          const loc = iss.file ? `${iss.file}:${iss.line ?? "?"}:${iss.column ?? "?"}` : ""
+          const code = iss.code ? ` ${iss.code}` : ""
+          parts.push(`  ${loc}${code} ${iss.message}`)
+        }
+        if (result.typeCheck.issues.length > 8) {
+          parts.push(`  ... and ${result.typeCheck.issues.length - 8} more errors`)
         }
         parts.push("```")
         parts.push("")
@@ -238,4 +300,3 @@ export class PostWriteVerifier {
     return parts.join("\n")
   }
 }
-

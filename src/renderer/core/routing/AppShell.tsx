@@ -8,7 +8,7 @@ import { SandboxStatusIndicator } from '@/components/workspace/sandbox/SandboxSt
 import { useApprovalStore } from '../../runtime/approval-gate'
 import { useAgentStore } from '../../stores/agent-store'
 import { useLeakTracker } from '@/performance/leak-detector'
-import { ExecutionOrchestrator } from '@/runtime/execution/ExecutionOrchestrator'
+import { ExecutionSessionManager } from '@/runtime/sessions/ExecutionSessionManager'
 import { fadeInUp } from '@/lib/motion'
 import { useReducedMotion } from '@/lib/reduced-motion'
 
@@ -68,7 +68,7 @@ function AgentActivityBadge() {
       <span>
         Agent working...
       </span>
-      <button onClick={() => ExecutionOrchestrator.cancelCurrent()} style={{
+      <button onClick={() => ExecutionSessionManager.cancelCurrent()} style={{
         background: 'none', border: '1px solid #555', borderRadius: '12px',
         color: '#888', cursor: 'pointer', fontSize: '11px', padding: '2px 8px',
       }}>Cancel</button>

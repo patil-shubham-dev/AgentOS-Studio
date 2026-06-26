@@ -1,20 +1,12 @@
 import { emitTelemetry } from "@/lib/telemetry"
+import { WordBoundaryStreamBuffer } from "./WordBoundaryStreamBuffer"
 
 type StreamFlushCallback = (stepId: string, delta: string) => void
 
-interface StepStream {
-  tokens: string[]
-  lastFlushedAt: number
-  active: boolean
-}
-
-const BURST_TOKEN_LIMIT = 3
-const BURST_CHAR_LIMIT = 100
 const MAX_CONSECUTIVE_MICROTASK_FLUSHES = 5
 
 export class StreamManager {
   private static instance: StreamManager
-  private streams = new Map<string, StepStream>()
   private flushScheduled: "raf" | "microtask" | null = null
   private rafId: number | null = null
   private flushCallback: StreamFlushCallback | null = null
@@ -22,8 +14,13 @@ export class StreamManager {
   private microtaskFlushCount = 0
   private idle = true
   private lastActivityAt = Date.now()
+  private droppedTokenCount = 0
   private readonly IDLE_TIMEOUT_MS = 5000
-  private readonly STREAM_TTL_MS = 5 * 60 * 1000
+  private wordBuffer: WordBoundaryStreamBuffer
+
+  private constructor() {
+    this.wordBuffer = new WordBoundaryStreamBuffer()
+  }
 
   static getInstance(): StreamManager {
     if (!StreamManager.instance) {
@@ -38,7 +35,7 @@ export class StreamManager {
 
   reset(): void {
     this.cancelled = false
-    this.streams.clear()
+    this.wordBuffer.clearAll()
     this.flushScheduled = null
     this.microtaskFlushCount = 0
     if (this.rafId !== null) {
@@ -46,8 +43,6 @@ export class StreamManager {
       this.rafId = null
     }
   }
-
-  private droppedTokenCount: number = 0
 
   getDroppedTokenCount(): number {
     return this.droppedTokenCount
@@ -58,49 +53,36 @@ export class StreamManager {
       this.droppedTokenCount++
       return
     }
-    let stream = this.streams.get(stepId)
-    if (!stream) {
-      this.evictStaleStreams()
-      stream = { tokens: [], lastFlushedAt: 0, active: true }
-      this.streams.set(stepId, stream)
-    }
-    if (!stream.active) {
-      this.droppedTokenCount++
-      return
-    }
 
     this.idle = false
     this.lastActivityAt = Date.now()
-    const isFirstToken = stream.tokens.length === 0
-    stream.tokens.push(token)
-    // Enforce max token buffer per stream to prevent unbounded memory
-    if (stream.tokens.length > 1000) {
-      stream.tokens = stream.tokens.slice(-500)
+
+    const result = this.wordBuffer.append(stepId, token)
+    if (result !== null) {
+      this.dispatch(stepId, result)
+      return
     }
 
-    if (isFirstToken) {
-      this.flushViaMicrotask()
-    } else if (priority) {
-      this.flushViaMicrotask()
-    } else {
-      const pendingTokens = stream.tokens.length
-      const totalChars = stream.tokens.reduce((sum, t) => sum + t.length, 0)
-      if (pendingTokens <= BURST_TOKEN_LIMIT && totalChars < BURST_CHAR_LIMIT) {
-        this.flushViaMicrotask()
-      } else {
-        this.scheduleRafFlush()
+    if (priority) {
+      this.scheduleFlush()
+    }
+  }
+
+  private dispatch(stepId: string, text: string): void {
+    if (this.flushCallback) {
+      try {
+        this.flushCallback(stepId, text)
+      } catch (e) {
+        emitTelemetry({ type: "stream_token_dropped", timestamp: Date.now(), error: e instanceof Error ? e.message : String(e), metadata: { stepId, phase: "flush" } })
+        console.error(`[StreamManager] flush error for ${stepId}:`, e)
       }
     }
   }
 
-  private flushViaMicrotask(): void {
-    // Prevent microtask starvation: if we've done too many consecutive microtask
-    // flushes, fall back to RAF to give the browser a chance to render
+  private scheduleFlush(): void {
     if (this.microtaskFlushCount >= MAX_CONSECUTIVE_MICROTASK_FLUSHES) {
       this.microtaskFlushCount = 0
-      if (this.flushScheduled !== "raf") {
-        this.scheduleRafFlush()
-      }
+      this.scheduleRafFlush()
       return
     }
     if (this.flushScheduled === "microtask") return
@@ -130,50 +112,13 @@ export class StreamManager {
 
   private flush(): void {
     this.microtaskFlushCount = 0
-    if (this.streams.size === 0) {
+    const pending = this.wordBuffer.flushAll()
+    if (pending.length === 0) {
       this.checkIdle()
       return
     }
-
-    let flushed = false
-    for (const [stepId, stream] of this.streams) {
-      if (stream.tokens.length === 0 || !stream.active) continue
-      const tokens = stream.tokens
-      stream.tokens = []
-      const delta = tokens.join("")
-      stream.lastFlushedAt = performance.now()
-
-      if (delta && this.flushCallback) {
-        try {
-          this.flushCallback(stepId, delta)
-          flushed = true
-        } catch (e) {
-          emitTelemetry({ type: "stream_token_dropped", timestamp: Date.now(), error: e instanceof Error ? e.message : String(e), metadata: { stepId, phase: "flush" } })
-          console.error(`[StreamManager] flush error for ${stepId}:`, e)
-        }
-      }
-    }
-
-    for (const [stepId, stream] of this.streams) {
-      if (!stream.active && stream.tokens.length === 0) {
-        this.streams.delete(stepId)
-      }
-    }
-
-    this.evictStaleStreams()
-
-    if (this.streams.size > 0) {
-      const hasPendingWork = Array.from(this.streams.values())
-        .some(s => s.active && s.tokens.length > 0)
-      if (hasPendingWork) {
-        if (this.flushScheduled === null) {
-          this.scheduleRafFlush()
-        }
-      } else if (!flushed) {
-        this.checkIdle()
-      }
-    } else {
-      this.checkIdle()
+    for (const { stepId, text } of pending) {
+      this.dispatch(stepId, text)
     }
   }
 
@@ -209,18 +154,19 @@ export class StreamManager {
 
   complete(stepId: string): void {
     this.flushImmediate()
-    const stream = this.streams.get(stepId)
-    if (stream) {
-      stream.active = false
-    }
+    this.wordBuffer.clear(stepId)
   }
 
   clearStep(stepId: string): void {
-    this.streams.delete(stepId)
+    this.wordBuffer.clear(stepId)
+  }
+
+  getActiveStepIds(): string[] {
+    return this.wordBuffer.getActiveStepIds()
   }
 
   clearAll(): void {
-    this.streams.clear()
+    this.wordBuffer.clearAll()
     this.flushScheduled = null
     this.cancelled = true
     this.microtaskFlushCount = 0
@@ -236,22 +182,19 @@ export class StreamManager {
   }
 
   hasPending(stepId: string): boolean {
-    const stream = this.streams.get(stepId)
-    return stream !== undefined && stream.tokens.length > 0
-  }
-
-  getActiveStepIds(): string[] {
-    return Array.from(this.streams.entries())
-      .filter(([, s]) => s.active && s.tokens.length > 0)
-      .map(([id]) => id)
+    return this.wordBuffer.hasPending(stepId)
   }
 
   getState(): { activeStreams: number; pendingTokens: number } {
-    let pending = 0
-    for (const s of this.streams.values()) {
-      pending += s.tokens.length
+    const activeStepIds = this.wordBuffer.getActiveStepIds()
+    let pendingTokens = 0
+    for (const stepId of activeStepIds) {
+      const hasPending = this.wordBuffer.hasPending(stepId)
+      if (hasPending) {
+        pendingTokens++
+      }
     }
-    return { activeStreams: this.streams.size, pendingTokens: pending }
+    return { activeStreams: activeStepIds.length, pendingTokens }
   }
 }
 

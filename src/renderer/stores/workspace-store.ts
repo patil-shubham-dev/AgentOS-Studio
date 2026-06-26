@@ -1,6 +1,8 @@
 import { create } from "zustand"
 import type { FileEntry, OpenFile, FileChangeEvent, RuntimeConfig } from "@/types"
 import { requestRefresh, flushDeferredRefresh } from "@/runtime/runtime-coordinator"
+import { removeFromCaches } from "@/components/workspace/editor-utils"
+import { listDirectory } from "@/lib/filesystem"
 
 export type OrchestrationState = "idle" | "analyzing" | "planning" | "executing" | "reviewing" | "error"
 export type AiContextFile = { path: string; name: string; relevance: number; addedAt: number }
@@ -287,9 +289,61 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({ fileTree: tree, isLoading: false })
   },
 
+  insertFileEntry: (parentPath: string, entry: FileEntry) => {
+    set((state) => {
+      function insert(entries: FileEntry[]): FileEntry[] {
+        return entries.map((e) => {
+          if (e.path === parentPath && e.is_dir) {
+            const exists = e.children.some(c => c.path === entry.path)
+            if (exists) return e
+            return { ...e, children: [...e.children, entry] }
+          }
+          if (e.is_dir && e.children.length > 0) {
+            return { ...e, children: insert(e.children) }
+          }
+          return e
+        })
+      }
+      return { fileTree: insert(state.fileTree), isLoading: false }
+    })
+  },
+
+  removeFileEntry: (targetPath: string) => {
+    set((state) => {
+      function remove(entries: FileEntry[]): FileEntry[] {
+        return entries
+          .filter(e => e.path !== targetPath)
+          .map(e => {
+            if (e.is_dir && e.children.length > 0) {
+              return { ...e, children: remove(e.children) }
+            }
+            return e
+          })
+      }
+      return { fileTree: remove(state.fileTree), isLoading: false }
+    })
+  },
+
+  renameFileEntry: (oldPath: string, newPath: string) => {
+    set((state) => {
+      function rename(entries: FileEntry[]): FileEntry[] {
+        return entries.map((e) => {
+          if (e.path === oldPath) {
+            const name = newPath.split('/').pop() || newPath
+            return { ...e, name, path: newPath }
+          }
+          if (e.is_dir && e.children.length > 0) {
+            return { ...e, children: rename(e.children) }
+          }
+          return e
+        })
+      }
+      return { fileTree: rename(state.fileTree), isLoading: false }
+    })
+  },
+
   loadDirectory: async (path: string) => {
     try {
-      const { listDirectory } = await import("@/lib/filesystem")
       const children = await listDirectory(path)
       set((state) => {
         function updateEntry(entries: FileEntry[]): FileEntry[] {
@@ -349,13 +403,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   closeFile: (path) =>
     set((store) => {
       const filtered = store.openFiles.filter((f) => f.path !== path)
+      const closedIdx = store.openFiles.findIndex((f) => f.path === path)
       const newActive = store.activeFilePath === path
-        ? (filtered.length > 0 ? filtered[filtered.length - 1].path : null)
+        ? (filtered.length > 0
+            ? filtered[Math.min(closedIdx, filtered.length - 1)].path
+            : null)
         : store.activeFilePath
       // Refresh context if the active file changes (closing the current tab)
       if (store.activeFilePath !== newActive && newActive !== null) {
         requestRefresh("workspace_change")
       }
+      removeFromCaches(path)
       return { openFiles: filtered, activeFilePath: newActive }
     }),
 
@@ -487,7 +545,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   recordFileEdit: (path) => set({ lastEditedFile: path }),
 
   persistWorkspaceState: () => {
-    const { openFiles, activeFilePath, cursorLine, cursorColumn, visibleRangeStart, visibleRangeEnd } = get()
+    const { openFiles, activeFilePath, cursorLine, cursorColumn, visibleRangeStart, visibleRangeEnd, splitMode, splitFilePath } = get()
     const persistData = {
       openFiles: openFiles.map(f => ({ path: f.path, name: f.name })),
       activeFilePath,
@@ -495,6 +553,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       cursorColumn,
       visibleRangeStart,
       visibleRangeEnd,
+      splitMode,
+      splitFilePath,
     }
     try {
       localStorage.setItem('agentic-workspace-state', JSON.stringify(persistData))
@@ -512,6 +572,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         cursorColumn: number
         visibleRangeStart: number
         visibleRangeEnd: number
+        splitMode?: 'none' | 'horizontal' | 'vertical'
+        splitFilePath?: string | null
       }
       // Only restore if the root path matches (per-workspace)
       const storedRoot = localStorage.getItem('agentic-workspace-root')
@@ -522,6 +584,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         cursorColumn: data.cursorColumn ?? 1,
         visibleRangeStart: data.visibleRangeStart ?? 1,
         visibleRangeEnd: data.visibleRangeEnd ?? 1,
+        splitMode: data.splitMode ?? 'none',
+        splitFilePath: data.splitFilePath ?? null,
         // Reconstruct openFiles from stored paths — content is loaded on open
         openFiles: data.openFiles.map(f => ({ path: f.path, name: f.name, content: '', isDirty: false })),
       })

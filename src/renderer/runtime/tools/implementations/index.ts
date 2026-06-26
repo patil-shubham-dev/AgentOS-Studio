@@ -9,6 +9,8 @@ import { WebSearchTool } from './WebSearchTool'
 import { WebFetchTool } from './WebFetchTool'
 import { DelegateSubtaskTool } from './DelegateTool'
 import { RunSkillTool } from './SkillTool'
+import { QueryCodebaseTool } from './QueryCodebaseTool'
+import { QueryGraphTool } from './QueryGraphTool'
 import { DesignCreateArtifactTool, DesignAddVersionTool, DesignGeneratePreviewTool } from './DesignTools'
 import {
   LaunchBrowserTool, BrowserNavigateTool, BrowserScreenshotTool,
@@ -30,6 +32,8 @@ export const ALL_BUILTIN_TOOLS = [
   WebFetchTool,
   DelegateSubtaskTool,
   RunSkillTool,
+  QueryCodebaseTool,
+  QueryGraphTool,
   DesignCreateArtifactTool,
   DesignAddVersionTool,
   DesignGeneratePreviewTool,
@@ -62,6 +66,8 @@ export {
   WebFetchTool,
   DelegateSubtaskTool,
   RunSkillTool,
+  QueryCodebaseTool,
+  QueryGraphTool,
   DesignCreateArtifactTool,
   DesignAddVersionTool,
   DesignGeneratePreviewTool,

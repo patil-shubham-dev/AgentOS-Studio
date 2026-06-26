@@ -1,3 +1,5 @@
+import { safeCapitalize } from "@/lib/safeCapitalize"
+
 export type ActivityType =
   | "initializing"
   | "planning"
@@ -85,7 +87,7 @@ const AGENT_ROLE_LABELS: Record<string, string> = {
 }
 
 export function getAgentLabel(role: string): string {
-  return AGENT_ROLE_LABELS[role] ?? `${role.charAt(0).toUpperCase() + role.slice(1)} Agent`
+  return AGENT_ROLE_LABELS[role] ?? (role ? `${safeCapitalize(role)} Agent` : "Unknown Agent")
 }
 
 export function mapToolToActivity(toolName: string): Activity {
@@ -93,6 +95,7 @@ export function mapToolToActivity(toolName: string): Activity {
 }
 
 export function mapPhaseToActivity(phase: string): Activity | null {
+  if (!phase) return null
   const match = PHASE_TO_ACTIVITY[phase.toLowerCase()]
   if (match) return match
   return null

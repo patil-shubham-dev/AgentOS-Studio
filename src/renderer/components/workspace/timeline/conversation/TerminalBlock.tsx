@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect, useState, useCallback } from "react"
+import { memo, useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronDown, ChevronRight, CheckCircle2, XCircle, MinusCircle } from "lucide-react"
 import { CopyButton } from "@/components/ui/CopyButton"
@@ -71,6 +71,15 @@ export const TerminalBlock = memo(function TerminalBlock({ terminal }: TerminalB
   const cleanOutput = stripAnsi(terminal.output)
 
   const humanLabel = isRunning ? "Running a quick check" : isError ? "Something went wrong" : isCancelled ? "Cancelled" : "Done"
+
+  const outputLines = useMemo(() => cleanOutput.split("\n"), [cleanOutput])
+  const displayLines = useMemo(() => {
+    if (!isRunning) return outputLines
+    if (outputLines.length <= 50) return outputLines
+    return outputLines.slice(-50)
+  }, [outputLines, isRunning])
+  const lineOffset = outputLines.length - displayLines.length
+  const showLineNumbers = displayLines.length > 1
 
   return (
     <motion.div
@@ -154,20 +163,46 @@ export const TerminalBlock = memo(function TerminalBlock({ terminal }: TerminalB
                   <CopyButton text={cleanOutput} className="px-1 py-0.5 rounded bg-black/60 border border-white/[0.04]" />
                 </div>
               )}
-              <pre
-                ref={outputRef}
-                className={cn(
-                  "rounded-lg bg-black/40 border border-white/[0.04] p-2.5",
-                  "text-[11px] font-mono whitespace-pre-wrap break-all leading-relaxed",
-                  "max-h-[200px] overflow-y-auto",
-                  "scrollbar-thin scrollbar-thumb-white/[0.03] scrollbar-track-transparent",
-                )}
-              >
-                <code>
-                  {cleanOutput || (isRunning ? "" : "")}
-                  {isRunning && cleanOutput ? <span className="animate-pulse text-amber-400/60">█</span> : ""}
-                </code>
-              </pre>
+              {!cleanOutput && !isRunning && (
+                <div className="rounded-lg bg-black/40 border border-white/[0.04] p-2.5">
+                  <code className="text-[11px] font-mono text-white/20">(empty output)</code>
+                </div>
+              )}
+              {cleanOutput && (
+                <pre
+                  ref={outputRef}
+                  className={cn(
+                    "rounded-lg bg-black/40 border border-white/[0.04] p-2.5",
+                    "text-[11px] font-mono whitespace-pre-wrap break-all leading-relaxed",
+                    "max-h-[200px] overflow-y-auto",
+                    "scrollbar-thin scrollbar-thumb-white/[0.03] scrollbar-track-transparent",
+                  )}
+                >
+                  <code>
+                    {displayLines.map((line, i) => (
+                      <span key={lineOffset + i} className="block">
+                        {showLineNumbers && (
+                          <span className="inline-block w-8 text-right text-[8px] text-white/15 select-none mr-2 shrink-0">
+                            {lineOffset + i + 1}
+                          </span>
+                        )}
+                        {line || " "}
+                      </span>
+                    ))}
+                    {isRunning && cleanOutput ? (
+                      <span className="inline-block w-2 h-4 bg-amber-400/60 animate-pulse ml-0.5 align-text-bottom" />
+                    ) : null}
+                    {isRunning && !cleanOutput ? (
+                      <span className="inline-block w-2 h-4 bg-amber-400/60 animate-pulse align-text-bottom" />
+                    ) : null}
+                  </code>
+                </pre>
+              )}
+              {isRunning && outputLines.length > 50 && (
+                <div className="text-[9px] text-white/20 text-center">
+                  Showing last {displayLines.length} of {outputLines.length} lines
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

@@ -129,6 +129,8 @@ export interface ToolCallRecord {
   progress?: string
   status: "pending" | "running" | "complete" | "error"
   durationMs?: number
+  startedAt?: number
+  completedAt?: number
   /** Optional parallel group index — tools with the same index were executed in parallel */
   parallelGroup?: number
 }

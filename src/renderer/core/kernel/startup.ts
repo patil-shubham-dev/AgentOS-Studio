@@ -9,11 +9,20 @@ import { MemoryObserver } from "@/runtime/memory/MemoryObserver"
 
 import { RuntimeOS } from "@/runtime/RuntimeOS"
 import { RuntimeCleanupManager } from "@/runtime/RuntimeCleanupManager"
+import { setLogPersistence, createFilePersistence } from "@/lib/logger"
 import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
+import { StartupTiming } from "@/lib/startup-timing"
+import { StartupStore } from "@/lib/startup-store"
+import { StartupScheduler } from "@/lib/startup-scheduler"
+import { HealthMonitor } from "@/core/services/HealthMonitor"
+import { ReadinessGate } from "@/core/services/ReadinessGate"
+import { detectStartupMode, generateStartupReport, formatReport } from "@/core/services/StartupReport"
+import { recordBootSample, detectRegressions } from "@/lib/startup-regression"
 import type { MCPClientConfig } from "@/runtime/mcp/MCPClient"
-import type { BootReport } from "./types"
+import type { BootReport, ServiceStatus, KernelService } from "./types"
 
 let _kernel: RuntimeKernel | null = null
+let _safeMode: ReturnType<typeof detectSafeMode> | null = null
 
 export function getKernel(): RuntimeKernel {
   if (!_kernel) {
@@ -22,10 +31,6 @@ export function getKernel(): RuntimeKernel {
   return _kernel
 }
 
-/**
- * Extract persisted MCP server configs from the config data.
- * ConfigData has an index signature so MCP data passes through transparently.
- */
 function loadMcpServers(): MCPClientConfig[] {
   try {
     const raw = localStorage.getItem("agentic-config")
@@ -39,72 +44,186 @@ function loadMcpServers(): MCPClientConfig[] {
   }
 }
 
-export async function bootRuntime(): Promise<BootReport> {
-  // Phase 1: detect safe mode
-  const safeMode = detectSafeMode()
-  if (safeMode.enabled) {
-    console.warn(`[Startup] SAFE MODE: ${safeMode.reason}`)
-  }
+function registerTasks(): void {
+  StartupScheduler.clear()
 
-  // Phase 2: initialize default roles + validate integrity
-  const state = useAppStore.getState()
-  if (state.roleConfigs.length === 0) {
-    state.initializeDefaultRoles()
-  }
+  StartupScheduler.register({
+    id: 'safe-mode',
+    tier: 1,
+    label: 'Safe Mode',
+    run: async () => {
+      _safeMode = detectSafeMode()
+      if (_safeMode.enabled) {
+        console.warn(`[Startup] SAFE MODE: ${_safeMode.reason}`)
+      }
+    },
+  })
 
-  const integrity = validateRegistryIntegrity()
-  if (!integrity.valid) {
-    console.error("[Startup] Registry integrity FAILED:", integrity.issues)
-  }
-  printRuntimeDiagnostics()
+  StartupScheduler.register({
+    id: 'roles',
+    tier: 1,
+    label: 'Roles',
+    run: async () => {
+      const state = useAppStore.getState()
+      if (state.roleConfigs.length === 0) {
+        state.initializeDefaultRoles()
+      }
+      const integrity = validateRegistryIntegrity()
+      if (!integrity.valid) {
+        console.error("[Startup] Registry integrity FAILED:", integrity.issues)
+      }
+      printRuntimeDiagnostics()
+    },
+  })
 
-  // Phase 2.5: initialize observability (execution replay, persistence)
-  try {
-    await ObservabilityManager.getInstance().init()
-    console.log("[Startup] Observability initialized")
-  } catch (err) {
-    console.warn("[Startup] Observability init failed (non-fatal):", err)
-  }
+  StartupScheduler.register({
+    id: 'kernel',
+    tier: 2,
+    label: 'Kernel',
+    priority: 1,
+    run: async () => {
+      const safeMode = _safeMode ?? detectSafeMode()
+      const kernel = getKernel()
+      if (!safeMode.enabled || safeMode.features.extensions) {
+        kernel.register(new EventBusService())
+      }
+      kernel.register(new StorageService())
+      if (!isInSafeMode()) {
+        kernel.register(new WorkspaceRuntimeService())
+      }
+      await kernel.boot()
+    },
+    timeout: 15000,
+  })
 
-  // Phase 2.6: initialize unified memory architecture
-  try {
-    const memory = MemoryArchitecture.getInstance()
-    await memory.initialize()
-    MemoryObserver.getInstance().enable()
-    console.log("[Startup] Memory architecture initialized")
-  } catch (err) {
-    console.warn("[Startup] Memory init failed (non-fatal):", err)
-  }
+  StartupScheduler.register({
+    id: 'observability',
+    tier: 2,
+    label: 'Observability',
+    priority: 2,
+    run: async () => {
+      await ObservabilityManager.getInstance().init()
+      setLogPersistence(createFilePersistence())
+    },
+    timeout: 10000,
+  })
 
-  // Phase 3: bootstrap kernel services
+  StartupScheduler.register({
+    id: 'memory',
+    tier: 2,
+    label: 'Memory',
+    priority: 3,
+    run: async () => {
+      const memory = MemoryArchitecture.getInstance()
+      await memory.initialize()
+      MemoryObserver.getInstance().enable()
+    },
+    timeout: 15000,
+  })
+
+  StartupScheduler.register({
+    id: 'runtime-os',
+    tier: 2,
+    label: 'Runtime',
+    priority: 3,
+    run: async () => {
+      const mcpServers = loadMcpServers()
+      const runtimeOS = RuntimeOS.getInstance()
+      await runtimeOS.initialize(mcpServers.length > 0 ? mcpServers : undefined)
+    },
+    timeout: 30000,
+  })
+}
+
+function startHealthMonitoring() {
   const kernel = getKernel()
-
-  if (!safeMode.enabled || safeMode.features.extensions) {
-    kernel.register(new EventBusService())
+  const services: KernelService[] = []
+  const eventBus = kernel.get<EventBusService>('event-bus')
+  if (eventBus) services.push(eventBus)
+  const storage = kernel.get<StorageService>('storage')
+  if (storage) services.push(storage)
+  const workspace = kernel.get<WorkspaceRuntimeService>('workspace-runtime')
+  if (workspace) services.push(workspace)
+  if (services.length > 0) {
+    HealthMonitor.start(services)
   }
+}
 
-  kernel.register(new StorageService())
+export async function bootRuntime(): Promise<BootReport> {
+  const startupMode = detectStartupMode()
+  StartupTiming.mark('boot:start')
+  StartupStore.setPhase('booting')
+  StartupTiming.mark('window:visible')
 
-  if (!isInSafeMode()) {
-    kernel.register(new WorkspaceRuntimeService())
-  }
+  ReadinessGate.mark('shell')
 
-  const report = await kernel.boot()
+  registerTasks()
 
-  // Phase 4: initialize RuntimeOS (tools, MCP, permissions, skills, tasks, plugins)
-  const mcpServers = loadMcpServers()
-  const runtimeOS = RuntimeOS.getInstance()
-  await runtimeOS.initialize(mcpServers.length > 0 ? mcpServers : undefined)
+  // Tier 1: sequential critical path
+  StartupTiming.mark('tier1:start')
+  await StartupScheduler.executeTier1()
+  StartupTiming.mark('tier1:complete')
 
-  // Phase 5: reset volatile UI state for a fresh chat experience
-  // On app restart, we clear the timeline so the user sees an empty conversation
-  // (like Cursor / Claude Code Desktop). Old sessions are preserved in History.
+  ReadinessGate.mark('settings')
+
+  StartupTiming.mark('app:shell-rendered')
+
+  // Tier 2: parallel background services
+  StartupTiming.mark('tier2:start')
+  await StartupScheduler.executeTier2()
+  StartupTiming.mark('tier2:complete')
+
   useTimelineStore.getState().clear()
+
+  ReadinessGate.mark('workspace')
+
+  // Start health monitoring for kernel services
+  startHealthMonitoring()
+
+  StartupTiming.mark('boot:complete')
+  StartupStore.setPhase('ready')
+
+  const results = StartupScheduler.getResults()
+  const kernelTask = results.find(r => r.id === 'kernel')
+  function mapStatus(s: string): ServiceStatus {
+    if (s === 'completed') return 'running'
+    if (s === 'failed') return 'failed'
+    if (s === 'running') return 'initializing'
+    return 'uninitialized'
+  }
+  const report: BootReport = {
+    success: results.some(r => r.status === 'completed') || results.every(r => r.status === 'failed'),
+    duration: StartupTiming.getTotal(),
+    services: results.map(r => ({
+      id: r.id,
+      status: mapStatus(r.status),
+      duration: r.duration,
+      error: r.error,
+    })),
+    kernel: mapStatus(kernelTask?.status ?? 'uninitialized'),
+  }
+
+  const summary = StartupTiming.getSummary()
+  console.log(summary)
+
+  // Generate and print startup report
+  const startupReport = generateStartupReport()
+  console.log(formatReport(startupReport))
+
+  // Record for regression tracking
+  recordBootSample()
+  const regression = detectRegressions()
+  if (regression.hasRegression) {
+    console.warn('[Startup] REGRESSION DETECTED:')
+    regression.warnings.forEach(w => console.warn(`  ⚠ ${w}`))
+  }
 
   return report
 }
 
 export async function shutdownRuntime(): Promise<void> {
+  HealthMonitor.stop()
+  ReadinessGate.reset()
   const kernel = getKernel()
   await RuntimeOS.destroy()
   await kernel.shutdown()

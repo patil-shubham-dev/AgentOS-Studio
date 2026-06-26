@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Network, ChevronDown, ChevronRight, FileCode, GitBranch, Package, Layers, Hash, ArrowLeft, ArrowRight, GitFork } from "lucide-react"
+import { Network, ChevronDown, ChevronRight, FileCode, GitBranch, Package, Layers, Hash, ArrowLeft, ArrowRight, GitFork, Target, Beaker, AlertTriangle } from "lucide-react"
 import { getProjectMap, getArchitectureMap, getDependencyGraph, type ProjectMap, type ArchitectureMap } from "@/lib/workspace-intelligence"
 import type { DependencyGraph } from "@/lib/dependency-scanner"
 import { cn } from "@/lib/utils"
 import { getSpringConfig } from "@/lib/motion"
+import { useAgentStore } from "@/stores/agent-store"
+import { useWorkspaceStore } from "@/stores/workspace-store"
 
 function ProjectMapContent({ projectMap }: { projectMap: ProjectMap }) {
   const [expanded, setExpanded] = useState(true)
@@ -185,6 +187,77 @@ function DependencyGraphView({ graph }: { graph: DependencyGraph }) {
   )
 }
 
+const TEST_PATTERNS = [".test.", ".spec.", "__tests__", "/test/", "/tests/"]
+
+function isTestFile(path: string): boolean {
+  return TEST_PATTERNS.some((p) => path.includes(p))
+}
+
+function findRelatedTests(affectedFiles: string[]): string[] {
+  const tests: string[] = []
+  for (const f of affectedFiles) {
+    const base = f.replace(/\.(ts|tsx|js|jsx)$/, "")
+    const candidates = [`${base}.test.ts`, `${base}.test.tsx`, `${base}.test.js`, `${base}.test.jsx`]
+    tests.push(...candidates)
+  }
+  return tests.slice(0, 5)
+}
+
+function TaskIntelligence() {
+  const fileActivities = useAgentStore((s) => s.fileActivities)
+  const activePaths = useMemo(() => {
+    return [...new Set(fileActivities.map((fa) => fa.path))]
+  }, [fileActivities])
+
+  if (activePaths.length === 0) return null
+
+  const editPaths = activePaths.filter((p) => fileActivities.some((fa) => fa.path === p && fa.activity === "editing"))
+  const testPaths = findRelatedTests(editPaths.length > 0 ? editPaths : activePaths)
+
+  return (
+    <div className="border-t border-white/[0.04] px-2 pt-1.5 pb-1">
+      <div className="flex items-center gap-1 text-[9px] text-blue-400/50 mb-1">
+        <Target className="h-2.5 w-2.5" />
+        Current Task
+      </div>
+      {activePaths.length > 0 && (
+        <div className="space-y-0.5 mb-1">
+          <div className="text-[8px] text-white/20 mb-0.5">Affected files ({activePaths.length})</div>
+          {activePaths.slice(0, 4).map((path) => {
+            const activity = fileActivities.find((fa) => fa.path === path)
+            const name = path.split(/[\\/]/).pop() || path
+            return (
+              <div key={path} className="flex items-center gap-1.5 text-[9px]">
+                <span className={cn(
+                  "h-1.5 w-1.5 rounded-full shrink-0",
+                  activity?.activity === "editing" ? "bg-amber-400" :
+                  activity?.activity === "error" ? "bg-red-400" :
+                  activity?.activity === "reading" ? "bg-blue-400" :
+                  "bg-white/20"
+                )} />
+                <span className="text-white/40 truncate max-w-[160px]">{name}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {testPaths.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1 text-[8px] text-white/20 mb-0.5">
+            <Beaker className="h-2 w-2" />
+            Related tests ({testPaths.length})
+          </div>
+          {testPaths.slice(0, 3).map((tp) => (
+            <div key={tp} className="text-[9px] text-white/25 truncate max-w-[180px]">
+              {tp.split(/[\\/]/).pop() || tp}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ProjectMapPanel() {
   const [projectMap, setProjectMap] = useState<ProjectMap | null>(null)
   const [isOpen, setIsOpen] = useState(false)
@@ -195,7 +268,6 @@ export function ProjectMapPanel() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
-      const { useWorkspaceStore } = await import("@/stores/workspace-store")
       const rootPath = useWorkspaceStore.getState().rootPath
       if (!rootPath) return
       const map = await getProjectMap(rootPath)
@@ -249,6 +321,7 @@ export function ProjectMapPanel() {
               </div>
             ) : projectMap ? (
               <>
+                <TaskIntelligence />
                 <ProjectMapContent projectMap={projectMap} />
                 {depGraph && <DependencyGraphView graph={depGraph} />}
               </>

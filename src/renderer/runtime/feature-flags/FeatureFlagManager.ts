@@ -1,26 +1,24 @@
 export type FeatureFlag =
-  | "goalLoop"
   | "verification"
   | "multiAgent"
   | "browserContinuity"
   | "observability"
   | "autoMemory"
   | "contextCache"
-  | "legacyRuntime"
+  | "unifiedExecutor"
 
 export class FeatureFlagManager {
   private static instance: FeatureFlagManager
   private flags = new Map<FeatureFlag, boolean>()
 
   private readonly defaults: Record<FeatureFlag, boolean> = {
-    goalLoop: true,
     verification: true,
     multiAgent: true,
     browserContinuity: true,
     observability: true,
     autoMemory: true,
     contextCache: true,
-    legacyRuntime: false,
+    unifiedExecutor: false,
   }
 
   static getInstance(): FeatureFlagManager {

@@ -167,17 +167,17 @@ export class ViewportManager {
       try {
         const debugger_ = (this.view.webContents as any).debugger
         if (debugger_) {
-          try { debugger_.sendCommand('Network.disable') } catch {}
-          try { debugger_.detach() } catch {}
+          try { debugger_.sendCommand('Network.disable') } catch { console.warn("[Viewport] Failed to disable network debugger") }
+          try { debugger_.detach() } catch { console.warn("[Viewport] Failed to detach debugger") }
         }
-      } catch {}
+      } catch { console.warn("[Viewport] Debugger access failed") }
       try {
         this.mainWindow.contentView.removeChildView(this.view)
-      } catch {}
+      } catch { console.warn("[Viewport] Failed to remove child view") }
       try {
         (this.view as any).close?.()
         ;(this.view as any).destroy?.()
-      } catch {}
+      } catch { console.warn("[Viewport] Failed to close/destroy view") }
       this.view = null
       this.debuggerAttached = false
       this.pendingRequests.clear()
@@ -193,7 +193,7 @@ export class ViewportManager {
     try {
       await this.view.webContents.loadURL(url)
       return true
-    } catch { return false }
+    } catch { console.warn("[ViewportManager] navigate failed"); return false }
   }
 
   async reload(): Promise<boolean> {
@@ -201,7 +201,7 @@ export class ViewportManager {
     try {
       this.view.webContents.reload()
       return true
-    } catch { return false }
+    } catch { console.warn("[ViewportManager] reload failed"); return false }
   }
 
   async goBack(): Promise<boolean> {
@@ -209,7 +209,7 @@ export class ViewportManager {
     try {
       this.view.webContents.goBack()
       return true
-    } catch { return false }
+    } catch { console.warn("[ViewportManager] goBack failed"); return false }
   }
 
   async goForward(): Promise<boolean> {
@@ -217,7 +217,7 @@ export class ViewportManager {
     try {
       this.view.webContents.goForward()
       return true
-    } catch { return false }
+    } catch { console.warn("[ViewportManager] goForward failed"); return false }
   }
 
   async click(selector: string): Promise<{ success: boolean; error?: string }> {
@@ -233,6 +233,7 @@ export class ViewportManager {
       `)
       return result
     } catch (err: any) {
+      console.warn("[ViewportManager] click failed:", err.message)
       return { success: false, error: err.message }
     }
   }
@@ -258,6 +259,7 @@ export class ViewportManager {
       `)
       return result
     } catch (err: any) {
+      console.warn("[ViewportManager] type failed:", err.message)
       return { success: false, error: err.message }
     }
   }
@@ -290,6 +292,7 @@ export class ViewportManager {
       `)
       return result
     } catch (err: any) {
+      console.warn("[ViewportManager] pressKey failed:", err.message)
       return { success: false, error: err.message }
     }
   }
@@ -299,7 +302,7 @@ export class ViewportManager {
     try {
       const image = await this.view.webContents.capturePage()
       return image.toDataURL()
-    } catch { return null }
+    } catch { console.warn("[ViewportManager] screenshot failed"); return null }
   }
 
   async executeJs(js: string): Promise<{ success: boolean; result?: any; error?: string }> {
@@ -308,6 +311,7 @@ export class ViewportManager {
       const result = await this.view.webContents.executeJavaScript(js)
       return { success: true, result }
     } catch (err: any) {
+      console.warn("[ViewportManager] executeJs failed:", err.message)
       return { success: false, error: err.message }
     }
   }
@@ -322,7 +326,7 @@ export class ViewportManager {
         })()
       `)
       return result
-    } catch { return [] }
+    } catch { console.warn("[ViewportManager] getConsoleLogs failed"); return [] }
   }
 
   async injectAnnotationScript(): Promise<boolean> {
@@ -375,7 +379,7 @@ export class ViewportManager {
     if (!this.view) return []
     try {
       return await this.view.webContents.executeJavaScript('window.__agenticAnnotations || []')
-    } catch { return [] }
+    } catch { console.warn("[ViewportManager] getAnnotations failed"); return [] }
   }
 
   getState(): ViewportState {

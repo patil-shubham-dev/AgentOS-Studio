@@ -164,14 +164,14 @@ export class TerminalRuntime {
     const eapi = getEapi()
     try {
       eapi.stdinInput({ streamId: `${streamStepId}-${Date.now()}`, input })
-    } catch {}
+    } catch { console.warn("[TerminalRuntime] Failed to send stdin — input may be lost") }
   }
 
   closeStdin(streamStepId: string): void {
     const eapi = getEapi()
     try {
       eapi.stdinEnd(`${streamStepId}-${Date.now()}`)
-    } catch {}
+    } catch { console.warn("[TerminalRuntime] Failed to close stdin — terminal may hang") }
   }
 
   cancelStream(streamId: string): void {

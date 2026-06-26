@@ -1,5 +1,6 @@
 import type { FileEntry } from "@/types"
 import { readFile } from "./filesystem"
+import { tsProgramManager } from "./ts-program-manager"
 
 const ROOT_REGEX =
   /^\s*(?:import|export)\s+(?:\{[^}]*\}|\*\s+as\s+\w+|\*|\w[\w{},]*)\s+from\s+['"]\.\.?(.+?)['"]|^\s*import\s+['"](.+?)['"]|^\s*require\s*\(\s*['"]\.\.?(.+?)['"]\s*\)/gm
@@ -7,12 +8,34 @@ const ROOT_REGEX =
 const NPM_IMPORT_REGEX =
   /^\s*(?:import|export)\s+(?:\{[^}]*\}|\*\s+as\s+\w+|\*|\w[\w{},]*)\s+from\s+['"]((?:@[\w-]+\/)?[\w-]+)['"]/gm
 
+// Extract specific imported names: import { X, Y as Z } from './foo'
+const IMPORT_NAMES_REGEX = /^\s*(?:import|export)\s+\{\s*([^}]+)\}\s+from\s+['"](.+?)['"]/gm
+
+// Detect type-only imports: import type { X } from './foo'
+const TYPE_IMPORT_REGEX = /^\s*import\s+type\s+\{[^}]*\}\s+from\s+['"](.+?)['"]/gm
+
+// Detect re-exports: export { X } from './foo'
+const RE_EXPORT_REGEX = /^\s*export\s+\{\s*([^}]+)\}\s+from\s+['"](.+?)['"]/gm
+
 export interface DependencyNode {
   path: string
   name: string
   imports: string[]
   importedBy: string[]
   npmDependencies: string[]
+  /** Specific names imported from each module */
+  importNames?: Record<string, string[]>
+  /** Whether this file has type-only imports */
+  hasTypeOnlyImports?: boolean
+  /** Resolved exports: maps export name to definition file */
+  resolvedExports?: Record<string, string>
+  /** Whether this file is a barrel file (re-exports from multiple files) */
+  isBarrelFile?: boolean
+}
+
+export interface CircularDependency {
+  cycle: string[]
+  files: string[]
 }
 
 export interface DependencyGraph {
@@ -32,8 +55,41 @@ export class DependencyScanner {
   private nodeMap = new Map<string, DependencyNode>()
   private npmDeps = new Map<string, ModuleDependency>()
 
+  private tsconfigPaths: Record<string, string[]> = {}
+  private importNameMap = new Map<string, Record<string, string[]>>()
+  private circularDeps: CircularDependency[] = []
+
   constructor(rootPath: string) {
     this.rootPath = rootPath
+    this.loadTsconfigPaths()
+  }
+
+  private loadTsconfigPaths(): void {
+    try {
+      const fs = require("fs")
+      const tsconfigPath = `${this.rootPath}/tsconfig.json`
+      if (fs.existsSync(tsconfigPath)) {
+        const content = fs.readFileSync(tsconfigPath, "utf-8")
+        const config = JSON.parse(content)
+        this.tsconfigPaths = config.compilerOptions?.paths ?? {}
+      }
+    } catch {
+      this.tsconfigPaths = {}
+    }
+  }
+
+  private resolveTsconfigPath(imp: string): string | null {
+    for (const [alias, targets] of Object.entries(this.tsconfigPaths)) {
+      const aliasPattern = alias.replace("*", "(.+)")
+      const aliasRegex = new RegExp(`^${aliasPattern}$`)
+      const match = imp.match(aliasRegex)
+      if (match && targets.length > 0) {
+        const target = targets[0]
+        const resolved = target.replace("*", match[1])
+        return resolved
+      }
+    }
+    return null
   }
 
   private getRelativePath(absPath: string): string {
@@ -102,6 +158,8 @@ export class DependencyScanner {
     const scannedFiles = textFiles.slice(0, 1000)
     const importMap = new Map<string, string[]>()
     const npmImportMap = new Map<string, string[]>()
+    const typeOnlyImportMap = new Map<string, boolean>()
+    const barrelFileMap = new Map<string, boolean>()
 
     for (const absPath of scannedFiles) {
       try {
@@ -124,6 +182,29 @@ export class DependencyScanner {
         }
         importMap.set(relPath, imports)
 
+        // Extract import names for export resolution
+        const importNames: Record<string, string[]> = {}
+        const nameMatches = content.matchAll(IMPORT_NAMES_REGEX)
+        for (const nm of nameMatches) {
+          const names = nm[1].split(",").map((n) => n.trim().split(/\s+as\s+/).pop()?.trim() ?? n.trim())
+          const fromPath = nm[2].trim()
+          const resolved = this.resolveImport(fromPath, relPath)
+          if (resolved) {
+            importNames[resolved] = [...(importNames[resolved] ?? []), ...names]
+          }
+        }
+        if (Object.keys(importNames).length > 0) {
+          this.importNameMap.set(relPath, importNames)
+        }
+
+        // Detect type-only imports
+        TYPE_IMPORT_REGEX.lastIndex = 0
+        typeOnlyImportMap.set(relPath, TYPE_IMPORT_REGEX.test(content))
+
+        // Detect barrel file (re-exports from multiple files)
+        const reExports = content.match(RE_EXPORT_REGEX)
+        barrelFileMap.set(relPath, (reExports?.length ?? 0) > 1)
+
         const npmMatches = content.matchAll(NPM_IMPORT_REGEX)
         const npmImports: string[] = []
         for (const m of npmMatches) {
@@ -141,12 +222,16 @@ export class DependencyScanner {
 
     for (const [relPath] of importMap) {
       const name = relPath.split("/").pop() || relPath
+      const importNames = this.importNameMap.get(relPath)
       this.nodeMap.set(relPath, {
         path: relPath,
         name,
         imports: [],
         importedBy: [],
         npmDependencies: [],
+        importNames,
+        hasTypeOnlyImports: typeOnlyImportMap.get(relPath) ?? false,
+        isBarrelFile: barrelFileMap.get(relPath) ?? false,
       })
     }
 
@@ -227,6 +312,10 @@ export class DependencyScanner {
 
       const node = this.nodeMap.get(relPath)
       if (node) {
+        TYPE_IMPORT_REGEX.lastIndex = 0
+        node.hasTypeOnlyImports = TYPE_IMPORT_REGEX.test(content)
+        const reExports = content.match(RE_EXPORT_REGEX)
+        node.isBarrelFile = (reExports?.length ?? 0) > 1
         for (const oldImp of node.imports) {
           const oldTarget = this.resolveExtension(oldImp)
           if (oldTarget) {
@@ -308,6 +397,101 @@ export class DependencyScanner {
       this.graph.edges = this.graph.edges.filter(
         (e) => e.from !== relPath && e.to !== relPath
       )
+    }
+  }
+
+  /** Detect circular dependencies using Tarjan's algorithm */
+  detectCircularDependencies(): CircularDependency[] {
+    const visited = new Set<string>()
+    const inStack = new Set<string>()
+    const stack: string[] = []
+    const cycles: CircularDependency[] = []
+
+    const dfs = (nodePath: string, path: string[]) => {
+      visited.add(nodePath)
+      inStack.add(nodePath)
+      stack.push(nodePath)
+
+      const node = this.nodeMap.get(nodePath)
+      if (node) {
+        for (const imp of node.imports) {
+          const resolved = this.resolveExtension(imp)
+          if (!resolved) continue
+
+          if (!visited.has(resolved)) {
+            dfs(resolved, [...path, resolved])
+          } else if (inStack.has(resolved)) {
+            const cycleStart = path.indexOf(resolved)
+            if (cycleStart !== -1) {
+              const cycle = path.slice(cycleStart)
+              cycles.push({
+                cycle,
+                files: cycle,
+              })
+            }
+          }
+        }
+      }
+
+      stack.pop()
+      inStack.delete(nodePath)
+    }
+
+    for (const [relPath] of this.nodeMap) {
+      if (!visited.has(relPath)) {
+        dfs(relPath, [relPath])
+      }
+    }
+
+    this.circularDeps = cycles
+    return cycles
+  }
+
+  /** Resolve exports for a given file */
+  resolveExports(relPath: string): Record<string, string> {
+    const exports: Record<string, string> = {}
+    const node = this.nodeMap.get(relPath)
+    if (!node) return exports
+
+    // Use TSProgramManager if available
+    if (tsProgramManager.isReady) {
+      const tsExports = tsProgramManager.getExports(relPath)
+      for (const exp of tsExports) {
+        exports[exp.name] = exp.file
+      }
+    }
+
+    // Also check for re-exports via DependencyScanner
+    const importNames = this.importNameMap.get(relPath)
+    if (importNames) {
+      for (const [targetPath, names] of Object.entries(importNames)) {
+        for (const name of names) {
+          if (!exports[name]) {
+            exports[name] = targetPath
+          }
+        }
+      }
+    }
+
+    return exports
+  }
+
+  /** Serialize graph data for persistence */
+  exportIndex(): DependencyGraph | null {
+    return this.graph ? { nodes: this.graph.nodes, edges: this.graph.edges } : null
+  }
+
+  /** Load previously persisted graph data */
+  importIndex(data: DependencyGraph): boolean {
+    try {
+      this.graph = data
+      this.nodeMap.clear()
+      for (const node of data.nodes) {
+        this.nodeMap.set(node.path, node)
+      }
+      return true
+    } catch {
+      return false
     }
   }
 

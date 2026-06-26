@@ -124,7 +124,7 @@ export function registerWorkspaceIpcHandlers(): void {
       for (const w of windows) {
         try {
           if (!w.isDestroyed()) w.webContents.send('file-changed', { path: filePath, type: _eventType })
-        } catch {}
+        } catch { console.warn("[IPC] Failed to notify window of file change") }
       }
     })
   })

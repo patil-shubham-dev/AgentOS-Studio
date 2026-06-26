@@ -1,6 +1,11 @@
 import { join, basename, extname } from 'path'
-import { exists, readTextFile, readDir, invoke } from '@/lib/electron-api'
 import { SkillRegistry, type SkillDefinition } from './SkillRegistry'
+
+let electronApi: Promise<typeof import("@/lib/electron-api")> | undefined
+async function getElectronApi() {
+  if (!electronApi) electronApi = import("@/lib/electron-api")
+  return electronApi
+}
 
 export class SkillLoader {
   private registry: SkillRegistry
@@ -13,6 +18,7 @@ export class SkillLoader {
   private async getHomeDir(): Promise<string> {
     if (!this.homeDirPromise) {
       this.homeDirPromise = (async () => {
+        const { invoke } = await getElectronApi()
         const paths = await invoke('get_app_paths') as { home: string }
         return paths.home
       })()
@@ -55,6 +61,7 @@ export class SkillLoader {
   }
 
   async loadFromDirectory(dirPath: string, source: SkillDefinition['source']): Promise<number> {
+    const { exists, readDir, readTextFile } = await getElectronApi()
     const dirExists = await exists(dirPath)
     if (!dirExists) return 0
     let count = 0

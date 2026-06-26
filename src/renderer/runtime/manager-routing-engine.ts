@@ -184,6 +184,16 @@ export function route(
         intentCategory: "conversation",
       }
     }
+    const managerAvailable = wiredRoles.includes("manager" as RuntimeRole)
+    if (managerAvailable) {
+      return {
+        requiresDelegation: true,
+        selectedRoles: ["manager"] as RuntimeRole[],
+        executionStrategy: "single-agent",
+        reasoning: "Conversational message. Delegating to manager for response.",
+        intentCategory: "conversation",
+      }
+    }
     return {
       requiresDelegation: false,
       selectedRoles: [],

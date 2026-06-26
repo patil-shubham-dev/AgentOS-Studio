@@ -1,3 +1,13 @@
+export interface StructuredIssue {
+  file?: string
+  line?: number
+  column?: number
+  code?: string
+  message: string
+  severity: "error" | "warning" | "info"
+  source: "typescript" | "eslint" | "vitest" | "build" | "security" | "regression"
+}
+
 export interface BenchmarkMetric {
   name: string
   value: number
@@ -54,6 +64,7 @@ export interface VerificationStageResult {
   details: string[]
   durationMs: number
   rawOutput?: string
+  issues?: StructuredIssue[]
 }
 
 export interface VerificationResult {
@@ -67,6 +78,7 @@ export interface VerificationResult {
   relatedTests?: string[]
   llmFormatted?: string
   stageResults?: VerificationStageResult[]
+  issues?: StructuredIssue[]
 }
 
 export interface CommandResult {

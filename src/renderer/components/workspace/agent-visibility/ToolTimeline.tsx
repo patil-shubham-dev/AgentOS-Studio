@@ -1,16 +1,16 @@
 import { useMemo, useRef, useEffect } from "react"
 import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
 import { getActivityForToolCall, getAgentLabel } from "./AgentActivityMapper"
+import type { AgentSession } from "@/components/workspace/timeline/timeline-store"
 import { cn } from "@/lib/utils"
 
 const TYPE_ICONS: Record<string, string> = {
-  searching: "◇", researching: "◇", browsing: "◇",
-  reading: "◎", editing: "●", writing: "●",
-  running: "▶", validating: "◆", analyzing: "◎",
-  planning: "◎", finalizing: "►", initializing: "○",
-  idle: "○", complete: "✓", failed: "✗",
+  searching: "\u25C7", researching: "\u25C7", browsing: "\u25C7",
+  reading: "\u25CE", editing: "\u25CF", writing: "\u25CF",
+  running: "\u25B6", validating: "\u25C6", analyzing: "\u25CE",
+  planning: "\u25CE", finalizing: "\u25BA", initializing: "\u25CB",
+  idle: "\u25CB", complete: "\u2713", failed: "\u2717",
 }
-
 const TYPE_COLORS: Record<string, string> = {
   searching: "text-cyan-400/70", researching: "text-cyan-400/70",
   browsing: "text-emerald-400/70", reading: "text-blue-400/70",
@@ -21,55 +21,63 @@ const TYPE_COLORS: Record<string, string> = {
   idle: "text-white/20", complete: "text-emerald-400/70", failed: "text-red-400/70",
 }
 
+interface TimelineItem {
+  id: string
+  time: number
+  agent: string
+  icon: string
+  color: string
+  label: string
+  detail?: string
+}
+
+export function buildTimelineItems(agentSessions: Map<string, AgentSession>): TimelineItem[] {
+  const result: TimelineItem[] = []
+
+  for (const [, session] of agentSessions) {
+    if (!session) continue
+    const roleName = session.roleName || session.roleId || ""
+    const agentLabel = getAgentLabel(roleName).replace(" Agent", "")
+
+    for (const toolCall of session.toolCalls ?? []) {
+      if (!toolCall) continue
+      const activity = getActivityForToolCall(toolCall.name, toolCall.args)
+      result.push({
+        id: `${session.stepId}-${toolCall.id}-${result.length}`,
+        time: session.startedAt ?? Date.now(),
+        agent: agentLabel,
+        icon: TYPE_ICONS[activity.type] ?? "\u25CB",
+        color: TYPE_COLORS[activity.type] ?? "text-white/25",
+        label: activity.label,
+        detail: activity.detail,
+      })
+    }
+  }
+
+  for (const [, session] of agentSessions) {
+    if (!session) continue
+    if (session.status === "running" || session.status === "complete" || session.status === "error") {
+      const roleName = session.roleName || session.roleId || ""
+      result.push({
+        id: `session-${session.stepId}`,
+        time: session.completedAt ?? session.startedAt ?? Date.now(),
+        agent: getAgentLabel(roleName).replace(" Agent", ""),
+        icon: session.status === "complete" ? "\u2713" : session.status === "error" ? "\u2717" : "\u25CB",
+        color: session.status === "complete" ? "text-emerald-400/70" : session.status === "error" ? "text-red-400/70" : "text-white/20",
+        label: session.status === "complete" ? "Completed" : session.status === "error" ? "Failed" : "Processing",
+      })
+    }
+  }
+
+  result.sort((a, b) => b.time - a.time)
+  return result.slice(0, 50)
+}
+
 export function ToolTimeline() {
   const agentSessions = useTimelineStore((s) => s.agentSessions)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  const items = useMemo(() => {
-    const result: Array<{
-      id: string
-      time: number
-      agent: string
-      icon: string
-      color: string
-      label: string
-      detail?: string
-    }> = []
-
-    for (const session of agentSessions) {
-      const agentLabel = getAgentLabel(session.role).replace(" Agent", "")
-      for (const msg of session.messages) {
-        for (const toolCall of (msg as any).toolCalls ?? []) {
-          const activity = getActivityForToolCall(toolCall.toolName ?? toolCall.name, toolCall.args)
-          result.push({
-            id: `${session.id}-${toolCall.id ?? toolCall.toolName}-${result.length}`,
-            time: (msg as any).timestamp ?? Date.now(),
-            agent: agentLabel,
-            icon: TYPE_ICONS[activity.type] ?? "○",
-            color: TYPE_COLORS[activity.type] ?? "text-white/25",
-            label: activity.label,
-            detail: activity.detail,
-          })
-        }
-      }
-    }
-
-    for (const session of agentSessions) {
-      if (session.status === "running" || session.status === "complete" || session.status === "failed") {
-        result.push({
-          id: `session-${session.id}`,
-          time: session.updatedAt ?? Date.now(),
-          agent: getAgentLabel(session.role).replace(" Agent", ""),
-          icon: session.status === "complete" ? "✓" : session.status === "failed" ? "✗" : "○",
-          color: session.status === "complete" ? "text-emerald-400/70" : session.status === "failed" ? "text-red-400/70" : "text-white/20",
-          label: session.status === "complete" ? "Completed" : session.status === "failed" ? "Failed" : "Processing",
-        })
-      }
-    }
-
-    result.sort((a, b) => b.time - a.time)
-    return result.slice(0, 50)
-  }, [agentSessions])
+  const items = useMemo(() => buildTimelineItems(agentSessions), [agentSessions])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })

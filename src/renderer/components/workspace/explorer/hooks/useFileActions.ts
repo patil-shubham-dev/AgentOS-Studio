@@ -8,6 +8,10 @@ import {
   renameEntry as fsRenameEntry,
 } from "@/lib/filesystem"
 
+function getStore() {
+  return useWorkspaceStore.getState()
+}
+
 export function useFileActions(
   refreshTree: () => Promise<void>
 ) {
@@ -20,7 +24,6 @@ export function useFileActions(
       try {
         const content = await readFile(absPath)
         const name = relativePath.split("/").pop() || relativePath
-        const { useWorkspaceStore } = await import("@/stores/workspace-store")
         useWorkspaceStore.getState().openFile({
           path: relativePath,
           name,
@@ -28,7 +31,6 @@ export function useFileActions(
           isDirty: false,
         })
       } catch {
-        const { useWorkspaceStore } = await import("@/stores/workspace-store")
         useWorkspaceStore.getState().setActiveFile(relativePath)
       }
     },
@@ -39,9 +41,14 @@ export function useFileActions(
     async (parentAbsolutePath: string, name: string) => {
       if (!rootPath) return
       const fullPath = parentAbsolutePath.replace(/\\/g, "/") + "/" + name
+      const relPath = fullPath.replace(rootPath.replace(/\\/g, "/"), "").replace(/^\//, "")
       try {
         await fsCreateFile(fullPath)
-        await refreshTree()
+        const content = ''
+        getStore().insertFileEntry(parentAbsolutePath.replace(/\\/g, "/"), {
+          name, path: relPath, is_dir: false, children: [],
+          size: 0, lastModified: Date.now(),
+        })
       } catch {
         await refreshTree()
       }
@@ -53,9 +60,13 @@ export function useFileActions(
     async (parentAbsolutePath: string, name: string) => {
       if (!rootPath) return
       const fullPath = parentAbsolutePath.replace(/\\/g, "/") + "/" + name
+      const relPath = fullPath.replace(rootPath.replace(/\\/g, "/"), "").replace(/^\//, "")
       try {
         await fsCreateFolder(fullPath)
-        await refreshTree()
+        getStore().insertFileEntry(parentAbsolutePath.replace(/\\/g, "/"), {
+          name, path: relPath, is_dir: true, children: [],
+          lastModified: Date.now(),
+        })
       } catch {
         await refreshTree()
       }
@@ -68,7 +79,9 @@ export function useFileActions(
       if (!rootPath) return
       try {
         await fsRenameEntry(oldAbsolutePath, newAbsolutePath)
-        await refreshTree()
+        const oldRel = oldAbsolutePath.replace(rootPath.replace(/\\/g, "/"), "").replace(/^\//, "")
+        const newRel = newAbsolutePath.replace(rootPath.replace(/\\/g, "/"), "").replace(/^\//, "")
+        getStore().renameFileEntry(oldRel, newRel)
       } catch {
         await refreshTree()
       }
@@ -79,9 +92,10 @@ export function useFileActions(
   const deleteEntry = useCallback(
     async (path: string) => {
       if (!rootPath) return
+      const relPath = path.replace(rootPath.replace(/\\/g, "/"), "").replace(/^\//, "")
       try {
         await fsDeleteEntry(path)
-        await refreshTree()
+        getStore().removeFileEntry(relPath)
       } catch {
         await refreshTree()
       }
@@ -106,7 +120,11 @@ export function useFileActions(
         const newName = `${baseName} copy${ext}`
         const newPath = parentDir + "/" + newName
         await fsCreateFile(newPath, content)
-        await refreshTree()
+        const newRel = newPath.replace(rootPath.replace(/\\/g, "/"), "").replace(/^\//, "")
+        getStore().insertFileEntry(parentDir.replace(/\\/g, "/"), {
+          name: newName, path: newRel, is_dir: false, children: [],
+          size: content.length, lastModified: Date.now(),
+        })
       } catch {
         await refreshTree()
       }
@@ -139,13 +157,15 @@ export function useFileActions(
       for (const p of paths) {
         try {
           await fsDeleteEntry(p)
+          const relPath = p.replace(rootPath.replace(/\\/g, "/"), "").replace(/^\//, "")
+          getStore().removeFileEntry(relPath)
         } catch {
           allSucceeded = false
         }
       }
-      await refreshTree()
       if (!allSucceeded) {
         console.warn("[Explorer] Some files could not be deleted")
+        await refreshTree()
       }
     },
     [rootPath, refreshTree]

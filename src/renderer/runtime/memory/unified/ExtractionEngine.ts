@@ -1,3 +1,4 @@
+import { DeduplicationEngine } from "./DeduplicationEngine"
 import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
 import type { MemoryCandidate, MemoryCategory, MemoryScope, ExtractionTrigger, MemoryEntry } from "./types"
 
@@ -107,7 +108,6 @@ export class ExtractionEngine {
     if (!this.pipeline || candidates.length === 0) return candidates
 
     const existing = await this.pipeline.storage.query({ limit: 1000 })
-    const { DeduplicationEngine } = await import("./DeduplicationEngine")
     const dedup = new DeduplicationEngine()
     const results = await dedup.deduplicateBatch(candidates, existing)
 

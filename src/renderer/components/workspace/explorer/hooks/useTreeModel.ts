@@ -165,7 +165,7 @@ export function useTreeModel(
       for (const m of moved) {
         try {
           await renameEntry(`${root}/${m.dest}`, `${root}/${m.source}`)
-        } catch {}
+        } catch { console.warn("[Explorer] Rollback rename failed for", m.source, "→", m.dest) }
       }
       console.error("[Explorer] Drop failed —", moved.length, "files rolled back")
     }

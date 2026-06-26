@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { safeCapitalize } from "@/lib/safeCapitalize"
 import { getAllMetrics, getMetricsByDomain, getMetricSnapshot, type MetricDefinition } from "@/lib/metrics"
 import { getTelemetryStats, getTelemetryEvents, onTelemetry } from "@/lib/telemetry"
 import { ObservabilityManager } from "@/runtime/observability/ObservabilityManager"
@@ -212,7 +213,7 @@ export function PerformanceDashboardPage() {
                 ) : (
                   <AlertTriangle className="h-3 w-3" />
                 )}
-                {health.status.charAt(0).toUpperCase() + health.status.slice(1)}
+                {safeCapitalize(health.status)}
               </div>
             )}
 
@@ -391,7 +392,7 @@ export function PerformanceDashboardPage() {
                     <span className="text-xs text-white/60">{subsystem}</span>
                   </div>
                   <span className={cn("text-[10px] font-medium", statusColor(status))}>
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                    {safeCapitalize(status)}
                   </span>
                 </div>
               ))}

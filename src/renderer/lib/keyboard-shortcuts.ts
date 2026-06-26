@@ -67,9 +67,21 @@ export function auditShortcuts(): { missing: string[]; conflicts: ShortcutBindin
   const all = Array.from(registeredShortcuts.values())
   for (const binding of all) {
     const key = binding.keys.join("+")
-    const existing = conflictMap.get(key) ?? []
-    existing.push(binding)
-    conflictMap.set(key, existing)
+    const sameScopeConflicts = all.filter(
+      (b) => b.keys.join("+") === key && b.scope === binding.scope && b.id !== binding.id
+    )
+    if (sameScopeConflicts.length > 0) {
+      const existing = conflictMap.get(key) ?? []
+      if (!existing.find((e) => e.id === binding.id)) {
+        existing.push(binding)
+      }
+      for (const sc of sameScopeConflicts) {
+        if (!existing.find((e) => e.id === sc.id)) {
+          existing.push(sc)
+        }
+      }
+      conflictMap.set(key, existing)
+    }
   }
 
   const conflicts = Array.from(conflictMap.values()).filter((g) => g.length > 1)
@@ -230,7 +242,7 @@ registerShortcut({
 
 registerShortcut({
   id: "focus-editor",
-  keys: ["Control", "Shift", "e"],
+  keys: ["Control", "Shift", "x"],
   label: "Focus Editor",
   scope: "workspace",
   action: "Move keyboard focus to the code editor",
@@ -310,7 +322,7 @@ registerShortcut({
 
 registerShortcut({
   id: "toggle-preview",
-  keys: ["Control", "Shift", "p"],
+  keys: ["Control", "Shift", "o"],
   label: "Toggle Preview Pane",
   scope: "workspace",
   action: "Show/hide the preview pane",

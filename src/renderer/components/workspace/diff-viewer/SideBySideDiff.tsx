@@ -207,30 +207,6 @@ export function SideBySideDiff({
             </div>
           )}
 
-          {/* Completed status indicators */}
-            {onRejectAll && (
-              <button
-                onClick={() => onRejectAll(file.path)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all border border-transparent hover:border-red-500/20"
-                title="Reject all changes in this file"
-              >
-                <XCircle className="h-2.5 w-2.5" />
-                Reject
-              </button>
-            )}
-            {onAcceptAll && (
-              <button
-                onClick={() => onAcceptAll(file.path)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] text-green-400/60 hover:text-green-400 hover:bg-green-500/10 transition-all border border-transparent hover:border-green-500/20"
-                title="Accept all changes in this file"
-              >
-                <CheckCheck className="h-2.5 w-2.5" />
-                Accept
-              </button>
-            )}
-          </div>
-        )}
-
         {/* Completed status indicators */}
         {isAllAccepted && (
           <span className="text-[9px] text-green-400/50 shrink-0">

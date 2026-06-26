@@ -6,10 +6,14 @@ import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { useWorkspaceStore, getWorkspaceContextSnapshot } from "@/stores/workspace-store"
 import { memoryLoader } from "@/runtime/project-memory/memory-loader"
 import type { MemoryLoadResult } from "@/runtime/project-memory/memory-loader"
+import { configLoader } from "@/runtime/project-config/ConfigLoader"
+import type { StructuredProjectConfig } from "@/runtime/project-config/ProjectConfigTypes"
 import { ContextManager } from "@/runtime/context/ContextManager"
 import type { ContextAssemblyInput } from "@/runtime/context/context-types"
 import { VerificationPipeline } from "@/runtime/verification/VerificationPipeline"
+import { ExecutionScratchpad } from "@/runtime/execution/ExecutionScratchpad"
 import { normalizeRole } from "@/lib/role-identity"
+import * as wi from "@/lib/workspace-intelligence"
 import { getEffectiveMaxTokens } from "@/runtime/runtime-token-config"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
 import type { AgentTool } from "@/runtime/tools/core/AgentTool"
@@ -21,9 +25,17 @@ import { EventChannel } from "@/runtime/streaming/EventChannel"
 import { createRetryPolicy, withRetry } from "@/runtime/reliability/RetryPolicy"
 import { ToolExecutionScheduler, type ToolCallEntry } from "@/runtime/tools/execution/ToolExecutionScheduler"
 import { toolRelevanceMatcher } from "@/runtime/tools/core/ToolSearch"
+import { toolResultCache } from "@/runtime/tools/core/ToolResultCache"
 import { pluginRegistry } from "@/runtime/plugins/PluginRegistry"
 
-export type AgentMode = "FAST" | "FULL" | "MULTI"
+const TOOL_OUTPUT_MAX_CHARS = 50000
+
+export type AgentMode = "FAST" | "FULL"
+
+function capOutputSize(content: string): string {
+  if (content.length <= TOOL_OUTPUT_MAX_CHARS) return content
+  return content.substring(0, TOOL_OUTPUT_MAX_CHARS) + `\n[output truncated at ${TOOL_OUTPUT_MAX_CHARS} chars...]`
+}
 
 export interface AgentExecutorConfig {
   executionId: string
@@ -128,6 +140,7 @@ export class AgentExecutor {
   private input: string
   private history: ChatMessage[]
   private signal?: AbortSignal
+  private scratchpad?: ExecutionScratchpad
 
   constructor(config: AgentExecutorConfig) {
     this.executionId = config.executionId
@@ -136,6 +149,10 @@ export class AgentExecutor {
     this.input = config.input
     this.history = config.history
     this.signal = config.signal
+  }
+
+  setScratchpad(sp: ExecutionScratchpad): void {
+    this.scratchpad = sp
   }
 
   async *execute(): AsyncGenerator<ExecutionEvent> {
@@ -304,6 +321,7 @@ export class AgentExecutor {
 
     if (!content && lastAttemptError) {
       yield { type: "EXECUTION_FAILED", executionId: eid, error: `All provider attempts failed: ${lastAttemptError}`, durationMs: 0, timestamp: Date.now() }
+      return
     }
 
     yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content, finishReason: "stop", timestamp: Date.now(), tokensIn: usage.prompt_tokens, tokensOut: usage.completion_tokens }
@@ -329,8 +347,16 @@ export class AgentExecutor {
     const memoryPromise = rootPath
       ? memoryLoader.load(rootPath).then((memory) => {
           const filtered = this.filterMemoryByScope(memory, memoryScope)
+          const parts: string[] = []
           if (filtered.combined.trim().length > 0) {
-            projectRules = filtered.combined.trim()
+            parts.push(filtered.combined.trim())
+          }
+          // Also include AGENTIC.md project config (was being discarded)
+          if (memory.projectConfig && memory.projectConfig.trim().length > 0) {
+            parts.push(`## Project Configuration\n\n${memory.projectConfig.trim()}`)
+          }
+          if (parts.length > 0) {
+            projectRules = parts.join("\n\n")
           }
         }).catch((err) => { console.warn("[AgentExecutor] Memory loading failed:", err) })
       : Promise.resolve()
@@ -435,6 +461,12 @@ export class AgentExecutor {
       }
       if (this.signal?.aborted) {
         throw new DOMException("Agent execution aborted", "AbortError")
+      }
+
+      // ── Inject execution scratchpad state before provider call ──
+      const scratchpadBlock = this.scratchpad?.formatForLLM()
+      if (scratchpadBlock) {
+        msgs.push({ role: "user" as const, content: scratchpadBlock })
       }
 
       yield { type: "THINKING_UPDATE", executionId: eid, label: `Round ${round + 1}`, timestamp: Date.now() }
@@ -668,6 +700,13 @@ export class AgentExecutor {
               const results = await Promise.allSettled(
                 batch.map(async (entry) => {
                   const toolStart = performance.now()
+                  const cacheKey = toolResultCache.isCacheable(entry.name)
+                    ? toolResultCache.key(entry.name, entry.args)
+                    : null
+                  const cached = cacheKey ? toolResultCache.get(cacheKey) : null
+                  if (cached) {
+                    return { entry, result: cached, durationMs: 0, error: null }
+                  }
                   try {
                     const toolCtx: import("@/runtime/tools/core/ToolContext").ToolContext = {
                       role: this.role,
@@ -680,7 +719,11 @@ export class AgentExecutor {
                       this.signal,
                     )
                     const durationMs = Math.round(performance.now() - toolStart)
-                    return { entry, result: retryResult.data, durationMs, error: null }
+                    const result = retryResult.data
+                    if (cacheKey && !result.isError) {
+                      toolResultCache.set(cacheKey, entry.name, result)
+                    }
+                    return { entry, result, durationMs, error: null }
                   } catch (err) {
                     return {
                       entry,
@@ -716,9 +759,12 @@ export class AgentExecutor {
                   continue
                 }
 
-                const resultContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+                const resultContent = capOutputSize(typeof result === 'string' ? result : JSON.stringify(result, null, 2))
                 msgs.push({ tool_call_id: entry.id, role: 'tool' as const, content: resultContent })
                 yield { type: "TOOL_COMPLETE", executionId: eid, toolId: entry.id, toolName: entry.name, result: resultContent, durationMs, timestamp: Date.now() }
+                if (entry.name === 'read_file') {
+                  this.recordToolInScratchpad(entry, result)
+                }
               }
             }
           } else {
@@ -791,19 +837,30 @@ export class AgentExecutor {
                   role: this.role,
                   signal: this.signal,
                 }
-                try {
-                  const retryResult = await withRetry(
-                    () => pipeline.execute(entry.name, entry.args, toolCtx),
-                    PROVIDER_RETRY_POLICY,
-                    `tool:${entry.name}`,
-                    this.signal,
-                  )
-                  result = retryResult.data
-                } catch (retryErr) {
-                  result = {
-                    data: undefined,
-                    isError: true,
-                    error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+                const cacheKey = toolResultCache.isCacheable(entry.name)
+                  ? toolResultCache.key(entry.name, entry.args)
+                  : null
+                const cached = cacheKey ? toolResultCache.get(cacheKey) : null
+                if (cached) {
+                  result = cached
+                } else {
+                  try {
+                    const retryResult = await withRetry(
+                      () => pipeline.execute(entry.name, entry.args, toolCtx),
+                      PROVIDER_RETRY_POLICY,
+                      `tool:${entry.name}`,
+                      this.signal,
+                    )
+                    result = retryResult.data
+                    if (cacheKey && !result.isError) {
+                      toolResultCache.set(cacheKey, entry.name, result)
+                    }
+                  } catch (retryErr) {
+                    result = {
+                      data: undefined,
+                      isError: true,
+                      error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+                    }
                   }
                 }
               }
@@ -840,7 +897,7 @@ export class AgentExecutor {
                 continue
               }
 
-              const resultContent = typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2)
+              const resultContent = capOutputSize(typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2))
               msgs.push({
                 tool_call_id: entry.id,
                 role: 'tool' as const,
@@ -866,6 +923,10 @@ export class AgentExecutor {
                 yield { type: "COMMAND_COMPLETE", executionId: eid, exitCode: 0, durationMs: Math.round(toolDuration), timestamp: Date.now() }
               }
 
+              if (entry.name === 'read_file') {
+                this.recordToolInScratchpad(entry, result.data)
+              }
+
               if (entry.name === 'write_file' || entry.name === 'edit_file') {
                 const path = (entry.args.path || entry.args.file) as string || ''
                 if (path) editedFiles.push(path)
@@ -880,6 +941,7 @@ export class AgentExecutor {
                   newContent: content,
                   timestamp: Date.now(),
                 }
+                this.recordToolInScratchpad(entry, result.data)
               }
 
               if (entry.name === 'delegate_subtask') {
@@ -906,12 +968,29 @@ export class AgentExecutor {
         }
 
         if (editedFiles.length > 0) {
+          for (const f of [...new Set(editedFiles)]) {
+            try {
+              const analysis = wi.analyzeImpact(f)
+              const impactMsg = wi.formatImpactForLLM(analysis)
+              msgs.push({ role: "user" as const, content: impactMsg })
+            } catch {
+              // impact analysis is advisory only, silently skip on failure
+            }
+          }
+
           try {
             const pipeline = VerificationPipeline.getInstance()
             const verifyResult = await pipeline.fastVerify([...new Set(editedFiles)])
             if (verifyResult) {
               const verifyMsg = pipeline.formatForLLM(verifyResult)
               msgs.push({ role: "user" as const, content: verifyMsg })
+              if (this.scratchpad) {
+                const allFiles = [...new Set(editedFiles)]
+                const summary = verifyResult.details?.join('; ') ?? ''
+                for (const f of allFiles) {
+                  this.scratchpad.recordVerificationResult(f, verifyResult.passed, summary)
+                }
+              }
             }
           } catch (err) {
             console.warn("[AgentExecutor] fastVerify failed:", err)
@@ -976,6 +1055,27 @@ export class AgentExecutor {
       case "project": return ["project", "local", "rules"]
       case "global": return ["global", "project", "local", "rules"]
       default: return []
+    }
+  }
+
+  private recordToolInScratchpad(entry: { name: string; args: Record<string, unknown> }, result: unknown): void {
+    if (!this.scratchpad) return
+    if (entry.name === 'read_file') {
+      const path = (entry.args.path || entry.args.file) as string || ''
+      if (path) {
+        const content = typeof result === 'string' ? result : (result as any)?.data ?? ''
+        const lineCount = typeof content === 'string' && content ? content.split('\n').length : 0
+        const charCount = typeof content === 'string' ? content.length : 0
+        const summary = content ? `read (${lineCount} lines, ${charCount} chars)` : 'read'
+        this.scratchpad.recordFileExamination(path, summary)
+      }
+    } else if (entry.name === 'write_file' || entry.name === 'edit_file') {
+      const path = (entry.args.path || entry.args.file) as string || ''
+      if (path) {
+        const oldContent = (entry.args.old_string || entry.args.old_content) as string || ''
+        const newContent = (entry.args.content || entry.args.new_string) as string || ''
+        this.scratchpad.recordFileModification(path, oldContent, newContent)
+      }
     }
   }
 

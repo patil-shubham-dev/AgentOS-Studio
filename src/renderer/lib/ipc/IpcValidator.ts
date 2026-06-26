@@ -289,6 +289,8 @@ export function registerAllIpcSchemas(): void {
   register({ channel: 'get-file-stats', source: 'fs', args: [Constraints.path()] })
   register({ channel: 'read-directory', source: 'fs', args: [Constraints.path()] })
   register({ channel: 'list-directory', source: 'fs', args: [Constraints.path()] })
+  register({ channel: 'start-file-watcher', source: 'fs', args: [Constraints.path()] })
+  register({ channel: 'stop-file-watcher', source: 'fs', args: [Constraints.path()] })
 
   // Command execution channels (most sensitive)
   register({ channel: 'run-command', source: 'exec', args: [Constraints.object(true, 'Command options')] })
@@ -304,6 +306,20 @@ export function registerAllIpcSchemas(): void {
     }, description: 'Stream command options' }],
   })
   register({ channel: 'kill-command', source: 'exec', args: [Constraints.string(200)] })
+  register({ channel: 'stdin-input', source: 'exec', args: [{
+    type: 'object',
+    required: true,
+    validate: (v: unknown) => {
+      const opts = v as Record<string, unknown>
+      if (!opts.streamId || typeof opts.streamId !== 'string') return 'streamId is required'
+      if (opts.streamId.length > 200) return 'streamId exceeds max length'
+      if (typeof opts.input !== 'string') return 'input is required'
+      if (opts.input.length > 65536) return 'input exceeds max length'
+      return null
+    },
+    description: 'Stdin input options (streamId + input)',
+  }] })
+  register({ channel: 'stdin-end', source: 'exec', args: [Constraints.string(200, true, 'Stream ID')] })
 
   // Git channels
   register({ channel: 'git-status', source: 'git', args: [Constraints.gitPath()] })
@@ -315,6 +331,8 @@ export function registerAllIpcSchemas(): void {
   register({ channel: 'git-push', source: 'git', args: [Constraints.gitPath()] })
   register({ channel: 'git-pull', source: 'git', args: [Constraints.gitPath()] })
   register({ channel: 'git-checkout', source: 'git', args: [Constraints.gitPath(), Constraints.string(200, true, 'Branch name')] })
+  register({ channel: 'git-branch-list', source: 'git', args: [Constraints.gitPath()] })
+  register({ channel: 'git-add', source: 'git', args: [Constraints.gitPath(), Constraints.path()] })
 
   // Browser channels
   register({ channel: 'browser-navigate', source: 'browser', args: [Constraints.string(200), Constraints.string(10000, true, 'URL')] })

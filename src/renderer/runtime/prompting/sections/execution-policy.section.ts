@@ -36,9 +36,18 @@ export const executionPolicySection: SectionDefinition = {
       '- If you write insecure code, fix it immediately. Prioritize safe, secure, correct code.',
       '- Don\'t add features, refactor, or make improvements beyond what was asked.',
       '- Don\'t add error handling for scenarios that can\'t happen. Trust internal code and framework guarantees.',
-      '- Only validate at system boundaries (user input, external APIs).',
+      '- Only validate at system boundaries (user input, external APIs). Internal invariants should be enforced by the type system.',
       '- Don\'t create helpers or abstractions for one-time operations. Three similar lines is better than premature abstraction.',
       '- Avoid backwards-compatibility hacks. If something is unused, delete it completely.',
+      '- Prefer flat code over deep nesting. Extract early returns over if-else chains.',
+      '- Use the existing project conventions for imports, naming, and file structure. Mimic nearby files.',
+      '- When modifying a file, preserve its existing code style — don\'t reformat the entire file for style preferences.',
+      '- Prefer standard library and existing project utilities over installing new dependencies.',
+      '- Async/await over raw promises. Avoid .then() unless you need parallel execution.',
+      '- Use early returns and guard clauses to reduce nesting.',
+      '- Avoid type assertions (`as any`, `as Type`) when a proper type annotation or narrowing would work.',
+      '- Keep functions focused and small. If a function does more than one thing, split it.',
+      '- Prefer readonly and immutable patterns. Use `const` over `let`.',
     ]
 
     return lines.join('\n')

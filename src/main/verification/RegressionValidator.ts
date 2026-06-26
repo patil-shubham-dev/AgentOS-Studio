@@ -39,7 +39,7 @@ export class RegressionValidator {
       } else {
         writeFileSync(baselineKey, JSON.stringify({ testCount: currentPass, passCount: currentPass, timestamp: Date.now() }), "utf-8")
       }
-    } catch {}
+    } catch { console.warn("[RegressionValidator] Failed to write baseline — baseline will be stale") }
 
     const passed = issues.length === 0
 

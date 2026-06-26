@@ -36,7 +36,7 @@ export interface AgentStatus {
 export interface FileActivity {
   path: string
   agentRole: string
-  activity: "editing" | "reading" | "referencing" | "reviewing"
+  activity: "editing" | "reading" | "referencing" | "reviewing" | "relevant" | "error"
   timestamp: number
 }
 

@@ -5,6 +5,8 @@ import { useWorkspaceStore } from "@/stores/workspace-store"
 import { cn } from "@/lib/utils"
 import { Search, File, X, ArrowUp, ArrowDown, Loader2, Sparkles } from "lucide-react"
 import type { SearchResult } from "@/lib/search-index"
+import { semanticSearch } from "@/lib/semantic-search"
+import { readFile } from "@/lib/filesystem"
 
 interface QuickOpenProps {
   open: boolean
@@ -52,9 +54,9 @@ export function QuickOpen({ open, onClose }: QuickOpenProps) {
       // If few results, supplement with semantic search
       if (res.length < 5 && q.trim().length >= 2) {
         try {
-          const { semanticSearch } = await import("@/lib/semantic-search")
           if (semanticSearch.ready) {
-            const semResults = semanticSearch.search(q.trim(), 5)              if (semResults.length > 0) {
+            const semResults = semanticSearch.search(q.trim(), 5)
+            if (semResults.length > 0) {
             // Merge semantic results that aren't already in filename results
             const existingPaths = new Set(res.map((r) => r.filePath))
             const newResults = semResults
@@ -72,7 +74,7 @@ export function QuickOpen({ open, onClose }: QuickOpenProps) {
             }
           }
         } catch {
-          // Semantic search not available — noop
+          // Semantic search not available  noop
         }
       }
     } finally {
@@ -97,7 +99,6 @@ export function QuickOpen({ open, onClose }: QuickOpenProps) {
     const loadAndOpen = async () => {
       try {
         const fullPath = rp + "\\" + filePath.replace(/\//g, "\\")
-        const { readFile } = await import("@/lib/filesystem")
         const content = await readFile(fullPath)
         const name = filePath.split("/").pop() || filePath
         openFile({ path: filePath, name, content, isDirty: false })
@@ -186,7 +187,7 @@ export function QuickOpen({ open, onClose }: QuickOpenProps) {
               <p className="text-xs text-white/30">Type to search files</p>
               <p className="text-[10px] text-white/15 mt-1">Fuzzy search across all workspace files</p>
               <div className="flex items-center gap-2 mt-4 text-[9px] text-white/20 font-mono">
-                <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">↑↓</span> Navigate
+                <span className="bg-white/[0.04] px-1.5 py-0.5 rounded"></span> Navigate
                 <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">Enter</span> Open
                 <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">Esc</span> Close
               </div>
@@ -226,7 +227,7 @@ export function QuickOpen({ open, onClose }: QuickOpenProps) {
                 </button>
               )
             })
-          )
+          )}
         </div>
 
         {flatResults.length > 0 && (
@@ -235,7 +236,7 @@ export function QuickOpen({ open, onClose }: QuickOpenProps) {
               {flatResults.length} file{flatResults.length !== 1 ? "s" : ""}
             </span>
             <div className="flex items-center gap-2 ml-auto text-[9px] text-white/20 font-mono">
-              <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">↑↓</span> Navigate
+              <span className="bg-white/[0.04] px-1.5 py-0.5 rounded"></span> Navigate
               <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">Enter</span> Open
               <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">Esc</span> Close
             </div>

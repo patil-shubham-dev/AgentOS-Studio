@@ -35,8 +35,32 @@ export function registerAllIpcHandlers(
   registerExtensionHandlers()
   registerPluginBrowserHandlers()
   registerVerificationHandlers()
+  registerDevHandlers()
   const viewportManager = new ViewportManager()
   registerViewportHandlers(viewportManager, windowManager)
+  registerImportSettingsHandlers()
+}
+
+function registerDevHandlers(): void {
+  ipcMain.handle('dev:run-benchmark100', async (_event, category?: string) => {
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return { error: 'No focused window' }
+    try {
+      const result = await win.webContents.executeJavaScript(`
+        (async () => {
+          const { createBenchmarkRunner } = await import('@/runtime/execution/index')
+          const runner = createBenchmarkRunner()
+          return JSON.stringify(
+            ${category ? `await runner.runCategory(${JSON.stringify(category)})` : 'await runner.runAll()'}
+          )
+        })()
+      `)
+      return JSON.parse(result)
+    } catch (err: any) {
+      console.warn("[IPC] test-runner failed:", err.message)
+      return { error: err.message }
+    }
+  })
 }
 
 function registerAppHandlers(): void {
@@ -76,9 +100,20 @@ function registerAppHandlers(): void {
     electron: process.versions.electron
   }))
 
-  ipcMain.handle('get-install-info', () => ({
-    first_launch: !existsSync(join(app.getPath('userData'), 'config.json'))
-  }))
+  ipcMain.handle('get-install-info', () => {
+    let gitCommit = "unknown"
+    try {
+      const result = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: __dirname, encoding: 'utf-8', timeout: 3000 })
+      if (result.status === 0 && result.stdout) {
+        gitCommit = result.stdout.trim()
+      }
+    } catch { console.warn("[IPC] Failed to read git commit hash") }
+    return {
+      first_launch: !existsSync(join(app.getPath('userData'), 'config.json')),
+      build_date: new Date().toISOString().split('T')[0],
+      git_commit: gitCommit,
+    }
+  })
 
   ipcMain.handle('app-exit', () => app.exit(0))
   ipcMain.handle('app-restart', () => { app.relaunch(); app.exit(0) })
@@ -113,6 +148,7 @@ function registerAppHandlers(): void {
       const base64 = data.toString('base64')
       return `data:${mime};base64,${base64}`
     } catch {
+      console.warn("[IPC] Failed to get resource data URL")
       return null
     }
   })
@@ -167,7 +203,7 @@ function registerFileSystemHandlers(): void {
     writeFileSync(fp, Buffer.from(b64, 'base64'))
   })
   ipcMain.handle('file-exists', (_e, fp: string) => {
-    try { assertPathAllowed(validatePath(fp)); return existsSync(fp) } catch { return false }
+    try { assertPathAllowed(validatePath(fp)); return existsSync(fp) } catch { console.warn("[IPC] file-exists failed"); return false }
   })
   ipcMain.handle('create-directory', (_e, dp: string) => {
     assertPathAllowed(validatePath(dp))
@@ -238,7 +274,7 @@ function registerWorkspaceHandlers(): void {
           if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') walk(fp)
           else if (entry.isFile()) files.push(fp)
         }
-      } catch {}
+      } catch { console.warn("[IPC] Failed to read directory entry in workspace-list-files:", dir) }
     }
     walk(dirPath)
     return files
@@ -256,7 +292,7 @@ function registerGitHandlers(): void {
     try {
       assertGitRepoPath(validatePath(repoPath, 'git repo path'))
       return git(['status', '--porcelain'], repoPath).split('\n').filter(Boolean).map(l => ({ status: l.substring(0, 2).trim(), file: l.substring(3) }))
-    } catch { return [] }
+    } catch { console.warn("[IPC] git-status failed"); return [] }
   })
   ipcMain.handle('git-log', (_e, repoPath: string, max = 50) => {
     try {
@@ -266,46 +302,46 @@ function registerGitHandlers(): void {
         const [hash, author, email, date, ...msg] = l.split('|')
         return { hash, author, email, date, message: msg.join('|') }
       })
-    } catch { return [] }
+    } catch { console.warn("[IPC] git-log failed"); return [] }
   })
   ipcMain.handle('git-diff', (_e, repoPath: string, file?: string) => {
     try {
       assertGitRepoPath(validatePath(repoPath, 'git repo path'))
       if (file) validatePath(file, 'diff file')
       return git(['diff', ...(file ? ['--', file] : [])], repoPath)
-    } catch { return '' }
+    } catch { console.warn("[IPC] git-diff failed"); return '' }
   })
   ipcMain.handle('git-commit', (_e, repoPath: string, msg: string) => {
     try {
       assertGitRepoPath(validatePath(repoPath, 'git repo path'))
       validateString(msg, 'commit message', 10000)
       git(['add', '-A'], repoPath); git(['commit', '-m', msg], repoPath); return true
-    } catch { return false }
+    } catch { console.warn("[IPC] git-commit failed"); return false }
   })
   ipcMain.handle('git-restore', (_e, repoPath: string, file: string) => {
     try {
       assertGitRepoPath(validatePath(repoPath, 'git repo path'))
       validatePath(file, 'file to restore')
       git(['restore', '--', file], repoPath); return true
-    } catch { return false }
+    } catch { console.warn("[IPC] git-restore failed"); return false }
   })
   ipcMain.handle('git-init', (_e, repoPath: string) => {
     try {
       assertGitRepoPath(validatePath(repoPath, 'git repo path'))
       git(['init'], repoPath); return true
-    } catch { return false }
+    } catch { console.warn("[IPC] git-init failed"); return false }
   })
   ipcMain.handle('git-push', (_e, repoPath: string) => {
     try {
       assertGitRepoPath(validatePath(repoPath, 'git repo path'))
       git(['push'], repoPath); return true
-    } catch { return false }
+    } catch { console.warn("[IPC] git-push failed"); return false }
   })
   ipcMain.handle('git-pull', (_e, repoPath: string) => {
     try {
       assertGitRepoPath(validatePath(repoPath, 'git repo path'))
       git(['pull'], repoPath); return true
-    } catch { return false }
+    } catch { console.warn("[IPC] git-pull failed"); return false }
   })
   ipcMain.handle('git-branch-list', (_e, repoPath: string) => {
     try {
@@ -316,21 +352,21 @@ function registerGitHandlers(): void {
       })
       const current = git(['branch', '--show-current'], repoPath).trim()
       return branches.map(b => ({ ...b, current: b.name === current }))
-    } catch { return [] }
+    } catch { console.warn("[IPC] git-branch-list failed"); return [] }
   })
   ipcMain.handle('git-checkout', (_e, repoPath: string, branch: string) => {
     try {
       assertGitRepoPath(validatePath(repoPath, 'git repo path'))
       validateString(branch, 'branch name', 256)
       git(['checkout', branch], repoPath); return true
-    } catch { return false }
+    } catch { console.warn("[IPC] git-checkout failed"); return false }
   })
   ipcMain.handle('git-add', (_e, repoPath: string, file: string) => {
     try {
       assertGitRepoPath(validatePath(repoPath, 'git repo path'))
       validatePath(file, 'file to add')
       git(['add', '--', file], repoPath); return true
-    } catch { return false }
+    } catch { console.warn("[IPC] git-add failed"); return false }
   })
 }
 
@@ -499,12 +535,12 @@ function registerBrowserHandlers(bm: BrowserManager): void {
   })
   ipcMain.handle('browser-save-state', async (_e, path: string) => {
     const validated = validatePath(path)
-    try { assertPathAllowed(validated) } catch { return false }
+    try { assertPathAllowed(validated) } catch { console.warn("[IPC] browser-save-state path not allowed"); return false }
     return bm.saveState(validated)
   })
   ipcMain.handle('browser-load-state', async (_e, path: string) => {
     const validated = validatePath(path)
-    try { assertPathAllowed(validated) } catch { return null }
+    try { assertPathAllowed(validated) } catch { console.warn("[IPC] browser-load-state path not allowed"); return null }
     return bm.loadState(validated)
   })
   ipcMain.handle('browser-detect', async () => bm.detectBrowsers())
@@ -554,6 +590,7 @@ function registerExtensionHandlers(): void {
         manifestVersion: e.manifestVersion,
       }))
     } catch {
+      console.warn("[IPC] browser-extension-list failed")
       return []
     }
   })
@@ -564,6 +601,7 @@ function registerExtensionHandlers(): void {
       const ext = await session.defaultSession.loadExtension(validated)
       return { id: ext.id, name: ext.manifest.name, version: ext.manifest.version, path: validated }
     } catch (err: any) {
+      console.warn("[IPC] browser-extension-load failed:", err.message)
       return { error: err.message }
     }
   })
@@ -574,6 +612,7 @@ function registerExtensionHandlers(): void {
       session.defaultSession.removeExtension(extId)
       return true
     } catch {
+      console.warn("[IPC] browser-extension-unload failed")
       return false
     }
   })
@@ -626,14 +665,14 @@ function registerPluginBrowserHandlers(): void {
       validateString(provider, 'provider name', 256)
       validateString(url, 'url', 8192)
       return await getProvider(provider).navigate(url)
-    } catch (err: any) { return { error: err.message } }
+    } catch (err: any) { console.warn("[IPC] plugin-browser-navigate failed:", err.message); return { error: err.message } }
   })
   ipcMain.handle('plugin-browser-click', async (_e, provider: string, sel: string) => {
     try {
       validateString(provider, 'provider name', 256)
       validateString(sel, 'selector', 4096)
       return await getProvider(provider).click(sel)
-    } catch (err: any) { return { error: err.message } }
+    } catch (err: any) { console.warn("[IPC] plugin-browser-click failed:", err.message); return { error: err.message } }
   })
   ipcMain.handle('plugin-browser-type', async (_e, provider: string, sel: string, text: string) => {
     try {
@@ -641,44 +680,44 @@ function registerPluginBrowserHandlers(): void {
       validateString(sel, 'selector', 4096)
       validateString(text, 'text', 10000)
       return await getProvider(provider).type(sel, text)
-    } catch (err: any) { return { error: err.message } }
+    } catch (err: any) { console.warn("[IPC] plugin-browser-type failed:", err.message); return { error: err.message } }
   })
   ipcMain.handle('plugin-browser-screenshot', async (_e, provider: string) => {
     try {
       validateString(provider, 'provider name', 256)
       return await getProvider(provider).screenshot()
-    } catch { return null }
+    } catch { console.warn("[IPC] plugin-browser-screenshot failed"); return null }
   })
   ipcMain.handle('plugin-browser-execute-js', async (_e, provider: string, code: string) => {
     try {
       validateString(provider, 'provider name', 256)
       validateString(code, 'javascript', 50000)
       return await getProvider(provider).executeJs(code)
-    } catch (err: any) { return { error: err.message } }
+    } catch (err: any) { console.warn("[IPC] plugin-browser-execute-js failed:", err.message); return { error: err.message } }
   })
   ipcMain.handle('plugin-browser-get-dom', async (_e, provider: string) => {
     try {
       validateString(provider, 'provider name', 256)
       return await getProvider(provider).getDom()
-    } catch { return null }
+    } catch { console.warn("[IPC] plugin-browser-get-dom failed"); return null }
   })
   ipcMain.handle('plugin-browser-get-text', async (_e, provider: string) => {
     try {
       validateString(provider, 'provider name', 256)
       return await getProvider(provider).getText()
-    } catch { return null }
+    } catch { console.warn("[IPC] plugin-browser-get-text failed"); return null }
   })
   ipcMain.handle('plugin-browser-get-url', async (_e, provider: string) => {
     try {
       validateString(provider, 'provider name', 256)
       return await getProvider(provider).getUrl()
-    } catch { return null }
+    } catch { console.warn("[IPC] plugin-browser-get-url failed"); return null }
   })
   ipcMain.handle('plugin-browser-get-title', async (_e, provider: string) => {
     try {
       validateString(provider, 'provider name', 256)
       return await getProvider(provider).getTitle()
-    } catch { return null }
+    } catch { console.warn("[IPC] plugin-browser-get-title failed"); return null }
   })
 }
 
@@ -686,4 +725,5 @@ import { registerUninstallIpcHandlers as registerUninstallHandlers } from './uni
 import { registerWorkspaceIpcHandlers } from './workspace'
 import { registerReplayHandlers } from './replay'
 import { registerVerificationHandlers } from '../verification/index'
+import { registerImportSettingsHandlers } from './import-settings'
 import { nativeImage } from 'electron'

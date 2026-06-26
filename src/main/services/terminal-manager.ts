@@ -93,7 +93,7 @@ export class TerminalManager {
   kill(id: string): void {
     const session = this.sessions.get(id)
     if (session?.process) {
-      try { session.process.kill() } catch {}
+      try { session.process.kill() } catch { console.warn("[TerminalManager] Failed to kill process") }
       this.sessions.delete(id)
     }
   }

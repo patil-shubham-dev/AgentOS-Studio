@@ -19,6 +19,11 @@ import { SplitEditor } from "./SplitEditor"
 import { DebugPanel } from "./debug-panel"
 import { debugService } from "@/lib/debug/debug-service"
 import { useDebugStore } from "@/stores/debug-store"
+import { WelcomePage } from "./WelcomePage"
+import { EditorTabs } from "./EditorTabs"
+import { AiChangeOverlay, type AIChange } from "./AiChangeOverlay"
+import { saveFile, formatCount, getOrCreateModel, setMonacoInstance, editorViewStateCache, isLargeFile } from "./editor-utils"
+import { dirtyBufferManager } from "@/lib/dirty-buffer-manager"
 import { gitStatus } from "@/lib/git"
 import type { GitStatus } from "@/lib/git"
 import { useHistoryStore } from "@/stores/history-store"
@@ -30,7 +35,7 @@ import {
   WrapText, Minus, Plus, X, FileCode,
   Sparkles, Brain, Check, Save,
   Columns3, FileDown, Pencil, AlertCircle, AlertTriangle, GitBranch,
-  Bug, FileSearch, PanelRight, PanelRightClose, Terminal, Logs, FolderOpen, FilePlus, History,
+  Bug, FileSearch, PanelRight, PanelRightClose, Terminal, Logs, History,
 } from "lucide-react"
 import { registerInlineCompletionProvider, unregisterInlineCompletionProvider, setupCompletionTracking, cleanupCompletionTracking } from "@/lib/completion/completion-provider"
 import { InlineEditOverlay } from "./inline-edit-overlay"
@@ -92,420 +97,6 @@ const EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
   "semanticHighlighting.enabled": true,
 }
 
-interface AIChange {
-  filePath: string
-  originalContent: string
-  newContent: string
-  applied: boolean
-  rejected: boolean
-}
-
-// ── Welcome Page — VS Code-style start page ──
-
-function WelcomePage({ rootPath, onOpenWorkspace }: { rootPath: string | null; onOpenWorkspace: () => void }) {
-  const [recentWorkspaces, setRecentWorkspaces] = useState<string[]>([])
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("agentic-workspace-root")
-      if (raw && raw !== rootPath) {
-        setRecentWorkspaces([raw])
-      }
-    } catch {}
-  }, [rootPath])
-
-  return (
-    <div className="flex h-full flex-col items-center justify-center px-8 py-12 overflow-y-auto">
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-        className="flex flex-col items-center gap-6 max-w-sm w-full"
-      >
-        {/* App logo — animated code illustration */}
-        <div className="relative h-16 w-16 mb-2">
-          <svg viewBox="0 0 64 64" fill="none" className="absolute inset-0 h-full w-full">
-            <motion.rect
-              x="8" y="12" width="48" height="40" rx="4"
-              stroke="currentColor" strokeWidth="1.5" fill="none"
-              className="text-blue-400/40"
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
-            />
-            <motion.path
-              d="M22 28L18 32L22 36"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="text-blue-400"
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.4 }}
-            />
-            <motion.path
-              d="M42 28L46 32L42 36"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="text-cyan-400"
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.6 }}
-            />
-            <motion.path
-              d="M34 22L30 42"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-              className="text-purple-400"
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
-              transition={{ duration: 0.3, delay: 0.8 }}
-            />
-            <motion.circle
-              cx="32" cy="32" r="2"
-              fill="currentColor" className="text-blue-400"
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 0.3 }}
-              transition={{ duration: 0.3, delay: 0.3 }}
-            />
-          </svg>
-        </div>
-
-        <div className="text-center">
-          <h1 className="text-lg font-semibold text-white/70">AgenticOS</h1>
-          <p className="text-[11px] text-white/30 mt-1">
-            {rootPath
-              ? "Workspace is ready. Open a file to start editing."
-              : "Open a project folder to begin working with AI assistance."}
-          </p>
-        </div>
-
-        {/* Quick actions */}
-        <div className="grid grid-cols-2 gap-2 w-full">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={onOpenWorkspace}
-            className="flex items-center gap-2 rounded-lg bg-white/[0.04] border border-white/[0.06] px-3 py-2.5 text-[11px] font-medium text-white/60 hover:bg-white/[0.07] hover:text-white/80 transition-all"
-          >
-            <FolderOpen className="h-4 w-4 text-blue-400" />
-            <span>Open Folder</span>
-          </motion.button>
-
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            disabled={!rootPath}
-            onClick={async () => {
-              if (!rootPath) return
-              const name = prompt("File name:")
-              if (!name) return
-              try {
-                const { createFile, loadFileTree } = await import("@/lib/filesystem")
-                await createFile(`${rootPath}\\${name}`)
-                const tree = await loadFileTree(rootPath)
-                useWorkspaceStore.getState().setFileTree(tree)
-              } catch {}
-            }}
-            className="flex items-center gap-2 rounded-lg bg-white/[0.04] border border-white/[0.06] px-3 py-2.5 text-[11px] font-medium text-white/40 hover:bg-white/[0.07] hover:text-white/70 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <FilePlus className="h-4 w-4 text-emerald-400" />
-            <span>New File</span>
-          </motion.button>
-        </div>
-
-        {/* Recent workspace */}
-        {recentWorkspaces.length > 0 && (
-          <div className="w-full">
-            <p className="text-[9px] font-medium text-white/20 uppercase tracking-wider mb-2">Recent</p>
-            {recentWorkspaces.map((ws) => (
-              <button
-                key={ws}
-                onClick={() => {
-                  const { setRootPath, setFileTree, setLoading } = useWorkspaceStore.getState()
-                  setRootPath(ws)
-                  setLoading(true)
-                  loadFileTree(ws).then((tree) => {
-                    setFileTree(tree)
-                    import("@/lib/workspace").then((w) => w.startWatching(ws))
-                  })
-                }}
-                className="flex items-center gap-2 w-full rounded-lg px-2 py-1.5 text-[11px] text-white/40 hover:bg-white/[0.04] hover:text-white/60 transition-all"
-              >
-                <FolderOpen className="h-3 w-3 shrink-0 text-white/20" />
-                <span className="truncate">{ws.split(/[/\\]/).pop()}</span>
-                <span className="ml-auto text-[9px] text-white/15 truncate max-w-[120px]">{ws}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Keyboard shortcuts */}
-        <div className="w-full pt-2 border-t border-white/[0.04]">
-          <p className="text-[9px] font-medium text-white/15 uppercase tracking-wider mb-2">Keyboard Shortcuts</p>
-          <div className="space-y-1">
-            {[
-              { keys: "⌘P", desc: "Quick open" },
-              { keys: "⌘⇧P", desc: "Command palette" },
-              { keys: "⌘B", desc: "Toggle explorer" },
-              { keys: "⌘J", desc: "Toggle panel" },
-              { keys: "⌘S", desc: "Save file" },
-              { keys: "⌘W", desc: "Close tab" },
-            ].map(({ keys, desc }) => (
-              <div key={keys} className="flex items-center justify-between">
-                <span className="text-[10px] text-white/20">{desc}</span>
-                <kbd className="text-[9px] font-mono text-white/15 bg-white/[0.04] px-1.5 py-0.5 rounded">{keys}</kbd>
-              </div>
-            ))}
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  )
-}
-
-// ── Editor Tabs ──
-
-function EditorTabs({ openFiles, activeFilePath, liveEditingFile, onOpen, onClose }: {
-  openFiles: OpenFile[]
-  activeFilePath: string | null
-  liveEditingFile: string | null
-  onOpen: (f: OpenFile) => void
-  onClose: (path: string) => void
-}) {
-  const tabsRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const container = tabsRef.current
-    if (!container) return
-    const activeTab = container.querySelector('[data-active="true"]') as HTMLDivElement | null
-    if (activeTab) {
-      activeTab.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" })
-    }
-  }, [activeFilePath])
-
-  function handleMiddleClick(e: React.MouseEvent, path: string) {
-    if (e.button === 1) {
-      e.preventDefault()
-      onClose(path)
-    }
-  }
-
-  return (
-    <div ref={tabsRef} className="flex items-center border-b border-white/[0.04] bg-black/20 overflow-x-auto shrink-0 scrollbar-thin">
-      <style>{`
-        @keyframes streaming-border-pulse {
-          0%, 100% { border-left-color: rgba(34, 197, 94, 0); }
-          50% { border-left-color: rgba(34, 197, 94, 0.6); }
-        }
-      `}</style>
-      {openFiles.map((file) => {
-        const lang = getMonacoLang(file.name)
-        const isBeingStreamed = liveEditingFile === file.path
-        return (
-          <motion.div
-            key={file.path}
-            data-active={file.path === activeFilePath ? "true" : undefined}
-            data-streaming={isBeingStreamed ? "true" : undefined}
-            onMouseDown={(e) => handleMiddleClick(e, file.path)}
-            layout
-            layoutId={file.path}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className={cn(
-              "group flex items-center gap-1.5 px-3 py-1.5 text-[11px] cursor-pointer border-r border-white/[0.03] transition-all select-none whitespace-nowrap",
-              file.path === activeFilePath
-                ? "bg-white/[0.04] text-white shadow-[inset_0_-1.5px_0_0] shadow-blue-500"
-                : "text-white/40 hover:text-white/70 hover:bg-white/[0.02]",
-              isBeingStreamed && "border-l-2 border-l-transparent animate-[streaming-border-pulse_1.5s_ease-in-out_infinite]"
-            )}
-            onClick={() => onOpen(file)}
-          >
-            <span className={cn(
-              "text-[10px] font-medium uppercase",
-              lang === "typescript" && "text-blue-400",
-              lang === "javascript" && "text-yellow-400",
-              lang === "css" && "text-pink-400",
-              lang === "html" && "text-orange-400",
-              lang === "json" && "text-green-400",
-              lang === "python" && "text-blue-300",
-              lang === "rust" && "text-orange-400",
-              lang === "markdown" && "text-white/40",
-            )}>
-              {file.name.split(".").pop()}
-            </span>
-            <span className="truncate max-w-28">{file.name}</span>
-            {file.isDirty && (
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0"
-              />
-            )}
-            <button
-              onClick={(e) => { e.stopPropagation(); onClose(file.path) }}
-              className="ml-0.5 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all text-white/30 hover:text-white"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </motion.div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ── AI Change Diff Overlay ──
-
-function AiChangeOverlay({ change, onAccept, onReject, onTimeout }: {
-  change: AIChange
-  onAccept: () => void
-  onReject: () => void
-  onTimeout: () => void
-}) {
-  const [timeLeft, setTimeLeft] = useState(30)
-
-  useEffect(() => {
-    if (timeLeft <= 0) {
-      onTimeout()
-      return
-    }
-    const timer = setInterval(() => setTimeLeft((t) => t - 1), 1000)
-    return () => clearInterval(timer)
-  }, [timeLeft, onTimeout])
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-      transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      className="absolute top-3 right-3 z-50"
-    >
-      <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 backdrop-blur-xl p-3 shadow-2xl shadow-blue-500/10 min-w-[220px]">
-        <div className="flex items-center gap-2 mb-2">
-          <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-          <span className="text-[11px] font-medium text-blue-400">AI Suggestion</span>
-          <motion.span
-            key={timeLeft}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="ml-auto text-[8px] text-white/30 font-mono"
-          >
-            {timeLeft}s
-          </motion.span>
-        </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-white/50 mb-2.5">
-          <FileCode className="h-3 w-3" />
-          <span className="truncate">{change.filePath}</span>
-        </div>
-        {/* Progress bar */}
-        <div className="h-0.5 bg-white/5 rounded-full mb-2.5 overflow-hidden">
-          <motion.div
-            className="h-full bg-blue-500/40 rounded-full"
-            initial={{ width: "100%" }}
-            animate={{ width: "0%" }}
-            transition={{ duration: 30, ease: "linear" }}
-          />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={onAccept}
-            className="flex items-center gap-1 rounded-lg bg-green-500/20 border border-green-500/30 px-3 py-1.5 text-[10px] font-medium text-green-400 hover:bg-green-500/30 transition-all"
-          >
-            <Check className="h-3 w-3" />
-            Accept
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={onReject}
-            className="flex items-center gap-1 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-1.5 text-[10px] font-medium text-red-400 hover:bg-red-500/20 transition-all"
-          >
-            <X className="h-3 w-3" />
-            Reject
-          </motion.button>
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-// ── Save utility with Tauri + web fallback ──
-
-async function saveFile(
-  filePath: string,
-  fileName: string,
-  content: string,
-  rootPath?: string,
-): Promise<{ success: boolean; method: "tauri" | "download" | "error"; error?: string }> {
-  // Try Tauri first
-  try {
-    const { invoke } = await import("@/lib/electron-api")
-    // Normalize path to use platform-appropriate separators
-    const normalizedPath = filePath.replace(/\//g, "\\")
-    const absolutePath = rootPath ? `${rootPath}\\${normalizedPath}` : filePath
-    await invoke("write_text_file", { path: absolutePath, content })
-    try {
-      await invoke("save_snapshot", {
-        path: absolutePath,
-        content,
-        description: `Saved ${fileName}`,
-      })
-    } catch { /* snapshot is optional */ }
-    return { success: true, method: "tauri" }
-  } catch {
-    // Tauri not available — fall back to download
-  }
-
-  // Web fallback: download as blob
-  try {
-    const blob = new Blob([content], { type: "text/plain" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = fileName
-    a.click()
-    URL.revokeObjectURL(url)
-    return { success: true, method: "download" }
-  } catch (e) {
-    return { success: false, method: "error", error: String(e) }
-  }
-}
-
-/** Format a number for display: 1234 → "1.2K", 12345 → "12.3K", 123 → "123" */
-function formatCount(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
-  return String(n)
-}
-
-// ── Monaco model cache — reuses models across tab switches, avoids re-parsing ──
-const modelCache = new Map<string, { uri: string; content: string }>()
-let monacoInstance: any = null
-let languageRegistrationGuard = false
-
-// ── Editor view-state cache — preserves cursor/scroll per file across tab switches ──
-interface EditorViewState {
-  cursor: { lineNumber: number; column: number }
-  scrollTop: number
-  scrollLeft: number
-}
-const editorViewStateCache = new Map<string, EditorViewState>()
-
-function getOrCreateModel(monaco: any, filePath: string, content: string, language: string): any {
-  // Create a unique URI for each file so Monaco treats them as separate documents
-  const uri = monaco.Uri.parse(`file:///workspace/${filePath}`)
-  let model = monaco.editor.getModel(uri)
-  if (model) {
-    // Model exists — update content if changed
-    if (model.getValue() !== content) {
-      model.setValue(content)
-    }
-    return model
-  }
-  // Create new model and cache it
-  model = monaco.editor.createModel(content, language, uri)
-  modelCache.set(filePath, { uri: uri.toString(), content })
-  return model
-}
-
 // ── Main Component ──
 
 export function CodeWorkspace() {
@@ -526,6 +117,7 @@ export function CodeWorkspace() {
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<any>(null)
+  const themeGuardRef = useRef(false)
   const [saved, setSaved] = useState(false)
   const [wordWrap, setWordWrap] = useState(false)
   const [fontSize, setFontSize] = useState(13)
@@ -542,6 +134,7 @@ export function CodeWorkspace() {
   const [aiChanges, setAiChanges] = useState<AIChange[]>([])
   const [showAiOverlay, setShowAiOverlay] = useState(false)
   const [saveMethod, setSaveMethod] = useState<"tauri" | "download" | null>(null)
+  const [largeFileWarning, setLargeFileWarning] = useState<string | null>(null)
 
   const [gitInfo, setGitInfo] = useState<{ branch: string; changes: number } | null>(null)
 
@@ -589,12 +182,12 @@ export function CodeWorkspace() {
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
-    monacoInstance = monaco
+    setMonacoInstance(monaco)
 
     // Configure dark theme (once, skip if already registered)
     const themeName = "agentic-dark"
-    if (!languageRegistrationGuard) {
-      languageRegistrationGuard = true
+    if (!themeGuardRef.current) {
+      themeGuardRef.current = true
       monaco.editor.defineTheme(themeName, {
         base: "vs-dark",
         inherit: true,
@@ -763,7 +356,7 @@ export function CodeWorkspace() {
               setCurrentFileSymbols(items)
               setSymbolSearchOpen(true)
             }
-          })
+          }).catch((err) => console.error("Symbol search failed:", err))
         }
       },
     })
@@ -841,6 +434,12 @@ export function CodeWorkspace() {
     const monaco = monacoRef.current
     if (!ed || !monaco || !activeFile) return
 
+    if (isLargeFile(activeFile.content)) {
+      setLargeFileWarning(activeFile.path)
+    } else {
+      setLargeFileWarning(null)
+    }
+
     const language = getMonacoLang(activeFile.name)
     const model = getOrCreateModel(monaco, activeFile.path, activeFile.content, language)
 
@@ -911,6 +510,7 @@ export function CodeWorkspace() {
 
     if (result.success) {
       markFileDirty(currentFile.path, false)
+      dirtyBufferManager.markClean(currentFile.path)
       if (result.method !== "error") {
         setSaveMethod(result.method)
       }
@@ -940,6 +540,7 @@ export function CodeWorkspace() {
     const current = useWorkspaceStore.getState().openFiles.find((f) => f.path === activeFile.path)
     if (current && current.content !== value) {
       updateFileContent(activeFile.path, value)
+      dirtyBufferManager.markDirty(activeFile.path, value)
     }
     // Debounced context refresh: AI sees the new content 2s after user stops typing
     if (contentRefreshRef.current) clearTimeout(contentRefreshRef.current)
@@ -1090,6 +691,25 @@ export function CodeWorkspace() {
         onOpen={openFileInStore}
         onClose={closeFile}
       />
+
+      {/* Large file warning */}
+      {largeFileWarning && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '6px 12px', background: 'rgba(245,158,11,0.1)',
+          borderBottom: '1px solid rgba(245,158,11,0.2)',
+          fontSize: '11px', color: '#f59e0b',
+        }}>
+          <AlertTriangle size={12} />
+          <span>Large file — editing may be slow. Saving will write to disk normally.</span>
+          <button
+            onClick={() => setLargeFileWarning(null)}
+            style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '12px' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Breadcrumb navigation */}
       <BreadcrumbNav />
@@ -1330,7 +950,7 @@ export function CodeWorkspace() {
                         })))
                         setSymbolSearchOpen(true)
                       }
-                    })
+                    }).catch((err) => console.error("Symbol search failed:", err))
                   }
                 }
               }}

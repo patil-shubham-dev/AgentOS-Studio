@@ -13,28 +13,28 @@ function loadPlanMode(): 'auto' | 'always' | 'never' {
   try {
     const stored = localStorage.getItem(PLAN_MODE_KEY)
     if (stored === 'auto' || stored === 'always' || stored === 'never') return stored
-  } catch {}
+  } catch { console.warn("[Store] Failed to load plan mode from localStorage") }
   return 'auto'
 }
 
 function persistPlanMode(mode: 'auto' | 'always' | 'never'): void {
   try {
     localStorage.setItem(PLAN_MODE_KEY, mode)
-  } catch {}
+  } catch { console.warn("[Store] Failed to persist plan mode") }
 }
 
 function loadSandboxMode(): 'on' | 'off' {
   try {
     const stored = localStorage.getItem(SANDBOX_MODE_KEY)
     if (stored === 'on' || stored === 'off') return stored
-  } catch {}
+  } catch { console.warn("[Store] Failed to load sandbox mode") }
   return 'on'
 }
 
 function persistSandboxMode(mode: 'on' | 'off'): void {
   try {
     localStorage.setItem(SANDBOX_MODE_KEY, mode)
-  } catch {}
+  } catch { console.warn("[Store] Failed to persist sandbox mode") }
 }
 
 function log(...args: unknown[]) {

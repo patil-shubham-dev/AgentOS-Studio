@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect, memo } from "react"
 import hljs from "highlight.js"
 import { cn } from "@/lib/utils"
+import { safeCapitalize } from "@/lib/safeCapitalize"
 import {
   Copy, Check, FileDown, ExternalLink, ChevronDown, ChevronRight,
 } from "lucide-react"
@@ -68,7 +69,7 @@ function getLanguageLabel(lang: string): string {
     sql: "SQL", rust: "Rust", typescript: "TypeScript", javascript: "JavaScript",
     python: "Python", shell: "Shell", xml: "XML", plaintext: "Text",
   }
-  return labels[lang] || lang.charAt(0).toUpperCase() + lang.slice(1)
+  return labels[lang] || safeCapitalize(lang, "Code")
 }
 
 function getLanguageColor(lang: string): string {
@@ -142,7 +143,7 @@ export const CodeBlockWithActions = memo(function CodeBlockWithActions({
       await navigator.clipboard.writeText(block.code)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch {}
+    } catch { console.warn("[CodeBlock] Clipboard copy failed") }
   }, [block.code])
 
   const lineCount = block.code.split("\n").length

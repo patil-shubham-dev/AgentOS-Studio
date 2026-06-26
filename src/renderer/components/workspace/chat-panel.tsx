@@ -17,11 +17,14 @@ import { referenceResolver } from "@/lib/context-references/ReferenceResolver"
 import { ContextBar } from "./timeline/context-bar"
 import { SessionBar } from "./timeline/SessionBar"
 import { ApprovalGate } from "./approval-gate"
+import { EditPreviewModal } from "./execution/EditPreviewModal"
 import { XtermTerminal, type XtermTerminalHandle } from "./xterm-terminal"
 import { InteractiveTerminalRuntime, getPlatformShell } from "@/runtime/terminal/InteractiveTerminalRuntime"
 import { configGenerator } from "@/runtime/project-config/ConfigGenerator"
+import { configLoader } from "@/runtime/project-config/ConfigLoader"
 import { useToastStore } from "@/stores/toast-store"
 import { usePlanStore } from "@/stores/plan-store"
+import { loadFileTree } from "@/lib/filesystem"
 import {
   Bot, AlertTriangle, Settings2, Plus, CheckCircle2, ArrowRight,
   Loader2, CheckCircle, XCircle, Terminal as TerminalIcon, GitBranch, ChevronDown,
@@ -111,6 +114,12 @@ export function ChatPanel() {
   const [currentSession, setCurrentSession] = useState<ExecutionSession | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
+  const [previewState, setPreviewState] = useState<{
+    open: boolean
+    files: string[]
+    task: string
+    resolve: (value: boolean) => void
+  } | null>(null)
   const terminalHandleRef = useRef<XtermTerminalHandle | null>(null)
   const terminalSessionRef = useRef<Awaited<ReturnType<InteractiveTerminalRuntime['spawn']>> | null>(null)
 
@@ -130,6 +139,17 @@ export function ChatPanel() {
     const hasManager = roleConfigs.some((r) => r.name.toLowerCase() === "manager" && r.providerId && r.model)
     return hasProvider && hasApiKey && hasManager
   }, [providers, roleConfigs])
+
+  const onPreview = useCallback(async (files: string[]): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setPreviewState({
+        open: true,
+        files,
+        task: inputStateRef.current,
+        resolve,
+      })
+    })
+  }, [])
 
   const sendMessage = useCallback(async () => {
     const currentInput = inputStateRef.current
@@ -202,6 +222,7 @@ export function ChatPanel() {
       input: resolvedInput,
       activeRole,
       correlationId,
+      onPreview,
     }).then((session) => {
       setCurrentSession(session)
       sessionRef.current = session
@@ -211,12 +232,12 @@ export function ChatPanel() {
       // Clean up optimistic session on failure — mark as error, don't just remove
       const timeline = useTimelineStore.getState()
       if (timeline.agentSessions.has(optimisticStepId)) {
+        timeline.flushPendingText(optimisticStepId)
         timeline.updateAgentSession(optimisticStepId, {
           status: "error",
           streamState: "failed",
           error: msg,
         })
-        timeline.streamingTexts.delete(optimisticStepId)
       }
       useAgentStore.getState().addMessage(activeRole, {
         role: "assistant",
@@ -231,12 +252,12 @@ export function ChatPanel() {
       const timeline = useTimelineStore.getState()
       for (const [stepId, session] of timeline.agentSessions) {
         if (stepId.startsWith("optimistic_") && session.streamState === "streaming") {
+          timeline.flushPendingText(stepId)
           timeline.updateAgentSession(stepId, {
             status: "error",
             streamState: "failed",
             error: "Execution ended without agent assignment",
           })
-          timeline.streamingTexts.delete(stepId)
         }
       }
     })
@@ -405,6 +426,9 @@ ${currentPlan.verificationCriteria.map((c) => `- ${c}`).join("\n")}`
       const content = await configGenerator.generate(rootPath)
       const success = await configGenerator.write(rootPath, content)
       if (success) {
+        configLoader.invalidateCache()
+        const tree = await loadFileTree(rootPath)
+        useWorkspaceStore.getState().setFileTree(tree)
         addToast('✅ AGENTIC.md generated from project scan', 'success', 4000)
       } else {
         addToast('AGENTIC.md generation completed (file may require filesystem access)', 'info', 4000)
@@ -593,6 +617,26 @@ ${currentPlan.verificationCriteria.map((c) => `- ${c}`).join("\n")}`
       <div className="px-3 pt-2">
         <ApprovalGate />
       </div>
+
+      {/* Edit Preview Modal — blocks execution until user approves/rejects */}
+      {previewState && (
+        <EditPreviewModal
+          open={previewState.open}
+          task={previewState.task}
+          editedFiles={previewState.files}
+          onApprove={() => {
+            previewState.resolve(true)
+            setPreviewState(null)
+          }}
+          onReject={() => {
+            previewState.resolve(false)
+            setPreviewState(null)
+          }}
+          onEditPrompt={(newPrompt) => {
+            setInput(newPrompt)
+          }}
+        />
+      )}
 
       {/* Embedded terminal toggle */}
       <div className="border-t border-white/[0.04]">

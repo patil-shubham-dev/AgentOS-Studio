@@ -6,6 +6,7 @@ import type { RuntimeRole } from "@/types"
 import { useAppStore } from "@/stores/app-store"
 import { useAgentStore } from "@/stores/agent-store"
 import { cn } from "@/lib/utils"
+import { safeCapitalize } from "@/lib/safeCapitalize"
 import { useLeakTracker } from "@/performance/leak-detector"
 import {
   Play, Square, RotateCcw, Cpu, MessageSquare, Search,
@@ -363,8 +364,8 @@ export function ControlCenterPage() {
     const role = roleConfigs.find((r) => r.id === roleId || r.runtimeRole === roleId)
     const key = (role?.runtimeRole ?? roleId) as RuntimeRole
     const status = agentStatuses[key] ?? agentStatuses[roleId]
-    if (status && status.state !== "idle") {
-      return { state: status.state, task: status.currentTask }
+    if (status && status.state && status.state !== "idle") {
+      return { state: status.state, task: status.currentTask ?? null }
     }
     const conv = conversations[key]
     const lastMsg = conv?.messages?.filter((m: { role: string }) => m.role === "user").slice(-1)[0]
@@ -627,7 +628,7 @@ export function ControlCenterPage() {
                             agentState.state === "failed" ? "bg-red-500/10 text-red-400 border-red-500/20" :
                             "bg-white/[0.04] text-white/50 border-white/5"
                           )}>
-                            <Activity className="h-3 w-3" /> {agentState.state === "complete" ? "Completed" : agentState.state.charAt(0).toUpperCase() + agentState.state.slice(1)}
+                            <Activity className="h-3 w-3" /> {agentState.state === "complete" ? "Completed" : safeCapitalize(agentState.state, "")}
                           </div>
                           {agentState.task && agentState.state !== "idle" && (
                             <span className="flex items-center text-[10px] text-white/40 truncate max-w-[200px]">· {agentState.task}</span>

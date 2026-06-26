@@ -26,7 +26,9 @@ src-tauri/gen/schemas/
 
 # Build output
 out/
-build/
+build/*
+!build/installer.nsh
+!build/installer-hooks.nsh
 release/
 benchmarks/
 

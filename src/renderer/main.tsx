@@ -1,6 +1,16 @@
 import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
+import * as Sentry from '@sentry/react'
+
+if (import.meta.env.VITE_SENTRY_DSN) {
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN as string,
+    environment: import.meta.env.MODE,
+    tracesSampleRate: 0.2,
+  })
+}
+
 import App from './App'
 import { SafeErrorBoundary } from '@/core/error-boundaries'
 import { persistSettings } from './lib/settings-store'
@@ -17,6 +27,8 @@ import { RuntimeCleanupManager } from './runtime/RuntimeCleanupManager'
 import { ExecutionSessionManager } from './runtime/sessions/ExecutionSessionManager'
 import { tauriFetch } from '@agentic-os/providers/http-client'
 import { loader } from '@monaco-editor/react'
+import { StartupTiming } from './lib/startup-timing'
+import type { StartupPhase } from './lib/startup-store'
 
 const monacoBase = location.protocol === 'file:'
   ? './monacoeditorwork/vs'
@@ -59,19 +71,21 @@ function useDebouncedPersist(delay = 2000) {
 }
 
 function Root() {
-  const [ready, setReady] = useState(false)
+  const [startupPhase, setStartupPhase] = useState<StartupPhase>('booting')
   const initGuard = useRef(false)
   const { schedule: schedulePersist, cancel: cancelPersist } = useDebouncedPersist()
 
   useEffect(() => {
     if (initGuard.current) return
     initGuard.current = true
+    StartupTiming.mark('react-mounted')
+    console.log('[Startup] Root mounted — app shell rendering immediately')
 
     const unsubs: (() => void)[] = []
     let cancelled = false
 
     const init = async () => {
-      // Phase 1: platform info
+      // Phase 1: platform info (non-critical, runs in background)
       try {
         const { invoke } = await import('@/lib/electron-api')
         const info: { first_launch: boolean } = await invoke('get_install_info')
@@ -80,41 +94,28 @@ function Root() {
         sessionStorage.setItem('first-launch', 'false')
       }
 
-      // Set Electron environment flag
       if (window.electronAPI) {
         sessionStorage.setItem('is-electron', 'true')
       }
 
-      // Phase 2: kernel boot (orchestrates all services)
+      // Phase 2: boot runtime — all services initialize here
+      // The app shell is already visible; services load in background
       let report
       try {
         report = await bootRuntime()
-        if (!report.success) {
-          console.error('[Boot] Kernel boot DEGRADED — some services failed')
-        }
+        useTimelineStore.getState().clear()
       } catch (err) {
-        console.error('[Boot] Kernel boot CRASHED:', err)
-        report = { success: false, duration: 0, services: [], kernel: 'error' }
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error('[Boot] Runtime init CRASHED:', msg)
       }
 
-      // Phase 3: fresh chat on launch — no auto-restore
-      // Previous sessions are preserved in History for manual access
-      useTimelineStore.getState().clear()
-
-      // Phase 4: attach subscriptions (only if not cancelled)
+      // Phase 3: attach persistence subscriptions
       if (!cancelled) {
         unsubs.push(
-          useAppStore.subscribe(() => {
-            schedulePersist()
-          }),
-        )
-        unsubs.push(
-          useLedgerStore.subscribe(() => {
-            persistLedger()
-          }),
+          useAppStore.subscribe(() => schedulePersist()),
+          useLedgerStore.subscribe(() => persistLedger()),
         )
 
-        // Debounced timeline persistence — persists 2s after last change
         let timelineTimer: ReturnType<typeof setTimeout> | null = null
         unsubs.push(
           useTimelineStore.subscribe(() => {
@@ -128,11 +129,11 @@ function Root() {
         )
       }
 
-      // Always mark ready once boot completes — the cancelled check above only
-      // guards subscription setup. setReady is safe to call after cleanup (React
-      // ignores state updates from unmounted components). This prevents the app
-      // from staying blank forever under React 18 StrictMode.
-      setReady(true)
+      StartupTiming.mark('ui:interactive')
+      console.log('[Startup] Runtime ready — app fully interactive')
+      if (!cancelled) {
+        setStartupPhase('ready')
+      }
     }
 
     init()
@@ -143,8 +144,6 @@ function Root() {
       cancelPersist()
       cancelPendingRefresh()
 
-      // Snapshot timeline state BEFORE any cleanup mutation
-      // This ensures history preserves the actual conversation, not post-cleanup state
       const timeline = useTimelineStore.getState()
       const hasEvents = timeline.events.length > 0
       const snapshot = hasEvents ? {
@@ -156,20 +155,16 @@ function Root() {
         collapsedSections: new Set(timeline.collapsedSections),
       } : null
 
-      // Step 1: Save snapshot to history (deep-copied via JSON.stringify inside saveToHistory)
       if (snapshot) {
         saveToHistory(snapshot.events, snapshot.agentSessions, snapshot.streamingTexts, snapshot.sessionOrder, snapshot.sessionCreatedAtEventCount, snapshot.collapsedSections)
       }
 
-      // Step 2: Cancel any active execution (mutates store — safe because snapshot already taken)
       const activeSessions = ExecutionSessionManager.getInstance().getActiveSessions()
       for (const s of activeSessions) {
         ExecutionSessionManager.getInstance().cancel(s.id)
       }
 
-      // Step 3: Clear volatile UI state (ensures fresh chat on next launch)
       timeline.clear()
-      // Graceful shutdown: clean all runtime resources (streams, tasks, sessions, event listeners)
       RuntimeCleanupManager.getInstance().shutdown().catch((err) => {
         console.error('[Cleanup] Shutdown error:', err)
       })
@@ -177,18 +172,27 @@ function Root() {
     }
   }, [])
 
-  if (!ready) return null
-
-  return <App />
+  return <App startupPhase={startupPhase} />
 }
 
 const rootEl = document.getElementById('root')
-createRoot(rootEl!).render(
-  <StrictMode>
-    <HashRouter>
-      <SafeErrorBoundary name="Root">
-        <Root />
-      </SafeErrorBoundary>
-    </HashRouter>
-  </StrictMode>,
-)
+if (!rootEl) {
+  document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#09090b;color:#e2e8f0;font-family:sans-serif;padding:24px;text-align:center;"><div><h1 style="font-size:18px;font-weight:600;margin-bottom:8px;">AgenticOS couldn't start</h1><p style="font-size:13px;color:#888;max-width:400px;">The application root element was not found. This may indicate a corrupted installation.</p><button onclick="location.reload()" style="padding:10px 24px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;margin-top:16px;">Reload</button></div></div>`
+} else {
+  try {
+    createRoot(rootEl).render(
+      <StrictMode>
+        <HashRouter>
+          <SafeErrorBoundary name="Root">
+            <Root />
+          </SafeErrorBoundary>
+        </HashRouter>
+      </StrictMode>,
+    )
+    console.log('[Startup] React root rendered')
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[Startup] Fatal React render error:', msg)
+    rootEl.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#09090b;color:#e2e8f0;font-family:sans-serif;padding:24px;text-align:center;gap:16px;"><div style="font-size:40px;">!</div><h1 style="font-size:18px;font-weight:600;margin:0;">AgenticOS couldn't start</h1><p style="font-size:13px;color:#888;max-width:440px;line-height:1.5;margin:0;">A critical error occurred while rendering the application.</p><div style="background:#1a1a1f;border-radius:8px;padding:12px 16px;max-width:440px;font-size:12px;color:#ef4444;font-family:monospace;word-break:break-all;">${msg.replace(/</g, '&lt;').replace(/</g, '&gt;')}</div><button onclick="location.reload()" style="padding:10px 24px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">Retry</button></div>`
+  }
+}

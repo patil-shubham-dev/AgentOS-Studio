@@ -1,3 +1,5 @@
+import type { StructuredError } from "@/lib/error-schema"
+
 export type ExecutionEventType =
   | "EXECUTION_CREATED"
   | "AGENT_ASSIGNED"
@@ -260,6 +262,7 @@ export interface ExecutionFailedEvent {
   type: "EXECUTION_FAILED"
   executionId: string
   error: string
+  structuredError?: StructuredError
   durationMs: number
   timestamp: number
 }

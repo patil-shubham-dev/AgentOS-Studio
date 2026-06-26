@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Copy, Check, ExternalLink, FileText } from "
 import { cn } from "@/lib/utils"
 import { detectLanguage } from "./diff-utils"
 import hljs from "highlight.js"
+import DOMPurify from "dompurify"
 import type { FileOpRecord } from "../../step-card"
 
 interface FilePreviewCardProps {
@@ -54,7 +55,7 @@ export const FilePreviewCard = memo(function FilePreviewCard({
       await navigator.clipboard.writeText(displayContent)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch {}
+    } catch { console.warn("[FilePreviewCard] Clipboard copy failed") }
   }, [displayContent])
 
   useEffect(() => {
@@ -68,7 +69,7 @@ export const FilePreviewCard = memo(function FilePreviewCard({
         language: lang,
         ignoreIllegals: true,
       })
-      codeRef.current.innerHTML = result.value
+      codeRef.current.innerHTML = DOMPurify.sanitize(result.value)
     } catch {
       codeRef.current.textContent = displayContent
     }

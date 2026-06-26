@@ -64,7 +64,7 @@ export class SecurityValidator {
             })
           }
         }
-      } catch {}
+      } catch { console.warn("[SecurityValidator] Failed to check changed files") }
     }
 
     for (const file of changedFiles) {
@@ -84,7 +84,7 @@ export class SecurityValidator {
             })
           }
         }
-      } catch {}
+      } catch { console.warn("[SecurityValidator] Failed to read file for pattern scan") }
     }
 
     for (const file of changedFiles) {

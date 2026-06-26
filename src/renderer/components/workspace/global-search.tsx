@@ -5,6 +5,8 @@ import { workspaceIndex } from "@/lib/search-index"
 import type { FileEntry } from "@/types"
 import { cn } from "@/lib/utils"
 import { emitTelemetry } from "@/lib/telemetry"
+import { semanticSearch } from "@/lib/semantic-search"
+import { readTextFile, invoke } from "@/lib/electron-api"
 import {
   Search, X, File, Loader2, ArrowUp, ArrowDown,
   CaseSensitive, FileType, Filter, SearchCode, Sparkles,
@@ -30,16 +32,6 @@ interface SearchResult {
 type SearchMode = "filename" | "content" | "semantic"
 
 const MAX_CONTENT_SEARCH_RESULTS = 2000
-
-// Lazy-import semantic search engine
-let semanticEngine: any = null
-async function getSemanticEngine() {
-  if (!semanticEngine) {
-    const mod = await import("@/lib/semantic-search")
-    semanticEngine = mod.semanticSearch
-  }
-  return semanticEngine
-}
 
 interface GlobalSearchProps {
   open: boolean
@@ -78,12 +70,10 @@ function shouldSkipFile(name: string): boolean {
 
 async function readFileContent(path: string): Promise<string> {
   try {
-    const fs = await import("@/lib/electron-api")
-    return await fs.readTextFile(path)
+    return await readTextFile(path)
   } catch {
     try {
-      const core = await import("@/lib/electron-api")
-      return String(await core.invoke("read_text_file", { path }))
+      return String(await invoke("read_text_file", { path }))
     } catch {
       throw new Error("Cannot read file")
     }
@@ -139,13 +129,12 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
     const performSearch = async () => {
       if (m === "semantic") {
         // Use semantic search engine
-        const engine = await getSemanticEngine()
-        if (!engine || !engine.ready) {
+        if (!semanticSearch || !semanticSearch.ready) {
           setStatus("Semantic index not ready — indexing in progress...")
           setHasSearched(true)
           return
         }
-        const semResults = engine.search(q, 50)
+        const semResults = semanticSearch.search(q, 50)
         const mapped: SearchResult[] = semResults.map((r: any) => ({
           filePath: r.filePath,
           fileName: r.fileName,

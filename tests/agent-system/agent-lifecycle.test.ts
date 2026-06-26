@@ -22,6 +22,32 @@ vi.mock("@/runtime/providers/ProviderRuntime", () => ({
     hasApiKey: vi.fn().mockReturnValue(true),
   })),
 }))
+vi.mock("@agentic-os/providers", () => {
+  const mockProviderTransport = vi.fn().mockImplementation(() => {
+    function createStream(handlers: any) {
+      const tokens = ["Hello", "! ", "I", " am", " an", " AI", " assistant", "."]
+      const fullText = "Hello! I am an AI assistant."
+      ;(async () => {
+        for (const t of tokens) {
+          handlers.onToken?.(t)
+          await new Promise(r => setTimeout(r, 1))
+        }
+        handlers.onDone?.()
+      })()
+    }
+    return {
+      streamChatCompletion: vi.fn().mockImplementation((_cfg, _params, handlers: any) => {
+        createStream(handlers)
+        return Promise.resolve()
+      }),
+      chatCompletion: vi.fn().mockResolvedValue({ content: "Hello! I am an AI assistant.", usage: { promptTokens: 10, completionTokens: 8, totalTokens: 18 } }),
+    }
+  })
+  return {
+    ProviderTransport: mockProviderTransport,
+    StreamTransport: vi.fn(),
+  }
+})
 vi.mock("@/runtime/runtime-coordinator", () => ({ requestRefresh: () => {} }))
 vi.mock("@/runtime/EventBus", () => ({
   EventBus: { getInstance: () => ({ emit: () => {}, on: () => {}, off: () => {} }) },
@@ -112,14 +138,14 @@ describe("Agent Lifecycle — Execution Guard", () => {
   beforeEach(() => setup())
   afterEach(() => StreamManager.getInstance().clearAll())
 
-  it("rejects concurrent execute calls", async () => {
+  it("queues concurrent execute calls", async () => {
     const orch = ExecutionOrchestrator.getInstance()
-    const stream = orch.execute({ input: "test", activeRole: "coder" as any })
-    const iter = stream[Symbol.asyncIterator]()
-    await iter.next()
-    const second = orch.execute({ input: "test2", activeRole: "coder" as any })
-    await expect(second.next()).rejects.toThrow("already in progress")
-    await consume(stream)
+    const stream1 = orch.execute({ input: "test", activeRole: "coder" as any })
+    const stream2 = orch.execute({ input: "test2", activeRole: "coder" as any })
+    const events1 = await consume(stream1)
+    const events2 = await consume(stream2)
+    expect(events1.some((e: any) => e.type === "EXECUTION_COMPLETE")).toBe(true)
+    expect(events2.some((e: any) => e.type === "EXECUTION_COMPLETE")).toBe(true)
   })
 
   it("allows execution after previous completes", async () => {

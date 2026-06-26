@@ -11,6 +11,7 @@
  */
 
 import { configLoader } from "./ConfigLoader"
+import { onFileChange } from "@/lib/workspace"
 
 export type ConfigChangeListener = (source: "managed" | "user" | "project" | "local" | "path-rules", filePath: string) => void
 
@@ -29,7 +30,6 @@ export class ConfigWatcher {
     this.rootPath = rootPath
 
     try {
-      const { onFileChange } = await import("@/lib/workspace")
       this.unlisten = await onFileChange((event) => {
         // Only care about AGENTIC.md files and .agentic/ directory changes
         const path = event.path?.replace(/\\/g, "/") ?? ""

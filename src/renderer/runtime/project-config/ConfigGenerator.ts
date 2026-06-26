@@ -1,126 +1,193 @@
-/**
- * ConfigGenerator
- *
- * Analyzes a project's file structure and configuration to generate
- * a tailored AGENTIC.md file. Scans for:
- *   - package.json → build scripts, dependencies, test framework
- *   - tsconfig.json → language, strictness
- *   - Config files → linters, formatters, test runners
- *   - Directory structure → project layout
- *
- * Usage:
- *   const gen = new ConfigGenerator()
- *   const content = await gen.generate(rootPath)
- *   await gen.write(rootPath, content)
- */
-
-import { isTauri } from "@/runtime/environment"
-
 export interface ProjectProfile {
-  /** Detected languages (e.g. ["TypeScript", "CSS"]) */
   languages: string[]
-  /** Detected frameworks (e.g. ["React", "Express"]) */
   frameworks: string[]
-  /** Build tool (e.g. "Vite", "Webpack", "Next.js") */
   buildTool: string | null
-  /** Test framework (e.g. "Vitest", "Jest", "Playwright") */
   testFramework: string | null
-  /** Linter (e.g. "ESLint") */
   linter: string | null
-  /** Package manager (e.g. "npm", "pnpm", "yarn") */
+  formatter: string | null
   packageManager: string | null
-  /** Build command from package.json scripts */
   buildCommand: string | null
-  /** Test command from package.json scripts */
   testCommand: string | null
-  /** Lint command from package.json scripts */
   lintCommand: string | null
-  /** Project structure summary */
+  typecheckCommand: string | null
   structure: string
-  /** Whether TypeScript is used */
   isTypeScript: boolean
-  /** Whether strict mode is enabled */
   isStrictMode: boolean
+  architecture: "monorepo" | "frontend" | "backend" | "fullstack" | "library" | "unknown"
+  entryPoints: string[]
+  dependencyCount: number
+  workspacePackages: string[]
+  hasDocker: boolean
+  hasCiCd: boolean
+  hasDbConfig: boolean
+  hasApiRoutes: boolean
+  hasTests: boolean
+  testFrameworkDetail: string | null
+  gitHooks: string | null
 }
 
 const KNOWN_TEST_FRAMEWORKS = [
   { key: "vitest", name: "Vitest" },
-  { key: "jest",   name: "Jest" },
-  { key: "mocha",  name: "Mocha" },
+  { key: "jest", name: "Jest" },
+  { key: "mocha", name: "Mocha" },
   { key: "jasmine", name: "Jasmine" },
   { key: "playwright", name: "Playwright" },
   { key: "cypress", name: "Cypress" },
-  { key: "ava",    name: "AVA" },
-  { key: "tape",   name: "Tape" },
+  { key: "ava", name: "AVA" },
+  { key: "tape", name: "Tape" },
 ]
 
 const KNOWN_FRAMEWORKS = [
-  { key: "react",         name: "React" },
-  { key: "next",          name: "Next.js" },
-  { key: "vue",           name: "Vue.js" },
-  { key: "svelte",        name: "Svelte" },
-  { key: "express",       name: "Express" },
-  { key: "fastify",       name: "Fastify" },
-  { key: "nestjs",        name: "NestJS" },
-  { key: "hono",          name: "Hono" },
-  { key: "remix",         name: "Remix" },
-  { key: "astro",         name: "Astro" },
-  { key: "solid-js",      name: "Solid.js" },
-  { key: "tailwindcss",   name: "Tailwind CSS" },
-  { key: "shadcn",        name: "shadcn/ui" },
-  { key: "@radix-ui",     name: "Radix UI" },
+  { key: "react", name: "React" },
+  { key: "next", name: "Next.js" },
+  { key: "vue", name: "Vue.js" },
+  { key: "svelte", name: "Svelte" },
+  { key: "express", name: "Express" },
+  { key: "fastify", name: "Fastify" },
+  { key: "nestjs", name: "NestJS" },
+  { key: "hono", name: "Hono" },
+  { key: "remix", name: "Remix" },
+  { key: "astro", name: "Astro" },
+  { key: "solid-js", name: "Solid.js" },
+  { key: "tailwindcss", name: "Tailwind CSS" },
+  { key: "shadcn", name: "shadcn/ui" },
+  { key: "@radix-ui", name: "Radix UI" },
   { key: "framer-motion", name: "Framer Motion" },
+  { key: "prisma", name: "Prisma" },
+  { key: "drizzle", name: "Drizzle" },
+  { key: "trpc", name: "tRPC" },
+  { key: "zod", name: "Zod" },
+  { key: "valibot", name: "Valibot" },
+  { key: "@tanstack/react-query", name: "TanStack Query" },
+  { key: "zustand", name: "Zustand" },
+  { key: "redux", name: "Redux" },
+  { key: "graphql", name: "GraphQL" },
+  { key: "electron", name: "Electron" },
+  { key: "tauri", name: "Tauri" },
+]
+
+const ENTRY_CANDIDATES = [
+  "main.ts", "main.tsx", "index.ts", "index.tsx",
+  "app.ts", "app.tsx", "server.ts", "server.js",
+  "main.js", "index.js", "app.js", "src/main.ts",
+  "src/index.ts", "src/app.ts", "src/main.tsx",
+  "src/index.tsx",
 ]
 
 export class ConfigGenerator {
-  /**
-   * Generate the full AGENTIC.md content for a project.
-   */
   async generate(rootPath: string): Promise<string> {
     const profile = await this.scan(rootPath)
     const sections: string[] = []
 
-    // Header
-    sections.push(`# AgenticOS Project Configuration\n\n<!-- Auto-generated from project scan. Customize this file for your project. -->\n`)
+    const q = (s: string) => "`" + s + "`"
 
-    // Build & Test Commands
-    sections.push(`## Build & Test Commands`)
-    if (profile.buildCommand) sections.push(`- Build: \`${profile.buildCommand}\``)
-    if (profile.testCommand) sections.push(`- Test: \`${profile.testCommand}\``)
-    if (profile.lintCommand) sections.push(`- Lint: \`${profile.lintCommand}\``)
-    sections.push(`- Typecheck: \`npm run typecheck\`${profile.isStrictMode ? " (strict mode)" : ""}`)
-    sections.push(``)
+    sections.push("# AgenticOS Project Configuration\n")
+    sections.push("<!-- Auto-generated by ConfigGenerator v2 on " + new Date().toISOString().split("T")[0] + ". Customize this file. -->\n")
 
-    // Coding Standards
-    sections.push(`## Coding Standards`)
-    sections.push(`- Language: ${profile.languages.join(", ")}`)
-    sections.push(`- Framework: ${profile.frameworks.join(", ") || "None detected"}`)
-    sections.push(`- Package Manager: ${profile.packageManager ?? "npm"}`)
-    sections.push(`- Build Tool: ${profile.buildTool ?? "Unknown"}`)
-    if (profile.testFramework) sections.push(`- Testing: ${profile.testFramework}`)
-    if (profile.linter) sections.push(`- Linting: ${profile.linter}`)
-    sections.push(``)
+    sections.push("## Quick Reference")
+    sections.push("| Category | Value |")
+    sections.push("|---|---|")
+    sections.push("| Architecture | " + profile.architecture + " |")
+    sections.push("| Languages | " + (profile.languages.join(", ") || "\u2014") + " |")
+    sections.push("| Frameworks | " + (profile.frameworks.join(", ") || "\u2014") + " |")
+    sections.push("| Package Manager | " + (profile.packageManager ?? "npm") + " |")
+    sections.push("| Build Tool | " + (profile.buildTool ?? "\u2014") + " |")
+    sections.push("| TypeScript | " + (profile.isTypeScript ? "Yes" + (profile.isStrictMode ? " (strict)" : "") : "No") + " |")
+    sections.push("| Dependencies | " + profile.dependencyCount + " |")
+    sections.push("| Tests | " + (profile.hasTests ? "Yes (" + (profile.testFramework ?? "detected") + ")" : "Not detected") + " |")
+    sections.push("")
 
-    // Project Structure
-    sections.push(`## Project Structure`)
+    sections.push("## Build & Test Commands")
+    if (profile.buildCommand) sections.push("- Build: " + q(profile.buildCommand))
+    if (profile.testCommand) sections.push("- Test: " + q(profile.testCommand))
+    if (profile.lintCommand) sections.push("- Lint: " + q(profile.lintCommand))
+    if (profile.typecheckCommand) sections.push("- Typecheck: " + q(profile.typecheckCommand))
+    if (!profile.buildCommand && !profile.testCommand) {
+      sections.push("- No standard scripts detected. Run " + q("npm run") + " to see available scripts.")
+    }
+    sections.push("- Package manager: " + q(profile.packageManager ?? "npm"))
+    sections.push("- Node.js: " + q(">=18") + " (recommended)")
+    sections.push("")
+
+    sections.push("## Project Architecture")
+    sections.push("**Type:** " + profile.architecture)
+    sections.push("")
+
+    if (profile.architecture === "monorepo" && profile.workspacePackages.length > 0) {
+      sections.push("**Workspaces:**")
+      for (const wp of profile.workspacePackages) {
+        sections.push("- " + q(wp))
+      }
+      sections.push("")
+    }
+
+    if (profile.entryPoints.length > 0) {
+      sections.push("**Entry Points:**")
+      for (const ep of profile.entryPoints) {
+        sections.push("- " + ep)
+      }
+      sections.push("")
+    }
+
+    sections.push("## Technology Stack")
+    sections.push("- **Languages:** " + (profile.languages.join(", ") || "Not detected"))
+    sections.push("- **Frameworks:** " + (profile.frameworks.join(", ") || "None detected"))
+    sections.push("- **Build Tool:** " + (profile.buildTool ?? "Unknown"))
+    sections.push("- **Package Manager:** " + (profile.packageManager ?? "npm"))
+    if (profile.testFramework) sections.push("- **Testing:** " + profile.testFramework + (profile.testFrameworkDetail ? " (" + profile.testFrameworkDetail + ")" : ""))
+    if (profile.linter) sections.push("- **Linting:** " + profile.linter)
+    if (profile.formatter) sections.push("- **Formatter:** " + profile.formatter)
+    if (profile.linter || profile.formatter) sections.push("- **Format command:** " + q(profile.lintCommand ?? "npm run format"))
+    sections.push("")
+
+    const infraItems: string[] = []
+    if (profile.hasDocker) infraItems.push("Docker (containerized)")
+    if (profile.hasCiCd) infraItems.push("CI/CD pipeline detected")
+    if (profile.hasDbConfig) infraItems.push("Database configuration detected")
+    if (profile.hasApiRoutes) infraItems.push("API routes detected")
+    if (infraItems.length > 0) {
+      sections.push("## Infrastructure")
+      for (const item of infraItems) {
+        sections.push("- " + item)
+      }
+      sections.push("")
+    }
+
+    sections.push("## Coding Conventions")
+    sections.push("- TypeScript: " + (profile.isTypeScript ? (profile.isStrictMode ? "Strict mode" : "Enabled") : "Not used"))
+    sections.push("- Styling: " + (profile.frameworks.find((f) => ["Tailwind CSS", "Radix UI", "shadcn/ui"].includes(f)) ?? "CSS"))
+    if (profile.linter) sections.push("- Linter: " + profile.linter + " enabled")
+    sections.push("")
+
+    sections.push("## Agent Commands")
+    sections.push("- " + q("read") + ": Read file contents")
+    sections.push("- " + q("edit") + ": Edit files (exact string replacements)")
+    sections.push("- " + q("write") + ": Create new files")
+    sections.push("- " + q("bash") + ": Run shell commands")
+    sections.push("- " + q("websearch") + ": Search the web")
+    sections.push("- " + q("task") + ": Delegate sub-tasks to other agents")
+    sections.push("")
+
+    sections.push("## Project Structure")
     sections.push("```")
-    sections.push(profile.structure || "No structure detected")
+    sections.push(profile.structure || "Run " + q("tree") + " to generate a full structure listing")
     sections.push("```\n")
 
-    // Best Practices placeholder
-    sections.push(`## Best Practices & Conventions`)
-    sections.push(`<!-- Add project-specific conventions here: -->`)
-    sections.push(`- \`\`\``)
-    sections.push(`- `)
-    sections.push(`- \`\`\``)
-    sections.push(``)
+    sections.push("## Watch Commands")
+    sections.push("- " + q(profile.buildCommand ? profile.buildCommand + " --watch" : "npm run dev") + " \u2014 development server")
+    sections.push("- " + q(profile.testCommand ? profile.testCommand + " --watch" : "npm run test -- --watch") + " \u2014 test watcher")
+    sections.push("")
+
+    sections.push("## Custom Instructions")
+    sections.push("<!-- Add instructions for the AI agent here. Examples: -->")
+    sections.push("<!-- - \"Always use functional components with hooks\" -->")
+    sections.push("<!-- - \"Follow the existing naming conventions\" -->")
+    sections.push("<!-- - \"Run tests before submitting changes\" -->")
+    sections.push("")
 
     return sections.join("\n")
   }
 
-  /**
-   * Scan a project directory to build a profile.
-   */
   async scan(rootPath: string): Promise<ProjectProfile> {
     const profile: ProjectProfile = {
       languages: [],
@@ -128,132 +195,166 @@ export class ConfigGenerator {
       buildTool: null,
       testFramework: null,
       linter: null,
+      formatter: null,
       packageManager: null,
       buildCommand: null,
       testCommand: null,
       lintCommand: null,
+      typecheckCommand: null,
       structure: "",
       isTypeScript: false,
       isStrictMode: false,
+      architecture: "unknown",
+      entryPoints: [],
+      dependencyCount: 0,
+      workspacePackages: [],
+      hasDocker: false,
+      hasCiCd: false,
+      hasDbConfig: false,
+      hasApiRoutes: false,
+      hasTests: false,
+      testFrameworkDetail: null,
+      gitHooks: null,
     }
 
-    // Detect package manager from lockfiles
-    try {
-      if (isTauri()) {
-        const { readDir } = await import("@/lib/electron-api")
-        const entries = await readDir(rootPath)
-        const names = entries.map((e: any) => e.name?.toLowerCase() ?? "")
+    const entries = await this.readDir(rootPath)
+    const names = entries.map((e: any) => e.name?.toLowerCase() ?? "")
 
-        if (names.includes("pnpm-lock.yaml"))     profile.packageManager = "pnpm"
-        else if (names.includes("yarn.lock"))      profile.packageManager = "yarn"
-        else if (names.includes("package-lock.json")) profile.packageManager = "npm"
-        else if (names.includes("bun.lock"))        profile.packageManager = "bun"
+    if (names.includes("pnpm-lock.yaml")) profile.packageManager = "pnpm"
+    else if (names.includes("yarn.lock")) profile.packageManager = "yarn"
+    else if (names.includes("package-lock.json")) profile.packageManager = "npm"
+    else if (names.includes("bun.lock")) profile.packageManager = "bun"
+
+    const pkg = await this.readJson(rootPath, "package.json")
+    if (pkg) {
+      const scripts = (pkg as any).scripts ?? {}
+      const allDeps = { ...(pkg as any).dependencies ?? {}, ...(pkg as any).devDependencies ?? {} }
+      profile.dependencyCount = Object.keys(allDeps).length
+
+      for (const { key, name } of KNOWN_TEST_FRAMEWORKS) {
+        if (allDeps[key]) {
+          profile.testFramework = name
+          profile.hasTests = true
+          break
+        }
       }
-    } catch { /* ignore */ }
 
-    // Parse package.json
-    try {
-      const pkg = await this.readJson(rootPath, "package.json")
-      if (pkg) {
-        const scripts = (pkg as any).scripts ?? {}
+      if (allDeps["playwright"]) profile.testFrameworkDetail = "E2E + component testing"
+      else if (allDeps["vitest"]) profile.testFrameworkDetail = "Unit + integration (Vite-native)"
+      else if (allDeps["jest"]) profile.testFrameworkDetail = "Unit + integration"
+      else if (allDeps["cypress"]) profile.testFrameworkDetail = "E2E testing"
 
-        // Detect test framework from devDependencies
-        const allDeps = { ...(pkg as any).dependencies, ...(pkg as any).devDependencies }
-        for (const { key, name } of KNOWN_TEST_FRAMEWORKS) {
-          if (allDeps[key]) {
-            profile.testFramework = name
-            break
-          }
-        }
-
-        // Detect frameworks from dependencies
-        for (const { key, name } of KNOWN_FRAMEWORKS) {
-          if (allDeps[key]) {
-            profile.frameworks.push(name)
-          }
-        }
-
-        // Detect language from devDependencies
-        if (allDeps["typescript"]) {
-          profile.isTypeScript = true
-          profile.languages.push("TypeScript")
-        }
-
-        // Build commands
-        if (scripts.build) profile.buildCommand = `npm run build`
-        if (scripts.test) profile.testCommand = `npm run test`
-        if (scripts.lint) profile.lintCommand = `npm run lint`
-        if (scripts["typecheck"]) {} // available
-
-        // Build tool detection
-        if (allDeps["vite"])         profile.buildTool = "Vite"
-        else if (allDeps["next"])    profile.buildTool = "Next.js"
-        else if (allDeps["webpack"]) profile.buildTool = "Webpack"
-        else if (allDeps["esbuild"]) profile.buildTool = "esbuild"
-        else if (allDeps["tsup"])    profile.buildTool = "tsup"
+      for (const { key, name } of KNOWN_FRAMEWORKS) {
+        if (allDeps[key]) profile.frameworks.push(name)
       }
-    } catch { /* ignore */ }
 
-    // Detect linter
-    try {
-      const entries = await this.readDir(rootPath)
-      const names = entries.map((e: any) => e.name?.toLowerCase() ?? "")
-      if (names.some((n: string) => n.includes("eslint")))        profile.linter = "ESLint"
-      else if (names.some((n: string) => n.includes("biome")))     profile.linter = "Biome"
-      else if (names.some((n: string) => n.includes("prettier")))  profile.linter = "Prettier"
-    } catch { /* ignore */ }
-
-    // Parse tsconfig.json
-    try {
-      const tsconfig = await this.readJson(rootPath, "tsconfig.json")
-      if (tsconfig) {
+      if (allDeps["typescript"]) {
         profile.isTypeScript = true
-        if (!profile.languages.includes("TypeScript")) profile.languages.push("TypeScript")
-        const compilerOptions = (tsconfig as any).compilerOptions ?? {}
-        profile.isStrictMode = compilerOptions.strict === true ||
-          compilerOptions.noImplicitAny === true
+        profile.languages.push("TypeScript")
       }
-    } catch { /* ignore */ }
 
-    // CSS files → detect styling language
-    try {
-      const entries = await this.readDir(rootPath)
-      const names = entries.map((e: any) => e.name?.toLowerCase() ?? "")
-      if (names.some((n: string) => n.endsWith(".css") || n.endsWith(".scss"))) {
-        profile.languages.push("CSS")
+      if (scripts.build) profile.buildCommand = "npm run build"
+      if (scripts.test) profile.testCommand = "npm run test"
+      if (scripts.lint) profile.lintCommand = "npm run lint"
+      if (scripts.typecheck) profile.typecheckCommand = "npm run typecheck"
+      else if (scripts["check-types"]) profile.typecheckCommand = "npm run check-types"
+      else if (scripts["tsc"]) profile.typecheckCommand = "npm run tsc"
+
+      if (allDeps["vite"]) profile.buildTool = "Vite"
+      else if (allDeps["next"]) profile.buildTool = "Next.js"
+      else if (allDeps["webpack"]) profile.buildTool = "Webpack"
+      else if (allDeps["esbuild"]) profile.buildTool = "esbuild"
+      else if (allDeps["tsup"]) profile.buildTool = "tsup"
+      else if (allDeps["rollup"]) profile.buildTool = "Rollup"
+
+      if ((pkg as any).workspaces) {
+        profile.architecture = "monorepo"
+        const workspaces = (pkg as any).workspaces
+        if (Array.isArray(workspaces)) profile.workspacePackages = workspaces.map(String)
+      } else if (allDeps["next"]) profile.architecture = "fullstack"
+      else if (allDeps["astro"]) profile.architecture = "frontend"
+      else if (allDeps["remix"]) profile.architecture = "fullstack"
+      else if (allDeps["express"] || allDeps["fastify"] || allDeps["hono"] || allDeps["nestjs"]) profile.architecture = "backend"
+      else if (allDeps["react"] || allDeps["vue"] || allDeps["svelte"]) profile.architecture = "frontend"
+      else if (allDeps["electron"] || allDeps["tauri"]) profile.architecture = "frontend"
+    }
+
+    const tsconfig = await this.readJson(rootPath, "tsconfig.json")
+    if (tsconfig) {
+      profile.isTypeScript = true
+      if (!profile.languages.includes("TypeScript")) profile.languages.push("TypeScript")
+      const compilerOptions = (tsconfig as any).compilerOptions ?? {}
+      profile.isStrictMode = compilerOptions.strict === true || compilerOptions.noImplicitAny === true
+    }
+
+    if (names.some((n: string) => n.includes("eslint"))) profile.linter = "ESLint"
+    else if (names.some((n: string) => n.includes("biome"))) profile.linter = "Biome"
+    if (names.some((n: string) => n.includes("prettier"))) profile.formatter = "Prettier"
+
+    for (const candidate of ENTRY_CANDIDATES) {
+      if (names.includes(candidate) || names.some((n: string) => n.endsWith("/" + candidate))) {
+        profile.entryPoints.push(candidate)
       }
-    } catch { /* ignore */ }
+    }
+    if (profile.entryPoints.length === 0 && names.includes("src")) {
+      const srcEntries = await this.readDir(rootPath + "/src")
+      const srcNames = srcEntries.map((e: any) => e.name?.toLowerCase() ?? "")
+      for (const candidate of ["main.ts", "index.ts", "app.ts", "main.tsx", "index.tsx"]) {
+        if (srcNames.includes(candidate)) profile.entryPoints.push("src/" + candidate)
+      }
+    }
+
+    profile.hasDocker = names.some((n: string) =>
+      n === "dockerfile" || n.startsWith("docker-compose") || n.startsWith("dockerfile"),
+    )
+    profile.hasCiCd = names.some((n: string) =>
+      n === ".github" || n === ".gitlab-ci.yml" || n === ".circleci" || n === "Jenkinsfile" || n === ".gitlab-ci.yaml",
+    )
+    profile.hasDbConfig = names.some((n: string) =>
+      n.includes("prisma") || n.includes("schema") || n === "drizzle.config.ts" || n === "drizzle.config.js",
+    )
+    profile.hasApiRoutes = names.some((n: string) =>
+      n.includes("api") || n.includes("route") || n.includes("controller") || n.includes("service"),
+    ) || profile.frameworks.some((f) => ["Express", "Fastify", "NestJS", "Hono", "tRPC"].includes(f))
+
+    if (!profile.languages.includes("TypeScript") && names.some((n: string) => n.endsWith(".ts") || n.endsWith(".tsx"))) {
+      profile.languages.push("TypeScript")
+      profile.isTypeScript = true
+    }
+    if (names.some((n: string) => n.endsWith(".js") || n.endsWith(".jsx"))) profile.languages.push("JavaScript")
+    if (names.some((n: string) => n.endsWith(".py"))) profile.languages.push("Python")
+    if (names.some((n: string) => n.endsWith(".rs"))) profile.languages.push("Rust")
+    if (names.some((n: string) => n.endsWith(".go"))) profile.languages.push("Go")
+    if (names.some((n: string) => n.endsWith(".css") || n.endsWith(".scss") || n.endsWith(".less"))) profile.languages.push("CSS")
+
+    if (profile.architecture === "monorepo" && profile.workspacePackages.length === 0) {
+      for (const dir of ["packages", "apps", "libs", "modules"]) {
+        if (names.includes(dir)) profile.workspacePackages.push(dir)
+      }
+    }
+
+    if (names.includes(".husky")) profile.gitHooks = "Husky"
+    else if (names.includes(".githooks")) profile.gitHooks = "Custom"
 
     return profile
   }
 
-  /**
-   * Write the generated AGENTIC.md to the project root.
-   */
   async write(rootPath: string, content: string): Promise<boolean> {
     try {
-      if (isTauri()) {
-        const { writeTextFile } = await import("@/lib/electron-api")
-        await writeTextFile(`${rootPath}/AGENTIC.md`, content)
-        return true
-      }
-      return false
+      const { writeTextFile } = await import("@/lib/electron-api")
+      await writeTextFile(rootPath + "/AGENTIC.md", content)
+      return true
     } catch (err) {
       console.error("[ConfigGenerator] Failed to write AGENTIC.md:", err)
       return false
     }
   }
 
-  // ── Private helpers ──
-
   private async readJson(rootPath: string, filename: string): Promise<unknown | null> {
     try {
-      if (isTauri()) {
-        const { readTextFile } = await import("@/lib/electron-api")
-        const content = await readTextFile(`${rootPath}/${filename}`)
-        return JSON.parse(content)
-      }
-      return null
+      const { readTextFile } = await import("@/lib/electron-api")
+      const content = await readTextFile(rootPath + "/" + filename)
+      return JSON.parse(content)
     } catch {
       return null
     }
@@ -261,11 +362,8 @@ export class ConfigGenerator {
 
   private async readDir(path: string): Promise<Array<{ name: string }>> {
     try {
-      if (isTauri()) {
-        const { readDir } = await import("@/lib/electron-api")
-        return await readDir(path)
-      }
-      return []
+      const { readDir } = await import("@/lib/electron-api")
+      return await readDir(path)
     } catch {
       return []
     }

@@ -18,5 +18,17 @@ export default defineConfig({
     testTimeout: 120000,
     hookTimeout: 120000,
     setupFiles: ['./vitest.setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      include: ['src/**/*.ts', 'src/**/*.tsx'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/**/*.d.ts'],
+      thresholds: {
+        lines: 70,
+        branches: 60,
+        functions: 65,
+        statements: 70,
+      },
+    },
   },
 })

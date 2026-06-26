@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { ConfigLoader } from "@/runtime/project-config/ConfigLoader"
 
+// Simulate Tauri env without real filesystem — isTauri returns true so
+// we exercise the read path, but readFile returns null (no real files).
+vi.mock("@/runtime/environment", () => ({
+  isTauri: () => false,
+  getRuntimeEnvironment: () => "tauri",
+}))
+
 describe("ConfigLoader", () => {
   let loader: ConfigLoader
 

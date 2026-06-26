@@ -21,6 +21,17 @@ import { MemoryArchitecture } from './memory/unified/MemoryArchitecture'
 import { CostTracker } from './cost/CostTracker'
 import { DiskBackedResultStore } from './tools/storage/DiskBackedResultStore'
 
+import { ToolTaskExecutor } from '@/runtime/orchestration/ToolTaskExecutor'
+import { ExecutionCoordinator } from '@/runtime/orchestration/ExecutionCoordinator'
+import { OrchestrationEventBus } from '@/runtime/orchestration/events'
+import { MetricsCollector } from '@/runtime/orchestration/MetricsCollector'
+import {
+  JsonLogTaskStore,
+  LocalStorageBackend,
+  LocalStorageWalStore,
+  LocalStorageHistoryStore,
+  RecoveryManager,
+} from '@/runtime/orchestration/persistence'
 import { ALL_BUILTIN_TOOLS } from '@/runtime/tools/implementations'
 import { RuntimeCleanupManager } from "./RuntimeCleanupManager"
 import { useWorkspaceStore } from '@/stores/workspace-store'
@@ -32,6 +43,8 @@ import { sandboxPathMapper } from '@/runtime/tools/execution/SandboxPathMapper'
 import { pluginRegistry } from '@/runtime/plugins/PluginRegistry'
 import { pluginLoader } from '@/runtime/plugins/PluginLoader'
 import { sessionMemoryExtractor } from '@/runtime/memory/SessionMemoryExtractor'
+import { liveGraphEngine } from '@/runtime/intelligence/LiveGraphEngine'
+import { ExecutionReliabilitySuite } from '@/runtime/execution/ExecutionReliabilitySuite'
 
 export class RuntimeOS {
   private static instance: RuntimeOS
@@ -42,6 +55,10 @@ export class RuntimeOS {
   readonly toolExecutionPipeline: ToolExecutionPipeline
   readonly toolExecutionPolicy: ToolExecutionPolicy
   readonly toolConcurrencyPolicy: ToolConcurrencyPolicy
+  readonly toolTaskExecutor: ToolTaskExecutor
+  executionCoordinator: ExecutionCoordinator | null = null
+  readonly orchestrationEventBus: OrchestrationEventBus
+  readonly orchestrationMetrics: MetricsCollector
 
   readonly mcpRegistry: MCPRegistry
   readonly mcpServerManager: MCPServerManager
@@ -75,6 +92,13 @@ export class RuntimeOS {
     this.toolExecutionPipeline.registerPreHook(sandboxPathMapper)
     this.toolExecutionPolicy = new ToolExecutionPolicy()
     this.toolConcurrencyPolicy = new ToolConcurrencyPolicy()
+    this.toolTaskExecutor = new ToolTaskExecutor({
+      registry: this.toolRegistry,
+      pipeline: this.toolExecutionPipeline,
+      permissionEngine: this.permissionEngine,
+    })
+    this.orchestrationEventBus = new OrchestrationEventBus()
+    this.orchestrationMetrics = new MetricsCollector()
 
     this.mcpRegistry = new MCPRegistry()
     this.mcpServerManager = new MCPServerManager(this.mcpRegistry, this.toolRegistry)
@@ -147,6 +171,8 @@ export class RuntimeOS {
       allowBackground: true,
     })
 
+    this.initCoordinator()
+
     if (mcpServers && mcpServers.length > 0) {
       for (const cfg of mcpServers) {
         this.mcpServerManager.addServer(cfg)
@@ -171,6 +197,35 @@ export class RuntimeOS {
         PromptCacheManager.getInstance().invalidate('config')
         configLoader.invalidateCache()
       })
+
+      // ── Start live graph engine for real-time intelligence sync ──
+      await liveGraphEngine.start()
+
+      // ── Enhance graph with AST-level edges from TS compiler ──
+      try {
+        const { ASTEnhancedGraph } = await import('@/runtime/intelligence/ASTEnhancedGraph')
+        const enhancer = new ASTEnhancedGraph()
+        const result = await enhancer.enhance()
+        if (result.edges.length > 0) {
+          console.log(`[RuntimeOS] ASTEnhancedGraph: ${result.edges.length} edges added (${result.totalPropertyAccess} props, ${result.totalJSXRefs} JSX, ${result.totalEventHandlers} handlers, ${result.totalGenerics} generics, ${result.totalTypeRefs} type-refs)`)
+        }
+      } catch (err) {
+        console.warn('[RuntimeOS] ASTEnhancedGraph enhancement failed:', err)
+      }
+
+      // ── Initialize reliability suite with circuit breakers ──
+      const reliabilitySuite = ExecutionReliabilitySuite.getInstance()
+      reliabilitySuite.createCircuitBreaker("execution", 5)
+      reliabilitySuite.createCircuitBreaker("verification", 3)
+      reliabilitySuite.createCircuitBreaker("provider", 3)
+      setTimeout(() => {
+        reliabilitySuite.runHealthChecks().then(checks => {
+          const failed = checks.filter(c => !c.passed)
+          if (failed.length > 0) {
+            console.warn(`[RuntimeOS] ${failed.length} health check(s) failed:`, failed.map(c => c.name).join(', '))
+          }
+        }).catch(() => {})
+      }, 1000)
     }
     await this.skillLoader.loadUserSkills()
 
@@ -191,7 +246,39 @@ export class RuntimeOS {
     await pluginRegistry.dispatchOnInit()
   }
 
+  private initCoordinator(): void {
+    try {
+      const storage = new LocalStorageBackend("opencode_orchestration")
+      const walStore = new LocalStorageWalStore("opencode_orchestration_wal")
+      const historyStore = new LocalStorageHistoryStore("opencode_orchestration_history")
+      const taskStore = new JsonLogTaskStore({
+        storage,
+        walStore,
+        historyStore,
+        storagePrefix: "orchestration",
+      })
+      const recoveryManager = new RecoveryManager(taskStore)
+
+      this.executionCoordinator = new ExecutionCoordinator({
+        taskStore,
+        writeAheadLog: taskStore.writeAheadLog,
+        taskHistory: taskStore.taskHistory,
+        recoveryManager,
+        eventBus: this.orchestrationEventBus,
+        metricsCollector: this.orchestrationMetrics,
+        taskExecutor: this.toolTaskExecutor,
+        maxConcurrentTasks: this.toolExecutionPolicy.getDefaultPolicy().maxConcurrent,
+        resourceLimits: {
+          maxConcurrentTasks: this.toolExecutionPolicy.getDefaultPolicy().maxConcurrent,
+        },
+      })
+    } catch (err) {
+      console.warn("[RuntimeOS] Failed to initialize ExecutionCoordinator:", err)
+    }
+  }
+
   async shutdown(): Promise<void> {
+    liveGraphEngine.stop()
     this.mcpServerManager.stopHealthChecks()
     await this.mcpRegistry.disconnectAll()
     this.toolConcurrencyPolicy.clear()
@@ -204,6 +291,7 @@ export class RuntimeOS {
     configWatcher.stop()
     // Stop session memory listening
     sessionMemoryExtractor.stopListening()
+    this.executionCoordinator = null
     this.initialized = false
   }
 

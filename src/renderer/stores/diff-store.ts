@@ -132,7 +132,7 @@ export const useDiffStore = create<DiffStoreState>((set, get) => ({
   acceptHunk: (path, hunkIndex) =>
     set((state) => {
       const file = state.files.get(path)
-      if (!file) return state
+      if (!file || hunkIndex < 0 || hunkIndex >= file.hunks.length) return state
       const newHunks = [...file.hunks]
       newHunks[hunkIndex] = { ...newHunks[hunkIndex], status: "accepted" }
 
@@ -151,7 +151,7 @@ export const useDiffStore = create<DiffStoreState>((set, get) => ({
   rejectHunk: (path, hunkIndex) =>
     set((state) => {
       const file = state.files.get(path)
-      if (!file) return state
+      if (!file || hunkIndex < 0 || hunkIndex >= file.hunks.length) return state
       const newHunks = [...file.hunks]
       newHunks[hunkIndex] = { ...newHunks[hunkIndex], status: "rejected" }
 

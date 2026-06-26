@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useNavigate, useLocation } from "react-router-dom"
 import { InstallPanel } from "@/pages/install-panel"
+import { InstallWizard } from "@/pages/install-wizard"
+import { UninstallWizard } from "@/pages/uninstall-wizard"
 import { UpdatePanel } from "@/pages/update-panel"
 import { ResetPanel } from "@/pages/reset-panel"
 import { ProvidersTab } from "@/components/settings/providers-tab"
@@ -31,7 +33,7 @@ const navItems: NavItem[] = [
   { id: "models", label: "Models", icon: Box, shortcut: "2", description: "Model selection, config & benchmarks" },
   { id: "tools", label: "MCP Servers", icon: Wrench, shortcut: "3", description: "MCP server connections & tools" },
   { id: "runtime", label: "Runtime", icon: Terminal, shortcut: "4", description: "Execution environment & sandbox config" },
-  { id: "install", label: "Installation", icon: Package, shortcut: "5", description: "Install info, storage & shell integration", path: "/settings/install" },
+  { id: "install", label: "Installation", icon: Package, shortcut: "5", description: "Install info, wizard & shell integration", path: "/settings/install" },
   { id: "update", label: "Updates", icon: ArrowUpCircle, shortcut: "6", description: "App updates & auto-update", path: "/settings/update" },
   { id: "reset", label: "Reset", icon: Trash2, shortcut: "7", description: "Clear data & factory reset", path: "/settings/reset" },
 ]
@@ -48,7 +50,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     const pathTab = location.pathname.split("/").pop()
-    if (pathTab && ["install", "update", "reset"].includes(pathTab)) {
+    if (pathTab && ["install", "install-wizard", "uninstall-wizard", "update", "reset"].includes(pathTab)) {
       setActiveTab(pathTab)
     }
   }, [location.pathname])
@@ -92,6 +94,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
+      {/* Search overlay */}
       <AnimatePresence>
         {searchOpen && (
           <motion.div
@@ -159,6 +162,7 @@ export function SettingsPage() {
         )}
       </AnimatePresence>
 
+      {/* Sidebar */}
       <motion.aside
         animate={{ width: sidebarCollapsed ? 64 : 240 }}
         className={cn(
@@ -237,6 +241,7 @@ export function SettingsPage() {
         </nav>
       </motion.aside>
 
+      {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden bg-gradient-to-br from-black via-[#050508] to-[#0a0a14]">
         <div className="flex items-center justify-between border-b border-white/5 px-6 py-3 bg-black/20 backdrop-blur-xl">
           <div className="flex items-center gap-4">
@@ -252,7 +257,6 @@ export function SettingsPage() {
             <span className="text-xs text-white/30 font-mono">
               {navItems.find((n) => n.id === activeTab)?.description}
             </span>
-            {/* Live wiring status — visible on Providers, Runtime tabs */}
             {activeTab === "providers" || activeTab === "runtime" ? (
               <div className="ml-4 pl-4 border-l border-white/10">
                 <WiringIndicator variant="bar" />
@@ -275,6 +279,8 @@ export function SettingsPage() {
               {activeTab === "tools" && <div className="p-6 max-w-6xl mx-auto"><ToolsTab /></div>}
               {activeTab === "runtime" && <div className="p-6 max-w-6xl mx-auto"><RuntimeTab /></div>}
               {activeTab === "install" && <InstallPanel />}
+              {activeTab === "install-wizard" && <InstallWizard />}
+              {activeTab === "uninstall-wizard" && <UninstallWizard />}
               {activeTab === "update" && <UpdatePanel />}
               {activeTab === "reset" && <ResetPanel />}
             </motion.div>

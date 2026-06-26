@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useCallback } from "react"
-import { listen } from "@/lib/electron-api"
 import { cn } from "@/lib/utils"
 
 interface ViewportState {
@@ -63,18 +62,23 @@ export function useViewport(options?: {
   }, [])
 
   useEffect(() => {
+    let unsubPromise: Promise<() => void> | undefined
+    const setup = async () => {
+      const { listen } = await import("@/lib/electron-api")
+      unsubPromise = listen("viewport-state-changed", (event: { payload: ViewportState }) => {
+        setViewportState(event.payload)
+        options?.onStateChange?.(event.payload)
+      })
+    }
+    setup()
     createViewport()
-    const unsub = listen("viewport-state-changed", (event: { payload: ViewportState }) => {
-      setViewportState(event.payload)
-      options?.onStateChange?.(event.payload)
-    })
     const handleResize = () => resizeViewport()
     window.addEventListener("resize", handleResize)
     const resizeObserver = new ResizeObserver(() => resizeViewport())
     if (containerRef.current) resizeObserver.observe(containerRef.current)
     return () => {
       destroyViewport()
-      unsub.then((fn) => fn())
+      if (unsubPromise) unsubPromise.then((fn) => fn())
       window.removeEventListener("resize", handleResize)
       resizeObserver.disconnect()
     }

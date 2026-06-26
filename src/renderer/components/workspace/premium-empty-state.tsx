@@ -204,37 +204,106 @@ function SearchIllustration() {
 
 function BrowserIllustration() {
   return (
-    <svg viewBox="0 0 120 80" className="w-24 h-16" fill="none">
+    <svg viewBox="0 0 160 100" className="w-32 h-20" fill="none">
+      {/* Window shadow/glow */}
       <motion.rect
-        x="8" y="6" width="104" height="68" rx="5"
-        className="fill-white/[0.02] stroke-white/[0.08]" strokeWidth="1"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-        transition={{ duration: 0.4 }}
+        x="6" y="4" width="148" height="92" rx="7"
+        className="fill-blue-500/[0.02]"
+        animate={{ opacity: [0.02, 0.06, 0.02] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
       />
-      <motion.rect x="12" y="10" width="96" height="8" rx="2" className="fill-white/[0.04]"
+      {/* Browser window frame */}
+      <motion.rect
+        x="8" y="6" width="144" height="88" rx="6"
+        className="fill-white/[0.02] stroke-white/[0.08]" strokeWidth="1"
+        initial={{ opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      />
+      {/* Window chrome */}
+      <motion.rect x="12" y="10" width="136" height="10" rx="3" className="fill-white/[0.04]"
         initial={{ opacity: 0 }} animate={{ opacity: 1 }}
         transition={{ duration: 0.3, delay: 0.1 }}
       />
-      <motion.circle cx="20" cy="14" r="2" className="fill-red-400/30"
-        animate={{ opacity: [0.3, 0.8, 0.3] }}
-        transition={{ duration: 2, repeat: Infinity }}
+      {/* Traffic light dots */}
+      <motion.circle cx="22" cy="15" r="2" className="fill-red-400/40"
+        animate={{ opacity: [0.3, 0.9, 0.3] }}
+        transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
       />
-      <motion.circle cx="28" cy="14" r="2" className="fill-amber-400/30"
-        animate={{ opacity: [0.3, 0.8, 0.3] }}
-        transition={{ duration: 2, delay: 0.3, repeat: Infinity }}
+      <motion.circle cx="31" cy="15" r="2" className="fill-amber-400/40"
+        animate={{ opacity: [0.3, 0.9, 0.3] }}
+        transition={{ duration: 2.5, delay: 0.3, repeat: Infinity, ease: "easeInOut" }}
       />
-      <motion.circle cx="36" cy="14" r="2" className="fill-green-400/30"
-        animate={{ opacity: [0.3, 0.8, 0.3] }}
-        transition={{ duration: 2, delay: 0.6, repeat: Infinity }}
+      <motion.circle cx="40" cy="15" r="2" className="fill-green-400/40"
+        animate={{ opacity: [0.3, 0.9, 0.3] }}
+        transition={{ duration: 2.5, delay: 0.6, repeat: Infinity, ease: "easeInOut" }}
       />
-      <motion.rect x="80" y="11" width="22" height="6" rx="2" className="fill-white/[0.03]"
-        initial={{ width: 0 }} animate={{ width: 22 }}
-        transition={{ duration: 0.4, delay: 0.3 }}
+      {/* URL bar */}
+      <motion.rect x="52" y="12" width="60" height="6" rx="3" className="fill-white/[0.05]"
+        initial={{ width: 0, opacity: 0 }} animate={{ width: 60, opacity: 1 }}
+        transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
       />
-      <motion.rect x="14" y="26" width="90" height="44" rx="2" className="fill-blue-400/[0.03] stroke-blue-400/[0.06]" strokeWidth="0.5"
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.4, delay: 0.4 }}
+      <motion.rect x="56" y="14" width="20" height="2" rx="1" className="fill-white/[0.08]"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+        transition={{ duration: 0.3, delay: 0.4 }}
+      />
+      {/* Security lock icon */}
+      <motion.rect x="112" y="13" width="4" height="4" rx="1" className="fill-green-400/30"
+        animate={{ opacity: [0.3, 0.7, 0.3] }}
+        transition={{ duration: 2, delay: 0.5, repeat: Infinity }}
+      />
+      {/* Main content area */}
+      <motion.rect x="14" y="26" width="134" height="62" rx="3" className="fill-blue-400/[0.04] stroke-blue-400/[0.08]" strokeWidth="0.5"
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      />
+      {/* Page content — top bar */}
+      <motion.rect x="22" y="34" width="118" height="3" rx="1.5" className="fill-white/[0.06]"
+        initial={{ width: 0 }} animate={{ width: 118 }}
+        transition={{ duration: 0.4, delay: 0.5 }}
+      />
+      {/* Page content — left sidebar */}
+      <motion.rect x="22" y="42" width="30" height="38" rx="2" className="fill-white/[0.03]"
+        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.35, delay: 0.55 }}
+      />
+      {/* Page content — main area lines */}
+      <motion.rect x="58" y="42" width="70" height="2" rx="1" className="fill-white/[0.06]"
+        initial={{ width: 0 }} animate={{ width: 70 }}
+        transition={{ duration: 0.3, delay: 0.6 }}
+      />
+      <motion.rect x="58" y="48" width="55" height="2" rx="1" className="fill-white/[0.04]"
+        initial={{ width: 0 }} animate={{ width: 55 }}
+        transition={{ duration: 0.3, delay: 0.7 }}
+      />
+      <motion.rect x="58" y="54" width="65" height="2" rx="1" className="fill-white/[0.04]"
+        initial={{ width: 0 }} animate={{ width: 65 }}
+        transition={{ duration: 0.3, delay: 0.8 }}
+      />
+      <motion.rect x="58" y="60" width="40" height="2" rx="1" className="fill-white/[0.03]"
+        initial={{ width: 0 }} animate={{ width: 40 }}
+        transition={{ duration: 0.3, delay: 0.9 }}
+      />
+      {/* Content block */}
+      <motion.rect x="58" y="66" width="70" height="10" rx="2" className="fill-blue-400/[0.06] stroke-blue-400/[0.08]" strokeWidth="0.5"
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 1.0, ease: "easeOut" }}
+      />
+      {/* Cursor blinking indicator */}
+      <motion.rect
+        x="60" y="68" width="1" height="6" rx="0.5"
+        className="fill-blue-400/60"
+        animate={{ opacity: [0, 1, 0] }}
+        transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
+      />
+      {/* Bottom status bar glow */}
+      <motion.rect
+        x="14" y="84" width="134" height="1" rx="0.5"
+        className="fill-blue-400/10"
+        animate={{ opacity: [0.05, 0.15, 0.05] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1.2 }}
       />
     </svg>
   )

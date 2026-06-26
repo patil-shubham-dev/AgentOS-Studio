@@ -21,6 +21,8 @@
 
 import { isTauri, getRuntimeEnvironment } from "@/runtime/environment"
 import { withTimeoutFallback } from "@/runtime/with-timeout"
+import type { StructuredProjectConfig } from "./ProjectConfigTypes"
+import { parseProjectConfig } from "./ProjectConfigTypes"
 
 // ── Types ──
 
@@ -44,6 +46,8 @@ export interface ConfigLoadResult {
   combined: string
   /** Hash of the combined content (for cache key invalidation) */
   hash: string
+  /** Structured parsed project configuration */
+  structured: StructuredProjectConfig | null
 }
 
 // ── Config file definitions ──
@@ -120,7 +124,7 @@ export class ConfigLoader {
   async load(rootPath: string): Promise<ConfigLoadResult> {
     const env = getRuntimeEnvironment()
     if (env === "browser") {
-      return { configs: [], combined: "", hash: "" }
+      return { configs: [], combined: "", hash: "", structured: null }
     }
 
     const now = Date.now()
@@ -155,8 +159,9 @@ export class ConfigLoader {
 
     const combined = configs.map((c) => c.content).join("\n\n")
     const hash = simpleHash(combined)
+    const structured = combined ? parseProjectConfig(combined) : null
 
-    this.cached = { configs, combined, hash }
+    this.cached = { configs, combined, hash, structured }
     this.lastLoadTime = now
 
     return this.cached
@@ -266,6 +271,14 @@ export class ConfigLoader {
   getHash(rootPath: string): string {
     if (!this.cached) return ""
     return this.cached.hash
+  }
+
+  /**
+   * Get the structured parsed config, or null if no config loaded.
+   */
+  getStructured(rootPath: string): StructuredProjectConfig | null {
+    if (!this.cached) return null
+    return this.cached.structured
   }
 }
 

@@ -240,6 +240,11 @@ export function DesignWorkspace() {
     return currentArtifact.versions.find((v) => v.version === currentArtifact.currentVersion) ?? null
   }, [currentArtifact])
 
+  const htmlPreviewSrc = useMemo(() => {
+    if (!currentVersionData) return ""
+    return currentVersionData.htmlPreview || generateHtmlPreview(currentVersionData.code)
+  }, [currentVersionData])
+
   const filteredArtifacts = useMemo(() => {
     if (!search.trim()) return artifacts
     const q = search.toLowerCase()
@@ -365,11 +370,6 @@ export function DesignWorkspace() {
   const generateSample = useCallback(() => {
     notify("Create an artifact by pasting code from the clipboard", "info", "selection")
   }, [notify])
-
-  const htmlPreviewSrc = useMemo(() => {
-    if (!currentVersionData) return ""
-    return currentVersionData.htmlPreview || generateHtmlPreview(currentVersionData.code)
-  }, [currentVersionData])
 
   return (
     <div className="flex h-full bg-[#0a0a0b]">

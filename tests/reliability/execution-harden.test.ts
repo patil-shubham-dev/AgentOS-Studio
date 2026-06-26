@@ -23,6 +23,28 @@ vi.mock("@/runtime/providers/ProviderRuntime", () => ({
   })),
 }))
 
+vi.mock("@agentic-os/providers", () => {
+  const mockProviderTransport = vi.fn().mockImplementation(() => {
+    function createStream(handlers: any) {
+      const tokens = ["Hello", "! ", "I", " am", " an", " AI", " assistant", "."]
+      ;(async () => {
+        for (const t of tokens) {
+          handlers.onToken?.(t)
+          await new Promise(r => setTimeout(r, 1))
+        }
+        handlers.onDone?.()
+      })()
+    }
+    return {
+      streamChatCompletion: vi.fn().mockImplementation((_cfg: any, _params: any, handlers: any) => {
+        createStream(handlers)
+        return Promise.resolve()
+      }),
+      chatCompletion: vi.fn().mockResolvedValue({ content: "Hello! I am an AI assistant.", usage: { promptTokens: 10, completionTokens: 8, totalTokens: 18 } }),
+    }
+  })
+  return { ProviderTransport: mockProviderTransport, StreamTransport: vi.fn() }
+})
 vi.mock("@/runtime/runtime-coordinator", () => ({ requestRefresh: vi.fn() }))
 vi.mock("@/runtime/EventBus", () => ({
   EventBus: { getInstance: () => ({ emit: vi.fn(), on: vi.fn(), off: vi.fn() }) },
@@ -81,24 +103,25 @@ describe("ExecutionOrchestrator — duplicate EXECUTION_COMPLETE validation", ()
   })
 })
 
-describe("ExecutionOrchestrator — concurrent execution guard", () => {
+describe("ExecutionOrchestrator — concurrent execution queuing", () => {
   afterEach(() => { StreamManager.getInstance().clearAll() })
 
-  it("should reject concurrent execute calls", async () => {
+  it("should queue concurrent execute calls instead of rejecting", async () => {
     setupStores()
     const orch = ExecutionOrchestrator.getInstance()
-    const stream = orch.execute({ input: "test", activeRole: "coder" as any })
+    const stream1 = orch.execute({ input: "test", activeRole: "coder" as any })
+    const stream2 = orch.execute({ input: "test2", activeRole: "coder" as any })
 
-    // Consume partially then try second
-    const firstIterator = stream[Symbol.asyncIterator]()
-    await firstIterator.next() // start first execution so isExecuting = true
+    const events1 = await consume(stream1)
+    const events2 = await consume(stream2)
 
-    // Second call's .next() should throw
-    const secondGen = orch.execute({ input: "test2", activeRole: "coder" as any })
-    await expect(secondGen.next()).rejects.toThrow("already in progress")
-
-    // Clean up first
-    await consume(stream)
+    // Both streams should produce events (queued, not rejected)
+    expect(events1.length).toBeGreaterThan(0)
+    expect(events2.length).toBeGreaterThan(0)
+    const firstCreated = events1.find((e: any) => e.type === "EXECUTION_CREATED")
+    const secondCreated = events2.find((e: any) => e.type === "EXECUTION_CREATED")
+    expect(firstCreated).toBeDefined()
+    expect(secondCreated).toBeDefined()
   })
 })
 

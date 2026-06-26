@@ -142,7 +142,7 @@ export async function listDirectory(dirPath: string): Promise<FileEntry[]> {
     let dir = _webRootHandle
     if (!dir) return []
     for (const seg of segs) {
-      try { dir = await dir.getDirectoryHandle(seg) } catch { return [] }
+      try { dir = await dir.getDirectoryHandle(seg) } catch { console.warn("[filesystem] Failed to get directory handle:", seg); return [] }
     }
     const entries: FileEntry[] = []
     for await (const [name, handle] of (dir as unknown as DirHandle).entries()) {

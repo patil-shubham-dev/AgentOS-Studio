@@ -29,7 +29,7 @@ async function requestWebDirectory(): Promise<{ handle: FileSystemDirectoryHandl
     _webRootHandle = handle
     _webRootPath = path
     return { handle, path }
-  } catch { return null }
+  } catch { console.warn("[workspace] initWebFileSystem failed"); return null }
 }
 
 // ── Public API ──
@@ -80,7 +80,7 @@ export async function onFileChange(callback: (event: FileChangeEvent) => void): 
       callback(event.payload)
     })
     return unlisten
-  } catch { return null }
+  } catch { console.warn("[workspace] watchFileChanges failed"); return null }
 }
 
 // ── Recent workspaces ──
@@ -89,7 +89,7 @@ export async function getRecentWorkspaces(): Promise<Array<{ path: string; name:
     return await eapi.workspaceGetRecent()
   }
   try { return JSON.parse(localStorage.getItem('recent-workspaces') || '[]') }
-  catch { return [] }
+  catch { console.warn("[workspace] getRecentWorkspaces failed"); return [] }
 }
 
 export async function addRecentWorkspace(folderPath: string): Promise<void> {

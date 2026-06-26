@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react"
+import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from "react"
 import { useNavigate } from "react-router-dom"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useAgentStore } from "@/stores/agent-store"
@@ -7,23 +7,29 @@ import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { loadFileTree, readFile, createFile, createFolder } from "@/lib/filesystem"
 import { pickWorkspaceFolder, startWatching, onFileChange } from "@/lib/workspace"
 import type { FileEntry } from "@/types"
+import { safeCapitalize } from "@/lib/safeCapitalize"
 import { workspaceIndex } from "@/lib/search-index"
+import { invoke } from "@/lib/electron-api"
 import { WorkspaceExplorer, type WorkspaceExplorerHandle } from "@/components/workspace/explorer/WorkspaceExplorer"
 import { CodeWorkspace } from "@/components/workspace/code-workspace"
 import { ChatPanel } from "@/components/workspace/chat-panel"
-import { BrowserWorkspace } from "@/components/workspace/browser/browser-workspace"
-import { DesignWorkspace } from "@/components/workspace/design-workspace"
 import { PaneContainer, Pane } from "@/components/workspace/pane-layout/PaneContainer"
-import { DiffViewerPane } from "@/components/workspace/diff-viewer/DiffViewerPane"
-import { PreviewPane } from "@/components/workspace/preview/PreviewPane"
+
+const BrowserWorkspace = lazy(() => import("@/components/workspace/browser/browser-workspace").then(m => ({ default: m.BrowserWorkspace })))
+const DesignWorkspace = lazy(() => import("@/components/workspace/design-workspace").then(m => ({ default: m.DesignWorkspace })))
+const DiffViewerPane = lazy(() => import("@/components/workspace/diff-viewer/DiffViewerPane").then(m => ({ default: m.DiffViewerPane })))
+const PreviewPane = lazy(() => import("@/components/workspace/preview/PreviewPane").then(m => ({ default: m.PreviewPane })))
 import { AgentActivityPanel } from "@/components/workspace/agent-visibility/AgentActivityPanel"
 import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
 
+import { dirtyBufferManager, type DirtyBuffer } from "@/lib/dirty-buffer-manager"
+import { DirtyBufferRecoveryDialog } from "@/components/workspace/DirtyBufferRecoveryDialog"
 import { GlobalSearch } from "@/components/workspace/global-search"
 import { CommandPalette } from "@/components/workspace/command-palette"
 import { QuickOpen } from "@/components/workspace/QuickOpen"
 import { ExecutionDock } from "@/components/runtime/ExecutionDock"
 import { ErrorBoundary } from "@/components/runtime/ErrorBoundary"
+import { WorkspaceErrorBoundary } from "@/components/workspace/WorkspaceErrorBoundary"
 import { SessionSidebar } from "@/components/workspace/session-sidebar/SessionSidebar"
 import { ContextUsageIndicator } from "@/components/workspace/context-indicator/ContextUsageIndicator"
 import { SideChat } from "@/components/workspace/side-chat/SideChat"
@@ -34,10 +40,12 @@ import { cn } from "@/lib/utils"
 import { WorkspacePanelController, type WorkspacePanel } from "@/lib/workspace-panel-controller"
 import { useLeakTracker } from "@/performance/leak-detector"
 import {
-  PanelRightClose, PanelLeftClose, PanelLeft,
+  PanelRightClose, PanelRight, PanelLeftClose, PanelLeft,
   FolderOpen, ChevronLeft, Loader2,
   XCircle,
   GripVertical,
+  FileDiff,
+  Eye,
 } from "lucide-react"
 import {
   CodePanelIcon,
@@ -96,7 +104,6 @@ async function updateImportsOnMove(rootPath: string, oldPath: string, newPath: s
   const affectedFiles: string[] = []
   let updatedCount = 0
   try {
-    const { invoke } = await import("@/lib/electron-api")
     const tree = await invoke<FileEntry[]>("list_directory", { path: rootPath })
     const allFiles: string[] = []
     function flatten(entries: FileEntry[], base: string) {
@@ -165,8 +172,11 @@ export function CodeCanvasPage() {
   const memoryPressure = useWorkspaceRuntime((s) => s.memoryPressure)
   const tokenUsage = useWorkspaceRuntime((s) => s.tokenUsage)
   const hasStaleConfig = useWorkspaceRuntime((s) => s.hasStaleConfig)
+  const [recoveredBuffers, setRecoveredBuffers] = useState<DirtyBuffer[]>([])
+  const [missingWorkspace, setMissingWorkspace] = useState<string | null>(null)
   const refreshRuntime = useWorkspaceRuntime((s) => s.refresh)
   const initializeRuntime = useWorkspaceRuntime((s) => s.initialize)
+  const openFile = useWorkspaceStore((s) => s.openFile)
   const navigate = useNavigate()
   const persistWorkspaceState = useWorkspaceStore((s) => s.persistWorkspaceState)
   const restoreWorkspaceState = useWorkspaceStore((s) => s.restoreWorkspaceState)
@@ -202,16 +212,16 @@ export function CodeCanvasPage() {
   const visiblePanes = panes.filter((p) => p.visible && p.type !== "explorer" && p.type !== "chat" && p.type !== "terminal" && p.type !== "output")
   const paneConfigs = useMemo(() => {
     const paneRenderers: Record<string, () => React.ReactNode> = {
-      code: () => <ErrorBoundary name="CodeWorkspace"><CodeWorkspace /></ErrorBoundary>,
-      browser: () => <ErrorBoundary name="BrowserWorkspace"><BrowserWorkspace /></ErrorBoundary>,
-      design: () => <ErrorBoundary name="DesignWorkspace"><DesignWorkspace /></ErrorBoundary>,
-      diff: () => <ErrorBoundary name="DiffViewerPane"><DiffViewerPane /></ErrorBoundary>,
-      preview: () => <ErrorBoundary name="PreviewPane"><PreviewPane /></ErrorBoundary>,
+      code: () => <WorkspaceErrorBoundary><CodeWorkspace /></WorkspaceErrorBoundary>,
+      browser: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading browser...</div>}><BrowserWorkspace /></Suspense></WorkspaceErrorBoundary>,
+      design: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading design...</div>}><DesignWorkspace /></Suspense></WorkspaceErrorBoundary>,
+      diff: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading diff...</div>}><DiffViewerPane /></Suspense></WorkspaceErrorBoundary>,
+      preview: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading preview...</div>}><PreviewPane /></Suspense></WorkspaceErrorBoundary>,
     }
     return visiblePanes.map((p) => ({
       id: p.id,
       type: p.type,
-      title: p.type.charAt(0).toUpperCase() + p.type.slice(1),
+      title: safeCapitalize(p.type, ""),
       children: paneRenderers[p.type]?.() ?? null,
     }))
   }, [visiblePanes])
@@ -273,17 +283,49 @@ export function CodeCanvasPage() {
 
   async function loadRestoredFileContent(rp: string) {
     const state = useWorkspaceStore.getState()
-    if (!state.activeFilePath) return
-    const rel = state.activeFilePath.replace(/\//g, "\\")
-    const absPath = `${rp}\\${rel}`
-    try {
-      const content = await readFile(absPath)
-      const name = state.activeFilePath.split("/").pop() || state.activeFilePath
-      useWorkspaceStore.getState().openFile({ path: state.activeFilePath, name, content, isDirty: false })
-    } catch {
-      // File may have been deleted — leave as-is
+    // Load active tab content immediately
+    if (state.activeFilePath) {
+      const rel = state.activeFilePath.replace(/\//g, "\\")
+      const absPath = `${rp}\\${rel}`
+      try {
+        const content = await readFile(absPath)
+        const name = state.activeFilePath.split("/").pop() || state.activeFilePath
+        useWorkspaceStore.getState().openFile({ path: state.activeFilePath, name, content, isDirty: false })
+      } catch {
+        // File may have been deleted — leave as-is
+      }
+    }
+    // Defer background tab content loading
+    const backgroundTabs = state.openFiles.filter(f => f.path !== state.activeFilePath)
+    if (backgroundTabs.length > 0) {
+      requestIdleCallback(() => {
+        for (const tab of backgroundTabs) {
+          const rel = tab.path.replace(/\//g, "\\")
+          const absPath = `${rp}\\${rel}`
+          readFile(absPath).then(content => {
+            useWorkspaceStore.getState().openFile({ path: tab.path, name: tab.name, content, isDirty: false })
+          }).catch(() => {
+            // File may have been deleted
+          })
+        }
+      }, { timeout: 2000 })
     }
   }
+
+  const handleKeepDirtyBuffers = useCallback((paths: string[]) => {
+    for (const path of paths) {
+      const buf = recoveredBuffers.find(b => b.path === path)
+      if (buf) {
+        const name = path.split('/').pop() || path
+        openFile({ path, name, content: buf.content, isDirty: true })
+      }
+    }
+    setRecoveredBuffers([])
+  }, [recoveredBuffers, openFile])
+
+  const handleDiscardDirtyBuffers = useCallback((paths: string[]) => {
+    setRecoveredBuffers(prev => prev.filter(b => !paths.includes(b.path)))
+  }, [])
 
   // ── Search index — rebuild when file tree changes ──
   useEffect(() => {
@@ -308,13 +350,24 @@ export function CodeCanvasPage() {
     setRootPath(storedRoot)
     setLoading(true)
     loadFileTree(storedRoot).then((tree) => {
+      if (tree.length === 0) {
+        console.warn('[CodeCanvas] Restored workspace is empty or missing:', storedRoot)
+        setMissingWorkspace(storedRoot)
+        setLoading(false)
+        return
+      }
       console.log(`[CodeCanvas] Restored file tree: ${tree.length} roots`)
       setFileTree(tree)
       startWatching(storedRoot)
       restoreWorkspaceState()
       loadRestoredFileContent(storedRoot)
+      const recovered = dirtyBufferManager.loadRecovered()
+      if (recovered.length > 0) {
+        setRecoveredBuffers(recovered)
+      }
     }).catch((err) => {
       console.error('[CodeCanvas] Failed to restore file tree:', err)
+      setMissingWorkspace(storedRoot)
       setLoading(false)
     }).finally(() => {
       loadingTreeRef.current = false
@@ -330,18 +383,12 @@ export function CodeCanvasPage() {
     }
   }, [rootPath, restoreWorkspaceState])
 
-  const prevFilesRef = useRef<string | null>(null)
-  const prevCursorRef = useRef<string | null>(null)
+  const openFilesSnapshot = useWorkspaceStore(s => s.openFiles.map(f => f.path).join(','))
+  const activeFileSnapshot = useWorkspaceStore(s => s.activeFilePath)
+  const cursorSnapshot = useWorkspaceStore(s => `${s.cursorLine}:${s.cursorColumn}`)
   useEffect(() => {
-    const { openFiles, activeFilePath, cursorLine, cursorColumn } = useWorkspaceStore.getState()
-    const filesKey = JSON.stringify(openFiles.map(f => f.path)) + '|' + activeFilePath
-    const cursorKey = `${cursorLine}:${cursorColumn}`
-    if (filesKey !== prevFilesRef.current || cursorKey !== prevCursorRef.current) {
-      prevFilesRef.current = filesKey
-      prevCursorRef.current = cursorKey
-      persistWorkspaceState()
-    }
-  })
+    persistWorkspaceState()
+  }, [openFilesSnapshot, activeFileSnapshot, cursorSnapshot, persistWorkspaceState])
 
   // ── Workspace operations ──
   async function openWorkspace() {
@@ -406,7 +453,6 @@ export function CodeCanvasPage() {
     const fetchAndOpen = async () => {
       try {
         const fullPath = rootPath ? rootPath + "\\" + path.replace(/\//g, "\\") : path
-        const { readFile } = await import("@/lib/filesystem")
         const content = await readFile(fullPath)
         const name = path.split("/").pop() || path
         useWorkspaceStore.getState().openFile({ path, name, content, isDirty: false })
@@ -423,7 +469,7 @@ export function CodeCanvasPage() {
       handleFileChange(event)
     }).then((unlisten) => {
       unlistenRef.current = unlisten
-    })
+    }).catch((err) => console.error("File change listener setup failed:", err))
     return () => {
       unlistenRef.current?.()
     }
@@ -707,6 +753,7 @@ export function CodeCanvasPage() {
       <ConfigInitBanner />
 
       {/* ── MAIN PANEL LAYOUT or Empty State ── */}
+      <WorkspaceErrorBoundary onOpenFolder={openWorkspace}>
       {rootPath && typeof rootPath === 'string' && rootPath.length > 0 ? (
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* PANEL 0: Session Sidebar */}
@@ -838,7 +885,7 @@ export function CodeCanvasPage() {
 
           {/* Agent activity strip — visible during execution */}
           <div className="shrink-0 border-b border-white/[0.04] overflow-hidden">
-            <AgentActivityPanel />
+            <WorkspaceErrorBoundary><AgentActivityPanel /></WorkspaceErrorBoundary>
           </div>
 
           {/* Assistant content */}
@@ -921,6 +968,7 @@ export function CodeCanvasPage() {
           <p className="text-[10px] text-white/20">Or drag and drop a folder onto the window</p>
         </div>
       )}
+      </WorkspaceErrorBoundary>
 
       {/* Global Search — overlay above everything */}
       <GlobalSearch
@@ -947,6 +995,71 @@ export function CodeCanvasPage() {
 
       {/* Side Chat — Cmd+; overlay */}
       <SideChat />
+
+      {/* Dirty Buffer Recovery Dialog */}
+      {recoveredBuffers.length > 0 && (
+        <DirtyBufferRecoveryDialog
+          buffers={recoveredBuffers}
+          onKeep={handleKeepDirtyBuffers}
+          onDiscard={handleDiscardDirtyBuffers}
+          onClose={() => setRecoveredBuffers([])}
+        />
+      )}
+
+      {/* Missing Workspace Dialog */}
+      {missingWorkspace && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+        }}>
+          <div style={{
+            background: '#1a1a1f', borderRadius: '12px', border: '1px solid #2a2a30',
+            width: '440px', padding: '24px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+          }}>
+            <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#e2e8f0', margin: '0 0 8px 0' }}>
+              Workspace Not Found
+            </h2>
+            <p style={{ fontSize: '12px', color: '#6b7280', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+              The workspace folder "<code style={{ color: '#f59e0b', wordBreak: 'break-all' }}>{missingWorkspace}</code>" could not be found. It may have been moved, renamed, or deleted.
+            </p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('agentic-workspace-root')
+                  setMissingWorkspace(null)
+                }}
+                style={{
+                  padding: '8px 16px', background: 'transparent', color: '#ccc',
+                  border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500,
+                }}
+              >
+                Remove from Recent
+              </button>
+              <button
+                onClick={async () => {
+                  const folder = await pickWorkspaceFolder()
+                  if (folder) {
+                    setMissingWorkspace(null)
+                    setRootPath(folder)
+                    setLoading(true)
+                    const tree = await loadFileTree(folder)
+                    if (tree.length > 0) setFileTree(tree)
+                    startWatching(folder)
+                  }
+                }}
+                style={{
+                  padding: '8px 16px', background: '#2563eb', color: '#fff',
+                  border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500,
+                }}
+              >
+                Choose Another Folder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

@@ -1,11 +1,36 @@
+interface ElectronAPIDialogOptions {
+  title?: string
+  message?: string
+  defaultPath?: string
+  filters?: { name: string; extensions: string[] }[]
+  multiple?: boolean
+  directory?: boolean
+  buttonLabel?: string
+  buttons?: string[]
+  type?: string
+}
+
+interface ElectronAPIBrowserResult {
+  success: boolean
+  error?: string
+  sessionId?: string
+  url?: string
+  title?: string
+  tabs?: { id: string; url: string; title: string }[]
+  content?: string
+  text?: string
+  screenshot?: string
+  result?: unknown
+}
+
 declare global {
   interface Window {
     electronAPI: {
-      getAppInfo: () => Promise<any>
-      getInstallInfo: () => Promise<{ first_launch: boolean }>
+      getAppInfo: () => Promise<{ version: string; name: string; electron: string }>
+      getInstallInfo: () => Promise<{ first_launch: boolean; build_date: string; git_commit: string }>
       exit: () => Promise<void>
       restart: () => Promise<void>
-      getAppPaths: () => Promise<any>
+      getAppPaths: () => Promise<Record<string, string>>
       saveLayout: (l: string) => Promise<void>
       loadLayout: () => Promise<string | null>
       readTextFile: (fp: string) => Promise<string>
@@ -16,67 +41,67 @@ declare global {
       createDirectory: (dp: string) => Promise<void>
       deleteFile: (fp: string) => Promise<void>
       renameFile: (op: string, np: string) => Promise<void>
-      getFileStats: (fp: string) => Promise<any>
-      readDirectory: (dp: string) => Promise<any[]>
-      listDirectory: (dp: string) => Promise<any[]>
+      getFileStats: (fp: string) => Promise<{ size: number; modifiedAt: number; createdAt: number; isDir: boolean }>
+      readDirectory: (dp: string) => Promise<{ name: string; isDir: boolean; children?: unknown[] }[]>
+      listDirectory: (dp: string) => Promise<string[]>
       startFileWatcher: (dp: string) => Promise<void>
       stopFileWatcher: (dp: string) => Promise<void>
       workspaceListFiles: (dp: string) => Promise<string[]>
-      gitStatus: (rp: string) => Promise<any[]>
-      gitLog: (rp: string, max?: number) => Promise<any[]>
+      gitStatus: (rp: string) => Promise<{ path: string; status: string }[]>
+      gitLog: (rp: string, max?: number) => Promise<{ hash: string; message: string; author: string; date: string }[]>
       gitDiff: (rp: string, f?: string) => Promise<string>
       gitCommit: (rp: string, msg: string) => Promise<boolean>
       gitRestore: (rp: string, f: string) => Promise<boolean>
       gitInit: (rp: string) => Promise<boolean>
       gitPush: (rp: string) => Promise<boolean>
       gitPull: (rp: string) => Promise<boolean>
-      gitBranchList: (rp: string) => Promise<any[]>
+      gitBranchList: (rp: string) => Promise<{ name: string; current: boolean }[]>
       gitCheckout: (rp: string, b: string) => Promise<boolean>
       gitAdd: (rp: string, f: string) => Promise<boolean>
-      dialogOpen: (opts: any) => Promise<any>
-      dialogSave: (opts: any) => Promise<any>
-      dialogMessage: (opts: any) => Promise<any>
+      dialogOpen: (opts: ElectronAPIDialogOptions) => Promise<{ canceled: boolean; filePaths: string[] }>
+      dialogSave: (opts: ElectronAPIDialogOptions) => Promise<{ canceled: boolean; filePath?: string }>
+      dialogMessage: (opts: ElectronAPIDialogOptions) => Promise<{ response: number }>
       clipboardReadText: () => Promise<string>
       clipboardWriteText: (t: string) => Promise<void>
       notificationShow: (opts: { title: string; body: string }) => Promise<boolean>
       notificationIsSupported: () => Promise<boolean>
       openExternal: (url: string) => Promise<void>
-      browserLaunch: (opts?: any) => Promise<any>
-      browserClose: (id: string) => Promise<any>
-      browserNavigate: (id: string, url: string) => Promise<any>
-      browserNewTab: (id: string, url?: string) => Promise<any>
-      browserCloseTab: (id: string, tabId: string) => Promise<any>
-      browserListTabs: (id: string) => Promise<any>
-      browserReload: (id: string) => Promise<any>
-      browserDoubleClick: (id: string, sel: string) => Promise<any>
-      browserHover: (id: string, sel: string) => Promise<any>
-      browserPressKey: (id: string, key: string) => Promise<any>
-      browserWaitElement: (id: string, sel: string, timeout?: number) => Promise<any>
-      browserGetConsoleLogs: (id: string) => Promise<any>
-      browserSaveState: (path: string) => Promise<any>
-      browserLoadState: (path: string) => Promise<any>
-      browserClick: (id: string, sel: string) => Promise<any>
-      browserType: (id: string, sel: string, text: string) => Promise<any>
-      browserScreenshot: (id: string) => Promise<any>
-      browserGetText: (id: string) => Promise<any>
-      browserGetUrl: (id: string) => Promise<any>
-      browserGetTitle: (id: string) => Promise<any>
-      browserGetContent: (id: string) => Promise<any>
-      browserExecuteJs: (id: string, js: string) => Promise<any>
-      browserDetect: () => Promise<any>
-      extensionList: () => Promise<any[]>
-      extensionLoad: (extPath: string) => Promise<any>
+      browserLaunch: (opts?: Record<string, unknown>) => Promise<ElectronAPIBrowserResult>
+      browserClose: (id: string) => Promise<ElectronAPIBrowserResult>
+      browserNavigate: (id: string, url: string) => Promise<ElectronAPIBrowserResult>
+      browserNewTab: (id: string, url?: string) => Promise<ElectronAPIBrowserResult>
+      browserCloseTab: (id: string, tabId: string) => Promise<ElectronAPIBrowserResult>
+      browserListTabs: (id: string) => Promise<ElectronAPIBrowserResult>
+      browserReload: (id: string) => Promise<ElectronAPIBrowserResult>
+      browserDoubleClick: (id: string, sel: string) => Promise<ElectronAPIBrowserResult>
+      browserHover: (id: string, sel: string) => Promise<ElectronAPIBrowserResult>
+      browserPressKey: (id: string, key: string) => Promise<ElectronAPIBrowserResult>
+      browserWaitElement: (id: string, sel: string, timeout?: number) => Promise<ElectronAPIBrowserResult>
+      browserGetConsoleLogs: (id: string) => Promise<ElectronAPIBrowserResult>
+      browserSaveState: (path: string) => Promise<ElectronAPIBrowserResult>
+      browserLoadState: (path: string) => Promise<ElectronAPIBrowserResult>
+      browserClick: (id: string, sel: string) => Promise<ElectronAPIBrowserResult>
+      browserType: (id: string, sel: string, text: string) => Promise<ElectronAPIBrowserResult>
+      browserScreenshot: (id: string) => Promise<ElectronAPIBrowserResult>
+      browserGetText: (id: string) => Promise<ElectronAPIBrowserResult>
+      browserGetUrl: (id: string) => Promise<ElectronAPIBrowserResult>
+      browserGetTitle: (id: string) => Promise<ElectronAPIBrowserResult>
+      browserGetContent: (id: string) => Promise<ElectronAPIBrowserResult>
+      browserExecuteJs: (id: string, js: string) => Promise<ElectronAPIBrowserResult>
+      browserDetect: () => Promise<ElectronAPIBrowserResult>
+      extensionList: () => Promise<{ id: string; name: string; enabled: boolean }[]>
+      extensionLoad: (extPath: string) => Promise<{ id: string; name: string }>
       extensionUnload: (extId: string) => Promise<void>
-      pluginBrowserNavigate: (provider: string, url: string) => Promise<any>
-      pluginBrowserClick: (provider: string, sel: string) => Promise<any>
-      pluginBrowserType: (provider: string, sel: string, text: string) => Promise<any>
-      pluginBrowserScreenshot: (provider: string) => Promise<any>
-      pluginBrowserExecuteJs: (provider: string, code: string) => Promise<any>
-      pluginBrowserGetDom: (provider: string) => Promise<any>
-      pluginBrowserGetText: (provider: string) => Promise<any>
-      pluginBrowserGetUrl: (provider: string) => Promise<any>
-      pluginBrowserGetTitle: (provider: string) => Promise<any>
-      viewportCreate: (bounds: { x: number; y: number; width: number; height: number }) => Promise<any>
+      pluginBrowserNavigate: (provider: string, url: string) => Promise<ElectronAPIBrowserResult>
+      pluginBrowserClick: (provider: string, sel: string) => Promise<ElectronAPIBrowserResult>
+      pluginBrowserType: (provider: string, sel: string, text: string) => Promise<ElectronAPIBrowserResult>
+      pluginBrowserScreenshot: (provider: string) => Promise<ElectronAPIBrowserResult>
+      pluginBrowserExecuteJs: (provider: string, code: string) => Promise<ElectronAPIBrowserResult>
+      pluginBrowserGetDom: (provider: string) => Promise<ElectronAPIBrowserResult>
+      pluginBrowserGetText: (provider: string) => Promise<ElectronAPIBrowserResult>
+      pluginBrowserGetUrl: (provider: string) => Promise<ElectronAPIBrowserResult>
+      pluginBrowserGetTitle: (provider: string) => Promise<ElectronAPIBrowserResult>
+      viewportCreate: (bounds: { x: number; y: number; width: number; height: number }) => Promise<ElectronAPIBrowserResult>
       viewportResize: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>
       viewportDestroy: () => Promise<void>
       viewportNavigate: (url: string) => Promise<boolean>
@@ -87,25 +112,25 @@ declare global {
       viewportType: (selector: string, text: string) => Promise<{ success: boolean; error?: string }>
       viewportPressKey: (key: string) => Promise<{ success: boolean; error?: string }>
       viewportScreenshot: () => Promise<string | null>
-      viewportExecuteJs: (js: string) => Promise<{ success: boolean; result?: any; error?: string }>
+      viewportExecuteJs: (js: string) => Promise<{ success: boolean; result?: unknown; error?: string }>
       viewportGetConsoleLogs: () => Promise<string[]>
       viewportInjectAnnotations: () => Promise<boolean>
-      viewportGetAnnotations: () => Promise<any[]>
+      viewportGetAnnotations: () => Promise<{ selector: string; text: string; type: string }[]>
       viewportGetState: () => Promise<{ url: string; title: string; isLoading: boolean; canGoBack: boolean; canGoForward: boolean }>
-      terminalCreate: (opts?: any) => Promise<string>
+      terminalCreate: (opts?: Record<string, unknown>) => Promise<string>
       terminalWrite: (id: string, data: string) => Promise<void>
       terminalResize: (id: string, cols: number, rows: number) => Promise<void>
       terminalKill: (id: string) => Promise<void>
-      terminalList: () => Promise<any[]>
+      terminalList: () => Promise<{ id: string; shell: string; cwd: string }[]>
       runCommand: (opts: { workingDir: string; command: string; args: string[] }) => Promise<string>
       runCommandStream: (opts: { command: string; cwd: string | null; streamId: string }) => Promise<number>
       killCommand: (streamId: string) => Promise<void>
-      on: (channel: string, cb: (...args: any[]) => void) => (() => void) | undefined
+      on: (channel: string, cb: (...args: unknown[]) => void) => (() => void) | undefined
       getPathForFile: (file: File) => string | null
       replayInit: () => Promise<{ sessionCount: number; orphanedCount: number }>
       replayAppendEvent: (sessionId: string, line: string) => Promise<void>
       replayAppendBatch: (sessionId: string, lines: string[]) => Promise<void>
-      replayReadSession: (sessionId: string) => Promise<any[] | null>
+      replayReadSession: (sessionId: string) => Promise<Record<string, unknown>[] | null>
       replaySessionExists: (sessionId: string) => Promise<boolean>
       replayDeleteSession: (sessionId: string) => Promise<void>
       replayListSessions: () => Promise<Record<string, unknown>>
@@ -120,7 +145,7 @@ declare global {
 
 export {}
 
-export function invoke(cmd: string, args?: Record<string, unknown>): Promise<any> {
+export function invoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (typeof window === 'undefined' || !window.electronAPI) {
     throw new Error('electronAPI not available - not running in Electron')
   }
@@ -162,7 +187,7 @@ export function invoke(cmd: string, args?: Record<string, unknown>): Promise<any
     case 'dialog_message': return eapi.dialogMessage(args?.options)
     case 'clipboard_read_text': return eapi.clipboardReadText()
     case 'clipboard_write_text': return eapi.clipboardWriteText(args?.text as string)
-    case 'notification_show': return eapi.notificationShow(args as any)
+    case 'notification_show': return eapi.notificationShow(args as unknown as { title: string; body: string })
     case 'notification_is_supported': return eapi.notificationIsSupported()
     case 'open_external': return eapi.openExternal(args?.url as string)
     case 'browser_launch': return eapi.browserLaunch(args)
@@ -201,8 +226,8 @@ export function invoke(cmd: string, args?: Record<string, unknown>): Promise<any
     case 'browser_get_console_logs': return eapi.browserGetConsoleLogs(args?.sessionId as string)
     case 'browser_save_state': return eapi.browserSaveState(args?.path as string)
     case 'browser_load_state': return eapi.browserLoadState(args?.path as string)
-    case 'viewport_create': return eapi.viewportCreate(args?.bounds as any)
-    case 'viewport_resize': return eapi.viewportResize(args?.bounds as any)
+    case 'viewport_create': return eapi.viewportCreate(args?.bounds as unknown as { x: number; y: number; width: number; height: number })
+    case 'viewport_resize': return eapi.viewportResize(args?.bounds as unknown as { x: number; y: number; width: number; height: number })
     case 'viewport_destroy': return eapi.viewportDestroy()
     case 'viewport_navigate': return eapi.viewportNavigate(args?.url as string)
     case 'viewport_reload': return eapi.viewportReload()
@@ -222,8 +247,8 @@ export function invoke(cmd: string, args?: Record<string, unknown>): Promise<any
     case 'terminal_resize': return eapi.terminalResize(args?.id as string, args?.cols as number, args?.rows as number)
     case 'terminal_kill': return eapi.terminalKill(args?.id as string)
     case 'terminal_list': return eapi.terminalList()
-    case 'run_command': return eapi.runCommand(args as any)
-    case 'run_command_stream': return eapi.runCommandStream(args as any)
+    case 'run_command': return eapi.runCommand(args as unknown as { workingDir: string; command: string; args: string[] })
+    case 'run_command_stream': return eapi.runCommandStream(args as unknown as { command: string; cwd: string | null; streamId: string })
     case 'kill_command': return eapi.killCommand(args?.streamId as string) || eapi.terminalKill(args?.id as string)
     case 'secure_get': return localStorage.getItem(`secure:${args?.key}`)
     case 'secure_set': localStorage.setItem(`secure:${args?.key}`, args?.value as string); return
@@ -241,7 +266,7 @@ export function invoke(cmd: string, args?: Record<string, unknown>): Promise<any
     case 'get_system_info': return {
       os: navigator.platform || 'unknown',
       cpu: navigator.hardwareConcurrency || 0,
-      memory_gb: (navigator as any).deviceMemory || 0,
+      memory_gb: (navigator as unknown as { deviceMemory?: number }).deviceMemory || 0,
       hostname: 'electron-host',
     }
     case 'open_install_location': console.warn('[Electron API] open_install_location not available'); return
@@ -277,7 +302,7 @@ export async function writeTextFile(path: string, content: string): Promise<void
   return invoke('write_text_file', { path, content })
 }
 
-export async function readDir(path: string): Promise<any[]> {
+export async function readDir(path: string): Promise<unknown[]> {
   return invoke('read_directory', { path })
 }
 

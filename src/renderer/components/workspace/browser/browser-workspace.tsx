@@ -1,15 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useBrowserStore } from "@/stores/browser-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
-import { listen } from "@/lib/electron-api"
 import { cn } from "@/lib/utils"
 import { Button, TooltipSimple as Tooltip } from "@agentic-os/ui"
 import {
   Globe, ExternalLink, Loader2, X, Play,
   MousePointer, Type, Terminal, RefreshCw, ArrowLeft, ArrowRight,
   ChevronDown, ChevronUp, AlertTriangle, Zap, Camera, ImageDown, Smartphone,
-  RotateCcw,
+  RotateCcw, Search, History, Star,
 } from "lucide-react"
 import { TabBar } from "./TabBar"
 import { StatusBar } from "./StatusBar"
@@ -19,6 +18,7 @@ import { ConsoleViewer } from "./ConsoleViewer"
 import { NetworkInspector } from "./NetworkInspector"
 import { AnnotationCard } from "./AnnotationCard"
 import { DeviceToolbar } from "./DeviceToolbar"
+import { AICursorOverlay } from "./AICursorOverlay"
 import { BrowserViewportSkeleton } from "@/components/ui/Skeleton"
 
 interface Annotation {
@@ -75,6 +75,8 @@ export function BrowserWorkspace() {
   const [viewportSize, setViewportSize] = useState<{ width: number; height: number } | null>(null)
   const [showRestorePrompt, setShowRestorePrompt] = useState(false)
   const [storedSessionCount, setStoredSessionCount] = useState(0)
+  const [urlInputFocused, setUrlInputFocused] = useState(false)
+  const urlInputRef = useRef<HTMLInputElement>(null)
   const workspaceRoot = useWorkspaceStore((s) => s.rootPath)
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
@@ -258,10 +260,14 @@ export function BrowserWorkspace() {
 
   // ── Listen for annotation events from viewport ──
   useEffect(() => {
-    const unsub = listen("viewport-annotation", (event: { payload: Annotation }) => {
-      setAnnotations((prev) => [...prev, event.payload])
-    })
-    return () => { unsub.then((fn) => fn()) }
+    const setup = async () => {
+      const { listen } = await import("@/lib/electron-api")
+      return listen("viewport-annotation", (event: { payload: Annotation }) => {
+        setAnnotations((prev) => [...prev, event.payload])
+      })
+    }
+    const unsubPromise = setup()
+    return () => { unsubPromise.then((fn) => fn()) }
   }, [])
 
   // ── Toggle annotation mode ──
@@ -317,112 +323,219 @@ export function BrowserWorkspace() {
       {/* Navigation bar */}
       <div className="flex items-center gap-2 border-b border-white/[0.06] bg-[#0c0c0d] px-3 py-1.5 shrink-0">
         {hasLiveViewport && (
-          <div className="flex items-center gap-0.5 mr-1">
+          <motion.div
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-center gap-0.5 mr-1"
+          >
             <Tooltip content="Back">
-              <button onClick={handleGoBack} disabled={!viewportState.canGoBack}
-                className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] disabled:opacity-20 transition-all">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleGoBack}
+                disabled={!viewportState.canGoBack}
+                className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] disabled:opacity-20 transition-colors">
                 <ArrowLeft className="h-3.5 w-3.5" />
-              </button>
+              </motion.button>
             </Tooltip>
             <Tooltip content="Forward">
-              <button onClick={handleGoForward} disabled={!viewportState.canGoForward}
-                className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] disabled:opacity-20 transition-all">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleGoForward}
+                disabled={!viewportState.canGoForward}
+                className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] disabled:opacity-20 transition-colors">
                 <ArrowRight className="h-3.5 w-3.5" />
-              </button>
+              </motion.button>
             </Tooltip>
             <Tooltip content="Reload">
-              <button onClick={handleReload}
-                className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleReload}
+                className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-colors">
                 <RefreshCw className={cn("h-3.5 w-3.5", viewportState.isLoading && "animate-spin")} />
-              </button>
+              </motion.button>
             </Tooltip>
-          </div>
+          </motion.div>
         )}
 
-        {/* URL bar */}
+        {/* URL bar with autocomplete */}
         <div className="relative flex-1">
-          <Globe className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-white/20" />
+          <Globe className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-white/20 pointer-events-none" />
           <input
+            ref={urlInputRef}
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
+            onFocus={() => setUrlInputFocused(true)}
+            onBlur={() => setTimeout(() => setUrlInputFocused(false), 150)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 hasLiveViewport ? handleNavigate() : handleLaunch()
               }
+              if (e.key === "Escape") {
+                setUrlInputFocused(false)
+                urlInputRef.current?.blur()
+              }
             }}
-            placeholder={hasLiveViewport ? "Enter URL..." : "Enter a URL to launch browser"}
+            placeholder={hasLiveViewport ? "Search or enter URL..." : "Enter a URL to launch browser"}
             aria-label="URL address bar"
             className={cn(
               "w-full h-7 rounded-lg border bg-white/[0.03] pl-7 pr-2 text-[11px] font-mono outline-none transition-all",
               "text-white/70 placeholder:text-white/20",
               "border-white/[0.08] focus:border-blue-500/30 focus:bg-blue-500/[0.03]",
+              "focus:shadow-[0_0_12px_-2px] focus:shadow-blue-500/10",
             )}
           />
+          {/* URL suggestions dropdown */}
+          <AnimatePresence>
+            {urlInputFocused && urlInput.trim() && (
+              <motion.div
+                initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                transition={{ duration: 0.15, ease: "easeOut" }}
+                className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-white/[0.08] bg-[#0d0d0e] shadow-2xl shadow-black/40 overflow-hidden z-50"
+              >
+                <div className="py-1">
+                  <div className="px-2.5 py-1 text-[8px] text-white/20 uppercase tracking-wider font-medium">Suggestions</div>
+                  <button
+                    onMouseDown={(e) => { e.preventDefault(); setUrlInput("https://" + urlInput); urlInputRef.current?.focus() }}
+                    className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-blue-500/10 transition-colors text-left"
+                  >
+                    <Search className="h-3 w-3 text-white/30 shrink-0" />
+                    <span className="text-[10px] text-white/60 truncate">https://{urlInput}</span>
+                  </button>
+                  <button
+                    onMouseDown={(e) => { e.preventDefault(); setUrlInput("https://www.google.com/search?q=" + encodeURIComponent(urlInput)); urlInputRef.current?.focus() }}
+                    className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-blue-500/10 transition-colors text-left"
+                  >
+                    <Search className="h-3 w-3 text-white/20 shrink-0" />
+                    <span className="text-[10px] text-white/40 truncate">Search Google for "{urlInput}"</span>
+                  </button>
+                  <div className="border-t border-white/[0.04] my-1" />
+                  <div className="px-2.5 py-1 text-[8px] text-white/20 uppercase tracking-wider font-medium">Quick Links</div>
+                  {[
+                    { label: "Google", url: "https://google.com" },
+                    { label: "GitHub", url: "https://github.com" },
+                    { label: "Stack Overflow", url: "https://stackoverflow.com" },
+                    { label: "npm", url: "https://npmjs.com" },
+                    { label: "MDN Docs", url: "https://developer.mozilla.org" },
+                  ].map((link) => (
+                    <button
+                      key={link.url}
+                      onMouseDown={(e) => { e.preventDefault(); setUrlInput(link.url); hasLiveViewport ? handleNavigate(link.url) : handleLaunch(link.url) }}
+                      className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-blue-500/10 transition-colors text-left"
+                    >
+                      <Globe className="h-3 w-3 text-white/20 shrink-0" />
+                      <span className="text-[10px] text-white/50 truncate">{link.label}</span>
+                      <span className="text-[8px] text-white/20 ml-auto truncate font-mono">{link.url}</span>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-0.5">
+        <motion.div className="flex items-center gap-0.5">
           {hasLiveViewport && (
             <>
               <Tooltip content="Click element">
-                <button onClick={() => { setActiveTool("select"); setShowSelectorInput(true) }}
-                  className={cn("rounded p-1 transition-all", activeTool === "select" ? "text-blue-400 bg-blue-500/10" : "text-white/30 hover:text-white/60")}>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => { setActiveTool("select"); setShowSelectorInput(true) }}
+                  className={cn("rounded p-1 transition-colors", activeTool === "select" ? "text-blue-400 bg-blue-500/10" : "text-white/30 hover:text-white/60 hover:bg-white/[0.04]")}>
                   <MousePointer className="h-3.5 w-3.5" />
-                </button>
+                </motion.button>
               </Tooltip>
               <Tooltip content="Fill field">
-                <button onClick={() => { setActiveTool("fill"); setShowSelectorInput(true) }}
-                  className={cn("rounded p-1 transition-all", activeTool === "fill" ? "text-blue-400 bg-blue-500/10" : "text-white/30 hover:text-white/60")}>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => { setActiveTool("fill"); setShowSelectorInput(true) }}
+                  className={cn("rounded p-1 transition-colors", activeTool === "fill" ? "text-blue-400 bg-blue-500/10" : "text-white/30 hover:text-white/60 hover:bg-white/[0.04]")}>
                   <Type className="h-3.5 w-3.5" />
-                </button>
+                </motion.button>
               </Tooltip>
               <div className="w-px h-4 bg-white/[0.06] mx-0.5" />
               <Tooltip content={annotationMode ? "Exit annotation mode" : "Annotation mode (double-click page to pin)"}>
-                <button onClick={handleToggleAnnotationMode}
-                  className={cn("rounded p-1 transition-all", annotationMode ? "text-amber-400 bg-amber-500/10" : "text-white/30 hover:text-white/60")}>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleToggleAnnotationMode}
+                  className={cn("rounded p-1 transition-colors", annotationMode ? "text-amber-400 bg-amber-500/10" : "text-white/30 hover:text-white/60 hover:bg-white/[0.04]")}>
                   <Terminal className="h-3.5 w-3.5" />
-                </button>
+                </motion.button>
               </Tooltip>
               {annotations.length > 0 && (
-                <span className="text-[9px] text-amber-400/60 font-mono">{annotations.length}</span>
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="text-[9px] text-amber-400/60 font-mono"
+                >
+                  {annotations.length}
+                </motion.span>
               )}
               <Tooltip content="Visual diff — capture before/after screenshots">
-                <button onClick={() => setShowDiff(!showDiff)}
-                  className={cn("rounded p-1 transition-all", showDiff ? "text-white/60 bg-white/[0.06]" : "text-white/30 hover:text-white/60")}>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowDiff(!showDiff)}
+                  className={cn("rounded p-1 transition-colors", showDiff ? "text-white/60 bg-white/[0.06]" : "text-white/30 hover:text-white/60 hover:bg-white/[0.04]")}>
                   <ImageDown className="h-3.5 w-3.5" />
-                </button>
+                </motion.button>
               </Tooltip>
               <div className="w-px h-4 bg-white/[0.06] mx-0.5" />
               <Tooltip content="Console logs">
-                <button onClick={() => setShowConsole(!showConsole)}
-                  className={cn("rounded p-1 transition-all", showConsole ? "text-white/60 bg-white/[0.06]" : "text-white/30 hover:text-white/60")}>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowConsole(!showConsole)}
+                  className={cn("rounded p-1 transition-colors", showConsole ? "text-white/60 bg-white/[0.06]" : "text-white/30 hover:text-white/60 hover:bg-white/[0.04]")}>
                   <Terminal className="h-3.5 w-3.5" />
-                </button>
+                </motion.button>
               </Tooltip>
               <Tooltip content="Device emulation">
-                <button onClick={() => setShowDeviceToolbar(!showDeviceToolbar)}
-                  className={cn("rounded p-1 transition-all", showDeviceToolbar ? "text-blue-400 bg-blue-500/10" : "text-white/30 hover:text-white/60")}>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowDeviceToolbar(!showDeviceToolbar)}
+                  className={cn("rounded p-1 transition-colors", showDeviceToolbar ? "text-blue-400 bg-blue-500/10" : "text-white/30 hover:text-white/60 hover:bg-white/[0.04]")}>
                   <Smartphone className="h-3.5 w-3.5" />
-                </button>
+                </motion.button>
               </Tooltip>
             </>
           )}
           <Tooltip content="Action history">
-            <button onClick={() => setShowActions(!showActions)}
-              className={cn("rounded p-1 transition-all relative", showActions ? "text-white/60 bg-white/[0.06]" : "text-white/30 hover:text-white/60")}>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowActions(!showActions)}
+              className={cn("rounded p-1 transition-colors relative", showActions ? "text-white/60 bg-white/[0.06]" : "text-white/30 hover:text-white/60 hover:bg-white/[0.04]")}>
               <Zap className="h-3.5 w-3.5" />
               {runningActions > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-400"
+                  style={{ boxShadow: '0 0 6px 1px rgba(59,130,246,0.4)' }}
+                />
               )}
-            </button>
+            </motion.button>
           </Tooltip>
           {hasLiveViewport && (
-            <Button size="sm" className="h-7 text-[10px] shrink-0" onClick={() => handleNavigate()}>
-              <Play className="h-3 w-3 mr-1" />
-              Go
-            </Button>
+            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+              <Button size="sm" className="h-7 text-[10px] shrink-0" onClick={() => handleNavigate()}>
+                <Play className="h-3 w-3 mr-1" />
+                Go
+              </Button>
+            </motion.div>
           )}
-        </div>
+        </motion.div>
       </div>
 
       {/* Selector input bar */}
@@ -432,10 +545,21 @@ export function BrowserWorkspace() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             className="border-b border-white/[0.04] overflow-hidden"
           >
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/[0.03]">
-              <span className="text-[9px] font-medium text-blue-400 uppercase shrink-0 whitespace-nowrap">
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-500/[0.04] to-transparent"
+            >
+              <span className="flex items-center gap-1 text-[9px] font-medium text-blue-400 uppercase shrink-0 whitespace-nowrap">
+                {activeTool === "select" ? (
+                  <MousePointer className="h-2.5 w-2.5" />
+                ) : (
+                  <Type className="h-2.5 w-2.5" />
+                )}
                 {activeTool === "select" ? "CSS Selector" : "Selector, Value"}
               </span>
               <input
@@ -453,13 +577,16 @@ export function BrowserWorkspace() {
                   if (e.key === "Escape") { setShowSelectorInput(false); setActiveTool("none") }
                 }}
                 placeholder={activeTool === "select" ? "#button-id or .class-name" : "#input-id, text to type"}
-                className="flex-1 h-6 rounded bg-white/[0.04] border border-white/[0.06] px-2 text-[10px] font-mono text-white/60 outline-none focus:border-blue-500/30 placeholder:text-white/15"
+                className="flex-1 h-6 rounded-md bg-white/[0.04] border border-white/[0.06] px-2 text-[10px] font-mono text-white/60 outline-none focus:border-blue-500/30 focus:bg-blue-500/[0.03] placeholder:text-white/15 transition-all"
               />
-              <button onClick={() => { setShowSelectorInput(false); setActiveTool("none") }}
-                className="rounded p-0.5 text-white/30 hover:text-white/60">
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => { setShowSelectorInput(false); setActiveTool("none") }}
+                className="rounded p-0.5 text-white/30 hover:text-white/60 transition-colors">
                 <X className="h-3 w-3" />
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -490,19 +617,35 @@ export function BrowserWorkspace() {
             >
               <LiveViewportPlaceholder containerRef={containerRef} className="absolute inset-0" />
               {viewportState.isLoading && (
-                <div className="absolute inset-0 z-10 bg-[#0a0a0b]">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute inset-0 z-10 bg-[#0a0a0b]"
+                >
                   <BrowserViewportSkeleton />
-                </div>
+                </motion.div>
               )}
             </div>
-            {/* Loading bar */}
+            {/* Animated loading bar */}
             {viewportState.isLoading && (
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-blue-500/20 z-10">
+              <div className="absolute top-0 left-0 right-0 h-[2px] z-10 overflow-hidden">
                 <motion.div
-                  className="h-full bg-blue-500"
+                  className="h-full"
+                  style={{
+                    background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.5), rgba(147,51,234,0.5), transparent)',
+                    backgroundSize: '200% 100%',
+                  }}
+                  initial={{ x: '-100%', width: '50%' }}
+                  animate={{ x: '300%' }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                />
+                <motion.div
+                  className="h-full bg-blue-500/20"
                   initial={{ width: "0%" }}
-                  animate={{ width: "80%" }}
-                  transition={{ duration: 2, ease: "easeOut" }}
+                  animate={{ width: "90%" }}
+                  transition={{ duration: 4, ease: "easeOut" }}
                 />
               </div>
             )}
@@ -553,6 +696,9 @@ export function BrowserWorkspace() {
                 ))}
               </div>
             )}
+
+            {/* AI Ghost Cursor overlay */}
+            <AICursorOverlay />
           </div>
         </div>
       ) : (

@@ -70,7 +70,7 @@ export function registerCommandHandlers(): void {
   ipcMain.handle('run-command', async (_event, options: RunCommandOptions): Promise<string> => {
     const { workingDir, command, args } = options
     if (workingDir) {
-      try { assertPathAllowed(workingDir) } catch { return `Error: Working directory not in workspace` }
+      try { assertPathAllowed(workingDir) } catch { console.warn("[Command] Working directory not in workspace:", workingDir); return `Error: Working directory not in workspace` }
     }
     const check = isCommandAllowed(command)
     if (!check.allowed) {
@@ -98,7 +98,7 @@ export function registerCommandHandlers(): void {
   ipcMain.handle('run-command-stream', async (event, options: RunCommandStreamOptions): Promise<number> => {
     const { command, cwd, streamId, args, requiresInteraction } = options
     if (cwd) {
-      try { assertPathAllowed(cwd) } catch { return -1 }
+      try { assertPathAllowed(cwd) } catch { console.warn("[Command] CWD not in workspace:", cwd); return -1 }
     }
     const check = isCommandAllowed(command)
     if (!check.allowed) {

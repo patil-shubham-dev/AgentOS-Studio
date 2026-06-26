@@ -1,3 +1,8 @@
+import type {
+  VerificationResult,
+  VerificationStageResult,
+} from "@/runtime/verification/types"
+
 export type GoalStatus = "active" | "paused" | "completed" | "failed" | "cancelled"
 
 export interface GoalBudget {
@@ -16,29 +21,6 @@ export interface GoalStep {
   error?: string
   verificationResult?: VerificationResult
   changedFiles?: string[]
-}
-
-export interface VerificationStageResult {
-  stage: string
-  passed: boolean
-  errors: number
-  warnings: number
-  details: string[]
-  durationMs: number
-  rawOutput?: string
-}
-
-export interface VerificationResult {
-  passed: boolean
-  lintErrors: number
-  typeErrors: number
-  buildErrors: number
-  testFailures: number
-  details: string[]
-  llmFormatted?: string
-  failedTests?: string[]
-  relatedTests?: string[]
-  stageResults?: VerificationStageResult[]
 }
 
 export interface GoalSnapshot {

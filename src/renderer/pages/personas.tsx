@@ -482,7 +482,7 @@ export function PersonasPage() {
   useEffect(() => {
     personaLoader.load(rootPath).then((personas) => {
       startTransition(() => setAvailablePersonas(personas))
-    })
+    }).catch((err) => console.error("Persona loading failed:", err))
   }, [rootPath, setAvailablePersonas])
 
   // Filter

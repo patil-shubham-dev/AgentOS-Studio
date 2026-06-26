@@ -1,5 +1,6 @@
 import { readFile } from "./filesystem"
 import type { FileEntry } from "@/types"
+import { tsProgramManager, type TSSymbolInfo, type TSReference } from "./ts-program-manager"
 
 export interface SymbolInfo {
   name: string
@@ -10,6 +11,12 @@ export interface SymbolInfo {
   export: boolean
   default: boolean
   description?: string
+  /** TS Compiler API extra fields (populated when TSPM is available) */
+  type?: string
+  modifiers?: string[]
+  typeParameters?: string[]
+  extends?: string[]
+  implements?: string[]
 }
 
 export interface CallReference {
@@ -44,7 +51,6 @@ const SYMBOL_PATTERNS: { kind: SymbolInfo["kind"]; pattern: RegExp }[] = [
   { kind: "route", pattern: /path:\s*["']([^"']+)["']/gm },
 ]
 
-const IMPORT_PATTERN = /import\s+(?:\{[^}]*\}|\*\s+as\s+\w+|\w[\w{},]*\s*,\s*\{[^}]*\}|\w+)\s+from\s+['"]([^'"]+)['"]/g
 const CALL_PATTERN = /(\w+)\s*\(/g
 
 function normalizePath(absPath: string, rootPath: string): string {
@@ -60,6 +66,7 @@ export class SymbolIndex {
   private callMap = new Map<string, CallReference[]>()
   private rootPath: string = ""
   private filesIndexed = new Set<string>()
+  private useTSPM = false
 
   async initialize(
     rootPath: string,
@@ -84,12 +91,36 @@ export class SymbolIndex {
       .filter((p) => /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte)$/i.test(p))
       .slice(0, 2000)
 
-    const symbols: SymbolInfo[] = []
-    const callGraph: CallReference[] = []
-    const batchSize = 50
+    // Try TSPM first for .ts/.tsx files, fall back to regex for the rest
+    const tsFiles = sourceFiles.filter((p) => /\.(ts|tsx)$/i.test(p))
+    const nonTsFiles = sourceFiles.filter((p) => !/\.(ts|tsx)$/i.test(p))
 
-    for (let i = 0; i < sourceFiles.length; i += batchSize) {
-      const batch = sourceFiles.slice(i, i + batchSize)
+    let symbols: SymbolInfo[] = []
+    let callGraph: CallReference[] = []
+
+    if (tsFiles.length > 0) {
+      try {
+        tsProgramManager.createProgram(rootPath, tsFiles)
+        const tsSymbols = tsProgramManager.getAllSymbols()
+        symbols.push(...tsSymbols.map((s) => this.convertTSSymbol(s)))
+        for (const tsSym of tsSymbols) {
+          const relPath = tsSym.file
+          if (!this.fileMap.has(relPath)) this.fileMap.set(relPath, [])
+          this.fileMap.get(relPath)!.push(this.convertTSSymbol(tsSym))
+          this.filesIndexed.add(relPath)
+        }
+        this.useTSPM = true
+      } catch {
+        // TSPM failed, fall back to regex for TS files
+        this.useTSPM = false
+      }
+    }
+
+    // Process non-TS files (and TS files if TSPM failed) with regex
+    const regexFiles = this.useTSPM ? nonTsFiles : sourceFiles
+    const batchSize = 50
+    for (let i = 0; i < regexFiles.length; i += batchSize) {
+      const batch = regexFiles.slice(i, i + batchSize)
       const results = await Promise.allSettled(
         batch.map(async (absPath) => {
           const content = contentProvider
@@ -107,7 +138,8 @@ export class SymbolIndex {
             batch[results.indexOf(r)],
             rootPath
           )
-          this.fileMap.set(relPath, r.value.symbols)
+          const existing = this.fileMap.get(relPath) ?? []
+          this.fileMap.set(relPath, [...existing, ...r.value.symbols])
           this.callMap.set(relPath, r.value.calls)
           this.filesIndexed.add(relPath)
         }
@@ -131,16 +163,36 @@ export class SymbolIndex {
     const existing = this.data.symbols.filter((s) => s.file !== relPath)
     const existingCalls = this.data.callGraph.filter((c) => c.file !== relPath)
 
-    const result = this.extractFromContent(content, absPath)
-    if (!result) return
+    let newSymbols: SymbolInfo[] = []
+    let newCalls: CallReference[] = []
 
-    this.fileMap.set(relPath, result.symbols)
-    this.callMap.set(relPath, result.calls)
+    if (this.useTSPM && /\.(ts|tsx)$/i.test(absPath)) {
+      try {
+        tsProgramManager.reindexFile(relPath, content)
+        const tsSyms = tsProgramManager.getSymbolsInFile(relPath)
+        newSymbols = tsSyms.map((s) => this.convertTSSymbol(s))
+      } catch {
+        const result = this.extractFromContent(content, absPath)
+        if (result) {
+          newSymbols = result.symbols
+          newCalls = result.calls
+        }
+      }
+    } else {
+      const result = this.extractFromContent(content, absPath)
+      if (result) {
+        newSymbols = result.symbols
+        newCalls = result.calls
+      }
+    }
+
+    this.fileMap.set(relPath, newSymbols)
+    this.callMap.set(relPath, newCalls)
     this.filesIndexed.add(relPath)
 
     this.data = {
-      symbols: [...existing, ...result.symbols],
-      callGraph: [...existingCalls, ...result.calls],
+      symbols: [...existing, ...newSymbols],
+      callGraph: [...existingCalls, ...newCalls],
       indexedAt: Date.now(),
     }
   }
@@ -152,6 +204,7 @@ export class SymbolIndex {
     this.fileMap.delete(relPath)
     this.callMap.delete(relPath)
     this.filesIndexed.delete(relPath)
+    tsProgramManager.removeFile(relPath)
   }
 
   private extractFromContent(
@@ -267,6 +320,63 @@ export class SymbolIndex {
       if (started && braceCount === 0) break
     }
     return body.join("\n")
+  }
+
+  private convertTSSymbol(tsSym: TSSymbolInfo): SymbolInfo {
+    const kindMap: Record<string, SymbolInfo["kind"]> = {
+      function: "function",
+      class: "class",
+      interface: "interface",
+      type: "type",
+      enum: "enum",
+      const: "const",
+      variable: "variable",
+      method: "method",
+      property: "variable",
+      accessor: "method",
+      parameter: "variable",
+    }
+    return {
+      name: tsSym.name,
+      kind: kindMap[tsSym.kind] ?? "function",
+      file: tsSym.file,
+      line: tsSym.line,
+      parent: tsSym.parentName,
+      export: tsSym.isExported,
+      default: tsSym.isDefaultExport,
+      type: tsSym.type,
+      modifiers: tsSym.modifiers,
+      typeParameters: tsSym.typeParameters,
+      extends: tsSym.extends,
+      implements: tsSym.implements,
+    }
+  }
+
+  /** Serialize index data for persisting to indexedDB */
+  exportIndex(): SymbolIndexData | null {
+    if (this.data.symbols.length === 0) return null
+    return {
+      symbols: this.data.symbols,
+      callGraph: this.data.callGraph,
+      indexedAt: this.data.indexedAt,
+    }
+  }
+
+  /** Load previously persisted index data */
+  importIndex(data: SymbolIndexData): boolean {
+    try {
+      this.data.symbols = data.symbols
+      this.data.callGraph = data.callGraph
+      this.data.indexedAt = data.indexedAt
+      for (const sym of data.symbols) {
+        if (!this.fileMap.has(sym.file)) this.fileMap.set(sym.file, [])
+        this.fileMap.get(sym.file)!.push(sym)
+        this.filesIndexed.add(sym.file)
+      }
+      return true
+    } catch {
+      return false
+    }
   }
 
   searchSymbols(

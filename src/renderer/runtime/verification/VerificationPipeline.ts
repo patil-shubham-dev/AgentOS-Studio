@@ -1,6 +1,16 @@
-import type { VerificationResult, VerificationStageResult } from "./types"
+import type {
+  VerificationResult,
+  VerificationStageResult,
+  StructuredIssue,
+  DetectedLanguage,
+  LanguageConfig,
+  VerificationStrategy,
+} from "./types"
 import { normalizeError } from "@/lib/normalize-error"
 import * as IPC from "./verification-client"
+import type { StructuredProjectConfig } from "@/runtime/project-config/ProjectConfigTypes"
+import { getCommandsForVerification } from "@/runtime/project-config/ProjectConfigTypes"
+import { TestIntelligence } from "@/runtime/intelligence/TestIntelligence"
 
 export interface FixResult {
   fixed: boolean
@@ -19,15 +29,47 @@ export interface VerificationConfig {
   stageTimeoutMs?: number
 }
 
-const DEFAULT_CONFIG: VerificationConfig = {
-  lintCommand: "npx eslint --quiet src/renderer --ext .ts,.tsx 2>&1 || true",
-  typecheckCommand: "npx tsc --noEmit 2>&1",
-  buildCommand: "npx electron-vite build 2>&1",
-  testCommand: "npx vitest run --reporter=verbose 2>&1",
-  integrationTestCommand: "npx vitest run --config vitest.integration.config.ts --reporter=verbose 2>&1",
-  timeoutMs: 120_000,
-  maxAutoFixRetries: 3,
-  stageTimeoutMs: 60_000,
+const LANGUAGE_CONFIGS: Record<DetectedLanguage, LanguageConfig> = {
+  typescript: {
+    language: "typescript",
+    typecheckCommand: "npx tsc --noEmit 2>&1",
+    lintCommand: "npx eslint --quiet --ext .ts,.tsx 2>&1 || true",
+    testCommand: "npx vitest run --reporter=verbose 2>&1",
+    buildCommand: "npx electron-vite build 2>&1",
+    integrationTestCommand: "npx vitest run --config vitest.integration.config.ts --reporter=verbose 2>&1",
+  },
+  python: {
+    language: "python",
+    typecheckCommand: "mypy . 2>&1",
+    lintCommand: "ruff check . 2>&1 || true",
+    testCommand: "pytest -v 2>&1",
+    buildCommand: "python -m build 2>&1",
+    integrationTestCommand: "pytest -v -m integration 2>&1",
+  },
+  rust: {
+    language: "rust",
+    typecheckCommand: "cargo check 2>&1",
+    lintCommand: "cargo clippy -- -D warnings 2>&1 || true",
+    testCommand: "cargo test 2>&1",
+    buildCommand: "cargo build 2>&1",
+    integrationTestCommand: "cargo test --test '*' 2>&1",
+  },
+  go: {
+    language: "go",
+    typecheckCommand: "go vet ./... 2>&1",
+    lintCommand: "golangci-lint run ./... 2>&1 || true",
+    testCommand: "go test ./... 2>&1",
+    buildCommand: "go build ./... 2>&1",
+    integrationTestCommand: "go test -tags=integration ./... 2>&1",
+  },
+  unknown: {
+    language: "unknown",
+    typecheckCommand: "npx tsc --noEmit 2>&1",
+    lintCommand: "npx eslint --quiet --ext .ts,.tsx 2>&1 || true",
+    testCommand: "npx vitest run --reporter=verbose 2>&1",
+    buildCommand: "npx electron-vite build 2>&1",
+    integrationTestCommand: "npx vitest run --config vitest.integration.config.ts --reporter=verbose 2>&1",
+  },
 }
 
 const TEST_FILE_PATTERNS = [
@@ -43,6 +85,198 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function parseTscOutput(output: string): StructuredIssue[] {
+  const issues: StructuredIssue[] = []
+  const lines = output.split("\n")
+  const tscLinePattern = /^([^(]+)\((\d+),(\d+)\):\s+(error|warning)\s+(TS\d+):\s+(.+)$/
+  const tscLinePattern2 = /^(.+?)\((\d+),(\d+)\):\s+(error)\s+(.+)$/
+  const altPattern = /^(.+?):(\d+):(\d+)\s+-\s+(error|warning)\s+(TS\d+):\s+(.+)$/
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    let match = trimmed.match(tscLinePattern)
+    if (match) {
+      issues.push({
+        file: match[1].trim(),
+        line: parseInt(match[2], 10),
+        column: parseInt(match[3], 10),
+        code: match[5],
+        message: match[6].trim(),
+        severity: match[4] === "error" ? "error" : "warning",
+        source: "typescript",
+      })
+      continue
+    }
+
+    match = trimmed.match(tscLinePattern2)
+    if (match) {
+      issues.push({
+        file: match[1].trim(),
+        line: parseInt(match[2], 10),
+        column: parseInt(match[3], 10),
+        message: match[5].trim(),
+        severity: "error",
+        source: "typescript",
+      })
+      continue
+    }
+
+    match = trimmed.match(altPattern)
+    if (match) {
+      issues.push({
+        file: match[1].trim(),
+        line: parseInt(match[2], 10),
+        column: parseInt(match[3], 10),
+        code: match[5],
+        message: match[6].trim(),
+        severity: match[4] === "error" ? "error" : "warning",
+        source: "typescript",
+      })
+      continue
+    }
+
+    if (trimmed.startsWith("error") || trimmed.startsWith("Error:")) {
+      issues.push({
+        message: trimmed,
+        severity: "error",
+        source: "typescript",
+      })
+    }
+  }
+
+  return issues
+}
+
+function parseEslintOutput(output: string): StructuredIssue[] {
+  const issues: StructuredIssue[] = []
+  const lines = output.split("\n")
+  const eslintLinePattern = /^(.+?):(\d+):(\d+):\s+(error|warning)\s+(.+)$/
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    const match = trimmed.match(eslintLinePattern)
+    if (match) {
+      issues.push({
+        file: match[1].trim(),
+        line: parseInt(match[2], 10),
+        column: parseInt(match[3], 10),
+        message: match[5].trim(),
+        severity: match[4] as "error" | "warning",
+        source: "eslint",
+      })
+    }
+  }
+
+  return issues
+}
+
+function parseVitestOutput(output: string): { issues: StructuredIssue[]; failedTests: string[] } {
+  const issues: StructuredIssue[] = []
+  const failedTests: string[] = []
+  const lines = output.split("\n")
+  let currentTestFile: string | undefined
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    if (trimmed.startsWith("❯") || trimmed.match(/^\s*●/)) {
+      const testName = trimmed.replace(/^[❯●\s]+/, "").trim()
+      if (testName) {
+        failedTests.push(testName)
+        issues.push({
+          message: `Test failed: ${testName}`,
+          severity: "error",
+          source: "vitest",
+          file: currentTestFile,
+        })
+      }
+      continue
+    }
+
+    if (trimmed.startsWith("FAIL") && trimmed.includes(".test.")) {
+      currentTestFile = trimmed.replace(/^FAIL\s+/, "").split(/\s/)[0]
+      continue
+    }
+
+    if (trimmed.includes("AssertionError") || trimmed.includes("expected") && trimmed.includes("received")) {
+      issues.push({
+        message: trimmed,
+        severity: "error",
+        source: "vitest",
+        file: currentTestFile,
+      })
+      continue
+    }
+
+    if (trimmed.match(/^\s*×\s+/) || trimmed.match(/^\s*✗\s+/)) {
+      const testName = trimmed.replace(/^[×✗\s]+/, "").trim()
+      if (testName) {
+        failedTests.push(testName)
+        issues.push({
+          message: `Test failed: ${testName}`,
+          severity: "error",
+          source: "vitest",
+          file: currentTestFile,
+        })
+      }
+    }
+  }
+
+  return { issues, failedTests }
+}
+
+function parseBuildOutput(output: string): StructuredIssue[] {
+  const issues: StructuredIssue[] = []
+  const lines = output.split("\n")
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+
+    if (trimmed.startsWith("error") || trimmed.includes("ERROR")) {
+      issues.push({
+        message: trimmed,
+        severity: "error",
+        source: "build",
+      })
+    }
+  }
+
+  return issues
+}
+
+function detectLanguage(): DetectedLanguage {
+  try {
+    const fs = require("fs")
+    const ws = (globalThis as any).__workspaceRoot
+    const root = typeof ws === "string" ? ws : process.cwd()
+
+    if (fs.existsSync(`${root}/Cargo.toml`)) return "rust"
+    if (fs.existsSync(`${root}/go.mod`)) return "go"
+    if (fs.existsSync(`${root}/requirements.txt`) || fs.existsSync(`${root}/setup.py`) || fs.existsSync(`${root}/pyproject.toml`)) return "python"
+    if (fs.existsSync(`${root}/package.json`) || fs.existsSync(`${root}/tsconfig.json`)) return "typescript"
+  } catch {
+  }
+  return "unknown"
+}
+
+function pickCommands(language: DetectedLanguage, config: VerificationConfig): LanguageConfig {
+  const defaults = LANGUAGE_CONFIGS[language]
+  return {
+    language: defaults.language,
+    typecheckCommand: config.typecheckCommand ?? defaults.typecheckCommand,
+    lintCommand: config.lintCommand ?? defaults.lintCommand,
+    testCommand: config.testCommand ?? defaults.testCommand,
+    buildCommand: config.buildCommand ?? defaults.buildCommand,
+    integrationTestCommand: config.integrationTestCommand ?? defaults.integrationTestCommand,
+  }
+}
+
 export class VerificationPipeline {
   private static instance: VerificationPipeline
   private config: VerificationConfig
@@ -50,9 +284,13 @@ export class VerificationPipeline {
   private repairRetries = new Map<string, number>()
   private stageCache = new Map<string, { result: VerificationStageResult; timestamp: number }>()
   private readonly STAGE_CACHE_TTL = 60_000
+  private language: DetectedLanguage = "unknown"
+  private commands: LanguageConfig
 
   private constructor(config?: Partial<VerificationConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config }
+    this.language = detectLanguage()
+    this.commands = pickCommands(this.language, this.config)
   }
 
   static getInstance(config?: Partial<VerificationConfig>): VerificationPipeline {
@@ -66,8 +304,47 @@ export class VerificationPipeline {
     VerificationPipeline.instance = new VerificationPipeline(config)
   }
 
-  findRelatedTests(changedFiles: string[]): string[] {
+  getDetectedLanguage(): DetectedLanguage {
+    return this.language
+  }
+
+  /**
+   * Apply commands from a parsed AGENTIC.md project config.
+   * Overrides the hardcoded LANGUAGE_CONFIGS with project-specific commands.
+   */
+  applyProjectConfig(config: StructuredProjectConfig): void {
+    const cmd = getCommandsForVerification(config)
+    this.commands = {
+      ...this.commands,
+      typecheckCommand: cmd.typecheckCommand,
+      lintCommand: cmd.lintCommand,
+      testCommand: cmd.testCommand,
+      buildCommand: cmd.buildCommand,
+    }
+    // Also update the instance config
+    this.config.typecheckCommand = cmd.typecheckCommand
+    this.config.lintCommand = cmd.lintCommand
+    this.config.testCommand = cmd.testCommand
+    this.config.buildCommand = cmd.buildCommand
+  }
+
+  async findRelatedTests(changedFiles: string[]): Promise<string[]> {
     const candidates = new Set<string>()
+
+    // Use TestIntelligence for AST-level test mapping when available
+    try {
+      const ti = new TestIntelligence()
+      for (const file of changedFiles) {
+        const affectedTests = await ti.findAffectedTests(file)
+        for (const t of affectedTests) {
+          candidates.add(t.testFile)
+        }
+      }
+    } catch {
+      // Fall through to pattern-based matching
+    }
+
+    // Pattern-based matching as fallback
     for (const file of changedFiles) {
       for (const pattern of TEST_FILE_PATTERNS) {
         const candidate = pattern(file)
@@ -77,30 +354,53 @@ export class VerificationPipeline {
     return Array.from(candidates)
   }
 
-  private determineRequiredChecks(changedFiles: string[]): {
-    runLint: boolean; runTypecheck: boolean; runBuild: boolean; runTests: boolean
-    runIntegrationTests: boolean; runSecurity: boolean; runPerformance: boolean; runRegression: boolean
-  } {
+  private determineRequiredChecks(changedFiles: string[]): VerificationStrategy {
     const hasTsFiles = changedFiles.some((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+    const hasPythonFiles = changedFiles.some((f) => f.endsWith(".py"))
+    const hasRustFiles = changedFiles.some((f) => f.endsWith(".rs"))
+    const hasGoFiles = changedFiles.some((f) => f.endsWith(".go"))
     const hasBuildFiles = changedFiles.some(
       (f) => f.endsWith(".ts") || f.endsWith(".tsx") || f.endsWith(".json") || f.endsWith(".js") || f.endsWith(".css") || f.endsWith(".html")
+        || f.endsWith(".py") || f.endsWith(".rs") || f.endsWith(".go")
     )
     const hasTestFiles = changedFiles.some(
-      (f) => f.includes(".test.") || f.includes(".spec.") || f.includes("__tests__")
+      (f) => f.includes(".test.") || f.includes(".spec.") || f.includes("__tests__") || f.includes("test_")
     )
     const hasSourceChanges = changedFiles.some(
-      (f) => !f.includes(".test.") && !f.includes(".spec.") && !f.includes("__tests__") && !f.endsWith(".md")
+      (f) => !f.includes(".test.") && !f.includes(".spec.") && !f.includes("__tests__") && !f.includes("test_") && !f.endsWith(".md") && !f.endsWith(".txt")
     )
     const hasConfigChanges = changedFiles.some(
       (f) => f.includes("package.json") || f.includes("tsconfig") || f.includes("vite.config") || f.includes(".eslintrc")
+        || f.includes("Cargo.toml") || f.includes("go.mod") || f.includes("pyproject.toml")
+    )
+    const onlyMarkdown = changedFiles.length > 0 && changedFiles.every((f) => f.endsWith(".md"))
+    const onlyTestFiles = changedFiles.length > 0 && changedFiles.every(
+      (f) => f.includes(".test.") || f.includes(".spec.") || f.includes("__tests__") || f.includes("test_")
+    )
+    const onlyConfig = changedFiles.length > 0 && changedFiles.every(
+      (f) => f.includes("package.json") || f.includes("tsconfig") || f.includes(".eslintrc") || f.endsWith(".md") || f.endsWith(".json")
     )
 
+    if (onlyMarkdown) {
+      return {
+        runTypecheck: false, runLint: false, runBuild: false, runTests: false,
+        runIntegration: false, runSecurity: false, runPerformance: false, runRegression: false,
+      }
+    }
+
+    if (onlyConfig) {
+      return {
+        runTypecheck: false, runLint: false, runBuild: hasBuildFiles, runTests: false,
+        runIntegration: false, runSecurity: false, runPerformance: false, runRegression: true,
+      }
+    }
+
     return {
-      runLint: hasTsFiles,
-      runTypecheck: hasTsFiles,
+      runTypecheck: hasTsFiles || hasPythonFiles || hasRustFiles || hasGoFiles,
+      runLint: hasSourceChanges && !onlyTestFiles,
       runBuild: hasBuildFiles,
       runTests: hasTestFiles || hasSourceChanges,
-      runIntegrationTests: hasTestFiles || hasConfigChanges,
+      runIntegration: hasTestFiles || hasConfigChanges,
       runSecurity: hasSourceChanges || hasConfigChanges,
       runPerformance: hasConfigChanges,
       runRegression: true,
@@ -127,33 +427,81 @@ export class VerificationPipeline {
 
   async fastVerify(changedFiles: string[], signal?: AbortSignal): Promise<VerificationResult> {
     if (changedFiles.length === 0) {
-      return { passed: true, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"] }
+      return { passed: true, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"], issues: [] }
     }
 
+    const checks = this.determineRequiredChecks(changedFiles)
     const details: string[] = []
+    const allIssues: StructuredIssue[] = []
     let lintErrors = 0
     let typeErrors = 0
-    const tsFiles = changedFiles.filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
 
-    if (tsFiles.length > 0) {
-      const [lintOut, typeOut] = await Promise.all([
-        IPC.runCommand(this.config.lintCommand!).catch(() => ({ exitCode: 0, stdout: "" })),
-        IPC.runCommand(this.config.typecheckCommand!).catch(() => ({ exitCode: 0, stdout: "" })),
-      ])
-
-      lintErrors = lintOut.exitCode !== 0 ? this.countIssues(lintOut.stdout) : 0
-      typeErrors = typeOut.exitCode !== 0 ? this.countIssues(typeOut.stdout) : 0
-      details.push(`Lint: ${lintErrors} issues`)
-      details.push(`Typecheck: ${typeErrors} errors`)
+    if (!checks.runTypecheck && !checks.runLint) {
+      return { passed: true, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No typecheck or lint needed — skipped"], issues: [] }
     }
 
+    const promises: Promise<void>[] = []
+
+    if (checks.runLint) {
+      promises.push(
+        (async () => {
+          try {
+            const lintOut = await IPC.runCommand(this.commands.lintCommand, this.config.stageTimeoutMs)
+            if (lintOut.exitCode !== 0) {
+              const lintIssues = parseEslintOutput(lintOut.stdout)
+              allIssues.push(...lintIssues)
+              lintErrors = lintIssues.length
+              details.push(`Lint: ${lintErrors} issues`)
+            } else {
+              details.push("Lint: 0 issues")
+            }
+          } catch {
+            details.push("Lint: unavailable")
+          }
+        })()
+      )
+    }
+
+    if (checks.runTypecheck) {
+      promises.push(
+        (async () => {
+          try {
+            const typeOut = await IPC.runCommand(this.commands.typecheckCommand, this.config.stageTimeoutMs)
+            if (typeOut.exitCode !== 0) {
+              const tsIssues = parseTscOutput(typeOut.stdout)
+              allIssues.push(...tsIssues)
+              typeErrors = tsIssues.length
+              details.push(`Typecheck: ${typeErrors} errors`)
+            } else {
+              details.push("Typecheck: 0 errors")
+            }
+          } catch {
+            details.push("Typecheck: unavailable")
+          }
+        })()
+      )
+    }
+
+    await Promise.all(promises)
+
     const passed = lintErrors === 0 && typeErrors === 0
-    return { passed, lintErrors, typeErrors, buildErrors: 0, testFailures: 0, details, llmFormatted: this.formatForLLM({ passed, lintErrors, typeErrors, buildErrors: 0, testFailures: 0, details, failedTests: [], relatedTests: [] }) }
+    const result: VerificationResult = {
+      passed,
+      lintErrors,
+      typeErrors,
+      buildErrors: 0,
+      testFailures: 0,
+      details,
+      issues: allIssues,
+      llmFormatted: undefined,
+    }
+    result.llmFormatted = this.formatForLLM(result)
+    return result
   }
 
   async verifyChanges(changedFiles: string[], signal?: AbortSignal): Promise<VerificationResult> {
     if (changedFiles.length === 0) {
-      return { passed: true, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"] }
+      return { passed: true, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"], issues: [] }
     }
 
     const checks = this.determineRequiredChecks(changedFiles)
@@ -163,28 +511,28 @@ export class VerificationPipeline {
 
     const batch1: Promise<VerificationStageResult>[] = []
 
-    if (checks.runLint) batch1.push(this.runStage("lint", this.config.lintCommand!, changedFiles, signal, emit))
-    if (checks.runTypecheck) batch1.push(this.runStage("typecheck", this.config.typecheckCommand!, changedFiles, signal, emit))
+    if (checks.runLint) batch1.push(this.runStage("lint", this.commands.lintCommand, changedFiles, signal, emit))
+    if (checks.runTypecheck) batch1.push(this.runStage("typecheck", this.commands.typecheckCommand, changedFiles, signal, emit))
 
     const batch1Results = await Promise.all(batch1)
 
     const batch2: Promise<VerificationStageResult>[] = []
-    if (checks.runBuild) batch2.push(this.runStage("build", this.config.buildCommand!, changedFiles, signal, emit))
-    if (checks.runTests) batch2.push(this.runStage("unit_tests", this.config.testCommand!, changedFiles, signal, emit))
-    if (checks.runIntegrationTests) batch2.push(this.runStage("integration_tests", this.config.integrationTestCommand!, changedFiles, signal, emit))
+    if (checks.runBuild) batch2.push(this.runStage("build", this.commands.buildCommand, changedFiles, signal, emit))
+    if (checks.runTests) batch2.push(this.runStage("unit_tests", this.commands.testCommand, changedFiles, signal, emit))
+    if (checks.runIntegration) batch2.push(this.runStage("integration_tests", this.commands.integrationTestCommand, changedFiles, signal, emit))
     if (checks.runSecurity) batch2.push(this.runStage("security", "", changedFiles, signal, emit))
     if (checks.runPerformance) batch2.push(this.runStage("performance", "", changedFiles, signal, emit))
     if (checks.runRegression) batch2.push(this.runStage("regression", "", changedFiles, signal, emit))
 
     const batch2Results = await Promise.all(batch2)
     const allResults = [...batch1Results, ...batch2Results]
-    const skipped = []
+    const skipped: string[] = []
 
     if (!checks.runLint) skipped.push("lint")
     if (!checks.runTypecheck) skipped.push("typecheck")
     if (!checks.runBuild) skipped.push("build")
     if (!checks.runTests) skipped.push("unit_tests")
-    if (!checks.runIntegrationTests) skipped.push("integration_tests")
+    if (!checks.runIntegration) skipped.push("integration_tests")
     if (!checks.runSecurity) skipped.push("security")
     if (!checks.runPerformance) skipped.push("performance")
     if (!checks.runRegression) skipped.push("regression")
@@ -194,6 +542,7 @@ export class VerificationPipeline {
     let buildErrors = 0
     let testFailures = 0
     const failedTests: string[] = []
+    const allIssues: StructuredIssue[] = []
     const details: string[] = []
     const stageResults: VerificationStageResult[] = []
     let allPassed = true
@@ -204,18 +553,19 @@ export class VerificationPipeline {
         case "lint": lintErrors = sr.errors; break
         case "typecheck": typeErrors = sr.errors; break
         case "build": buildErrors = sr.errors; break
-        case "unit_tests": testFailures = sr.errors; this.extractFailedTests(sr.rawOutput ?? "", failedTests); break
-        case "integration_tests": testFailures += sr.errors; this.extractFailedTests(sr.rawOutput ?? "", failedTests); break
+        case "unit_tests": testFailures = sr.errors; break
+        case "integration_tests": testFailures += sr.errors; break
       }
       if (!sr.passed) allPassed = false
       details.push(...sr.details)
+      if (sr.issues) allIssues.push(...sr.issues)
     }
 
     for (const s of skipped) {
       details.push(`${s}: skipped`)
     }
 
-    const relatedTests = this.findRelatedTests(changedFiles)
+    const relatedTests = await this.findRelatedTests(changedFiles)
     const result: VerificationResult = {
       passed: allPassed,
       lintErrors,
@@ -225,6 +575,7 @@ export class VerificationPipeline {
       details,
       failedTests: failedTests.length > 0 ? failedTests : undefined,
       relatedTests: relatedTests.length > 0 ? relatedTests : undefined,
+      issues: allIssues,
       llmFormatted: undefined,
       stageResults,
     }
@@ -243,6 +594,7 @@ export class VerificationPipeline {
         passed: true, goalAchieved: true,
         lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0,
         details: ["No changed files to verify — goal achieved by default"],
+        issues: [],
       }
     }
 
@@ -269,16 +621,19 @@ export class VerificationPipeline {
     try {
       const result = await IPC.runCommand(command, this.config.stageTimeoutMs)
       const durationMs = Date.now() - startTime
-      const errors = result.exitCode !== 0 ? this.countIssues(result.stdout) : 0
+      const issues = this.parseStageOutput(stage, result.stdout)
+      const errors = issues.filter((i) => i.severity === "error").length
+      const warnings = issues.filter((i) => i.severity === "warning").length
 
       const stageResult: VerificationStageResult = {
         stage,
         passed: result.exitCode === 0,
         errors,
-        warnings: 0,
+        warnings,
         details: [`${stage}: ${result.exitCode === 0 ? "passed" : `${errors} issues`} (${durationMs}ms)`],
         durationMs,
         rawOutput: result.stdout.slice(0, 2000),
+        issues,
       }
 
       this.setStageCache(stage, changedFiles, stageResult)
@@ -291,6 +646,7 @@ export class VerificationPipeline {
         passed: false,
         errors: 1,
         warnings: 0,
+        issues: [{ message: normalizeError(err).message, severity: "error", source: "build" }],
         details: [`${stage}: error - ${normalizeError(err).message} (${durationMs}ms)`],
         durationMs,
       }
@@ -301,16 +657,24 @@ export class VerificationPipeline {
 
   private async runSpecialStage(stage: string, _changedFiles: string[], startTime: number, emit?: (stage: string, result: VerificationStageResult) => void): Promise<VerificationStageResult> {
     try {
-      let result: Pick<VerificationStageResult, "passed" | "errors" | "warnings" | "details" | "rawOutput">
+      let result: Pick<VerificationStageResult, "passed" | "errors" | "warnings" | "details" | "rawOutput" | "issues">
 
       if (stage === "security") {
         const scanResult = await IPC.securityScan([])
+        const issues: StructuredIssue[] = scanResult.issues.map((i) => ({
+          file: i.file,
+          line: i.line,
+          message: i.description,
+          severity: i.severity === "critical" || i.severity === "high" ? "error" : "warning",
+          source: "security" as const,
+        }))
         result = {
           passed: scanResult.passed,
           errors: scanResult.criticalCount + scanResult.highCount,
           warnings: scanResult.mediumCount + scanResult.lowCount,
           details: [scanResult.summary, ...scanResult.issues.slice(0, 20).map((i) => `  [${i.severity}] ${i.description}`)],
           rawOutput: scanResult.summary,
+          issues,
         }
       } else if (stage === "performance") {
         const benchResult = await IPC.runBenchmarks()
@@ -320,15 +684,22 @@ export class VerificationPipeline {
           warnings: 0,
           details: [benchResult.summary, ...benchResult.metrics.map((m) => `  ${m.name}: ${m.value}${m.unit} ${m.passed ? "✓" : `✗ (threshold: ${m.threshold}${m.unit})`}`)],
           rawOutput: benchResult.summary,
+          issues: benchmarkIssuesToStructured(benchResult),
         }
       } else {
         const regResult = await IPC.regressionScan()
+        const issues: StructuredIssue[] = regResult.issues.map((i) => ({
+          message: i.description,
+          severity: i.severity === "high" ? "error" : "warning",
+          source: "regression" as const,
+        }))
         result = {
           passed: regResult.passed,
           errors: regResult.issues.filter((i) => i.severity === "high").length,
           warnings: regResult.issues.filter((i) => i.severity === "medium").length,
           details: [regResult.summary, ...regResult.issues.map((i) => `  [${i.severity}] ${i.description}`)],
           rawOutput: regResult.summary,
+          issues,
         }
       }
 
@@ -343,9 +714,26 @@ export class VerificationPipeline {
         passed: false,
         errors: 1,
         warnings: 0,
+        issues: [{ message: normalizeError(err).message, severity: "error", source: "regression" }],
         details: [`${stage}: error - ${normalizeError(err).message} (${durationMs}ms)`],
         durationMs,
       }
+    }
+  }
+
+  private parseStageOutput(stage: string, stdout: string): StructuredIssue[] {
+    switch (stage) {
+      case "lint":
+        return parseEslintOutput(stdout)
+      case "typecheck":
+        return parseTscOutput(stdout)
+      case "unit_tests":
+      case "integration_tests":
+        return parseVitestOutput(stdout).issues
+      case "build":
+        return parseBuildOutput(stdout)
+      default:
+        return []
     }
   }
 
@@ -362,8 +750,24 @@ export class VerificationPipeline {
       if (result.relatedTests && result.relatedTests.length > 0) {
         parts.push(`\nRelated test files: ${result.relatedTests.join(", ")}`)
       }
+      parts.push(`\nLanguage: ${this.language}`)
       parts.push("━━━━━━━━━━━━━━━━━━━━━━━━━━")
       return parts.join("\n")
+    }
+
+    const issueSummary = result.issues ?? []
+    if (issueSummary.length > 0) {
+      parts.push("")
+      const bySource = new Map<string, { errors: number; warnings: number }>()
+      for (const iss of issueSummary) {
+        const entry = bySource.get(iss.source) ?? { errors: 0, warnings: 0 }
+        if (iss.severity === "error") entry.errors++
+        else if (iss.severity === "warning") entry.warnings++
+        bySource.set(iss.source, entry)
+      }
+      for (const [source, counts] of bySource) {
+        parts.push(`  [${source}] ${counts.errors} error(s), ${counts.warnings} warning(s)`)
+      }
     }
 
     if (result.lintErrors > 0) parts.push(`\n❌ Lint: ${result.lintErrors} issue(s)`)
@@ -388,6 +792,19 @@ export class VerificationPipeline {
     if (result.relatedTests && result.relatedTests.length > 0) {
       parts.push(`\nRelated test files: ${result.relatedTests.join(", ")}`)
     }
+
+    if (issueSummary.length > 0 && issueSummary.length <= 10) {
+      parts.push("\nIssues:")
+      for (const iss of issueSummary) {
+        const loc = iss.file ? `${iss.file}${iss.line != null ? `:${iss.line}` : ""}` : ""
+        const at = loc ? ` (${loc})` : ""
+        parts.push(`  ${iss.severity === "error" ? "✗" : "⚠"} [${iss.source}]${at} ${iss.message}`)
+      }
+    } else if (issueSummary.length > 10) {
+      parts.push(`\n${issueSummary.length} issues found. Run individual tools for details.`)
+    }
+
+    parts.push(`\nLanguage: ${this.language}`)
     parts.push("\nFix the issues above before proceeding.")
     parts.push("━━━━━━━━━━━━━━━━━━━━━━━━━━")
     return parts.join("\n")
@@ -411,7 +828,7 @@ export class VerificationPipeline {
 
     if (result.lintErrors > 0) {
       try {
-        const fixResult = await IPC.runCommand("npx eslint --fix --quiet src/renderer --ext .ts,.tsx 2>&1 || true")
+        const fixResult = await IPC.runCommand(this.commands.lintCommand.replace(" --quiet", " --quiet --fix"), this.config.stageTimeoutMs)
         if (fixResult.exitCode === 0) {
           finalResult = await this.verifyChanges(changedFiles, signal)
           retriesUsed++
@@ -419,7 +836,8 @@ export class VerificationPipeline {
           if (finalResult.passed) return { fixed: true, finalResult, retriesUsed }
           return this.autoFixWithRetry(finalResult, changedFiles, signal)
         }
-      } catch {}
+      } catch {
+      }
     }
 
     this.repairRetries.set(cacheKey, retriesUsed)
@@ -431,7 +849,7 @@ export class VerificationPipeline {
     let fixed = false
     if (result.lintErrors > 0) {
       try {
-        const fixResult = await IPC.runCommand("npx eslint --fix --quiet src/renderer --ext .ts,.tsx 2>&1 || true")
+        const fixResult = await IPC.runCommand(this.commands.lintCommand.replace(" --quiet", " --quiet --fix"), this.config.stageTimeoutMs)
         issues.push(`Lint auto-fix: exit ${fixResult.exitCode}`)
         fixed = true
       } catch (err) {
@@ -439,7 +857,7 @@ export class VerificationPipeline {
       }
     }
     if (result.typeErrors > 0) {
-      const typeResult = await IPC.runCommand("npx tsc --noEmit 2>&1")
+      const typeResult = await IPC.runCommand(this.commands.typecheckCommand, this.config.stageTimeoutMs)
       if (typeResult.exitCode === 0) {
         issues.push("Type errors resolved after lint fix")
         fixed = true
@@ -468,22 +886,23 @@ export class VerificationPipeline {
     this.repairRetries.clear()
     this.stageCache.clear()
   }
+}
 
-  private extractFailedTests(output: string, target: string[]): void {
-    const lines = output.split("\n")
-    for (const line of lines) {
-      if (line.includes("FAIL") || line.includes(" ❌ ")) {
-        const cleaned = line.replace(/^\s*[❌×✗]\s*/, "").trim()
-        if (cleaned && !target.includes(cleaned)) target.push(cleaned)
-      }
-    }
-  }
+function benchmarkIssuesToStructured(result: import("./types").BenchmarkResult): StructuredIssue[] {
+  return result.metrics.filter((m) => !m.passed).map((m) => ({
+    message: `${m.name}: ${m.value}${m.unit} exceeds threshold ${m.threshold}${m.unit}`,
+    severity: "warning" as const,
+    source: "regression" as const,
+  }))
+}
 
-  private countIssues(output: string): number {
-    const lines = output.split("\n").filter((l) => l.trim())
-    const errorLines = lines.filter(
-      (l) => l.includes("error") || l.includes("FAIL") || l.includes(" ❌ ") || l.includes("×")
-    )
-    return errorLines.length
-  }
+const DEFAULT_CONFIG: VerificationConfig = {
+  lintCommand: undefined,
+  typecheckCommand: undefined,
+  buildCommand: undefined,
+  testCommand: undefined,
+  integrationTestCommand: undefined,
+  timeoutMs: 120_000,
+  maxAutoFixRetries: 3,
+  stageTimeoutMs: 60_000,
 }

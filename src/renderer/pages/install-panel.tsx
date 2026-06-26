@@ -16,6 +16,7 @@ interface InstallInfo {
   runtime_status: string
   first_launch: boolean
   build_date: string
+  git_commit: string
 }
 
 interface SystemInfo {
@@ -175,11 +176,12 @@ export function InstallPanel() {
     try {
       const { invoke } = await import("@/lib/electron-api")
       await invoke("open_install_location")
-    } catch {
+    } catch (e) {
+      console.warn("[InstallPanel] Failed to open via IPC, trying shell:", e)
       try {
         const { shellOpen } = await import("@/lib/electron-api")
         await shellOpen(path)
-      } catch { }
+      } catch { console.warn("[InstallPanel] Failed to open install location via shell") }
     }
   }
 
@@ -278,6 +280,7 @@ export function InstallPanel() {
               <div className="space-y-0">
                 <InfoRow label="Version" value={info.version} mono />
                 <InfoRow label="Build Date" value={info.build_date} />
+                  <InfoRow label="Commit" value={info.git_commit} mono />
                 <InfoRow label="First Launch" value={info.first_launch ? "Yes" : "No"} />
                 <InfoRow label="Application ID" value="com.agenticos.studio" mono />
               </div>

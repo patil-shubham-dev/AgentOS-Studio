@@ -46,7 +46,7 @@ export class WorkspaceManager {
     try {
       if (!existsSync(filePath)) return []
       return JSON.parse(readFileSync(filePath, 'utf-8'))
-    } catch { return [] }
+    } catch { console.warn("[WorkspaceManager] Failed to load recent workspaces"); return [] }
   }
 
   addRecentWorkspace(folderPath: string): void {
@@ -75,7 +75,7 @@ export class WorkspaceManager {
 
   private saveRecentWorkspaces(recent: RecentWorkspace[]): void {
     const filePath = join(app.getPath('userData'), RECENT_WORKSPACES_FILE)
-    try { writeFileSync(filePath, JSON.stringify(recent, null, 2)) } catch {}
+    try { writeFileSync(filePath, JSON.stringify(recent, null, 2)) } catch { console.warn("[WorkspaceManager] Failed to save recent workspaces") }
   }
 
   async openFolderDialog(win: BrowserWindow): Promise<string | null> {
@@ -144,11 +144,11 @@ export class WorkspaceManager {
         if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
         return a.name.localeCompare(b.name)
       })
-    } catch { return [] }
+    } catch { console.warn("[WorkspaceManager] Failed to list directory"); return [] }
   }
 
   readFile(filePath: string): string | null {
-    try { return readFileSync(filePath, 'utf-8') } catch { return null }
+    try { return readFileSync(filePath, 'utf-8')     } catch { console.warn("[WorkspaceManager] Failed to read file"); return null }
   }
 
   writeFile(filePath: string, content: string): boolean {
@@ -157,7 +157,7 @@ export class WorkspaceManager {
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
       writeFileSync(filePath, content, 'utf-8')
       return true
-    } catch { return false }
+    } catch { console.warn("[WorkspaceManager] Failed to write file"); return false }
   }
 
   createFile(dirPath: string, name: string): string | null {
@@ -166,7 +166,7 @@ export class WorkspaceManager {
       if (existsSync(fullPath)) return null
       writeFileSync(fullPath, '', 'utf-8')
       return fullPath
-    } catch { return null }
+    } catch { console.warn("[WorkspaceManager] Failed to create file"); return null }
   }
 
   createDirectory(dirPath: string, name: string): string | null {
@@ -175,14 +175,14 @@ export class WorkspaceManager {
       if (existsSync(fullPath)) return null
       mkdirSync(fullPath, { recursive: true })
       return fullPath
-    } catch { return null }
+    } catch { console.warn("[WorkspaceManager] Failed to create directory"); return null }
   }
 
   rename(oldPath: string, newPath: string): boolean {
     try {
       renameSync(oldPath, newPath)
       return true
-    } catch { return false }
+    } catch { console.warn("[WorkspaceManager] Failed to rename"); return false }
   }
 
   deleteEntry(targetPath: string): boolean {
@@ -194,7 +194,7 @@ export class WorkspaceManager {
         unlinkSync(targetPath)
       }
       return true
-    } catch { return false }
+    } catch { console.warn("[WorkspaceManager] Failed to delete"); return false }
   }
 
   startWatching(dirPath: string, callback: (event: 'change' | 'rename', filePath: string) => void): boolean {
@@ -207,7 +207,7 @@ export class WorkspaceManager {
       })
       this.watchers.set(dirPath, watcher)
       return true
-    } catch { return false }
+    } catch { console.warn("[WorkspaceManager] Failed to start watcher"); return false }
   }
 
   stopWatching(dirPath: string): void {
@@ -253,7 +253,7 @@ export class WorkspaceManager {
         if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
         return a.name.localeCompare(b.name)
       })
-    } catch { return [] }
+    } catch { console.warn("[WorkspaceManager] Failed to search files"); return [] }
   }
 
   // File search
@@ -282,13 +282,13 @@ export class WorkspaceManager {
                     .map(l => `L${l.line}: ${l.text.substring(0, 100)}`)
                   results.push({ path: fullPath, name: entry.name, matches: matchingLines })
                 }
-              } catch {}
+              } catch { console.warn("[WorkspaceManager] Failed to read file for search") }
             }
           } else if (entry.isDirectory()) {
             walk(fullPath, depth + 1)
           }
         }
-      } catch {}
+      } catch { console.warn("[WorkspaceManager] Failed to read directory entry") }
     }
 
     walk(rootDir, 0)

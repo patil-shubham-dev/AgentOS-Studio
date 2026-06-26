@@ -6,7 +6,12 @@ import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { ContextManager } from "@/runtime/context/ContextManager"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
+import { configLoader } from "@/runtime/project-config/ConfigLoader"
+import type { StructuredProjectConfig } from "@/runtime/project-config/ProjectConfigTypes"
 import { FAST_CHAT_PROMPT } from "@/runtime/runtime-role-registry"
+import { ArchitecturePlanningStrategy } from "@/runtime/intelligence/ArchitecturePlanningStrategy"
+import { EntryPointExplorer } from "@/runtime/intelligence/EntryPointExplorer"
+import { PlanComparisonEngine } from "./PlanComparisonEngine"
 
 const PLAN_SYSTEM_PROMPT = `You are a planning expert. Given a user request, generate a structured implementation plan.
 
@@ -82,8 +87,53 @@ export class PlanGenerator {
     if (fileTreeSummary) {
       contextParts.push(`Project structure: ${fileTreeSummary.slice(0, 500)}`)
     }
-    const contextStr = contextParts.length > 0
-      ? `\n\nCurrent workspace context:\n${contextParts.join("\n")}`
+
+    // ── Inject AGENTIC.md project config for better planning ──
+    let projectConfigStr = ""
+    let architectureBlock = ""
+    let explorationBlock = ""
+    if (rootPath) {
+      try {
+        const configResult = await configLoader.load(rootPath)
+        const sc = configResult.structured
+        if (sc) {
+          const planBlocks: string[] = []
+          planBlocks.push(`Architecture: ${sc.architecture.type}`)
+          if (sc.architecture.workspaces.length > 0) {
+            planBlocks.push(`Workspaces: ${sc.architecture.workspaces.join(", ")}`)
+          }
+          planBlocks.push(`Stack: ${sc.stack.languages.join(", ")}`)
+          if (sc.commands.build) planBlocks.push(`Build: ${sc.commands.build}`)
+          if (sc.commands.test) planBlocks.push(`Test: ${sc.commands.test}`)
+          if (sc.commands.lint) planBlocks.push(`Lint: ${sc.commands.lint}`)
+          if (sc.commands.typecheck) planBlocks.push(`Typecheck: ${sc.commands.typecheck}`)
+          if (sc.conventions.isTypeScript) {
+            planBlocks.push(`TypeScript: ${sc.conventions.isStrictMode ? "strict mode" : "enabled"}`)
+          }
+          if (sc.conventions.customRules.length > 0) {
+            planBlocks.push("Conventions:", ...sc.conventions.customRules.map(r => `  - ${r}`))
+          }
+          if (sc.verification.requiredChecks.length > 0) {
+            planBlocks.push("Verification:", ...sc.verification.requiredChecks.map(r => `  - ${r}`))
+          }
+          projectConfigStr = `\n\n## Project Configuration\n${planBlocks.join("\n")}`
+        }
+
+        // ── Inject architecture intelligence context ──
+        const archStrategy = new ArchitecturePlanningStrategy()
+        architectureBlock = await archStrategy.getArchitectureContextBlock()
+
+        const explorer = new EntryPointExplorer()
+        const plan = await explorer.getExplorationPlan()
+        if (plan.entryPoints.length > 0) {
+          const epLines = plan.entryPoints.map(e => `  - ${e.id}`).join("\n")
+          explorationBlock = `\n## Repository Map\nEntry Points:\n${epLines}\nModules: ${plan.modules.components.length} components, ${plan.modules.pages.length} routes, ${plan.modules.services.length} services\nTotal: ${plan.totalFiles} files, ${plan.totalSymbols} symbols`
+        }
+      } catch {}
+    }
+
+    const contextStr = contextParts.length > 0 || projectConfigStr || architectureBlock || explorationBlock
+      ? `\n\nCurrent workspace context:\n${contextParts.join("\n")}${projectConfigStr}\n\n${architectureBlock}${explorationBlock}`
       : ""
 
     const messages = [
@@ -196,5 +246,17 @@ export class PlanGenerator {
       createdAt: Date.now(),
       status: "pending_review",
     }
+  }
+
+  /**
+   * Generate plans from multiple providers for side-by-side comparison.
+   */
+  async compare(
+    userInput: string,
+    providerIds?: string[],
+    signal?: AbortSignal,
+  ) {
+    const engine = new PlanComparisonEngine()
+    return engine.compare(userInput, providerIds, signal)
   }
 }
