@@ -2,7 +2,6 @@
 
 **Your AI operating system for development** — a desktop coding assistant with multi-agent orchestration, browser automation, terminal integration, and deep code intelligence.
 
-[![CI](https://github.com/agenticos/agenticos/actions/workflows/ci.yml/badge.svg)](https://github.com/agenticos/agenticos/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%5E18.0.0-339933)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
