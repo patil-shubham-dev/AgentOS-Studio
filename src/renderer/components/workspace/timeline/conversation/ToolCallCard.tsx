@@ -104,6 +104,30 @@ const StatusIcon = memo(function StatusIcon({ status, name }: { status: ToolCall
   }
 })
 
+function getResultSummary(tc: ToolCallRecord): string | null {
+  if (tc.status !== "complete" || !tc.result) return null
+  const r = tc.result
+  const lines = r.split("\n").filter(l => l.trim())
+
+  // Check for search/grep results
+  const fileMatch = r.match(/(\d+) files?/i)
+  const lineMatch = r.match(/(\d+) lines?/i)
+  const foundMatch = r.match(/found (\d+)/i)
+  const errMatch = r.match(/(\d+) (errors?|warnings?|issues?)/i)
+
+  if (foundMatch) return `Found ${foundMatch[1]} results`
+  if (fileMatch && lineMatch) return `${fileMatch[1]} files, ${lineMatch[1]} lines`
+  if (fileMatch) return `${fileMatch[1]} files`
+  if (lineMatch) return `${lineMatch[1]} lines`
+  if (errMatch) return `${errMatch[1]} ${errMatch[2]}`
+  if (lines.length === 1) return lines[0].length > 80 ? lines[0].slice(0, 80) + "…" : lines[0]
+  if (lines.length > 0) {
+    const first = lines[0]
+    return first.length > 80 ? first.slice(0, 80) + "…" : (lines.length > 1 ? `${first} +${lines.length - 1} more` : first)
+  }
+  return null
+}
+
 function ImpactBadge({ result }: { result?: string }) {
   if (!result) return null
   const hasWarning = result.toLowerCase().includes("warning") || result.toLowerCase().includes("impact")
@@ -181,6 +205,7 @@ export const ToolCallCard = memo(function ToolCallCard({ toolCall, index = 0 }: 
   const hasResult = status === "complete" || status === "error"
   const autoCollapseTimer = useRef<ReturnType<typeof setTimeout>>()
   const isEditTool = name === "edit_file" || name === "write_file"
+  const resultSummary = status === "complete" ? getResultSummary(toolCall) : null
 
   useEffect(() => {
     if (status === "running") {
@@ -240,11 +265,12 @@ export const ToolCallCard = memo(function ToolCallCard({ toolCall, index = 0 }: 
             initial={{ opacity: 0, x: -4 }}
             animate={{ opacity: 1, x: 0 }}
             className={cn(
-              "text-[9px] font-medium ml-auto flex-shrink-0",
+              "text-[9px] font-medium ml-auto flex-shrink-0 truncate max-w-[120px] text-right",
               status === "complete" ? "text-emerald-400/50" : "text-red-400/50",
             )}
+            title={resultSummary ?? (status === "complete" ? "Done" : "Failed")}
           >
-            {status === "complete" ? "Done" : "Failed"}
+            {resultSummary ?? (status === "complete" ? "Done" : "Failed")}
           </motion.span>
         )}
       </motion.button>

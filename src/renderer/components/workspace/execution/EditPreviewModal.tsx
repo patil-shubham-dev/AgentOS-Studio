@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ImpactPreviewEngine, type ImpactPreview } from "@/runtime/execution/ImpactPreviewEngine"
 import { EditDependencyGraph } from "@/runtime/execution/EditDependencyGraph"
@@ -23,38 +23,78 @@ export function EditPreviewModal({ open, task, editedFiles, onApprove, onReject,
   const [editedPrompt, setEditedPrompt] = useState(task)
   const [editingPrompt, setEditingPrompt] = useState(false)
 
-  useState(async () => {
-    if (!open || editedFiles.length === 0) return
-    setLoading(true)
-    try {
-      const engine = new ImpactPreviewEngine()
-      const previewData = await engine.generatePreview(task, editedFiles)
-      setPreview(previewData)
+  useEffect(() => {
+    setEditedPrompt(task)
+  }, [task])
 
-      const depGraph = new EditDependencyGraph()
-      const plan = depGraph.buildPlan(previewData.affectedFiles.map((f) => f.path))
-      setDependencyPlan(plan)
-
-      const confidenceEngine = ExecutionConfidenceEngine.getInstance()
-      const conf = confidenceEngine.scoreExecution(editedFiles)
-      const explanations: string[] = []
-      if (conf.graphConfidence >= 70) explanations.push("Graph analysis complete — all symbols resolved")
-      else if (conf.graphConfidence >= 40) explanations.push("Partial graph analysis — some symbols resolved")
-      else explanations.push("Symbol graph not yet populated — confidence will improve after first execution")
-
-      if (conf.dependencyConfidence >= 70) explanations.push("Dependency graph complete — all imports resolved")
-      else explanations.push("Dependency graph partially resolved")
-
-      setConfidence({
-        overall: Math.round((conf.graphConfidence + conf.dependencyConfidence) / 2),
-        category: conf.graphConfidence >= 70 && conf.dependencyConfidence >= 70 ? "high" : conf.graphConfidence >= 40 ? "medium" : "low",
-        explanations,
-      })
-    } catch (err) {
-      console.warn("[EditPreviewModal] Failed to generate preview:", err)
+  useEffect(() => {
+    if (!open) {
+      setLoading(false)
+      setPreview(null)
+      setDependencyPlan(null)
+      setConfidence(null)
+      setEditingPrompt(false)
+      return
     }
-    setLoading(false)
-  })
+
+    if (editedFiles.length === 0) {
+      setLoading(false)
+      setPreview(null)
+      setDependencyPlan(null)
+      setConfidence(null)
+      return
+    }
+
+    let cancelled = false
+
+    async function loadPreview() {
+      setLoading(true)
+      try {
+        const engine = new ImpactPreviewEngine()
+        const previewData = await engine.generatePreview(task, editedFiles)
+        if (cancelled) return
+        setPreview(previewData)
+
+        const depGraph = new EditDependencyGraph()
+        const plan = depGraph.buildPlan(previewData.affectedFiles.map((f) => f.path))
+        if (cancelled) return
+        setDependencyPlan(plan)
+
+        const confidenceEngine = ExecutionConfidenceEngine.getInstance()
+        const conf = confidenceEngine.scoreExecution(editedFiles)
+        const explanations: string[] = []
+        if (conf.graphConfidence >= 70) explanations.push("Graph analysis complete — all symbols resolved")
+        else if (conf.graphConfidence >= 40) explanations.push("Partial graph analysis — some symbols resolved")
+        else explanations.push("Symbol graph not yet populated — confidence will improve after first execution")
+
+        if (conf.dependencyConfidence >= 70) explanations.push("Dependency graph complete — all imports resolved")
+        else explanations.push("Dependency graph partially resolved")
+
+        setConfidence({
+          overall: Math.round((conf.graphConfidence + conf.dependencyConfidence) / 2),
+          category: conf.graphConfidence >= 70 && conf.dependencyConfidence >= 70 ? "high" : conf.graphConfidence >= 40 ? "medium" : "low",
+          explanations,
+        })
+      } catch (err) {
+        if (!cancelled) {
+          console.warn("[EditPreviewModal] Failed to generate preview:", err)
+          setPreview(null)
+          setDependencyPlan(null)
+          setConfidence(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadPreview()
+
+    return () => {
+      cancelled = true
+    }
+  }, [editedFiles, open, task])
 
   if (!open) return null
 

@@ -34,14 +34,6 @@ const codeComponents: Components = {
   },
 }
 
-const COMPLETED_SPRING = {
-  type: "spring" as const,
-  stiffness: 260,
-  damping: 22,
-  mass: 1.0,
-  delay: 0.05,
-}
-
 function formatMetrics(tps: number, latency: number): string {
   if (latency <= 0 && tps <= 0) return ""
   const items: string[] = []
@@ -56,32 +48,14 @@ export const StableMarkdownRenderer = memo(function StableMarkdownRenderer({
   tokensPerSecond = 0,
   latency = 0,
 }: StableMarkdownRendererProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [measuredHeight, setMeasuredHeight] = useState<number | null>(null)
-  const [showCompleted, setShowCompleted] = useState(false)
-  const textRef = useRef(text)
-  textRef.current = text
+  const cursorRef = useRef<HTMLSpanElement>(null)
+  const [showCursor, setShowCursor] = useState(true)
 
+  // Blink cursor during streaming
   useEffect(() => {
-    const el = containerRef.current
-    if (!el || measuredHeight !== null) return
-    const ro = new ResizeObserver(([entry]) => {
-      if (entry.contentRect.height > 0) {
-        setMeasuredHeight(entry.contentRect.height)
-        ro.disconnect()
-      }
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    if (!isStreaming) {
-      const t = setTimeout(() => setShowCompleted(true), 200)
-      return () => clearTimeout(t)
-    }
-    setShowCompleted(false)
+    if (!isStreaming) { setShowCursor(false); return }
+    const interval = setInterval(() => setShowCursor(v => !v), 530)
+    return () => clearInterval(interval)
   }, [isStreaming])
 
   if (!text && !isStreaming) return null
@@ -89,51 +63,51 @@ export const StableMarkdownRenderer = memo(function StableMarkdownRenderer({
   const metricsTip = formatMetrics(tokensPerSecond, latency)
 
   return (
-    <div
-      ref={containerRef}
-      className="prose-claude relative"
-      style={measuredHeight !== null ? { minHeight: measuredHeight } : undefined}
-    >
-      {isStreaming && metricsTip && (
-        <div className="absolute top-0 right-0 z-10 flex items-center gap-2 px-2 py-0.5 rounded-bl-lg bg-white/[0.03] border-l border-b border-white/[0.06]">
-          <span className="text-[10px] font-mono text-white/40">{metricsTip}</span>
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-          </span>
-        </div>
-      )}
-      <AnimatePresence mode="wait">
-        {isStreaming || !showCompleted ? (
+    <div className="prose-claude relative">
+      {/* Subtle streaming indicator — just a tiny dot + metrics inline */}
+      <AnimatePresence>
+        {isStreaming && (
           <motion.div
-            key="streaming"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.2 } }}
-            className="streaming-text"
+            exit={{ opacity: 0 }}
+            className="flex items-center gap-1.5 mb-1"
           >
-            <span className="streaming-content" style={{ whiteSpace: "pre-wrap" }}>
-              {text}
-              <span className="streaming-cursor" />
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
             </span>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="completed"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={COMPLETED_SPRING}
-          >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeHighlight]}
-              components={codeComponents}
-            >
-              {text}
-            </ReactMarkdown>
+            {metricsTip && (
+              <span className="text-[9px] font-mono text-white/20">{metricsTip}</span>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Single renderer — ReactMarkdown during streaming AND after, no flicker */}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlight]}
+        components={{
+          ...codeComponents,
+          text({ children }) {
+            if (!isStreaming || !children) return <>{children}</>
+            return (
+              <>
+                {children}
+                {showCursor && <span ref={cursorRef} className="inline-block w-[2px] h-[1em] bg-blue-400/60 align-text-bottom ml-[1px] animate-pulse" />}
+              </>
+            )
+          },
+        }}
+      >
+        {text || (isStreaming ? " " : "")}
+      </ReactMarkdown>
+
+      {/* Streaming-only: ensure visible cursor even when markdown renders no text */}
+      {isStreaming && !text && (
+        <span className="inline-block w-[2px] h-4 bg-blue-400/60 animate-pulse" />
+      )}
     </div>
   )
 })

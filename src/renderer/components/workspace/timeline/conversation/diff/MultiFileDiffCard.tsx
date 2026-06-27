@@ -15,6 +15,7 @@ interface MultiFileDiffCardProps {
   onRevertAll?: () => void
   onOpenInEditor?: (path: string) => void
   onRevert?: (path: string) => void
+  onAcceptFile?: (path: string) => void
 }
 
 export const MultiFileDiffCard = memo(function MultiFileDiffCard({
@@ -23,6 +24,7 @@ export const MultiFileDiffCard = memo(function MultiFileDiffCard({
   onRevertAll,
   onOpenInEditor,
   onRevert,
+  onAcceptFile,
 }: MultiFileDiffCardProps) {
   const totalAdditions = useMemo(
     () => files.reduce((sum, f) => sum + f.edit.additions, 0),
@@ -52,8 +54,6 @@ export const MultiFileDiffCard = memo(function MultiFileDiffCard({
   }, [])
 
   if (files.length === 0) return null
-
-  const allExpanded = expandedFiles.size === files.length
 
   return (
     <div className="py-1">
@@ -144,8 +144,10 @@ export const MultiFileDiffCard = memo(function MultiFileDiffCard({
                     <DiffCard
                       filePath={file.edit.path}
                       edit={file.edit}
+                      diffPath={file.edit.path}
                       onOpenInEditor={onOpenInEditor}
                       onRevert={onRevert}
+                      onAccept={onAcceptFile}
                       expanded={true}
                     />
                   </motion.div>

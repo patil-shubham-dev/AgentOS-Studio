@@ -1,160 +1,94 @@
 # AgenticOS
 
-**Your AI Operating System for Development**
+**Your AI operating system for development** — a desktop coding assistant with multi-agent orchestration, browser automation, terminal integration, and deep code intelligence.
 
-AgenticOS is a next-generation development environment that combines an intelligent AI coding assistant with a full-featured Electron desktop application. It provides multi-agent orchestration, browser automation, terminal integration, and deep code intelligence — all within a unified interface.
-
-[![Build Status](https://github.com/agenticos/agenticos/actions/workflows/ci.yml/badge.svg)](https://github.com/agenticos/agenticos/actions/workflows/ci.yml)
+[![CI](https://github.com/agenticos/agenticos/actions/workflows/ci.yml/badge.svg)](https://github.com/agenticos/agenticos/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](package.json)
+![Node](https://img.shields.io/badge/node-%5E18.0.0-339933)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 
 ---
 
 ## Features
 
-### 🧠 Multi-Agent AI Engine
-- **Orchestrated agents** — Manager, Coder, Research, QA, Browser, and Memory agents collaborate on complex tasks
-- **Streaming responses** — Real-time token delivery with activity indicators
-- **Multi-model support** — Connect to OpenAI, Anthropic, or any OpenAI-compatible provider
-- **MCP protocol** — Extend capabilities with the Model Context Protocol
-
-### 🔍 Code Intelligence
-- **Symbol indexing** — Extract functions, classes, interfaces from 8+ languages
-- **Dependency scanning** — Visualize import graphs and call hierarchies
-- **Semantic search** — Find code by meaning, not just text
-- **Project map** — Architecture-aware file exploration
-
-### 🌐 Browser Workspace
-- **Headless browser** — Automate web interactions via CDP (Chrome DevTools Protocol)
-- **Live viewport** — Embedded browser view with console, network, and annotation tools
-- **Session persistence** — Save and restore browser sessions
-- **Multi-tab management** — Navigate complex web applications
-
-### 💻 Terminal & Execution
-- **PTY integration** — Full terminal emulation with xterm.js
-- **Command streaming** — Real-time command output with approval gates
-- **Safety controls** — Command allowlists, path validation, and sandboxing
-
-### 🗄️ Memory & Context
-- **Tiered memory system** — Ephemeral, session, project, and global scopes
-- **Context compression** — Intelligent compaction to stay within token budgets
-- **Workspace awareness** — Automatically surfaces relevant files and symbols
+- **Multi-agent AI engine** — Manager, Coder, Research, Browser, QA, and Memory agents collaborate on complex tasks with streaming responses, multi-model support (OpenAI, Anthropic, MCP), and tool orchestration.
+- **Code intelligence** — Symbol indexing across 8+ languages, dependency graph visualization, semantic code search, and architecture-aware project mapping.
+- **Browser workspace** — Headless browser automation via CDP with an embedded live viewport, console/network inspector, annotation tools, and session persistence.
+- **Terminal & execution** — Full PTY terminal emulation with real-time command streaming, approval gates, command allowlists, and sandboxing.
+- **Memory & context** — Tiered memory system (ephemeral, session, project, global scopes) with intelligent context compression and workspace-aware relevance.
 
 ---
 
 ## Getting Started
 
-### Prerequisites
-
-- **Node.js** ^18.0.0
-- **npm** ^9.0.0
-- **Chrome/Chromium** (for browser features)
-
-### Installation
-
 ```bash
-# Clone the repository
 git clone https://github.com/agenticos/agenticos.git
 cd agenticos
-
-# Install dependencies
 npm install
-
-# Start in development mode
 npm run dev
 ```
 
-### Quick Start
-
-1. Launch AgenticOS: `npm run dev`
-2. Add an AI provider in **Settings → Providers**
-3. Open a workspace folder
-4. Start coding — ask the AI to explain code, refactor, or build features
+1. Add an AI provider in **Settings → Providers**
+2. Open a workspace folder
+3. Start coding — ask the AI to explain code, refactor, or build features
 
 ### Headless CLI
 
 ```bash
-# Run a single prompt
 npm run cli -- --print "Explain the event system"
-
-# Pipe input
 echo "Hello" | npm run cli -- --stdin
-
-# Structured JSON output
 npm run cli -- --file prompt.txt --json
 ```
 
 ---
 
-## Architecture
+## Project Structure
 
 ```
 src/
-├── cli/                    # Headless CLI mode
-├── main/                   # Electron main process
-├── preload/                # Electron preload bridge
-└── renderer/               # React application
-    ├── core/               # Kernel, routing, error boundaries
-    ├── components/         # UI components
-    ├── pages/              # Route pages
-    ├── runtime/            # Execution engine & agent system
-    │   ├── execution/      # Orchestrator, sessions, steps
-    │   ├── agents/         # Agent executor & resolver
-    │   ├── streaming/      # Token streaming
-    │   ├── memory/         # Memory architecture (unified)
-    │   ├── context/        # Context management
-    │   ├── tools/          # Tool registry & execution
-    │   ├── mcp/            # MCP protocol support
-    │   └── skills/         # Skill system
-    ├── stores/             # Zustand state stores
-    ├── lib/                # Utilities & services
-    ├── performance/        # Leak detection & assertions
-    └── types/              # TypeScript type definitions
-tests/
-├── agent-system/           # Agent lifecycle & routing tests
-├── browser/                # Browser automation tests
-├── memory/                 # Memory engine tests
-├── reliability/            # Circuit breaker, retry, watchdog tests
-├── sessions/               # Session durability & production readiness
-├── search/                 # Search index benchmarks
-└── ...
+├── main/           # Electron main process (IPC, window management, services)
+├── preload/        # Context bridge (preload script)
+└── renderer/       # React application
+    ├── core/       # Kernel, routing, error boundaries
+    ├── components/ # UI components organized by domain
+    ├── pages/      # Route pages
+    ├── runtime/    # AI execution engine (agents, tools, memory, context, streaming)
+    ├── stores/     # Zustand state stores
+    ├── lib/        # Utilities and services
+    └── types/      # TypeScript type definitions
 packages/
-├── providers/              # Standalone provider transport
-├── shared/                 # Shared types & utilities
-└── ui/                    # Shared UI components
+├── providers/  # Provider transport layer
+├── shared/     # Shared types and utilities
+└── ui/         # Shared UI components
+tests/          # Test files organized by domain
 ```
 
-### Event Flow
+### Architecture
 
 ```
-User Input → ExecutionOrchestrator → RuntimeOS → AgentExecutor
-    ↓                                                        ↓
-ExecutionSessionManager ← ExecutionEvent (21-event protocol)
+User Input → RuntimeOS → AgentExecutor → Tools → File System / Browser / Terminal
+    ↓                                                                        ↓
+ExecutionSessionManager ← ExecutionEvent protocol
     ↓
-StreamManager → TimelineStore → React UI (assistant responses)
+StreamManager → TimelineStore → React UI
 ```
 
 ---
 
-## Key Concepts
+## Tech Stack
 
-### Agents & Roles
-| Role | Purpose |
-|------|---------|
-| **Manager** | Coordinates multi-agent workflows, delegates tasks |
-| **Coder** | Writes and edits code |
-| **Research** | Searches codebase, web, and documentation |
-| **Browser** | Interacts with web pages |
-| **QA** | Validates changes, runs tests |
-| **Memory** | Manages conversation and project memory |
-
-### Provider System
-Connect any OpenAI-compatible API. Configure in Settings or via environment:
-```bash
-export AGENTIC_API_KEY="sk-..."
-export AGENTIC_MODEL="gpt-4o"
-export AGENTIC_PROVIDER="openai"
-```
+| Category | Technology |
+|----------|-----------|
+| Desktop | Electron 42 |
+| UI | React 19, Tailwind CSS 4, Radix UI, Framer Motion |
+| Language | TypeScript 6 (strict mode) |
+| State | Zustand |
+| Editor | Monaco Editor |
+| Terminal | xterm.js + node-pty |
+| Browser | Playwright Core (CDP) |
+| Testing | Vitest 3 |
+| Build | Vite 6 + electron-vite + electron-builder |
+| AI | Multi-provider (OpenAI, Anthropic, MCP) |
 
 ---
 
@@ -162,31 +96,30 @@ export AGENTIC_PROVIDER="openai"
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm test` | Run all tests |
-| `npm run typecheck` | TypeScript type checking |
-| `npm run lint` | ESLint code quality checks |
+| `npm run dev` | Development mode with hot reload |
+| `npm run build` | TypeScript check + production build |
+| `npm test` | Run all tests (vitest) |
+| `npm run typecheck` | TypeScript strict type checking |
+| `npm run lint` | ESLint code quality |
 | `npm run dist` | Build distribution packages |
+| `npm run cli` | Headless CLI mode |
 
 ---
 
 ## Testing
 
-AgenticOS has **880+ passing tests** across 68 test files:
+**880+ passing tests** across 68 test files.
 
 ```bash
-# Run all tests
-npm test
-
-# Run specific test suites
-npx vitest run tests/agent-system
-npx vitest run tests/reliability
-npx vitest run tests/browser
-npx vitest run tests/memory
+npm test                                    # Full suite
+npx vitest run tests/agent-system           # Agent tests
+npx vitest run tests/reliability            # Reliability tests
+npx vitest run tests/browser                # Browser tests
+npx vitest run tests/memory                 # Memory tests
 ```
 
-### Benchmark Results
+### Performance Benchmarks
+
 | Operation | p50 | p95 | p99 |
 |-----------|-----|-----|-----|
 | Search (1k files) | 0.4ms | 5.1ms | 17.3ms |
@@ -197,7 +130,7 @@ npx vitest run tests/memory
 
 ## Project Status
 
-**Production Readiness Score: 82%** (weighted across 11 categories)
+**Production Readiness Score: 82%**
 
 | Category | Score |
 |----------|-------|
@@ -213,14 +146,12 @@ npx vitest run tests/memory
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on code of conduct, development workflow, commit conventions, and pull request process.
 
 ## License
 
-This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-- Built with [Electron](https://www.electronjs.org/), [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/)
-- AI providers powering the agent system
-- The open-source community
+Built with [Electron](https://www.electronjs.org/), [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), and the open-source community.

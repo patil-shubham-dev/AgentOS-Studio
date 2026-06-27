@@ -1,4 +1,4 @@
-import type { FileChangeEvent } from "@/types"
+import type { FileChangeEvent, FileChangeKind } from "@/types"
 
 // ── Electron bridge ──
 const eapi = (typeof window !== 'undefined' && (window as any).electronAPI) ? (window as any).electronAPI : null
@@ -66,11 +66,28 @@ export async function startWatching(rootPath: string): Promise<void> {
   } catch { /* web mode: watching not supported */ }
 }
 
+async function normalizeFsWatchType(rawType: string | undefined, filePath: string): Promise<FileChangeKind> {
+  if (rawType === 'change') return 'modified'
+  if (rawType === 'rename') {
+    try {
+      const { exists } = await import("@/lib/electron-api")
+      const ok = await exists(filePath)
+      return ok ? 'created' : 'removed'
+    } catch {
+      return 'modified'
+    }
+  }
+  return 'created'
+}
+
 export async function onFileChange(callback: (event: FileChangeEvent) => void): Promise<(() => void) | null> {
   // In Electron, file changes are received via the preload 'on' channel
   if (isElectron()) {
-    const unsub = eapi.on('file-changed', (payload: any) => {
-      callback({ path: payload.path ?? payload, type: payload.type ?? 'modified' })
+    const unsub = eapi.on('file-changed', async (payload: any) => {
+      const rawType = payload.type ?? payload.kind
+      const filePath: string = payload.path ?? payload
+      const kind = await normalizeFsWatchType(rawType, filePath)
+      callback({ path: filePath, kind })
     })
     return unsub
   }

@@ -209,6 +209,75 @@ function CreateArtifactDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── Inline Code Editor ──
+
+function CodeEditor({ code, onSave }: { code: string; onSave: (code: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(code)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setValue(code)
+    setEditing(false)
+  }, [code])
+
+  async function handleSave() {
+    if (value === code) { setEditing(false); return }
+    setSaving(true)
+    try {
+      await onSave(value)
+      setEditing(false)
+    } catch { /* handled by caller */ }
+    setSaving(false)
+  }
+
+  if (!editing) {
+    return (
+      <div className="relative group h-full" onDoubleClick={() => setEditing(true)}>
+        <pre className="p-4 text-[11px] font-mono text-white/60 leading-relaxed whitespace-pre-wrap h-full overflow-auto">
+          <code>{value}</code>
+        </pre>
+        <button
+          onClick={() => setEditing(true)}
+          className="absolute top-2 right-2 rounded-md border border-white/[0.06] bg-[#0c0c0d]/80 backdrop-blur-sm px-2 py-1 text-[9px] text-white/40 hover:text-white/60 opacity-0 group-hover:opacity-100 transition-all"
+        >
+          Edit
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.06] bg-[#0c0c0d] shrink-0">
+        <span className="text-[9px] text-white/30">Editing — double-click to preview rendered output</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => { setEditing(false); setValue(code) }}
+            className="rounded-md border border-white/[0.06] px-2 py-1 text-[9px] text-white/40 hover:text-white/60 transition-all"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || value === code}
+            className="rounded-md border border-purple-500/20 bg-purple-500/10 px-2 py-1 text-[9px] text-purple-400 hover:bg-purple-500/20 transition-all disabled:opacity-40"
+          >
+            {saving ? "Saving..." : "Save as Version"}
+          </button>
+        </div>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="flex-1 w-full bg-transparent p-4 text-[11px] font-mono text-white/60 leading-relaxed outline-none resize-none"
+        spellCheck={false}
+        autoComplete="off"
+      />
+    </div>
+  )
+}
+
 // ── Main DesignWorkspace ──
 
 export function DesignWorkspace() {
@@ -352,11 +421,29 @@ export function DesignWorkspace() {
   }, [currentArtifact, currentVersionData, setApplyToCode, pulse, notify])
 
   // ── Regenerate with AI ──
+  const [regenerating, setRegenerating] = useState(false)
   const handleRegenerate = useCallback(async () => {
-    if (!currentArtifact) return
+    if (!currentArtifact || !currentVersionData || regenerating) return
+    setRegenerating(true)
     pulse("selection")
-    notify("Design regeneration is not yet available", "info", "selection")
-  }, [currentArtifact, notify, pulse])
+    try {
+      const { ExecutionSessionManager } = await import("@/runtime/sessions/ExecutionSessionManager")
+      const sessionManager = ExecutionSessionManager.getInstance()
+      const correlationId = `design-regen-${Date.now()}`
+      const task = `Improve this ${currentArtifact.name} component. Here is the current code:\n\n${currentVersionData.code}\n\n${currentArtifact.description ? "Context: " + currentArtifact.description + "\n\n" : ""}Return ONLY the improved code wrapped in \`\`\`...\`\`\` with a brief summary of changes.`
+      await sessionManager.start({
+        input: task,
+        activeRole: "coder",
+        correlationId,
+      })
+      notify(`AI regeneration started for "${currentArtifact.name}"`, "success", "success", 2000)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      notify(`Regeneration failed: ${msg}`, "error", "error")
+    } finally {
+      setRegenerating(false)
+    }
+  }, [currentArtifact, currentVersionData, regenerating, notify, pulse])
 
   // ── Export ──
   const handleExport = useCallback(async () => {
@@ -627,12 +714,17 @@ export function DesignWorkspace() {
                 </button>
                 <button
                   onClick={handleRegenerate}
-                  className="flex items-center gap-1 rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-[9px] text-white/40 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+                  disabled={regenerating}
+                  className="flex items-center gap-1 rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-[9px] text-white/40 hover:text-white/60 hover:bg-white/[0.06] transition-all disabled:opacity-40"
                   title="Regenerate with AI"
                   aria-label="Regenerate design with AI"
                 >
-                  <Sparkles className="h-2.5 w-2.5" aria-hidden="true" />
-                  <span>Regenerate</span>
+                  {regenerating ? (
+                    <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Sparkles className="h-2.5 w-2.5" aria-hidden="true" />
+                  )}
+                  <span>{regenerating ? "Generating..." : "Regenerate"}</span>
                 </button>
                 <button
                   onClick={handleApplyToCode}
@@ -707,9 +799,20 @@ export function DesignWorkspace() {
                     </button>
                   </div>
                   <div className="flex-1 overflow-auto">
-                    <pre className="p-4 text-[11px] font-mono text-white/60 leading-relaxed whitespace-pre-wrap">
-                      <code>{currentVersionData.code}</code>
-                    </pre>
+                    <CodeEditor
+                      code={currentVersionData.code}
+                      onSave={async (newCode) => {
+                        if (!currentArtifact) return
+                        addVersion(currentArtifact.id, {
+                          label: "Manual edit",
+                          code: newCode,
+                          htmlPreview: generateHtmlPreview(newCode),
+                          changes: "Edited in design pane",
+                        })
+                        pulse("success")
+                        notify("Code updated — new version created", "success", "success", 2000)
+                      }}
+                    />
                   </div>
                 </div>
               )}

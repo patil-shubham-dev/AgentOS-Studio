@@ -379,6 +379,7 @@ export class AgentExecutor {
       unsavedChanges: wsSnapshot.unsavedChanges > 0 ? wsSnapshot.unsavedChanges : undefined,
       recentEdits: wsSnapshot.recentEdits.length > 0 ? wsSnapshot.recentEdits : undefined,
       fileTreeSummary: wsSnapshot.fileTreeSummary || undefined,
+      executionScratchpad: this.scratchpad?.formatForLLM() ?? undefined,
     }
 
     yield { type: "THINKING_STARTED", executionId: eid, label: "Planning", timestamp: Date.now() }
@@ -461,12 +462,6 @@ export class AgentExecutor {
       }
       if (this.signal?.aborted) {
         throw new DOMException("Agent execution aborted", "AbortError")
-      }
-
-      // ── Inject execution scratchpad state before provider call ──
-      const scratchpadBlock = this.scratchpad?.formatForLLM()
-      if (scratchpadBlock) {
-        msgs.push({ role: "user" as const, content: scratchpadBlock })
       }
 
       yield { type: "THINKING_UPDATE", executionId: eid, label: `Round ${round + 1}`, timestamp: Date.now() }

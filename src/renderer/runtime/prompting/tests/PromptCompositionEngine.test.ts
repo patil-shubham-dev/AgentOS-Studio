@@ -58,6 +58,14 @@ describe("PromptCompositionEngine", () => {
       expect(result.promptText).toContain("Streaming")
     })
 
+    it("includes answer-first output guidance", async () => {
+      const ctx = defaultContext({ role: "coder" })
+      const plan = registry.plan(ctx)
+      const result = await engine.compose(plan, ctx)
+      expect(result.promptText).toContain("Answer first.")
+      expect(result.promptText).toContain("Be concise by default.")
+    })
+
     it("includes memory policy only when memorySummary is present", async () => {
       const ctxWithout = defaultContext({ role: "coder" })
       const planWithout = registry.plan(ctxWithout)

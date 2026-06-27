@@ -18,6 +18,8 @@ import type { SessionCompletedEvent } from "@/runtime/RuntimeTypes"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useToolFilterStore } from "@/stores/tool-filter-store"
 import { pluginRegistry } from "@/runtime/plugins/PluginRegistry"
+import { useDiffStore } from "@/stores/diff-store"
+import { buildDiffFileEntry } from "@/lib/diff-review"
 
 export interface ExecutionSession {
   id: string
@@ -481,15 +483,23 @@ export class ExecutionSessionManager {
       case "FILE_EDIT": {
         const stepId = this.stepByExecId.get(event.executionId)
         if (!stepId) break
+        const diffEntry = buildDiffFileEntry(
+          event.path,
+          event.oldContent ?? "",
+          event.newContent ?? "",
+          "agent",
+        )
         const fileEdit: FileEditRecord = {
           path: event.path,
           additions: event.additions ?? 0,
           deletions: event.deletions ?? 0,
-          diffContent: event.newContent?.split("\n").map((l: string) => `+ ${l}`).join("\n") || "",
+          diffContent: diffEntry.rawDiff,
           oldContent: event.oldContent,
           newContent: event.newContent,
         }
         timeline.addFileEditToAgent(stepId, fileEdit)
+        useDiffStore.getState().setCorrelationId(options.correlationId ?? event.executionId)
+        useDiffStore.getState().addFileDiff(diffEntry)
 
         // Update agent status for editing activity + track file activity
         const role = this.execRoleMap.get(event.executionId)

@@ -145,6 +145,35 @@ export function BrowserWorkspace() {
     setShowRestorePrompt(false)
   }, [])
 
+  // ── Dev server auto-detection ──
+  const [devServers, setDevServers] = useState<string[]>([])
+
+  useEffect(() => {
+    const checkDevServers = async () => {
+      const ports = [3000, 5173, 5174, 8080, 3001, 8000, 9000, 4200]
+      const results = await Promise.allSettled(
+        ports.map(async (port) => {
+          try {
+            const res = await fetch(`http://localhost:${port}`, { method: "HEAD", signal: AbortSignal.timeout(1500) })
+            if (res.ok || res.status < 500) return `http://localhost:${port}`
+          } catch { /* not available */ }
+          return null
+        })
+      )
+      const available = results
+        .map((r) => r.status === "fulfilled" ? r.value : null)
+        .filter((url): url is string => url != null)
+      setDevServers((prev) => {
+        if (prev.length === available.length && prev.every((u, i) => u === available[i])) return prev
+        return available
+      })
+    }
+
+    checkDevServers()
+    const interval = setInterval(checkDevServers, 10000)
+    return () => clearInterval(interval)
+  }, [])
+
   useEffect(() => {
     const eapi = (window as any).electronAPI
     if (eapi?.browserDetect) {
@@ -414,6 +443,23 @@ export function BrowserWorkspace() {
                     <Search className="h-3 w-3 text-white/20 shrink-0" />
                     <span className="text-[10px] text-white/40 truncate">Search Google for "{urlInput}"</span>
                   </button>
+                  {devServers.length > 0 && (
+                    <>
+                      <div className="border-t border-white/[0.04] my-1" />
+                      <div className="px-2.5 py-1 text-[8px] text-white/20 uppercase tracking-wider font-medium">Dev Servers</div>
+                      {devServers.map((url) => (
+                        <button
+                          key={url}
+                          onMouseDown={(e) => { e.preventDefault(); setUrlInput(url); hasLiveViewport ? handleNavigate(url) : handleLaunch(url) }}
+                          className="flex items-center gap-2 w-full px-2.5 py-1.5 hover:bg-green-500/10 transition-colors text-left"
+                        >
+                          <Zap className="h-3 w-3 text-green-400/60 shrink-0" />
+                          <span className="text-[10px] text-white/60 truncate font-mono">{url}</span>
+                          <span className="text-[8px] text-green-400/40 ml-auto">running</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
                   <div className="border-t border-white/[0.04] my-1" />
                   <div className="px-2.5 py-1 text-[8px] text-white/20 uppercase tracking-wider font-medium">Quick Links</div>
                   {[

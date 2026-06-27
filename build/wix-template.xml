@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AgenticOS — Custom WiX Template for MSI Installer
+  Professional MSI with branded UI, silent install support, and enterprise deployment features
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <Product Id="*"
+           Name="AgenticOS"
+           Language="1033"
+           Version="$(var.ProductVersion)"
+           Manufacturer="AgenticOS"
+           UpgradeCode="$(var.UpgradeCode)">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="$(var.InstallScope)"
+             Manufacturer="AgenticOS"
+             Description="AgenticOS — Autonomous AI Workspace"
+             Comments="Build, automate, research, and execute tasks with AI agents."
+             Keywords="AI, development, workspace, automation"
+             Platform="x64" />
+
+    <!-- Major upgrade -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+                  AllowSameVersionUpgrades="yes"
+                  Schedule="afterInstallValidate" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Branding -->
+    <Icon Id="app.ico" SourceFile="$(var.ProjectDir)resources\branding\icon.png" />
+    <Property Id="ARPPRODUCTICON" Value="app.ico" />
+    <Property Id="ARPHELPLINK" Value="https://agenticos.ai/support" />
+    <Property Id="ARPURLINFOABOUT" Value="https://agenticos.ai" />
+    <Property Id="ARPCOMMENTS" Value="AgenticOS — Your AI operating system for development" />
+    <Property Id="ARPCONTACT" Value="support@agenticos.ai" />
+
+    <!-- Silent install support -->
+    <Property Id="MSIFASTINSTALL" Value="7" />
+    <Property Id="DISABLEADVTSHORTCUTS" Value="1" />
+
+    <!-- Installation directory -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="APPLICATIONFOLDER" Name="AgenticOS" />
+      </Directory>
+
+      <!-- Start Menu -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="AgenticOS" />
+      </Directory>
+
+      <!-- Desktop -->
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <!-- Components -->
+    <DirectoryRef Id="APPLICATIONFOLDER">
+      <Component Id="MainExecutable" Guid="*">
+        <File Id="AgenticOS.exe" Name="AgenticOS.exe" Source="$(var.AppDir)\AgenticOS.exe"
+              KeyPath="yes" Vital="yes">
+          <Shortcut Id="StartMenuShortcut"
+                    Directory="ApplicationProgramsFolder"
+                    Name="AgenticOS"
+                    WorkingDirectory="APPLICATIONFOLDER"
+                    Advertise="no" />
+          <Shortcut Id="DesktopShortcut"
+                    Directory="DesktopFolder"
+                    Name="AgenticOS"
+                    WorkingDirectory="APPLICATIONFOLDER"
+                    Advertise="no" />
+        </File>
+        <ServiceInstall Id="AgenticService"
+                        Name="AgenticOS"
+                        DisplayName="AgenticOS Runtime"
+                        Description="AgenticOS background services"
+                        Type="ownProcess"
+                        StartType="auto"
+                        ErrorControl="normal" />
+      </Component>
+
+      <Component Id="ApplicationFiles" Guid="*">
+        <File Id="app.asar" Name="app.asar" Source="$(var.AppDir)\resources\app.asar" />
+      </Component>
+
+      <!-- Registry entries -->
+      <Component Id="RegistryEntries" Guid="*">
+        <RegistryKey Root="HKCU" Key="Software\AgenticOS">
+          <RegistryValue Type="string" Name="InstallPath" Value="[APPLICATIONFOLDER]" />
+          <RegistryValue Type="string" Name="Version" Value="$(var.ProductVersion)" />
+        </RegistryKey>
+        <!-- agenticos:// protocol handler -->
+        <RegistryKey Root="HKCU" Key="Software\Classes\agenticos">
+          <RegistryValue Type="string" Value="URL:AgenticOS Protocol" />
+          <RegistryValue Type="string" Name="URL Protocol" Value="" />
+          <RegistryKey Key="DefaultIcon">
+            <RegistryValue Type="string" Value="[APPLICATIONFOLDER]AgenticOS.exe,0" />
+          </RegistryKey>
+          <RegistryKey Key="shell\open\command">
+            <RegistryValue Type="string" Value="&quot;[APPLICATIONFOLDER]AgenticOS.exe&quot; &quot;%1&quot;" />
+          </RegistryKey>
+        </RegistryKey>
+      </Component>
+
+      <!-- Context menu integration -->
+      <Component Id="ContextMenu" Guid="*">
+        <RegistryKey Root="HKCU" Key="Software\Classes\Directory\shell\AgenticOS">
+          <RegistryValue Type="string" Value="Open with AgenticOS" />
+          <RegistryValue Type="string" Name="Icon" Value="[APPLICATIONFOLDER]AgenticOS.exe" />
+          <RegistryKey Key="command">
+            <RegistryValue Type="string" Value="&quot;[APPLICATIONFOLDER]AgenticOS.exe&quot; &quot;%V&quot;" />
+          </RegistryKey>
+        </RegistryKey>
+        <RegistryKey Root="HKCU" Key="Software\Classes\Directory\Background\shell\AgenticOS">
+          <RegistryValue Type="string" Value="Open with AgenticOS" />
+          <RegistryValue Type="string" Name="Icon" Value="[APPLICATIONFOLDER]AgenticOS.exe" />
+          <RegistryKey Key="command">
+            <RegistryValue Type="string" Value="&quot;[APPLICATIONFOLDER]AgenticOS.exe&quot; &quot;%V&quot;" />
+          </RegistryKey>
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+
+    <!-- Branded UI -->
+    <UI>
+      <!-- Error dialog text -->
+      <Error Id="2000">AgenticOS setup requires Windows 10 or later.</Error>
+
+      <!-- Custom dialog for branded welcome -->
+      <Dialog Id="WelcomeDialog" X="50" Y="50" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" Text="[ProductName]" />
+        <Control Id="Title" Type="Text" X="15" Y="55" Width="340" Height="15" Text="Welcome to AgenticOS Setup" />
+        <Control Id="Description" Type="Text" X="15" Y="75" Width="340" Height="40" Text="This wizard will guide you through the installation of AgenticOS $(var.ProductVersion).&#xD;&#xA;&#xD;&#xA;AgenticOS is your autonomous AI workspace for development." />
+        <Control Id="InstallButton" Type="PushButton" X="180" Y="230" Width="80" Height="17" Text="Install">
+          <Publish Event="SpawnWaitDialog" Value="WaitForCostingDlg">1</Publish>
+          <Publish Event="EndDialog" Value="Return">1</Publish>
+        </Control>
+        <Control Id="CancelButton" Type="PushButton" X="270" Y="230" Width="80" Height="17" Text="Cancel">
+          <Publish Event="EndDialog" Value="Cancel">1</Publish>
+        </Control>
+      </Dialog>
+
+      <!-- Progress dialog -->
+      <Dialog Id="ProgressDialog" X="50" Y="50" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" Text="[ProductName]" />
+        <Control Id="Title" Type="Text" X="15" Y="55" Width="340" Height="15" Text="Installing AgenticOS" />
+        <Control Id="Description" Type="Text" X="15" Y="75" Width="340" Height="20" Text="Please wait while AgenticOS is being installed." />
+        <Control Id="ProgressBar" Type="ProgressBar" X="15" Y="100" Width="340" Height="15" ProgressBlocks="yes" Text="Progress" />
+        <Control Id="StatusLabel" Type="Text" X="15" Y="125" Width="340" Height="30" Text="Installing application files..." />
+      </Dialog>
+
+      <!-- Completion dialog -->
+      <Dialog Id="CompletionDialog" X="50" Y="50" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" Text="[ProductName]" />
+        <Control Id="Title" Type="Text" X="15" Y="55" Width="340" Height="15" Text="Installation Complete" />
+        <Control Id="Description" Type="Text" X="15" Y="75" Width="340" Height="30" Text="AgenticOS has been installed successfully.&#xD;&#xA;Version $(var.ProductVersion)" />
+        <Control Id="LaunchCheckbox" Type="CheckBox" X="15" Y="120" Width="340" Height="15" Text="Launch AgenticOS" CheckBoxValue="1" Property="LAUNCH_APP" />
+        <Control Id="FinishButton" Type="PushButton" X="180" Y="230" Width="80" Height="17" Text="Finish" Default="yes">
+          <Publish Event="DoAction" Value="LaunchApp">LAUNCH_APP = 1</Publish>
+          <Publish Event="EndDialog" Value="Return">1</Publish>
+        </Control>
+        <Control Id="CancelButton" Type="PushButton" X="270" Y="230" Width="80" Height="17" Text="Cancel">
+          <Publish Event="EndDialog" Value="Cancel">1</Publish>
+        </Control>
+      </Dialog>
+
+      <!-- Dialog sequence -->
+      <InstallUISequence>
+        <Show Dialog="WelcomeDialog" Sequence="1001" />
+        <Show Dialog="ProgressDialog" Sequence="1002" After="WelcomeDialog" />
+        <Show Dialog="CompletionDialog" Sequence="1003" After="ProgressDialog" />
+      </InstallUISequence>
+    </UI>
+
+    <!-- Custom actions -->
+    <CustomAction Id="LaunchApp"
+                  Directory="APPLICATIONFOLDER"
+                  ExeCommand="[APPLICATIONFOLDER]AgenticOS.exe"
+                  Return="asyncNoWait"
+                  Impersonate="yes" />
+
+    <InstallExecuteSequence>
+      <Custom Action="LaunchApp" After="InstallFinalize">LAUNCH_APP = 1 AND NOT Installed</Custom>
+    </InstallExecuteSequence>
+
+    <!-- Feature structure -->
+    <Feature Id="ProductFeature"
+             Title="AgenticOS"
+             Level="1"
+             Description="AgenticOS — Autonomous AI Workspace"
+             Display="expand"
+             ConfigurableDirectory="APPLICATIONFOLDER">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="ApplicationFiles" />
+      <ComponentRef Id="RegistryEntries" />
+      <ComponentRef Id="ContextMenu" />
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentGroupRef Id="AppDependencies" />
+    </Feature>
+
+    <!-- Property for silent install detection -->
+    <Property Id="LAUNCH_APP" Value="0" />
+  </Product>
+</Wix>

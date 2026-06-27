@@ -17,7 +17,6 @@ import { PaneContainer, Pane } from "@/components/workspace/pane-layout/PaneCont
 
 const BrowserWorkspace = lazy(() => import("@/components/workspace/browser/browser-workspace").then(m => ({ default: m.BrowserWorkspace })))
 const DesignWorkspace = lazy(() => import("@/components/workspace/design-workspace").then(m => ({ default: m.DesignWorkspace })))
-const DiffViewerPane = lazy(() => import("@/components/workspace/diff-viewer/DiffViewerPane").then(m => ({ default: m.DiffViewerPane })))
 const PreviewPane = lazy(() => import("@/components/workspace/preview/PreviewPane").then(m => ({ default: m.PreviewPane })))
 import { AgentActivityPanel } from "@/components/workspace/agent-visibility/AgentActivityPanel"
 import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
@@ -34,6 +33,8 @@ import { SessionSidebar } from "@/components/workspace/session-sidebar/SessionSi
 import { ContextUsageIndicator } from "@/components/workspace/context-indicator/ContextUsageIndicator"
 import { SideChat } from "@/components/workspace/side-chat/SideChat"
 import { usePaneStore } from "@/stores/pane-store"
+import { usePanelCoordinator } from "@/stores/panel-coordinator"
+import { useDiffStore } from "@/stores/diff-store"
 
 import { Button, TooltipSimple as Tooltip } from "@agentic-os/ui"
 import { cn } from "@/lib/utils"
@@ -51,7 +52,6 @@ import {
   CodePanelIcon,
   BrowserPanelIcon,
   DesignPanelIcon,
-  DiffPanelIcon,
   PreviewPanelIcon,
 } from "@/components/ui/PanelIcons"
 
@@ -59,7 +59,6 @@ const WORKSPACE_PANEL_OPTIONS: { id: WorkspacePanel; label: string; icon: typeof
   { id: "code", label: "Code", icon: CodePanelIcon },
   { id: "browser", label: "Browser", icon: BrowserPanelIcon },
   { id: "design", label: "Design", icon: DesignPanelIcon },
-  { id: "diff", label: "Diff", icon: DiffPanelIcon },
   { id: "preview", label: "Preview", icon: PreviewPanelIcon },
 ]
 
@@ -180,6 +179,11 @@ export function CodeCanvasPage() {
   const navigate = useNavigate()
   const persistWorkspaceState = useWorkspaceStore((s) => s.persistWorkspaceState)
   const restoreWorkspaceState = useWorkspaceStore((s) => s.restoreWorkspaceState)
+  const editorMode = useWorkspaceStore((s) => s.editorMode)
+  const diffReviewFile = useWorkspaceStore((s) => s.diffReviewFile)
+  const openFileInDiffMode = useWorkspaceStore((s) => s.openFileInDiffMode)
+  const setEditorMode = useWorkspaceStore((s) => s.setEditorMode)
+  const diffFiles = useDiffStore((s) => s.files)
 
   const unlistenRef = useRef<(() => void) | null>(null)
 
@@ -198,6 +202,9 @@ export function CodeCanvasPage() {
   const toggleSessionSidebar = usePaneStore((s) => s.toggleSessionSidebar)
   const panes = usePaneStore((s) => s.panes)
   const setPaneVisibility = usePaneStore((s) => s.setPaneVisibility)
+  const dispatchPaneAction = usePanelCoordinator((s) => s.dispatch)
+  const paneState = usePanelCoordinator((s) => s.paneState)
+  const lastPaneAction = usePanelCoordinator((s) => s.lastAction)
 
   const [isRefreshing, setIsRefreshing] = useState(false)
   const explorerRef = useRef<WorkspaceExplorerHandle>(null)
@@ -209,13 +216,17 @@ export function CodeCanvasPage() {
   const panelCtrlRef = useRef<WorkspacePanelController | null>(null)
 
   // ── Pane configs for PaneContainer ──
-  const visiblePanes = panes.filter((p) => p.visible && p.type !== "explorer" && p.type !== "chat" && p.type !== "terminal" && p.type !== "output")
+  const visiblePanes = useMemo(
+    () => panes
+      .filter((p) => p.visible && !["explorer", "chat", "terminal", "output", "diff"].includes(p.type))
+      .sort((a, b) => a.order - b.order),
+    [panes],
+  )
   const paneConfigs = useMemo(() => {
     const paneRenderers: Record<string, () => React.ReactNode> = {
       code: () => <WorkspaceErrorBoundary><CodeWorkspace /></WorkspaceErrorBoundary>,
       browser: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading browser...</div>}><BrowserWorkspace /></Suspense></WorkspaceErrorBoundary>,
       design: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading design...</div>}><DesignWorkspace /></Suspense></WorkspaceErrorBoundary>,
-      diff: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading diff...</div>}><DiffViewerPane /></Suspense></WorkspaceErrorBoundary>,
       preview: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading preview...</div>}><PreviewPane /></Suspense></WorkspaceErrorBoundary>,
     }
     return visiblePanes.map((p) => ({
@@ -245,6 +256,34 @@ export function CodeCanvasPage() {
       setWorkspacePanelOpen(true)
     },
   }), [navigate, refreshTree])
+
+  const handleToggleDiffReview = useCallback(() => {
+    if (editorMode === "diff") {
+      setEditorMode("editor")
+      return
+    }
+
+    const allDiffFiles = Array.from(diffFiles.values())
+    const preferredTarget =
+      diffReviewFile
+      ?? allDiffFiles.find((file) => file.status === "pending")?.path
+      ?? allDiffFiles[0]?.path
+      ?? useWorkspaceStore.getState().activeFilePath
+
+    if (!workspacePanelOpen) {
+      setWorkspacePanelOpen(true)
+      panelCtrlRef.current?.syncOpenState(true)
+    }
+
+    setPaneVisibility("code", true)
+    panelCtrlRef.current?.handleManualTabClick("code")
+
+    if (preferredTarget) {
+      openFileInDiffMode(preferredTarget)
+    } else {
+      setEditorMode("diff")
+    }
+  }, [diffFiles, diffReviewFile, editorMode, openFileInDiffMode, setEditorMode, setPaneVisibility, workspacePanelOpen])
 
   useEffect(() => {
     if (runtimeStatus === "uninitialized" && rootPath) {
@@ -467,13 +506,32 @@ export function CodeCanvasPage() {
   useEffect(() => {
     onFileChange((event) => {
       handleFileChange(event)
+      if (event.kind === "created" || event.kind === "removed") {
+        debouncedRefresh()
+      }
+
+      if (event.kind === "modified") {
+        const state = useWorkspaceStore.getState()
+        const relativePath = rootPath
+          ? event.path.replace(/\\/g, "/").replace(`${rootPath.replace(/\\/g, "/").replace(/\/$/, "")}/`, "")
+          : event.path.replace(/\\/g, "/")
+        const openFileEntry = state.openFiles.find((file) => file.path === relativePath)
+        if (openFileEntry && !openFileEntry.isDirty && rootPath) {
+          const absolutePath = `${rootPath}\\${relativePath.replace(/\//g, "\\")}`
+          void readFile(absolutePath).then((content) => {
+            useWorkspaceStore.getState().notifyFileEdited(relativePath, content)
+          }).catch(() => {
+            // External writes can race with file moves/deletes; tree refresh already handles recovery.
+          })
+        }
+      }
     }).then((unlisten) => {
       unlistenRef.current = unlisten
     }).catch((err) => console.error("File change listener setup failed:", err))
     return () => {
       unlistenRef.current?.()
     }
-  }, [handleFileChange])
+  }, [handleFileChange, rootPath])
 
   // ── Workspace Panel Controller ──
   // Three-layer state: USER_TAB (manual click + timestamp), RUNTIME_TAB (agent step), RESOLVED (final).
@@ -648,6 +706,30 @@ export function CodeCanvasPage() {
       document.body.style.userSelect = ""
     }
   }, [])
+
+  // ── Pane routing: sync AI actions to pane visibility and URL ──
+  const lastPaneAction = usePanelCoordinator((s) => s.lastAction)
+  useEffect(() => {
+    if (!lastPaneAction) return
+    if (lastPaneAction.type === "focus" || lastPaneAction.type === "open" || lastPaneAction.type === "navigate") {
+      const target = lastPaneAction.type === "navigate" ? lastPaneAction.pane : lastPaneAction.pane
+      const pane = panes.find((p) => p.type === target)
+      if (pane) {
+        setPaneVisibility(target, true)
+        setWorkspacePanel(target as WorkspacePanel)
+      }
+    }
+  }, [lastPaneAction])
+
+  // ── Navigate pane to URL when AI dispatches a navigate action ──
+  useEffect(() => {
+    if (!lastPaneAction || lastPaneAction.type !== "navigate") return
+    const target = lastPaneAction.pane
+    const paneConfig = panes.find((p) => p.type === target)
+    if (!paneConfig) return
+    setPaneVisibility(target, true)
+    setWorkspacePanel(target as WorkspacePanel)
+  }, [lastPaneAction, panes])
 
   // ── Resize handlers ──
   const handleExplorerResize = useCallback(() => {
@@ -842,10 +924,10 @@ export function CodeCanvasPage() {
 
               {/* Toggle diff viewer pane */}
               <button
-                onClick={() => setPaneVisibility("diff", !panes.find((p) => p.id === "diff")?.visible)}
+                onClick={handleToggleDiffReview}
                 className={cn(
                   "rounded p-0.5 transition-all",
-                  panes.find((p) => p.id === "diff")?.visible
+                  editorMode === "diff"
                     ? "text-blue-400 bg-blue-500/10"
                     : "text-white/30 hover:text-white/60 hover:bg-white/[0.06]"
                 )}
@@ -947,6 +1029,7 @@ export function CodeCanvasPage() {
         </div>
 
       </div>
+
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
           <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-white/[0.04] border border-white/[0.06]">

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect, useMemo } from "react"
 import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual"
 import { useWorkspaceStore } from "@/stores/workspace-store"
+import { useDiffStore } from "@/stores/diff-store"
 import { useTreeModel } from "./hooks/useTreeModel"
 import { useFileActions } from "./hooks/useFileActions"
 import { useGitStatus } from "./hooks/useGitStatus"
@@ -156,6 +157,9 @@ function VirtualTreeRow({
   const badgeKey = node.agentBadge ? node.agentBadge.label.toLowerCase() : ""
   const badgeStyle = node.agentBadge ? AGENT_BADGE_STYLES[badgeKey] || AGENT_BADGE_STYLES.referenced : null
   const badgeIcon = node.agentBadge ? AGENT_BADGE_ICONS[badgeKey] || "○" : null
+  const diffFiles = useDiffStore((s) => s.files)
+  const pendingDiff = !node.isDir ? diffFiles.get(node.path) : undefined
+  const hasPendingDiff = pendingDiff?.status === "pending"
   const measureRef = useRef<HTMLDivElement>(null)
 
   // Measure actual row height after mount and when row content changes
@@ -223,6 +227,9 @@ function VirtualTreeRow({
 
       {node.isRelevant && !node.isDir && (
         <span className="h-1.5 w-1.5 rounded-full bg-blue-400/50 shrink-0" title="Task-relevant file" />
+      )}
+      {hasPendingDiff && (
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-400/70 shrink-0" title="Has pending changes to review" />
       )}
       <span className={cn(
         "truncate text-[11px]",

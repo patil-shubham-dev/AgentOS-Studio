@@ -1,10 +1,12 @@
-import { memo, useMemo } from "react"
+import { memo, useMemo, useCallback } from "react"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { CopyButton } from "@/components/ui/CopyButton"
 import { parseDiff, detectLanguage, applyHighlighting } from "./diff-utils"
 import type { DiffHunk } from "./diff-utils"
 import type { FileEditRecord } from "../../step-card"
+import { useDiffStore } from "@/stores/diff-store"
+import { acceptDiffReviewHunk, rejectDiffReviewHunk } from "@/lib/diff-review"
 import DOMPurify from "dompurify"
 
 interface DiffCardProps {
@@ -14,8 +16,11 @@ interface DiffCardProps {
   deletions?: number
   language?: string
   edit?: FileEditRecord
+  /** If provided, looks up live review state from the diff store */
+  diffPath?: string
   onOpenInEditor?: (path: string) => void
   onRevert?: (path: string) => void
+  onAccept?: (path: string) => void
   expanded?: boolean
 }
 
@@ -99,10 +104,15 @@ export const DiffCard = memo(function DiffCard({
   deletions: propDeletions,
   language: propLanguage,
   edit,
+  diffPath,
   onOpenInEditor,
   onRevert,
+  onAccept,
   expanded = true,
 }: DiffCardProps) {
+  const diffEntry = useDiffStore((s) => (diffPath ? s.files.get(diffPath) : undefined))
+  const hunkStatuses = diffEntry?.hunks ?? null
+
   const computed = useMemo(() => {
     if (edit) {
       const lang = detectLanguage(edit.path)
@@ -136,10 +146,19 @@ export const DiffCard = memo(function DiffCard({
     return null
   }, [edit, propHunks, filePath, propLanguage, propAdditions, propDeletions])
 
+  const handleAcceptHunk = useCallback((path: string, hunkIndex: number) => {
+    void acceptDiffReviewHunk(path, hunkIndex)
+  }, [])
+
+  const handleRejectHunk = useCallback((path: string, hunkIndex: number) => {
+    void rejectDiffReviewHunk(path, hunkIndex)
+  }, [])
+
   if (!computed) return null
 
   const { path, hunks, additions, deletions, language } = computed
   const fileName = path.split("/").pop() || path
+  const fileStatus = diffEntry?.status ?? "pending"
 
   if (!expanded) {
     return (
@@ -149,6 +168,13 @@ export const DiffCard = memo(function DiffCard({
         className="group flex items-center gap-2 py-1"
       >
         <div className="flex items-center gap-1.5 text-xs font-medium text-white/50">
+          {diffPath && (
+            <span className={cn(
+              "h-1.5 w-1.5 rounded-full shrink-0",
+              fileStatus === "accepted" ? "bg-green-400" :
+              fileStatus === "rejected" ? "bg-red-400" : "bg-amber-400",
+            )} />
+          )}
           <span className="font-mono text-[11px]">{fileName}</span>
           {additions > 0 && (
             <span className="text-[10px] text-emerald-400/60">
@@ -171,9 +197,21 @@ export const DiffCard = memo(function DiffCard({
       animate={{ opacity: 1, y: 0 }}
       className="group py-1"
     >
-      <div className="rounded-lg border border-white/[0.04] bg-white/[0.01] overflow-hidden">
+      <div className={cn(
+        "rounded-lg border overflow-hidden",
+        diffPath && fileStatus === "accepted" ? "border-green-500/15 bg-green-500/[0.02]" :
+        diffPath && fileStatus === "rejected" ? "border-red-500/15 bg-red-500/[0.02]" :
+        "border-white/[0.04] bg-white/[0.01]",
+      )}>
         <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.04]">
           <div className="flex items-center gap-2 min-w-0">
+            {diffPath && (
+              <span className={cn(
+                "h-1.5 w-1.5 rounded-full shrink-0",
+                fileStatus === "accepted" ? "bg-green-400" :
+                fileStatus === "rejected" ? "bg-red-400" : "bg-amber-400",
+              )} />
+            )}
             <span className="text-xs font-medium text-white/70 truncate">
               {fileName}
             </span>
@@ -193,6 +231,14 @@ export const DiffCard = memo(function DiffCard({
             <span className="text-[9px] text-white/20 font-mono hidden sm:inline flex-shrink-0">
               {language}
             </span>
+            {diffPath && fileStatus !== "pending" && (
+              <span className={cn(
+                "text-[9px] font-medium px-1 py-0.5 rounded",
+                fileStatus === "accepted" ? "text-green-400/60 bg-green-500/8" : "text-red-400/60 bg-red-500/8",
+              )}>
+                {fileStatus === "accepted" ? "Accepted" : "Rejected"}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             <CopyButton
@@ -207,6 +253,14 @@ export const DiffCard = memo(function DiffCard({
                 Open
               </button>
             )}
+            {diffPath && fileStatus === "pending" && onAccept && (
+              <button
+                onClick={() => onAccept(path)}
+                className="text-[9px] text-green-400/40 hover:text-green-400/70 px-1.5 py-0.5 rounded hover:bg-green-500/10 transition-all"
+              >
+                Accept
+              </button>
+            )}
             {onRevert && (
               <button
                 onClick={() => onRevert(path)}
@@ -219,25 +273,53 @@ export const DiffCard = memo(function DiffCard({
         </div>
 
         <div className="overflow-x-auto">
-          {hunks.map((hunk, hi) => (
-            <div key={hi}>
-              {hi > 0 && <div className="h-px bg-white/[0.04]" />}
-              {hunks.length > 1 && <HunkHeader header={hunk.header} />}
-              {hunk.lines.length === 0 ? (
-                <div className="px-4 py-2 text-[10px] text-white/20 italic">
-                  No changes in this section
-                </div>
-              ) : (
-                hunk.lines.map((line, li) => (
-                  <DiffLineRow
-                    key={`${hi}-${li}`}
-                    line={line}
-                    lang={language}
-                  />
-                ))
-              )}
-            </div>
-          ))}
+          {hunks.map((hunk, hi) => {
+            const hunkState = hunkStatuses?.[hi]
+            const bgClass = hunkState?.status === "accepted" ? "bg-green-500/[0.03]" :
+              hunkState?.status === "rejected" ? "bg-red-500/[0.03]" : ""
+            return (
+              <div key={hi} className={bgClass}>
+                {hi > 0 && <div className="h-px bg-white/[0.04]" />}
+                {hunks.length > 1 && <HunkHeader header={hunk.header} />}
+                {hunk.lines.length === 0 ? (
+                  <div className="px-4 py-2 text-[10px] text-white/20 italic">
+                    No changes in this section
+                  </div>
+                ) : (
+                  <>
+                    {hunk.lines.map((line, li) => (
+                      <DiffLineRow
+                        key={`${hi}-${li}`}
+                        line={line}
+                        lang={language}
+                      />
+                    ))}
+                    {diffPath && hunkState?.status === "pending" && (
+                      <div className="flex items-center gap-1 px-3 py-1 border-t border-white/[0.03]">
+                        <button
+                          onClick={() => handleRejectHunk(path, hi)}
+                          className="text-[9px] text-red-400/40 hover:text-red-400/70 px-1.5 py-0.5 rounded hover:bg-red-500/10 transition-all"
+                        >
+                          Reject hunk
+                        </button>
+                        <button
+                          onClick={() => handleAcceptHunk(path, hi)}
+                          className="text-[9px] text-green-400/40 hover:text-green-400/70 px-1.5 py-0.5 rounded hover:bg-green-500/10 transition-all"
+                        >
+                          Accept hunk
+                        </button>
+                      </div>
+                    )}
+                    {diffPath && hunkState && hunkState.status !== "pending" && (
+                      <div className="px-3 py-0.5 text-[8px] font-medium text-white/20 border-t border-white/[0.03]">
+                        {hunkState.status === "accepted" ? "Accepted" : "Rejected"}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     </motion.div>

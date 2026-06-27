@@ -2,10 +2,11 @@ import { create } from "zustand"
 import type { FileEntry, OpenFile, FileChangeEvent, RuntimeConfig } from "@/types"
 import { requestRefresh, flushDeferredRefresh } from "@/runtime/runtime-coordinator"
 import { removeFromCaches } from "@/components/workspace/editor-utils"
-import { listDirectory } from "@/lib/filesystem"
+import { listDirectory, readFile } from "@/lib/filesystem"
 
 export type OrchestrationState = "idle" | "analyzing" | "planning" | "executing" | "reviewing" | "error"
 export type AiContextFile = { path: string; name: string; relevance: number; addedAt: number }
+export type EditorMode = "editor" | "diff" | "history" | "problems" | "search"
 
 const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   sandboxEnabled: true,
@@ -14,6 +15,15 @@ const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   maxConcurrency: 3,
   autoApprovePatterns: [],
   blockPatterns: [],
+}
+
+function toRelativeWorkspacePath(path: string, rootPath: string | null): string {
+  const normalizedPath = path.replace(/\\/g, "/")
+  const normalizedRoot = rootPath?.replace(/\\/g, "/").replace(/\/$/, "") ?? ""
+  if (normalizedRoot && normalizedPath.startsWith(`${normalizedRoot}/`)) {
+    return normalizedPath.slice(normalizedRoot.length + 1)
+  }
+  return normalizedPath
 }
 
 interface WorkspaceStore {
@@ -81,6 +91,12 @@ interface WorkspaceStore {
   splitFilePath: string | null
   setSplitMode: (mode: 'none' | 'horizontal' | 'vertical') => void
   setSplitFile: (path: string | null) => void
+
+  // Editor mode (Editor/Diff/History/Problems/Search)
+  editorMode: EditorMode
+  diffReviewFile: string | null
+  setEditorMode: (mode: EditorMode) => void
+  openFileInDiffMode: (filePath: string) => void
 
   // State persistence (open files, cursor, scroll)
   persistWorkspaceState: () => void
@@ -266,6 +282,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   splitMode: 'none' as const,
   splitFilePath: null,
 
+  editorMode: "editor" as EditorMode,
+  diffReviewFile: null,
+
   runtimeConfig: { ...DEFAULT_RUNTIME_CONFIG },
   workspaceLoaded: false,
 
@@ -441,13 +460,53 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   handleFileChange: (event) => {
     const store = get()
+    const relativePath = toRelativeWorkspacePath(event.path, store.rootPath)
     const newChanged = new Set(store.changedFiles)
     if (event.kind === "removed") {
-      newChanged.delete(event.path)
+      newChanged.delete(relativePath)
     } else {
-      newChanged.add(event.path)
+      newChanged.add(relativePath)
     }
-    set({ changedFiles: newChanged })
+
+    const nextState: Partial<WorkspaceStore> & { changedFiles: Set<string> } = {
+      changedFiles: newChanged,
+    }
+
+    if (event.kind === "removed") {
+      nextState.fileTree = store.fileTree
+      nextState.openFiles = store.openFiles
+      nextState.activeFilePath = store.activeFilePath
+
+      nextState.fileTree = (function remove(entries: FileEntry[]): FileEntry[] {
+        return entries
+          .filter((entry) => entry.path !== relativePath)
+          .map((entry) => {
+            if (entry.is_dir && entry.children.length > 0) {
+              return { ...entry, children: remove(entry.children) }
+            }
+            return entry
+          })
+      })(store.fileTree)
+
+      const removedOpenFile = store.openFiles.find((file) => file.path === relativePath)
+      if (removedOpenFile && !removedOpenFile.isDirty) {
+        const filtered = store.openFiles.filter((file) => file.path !== relativePath)
+        const removedIndex = store.openFiles.findIndex((file) => file.path === relativePath)
+        nextState.openFiles = filtered
+        nextState.activeFilePath = store.activeFilePath === relativePath
+          ? (filtered.length > 0 ? filtered[Math.min(removedIndex, filtered.length - 1)].path : null)
+          : store.activeFilePath
+        removeFromCaches(relativePath)
+      }
+
+      // If the file being diff-reviewed was deleted, exit diff mode
+      if (store.diffReviewFile === relativePath) {
+        nextState.editorMode = "editor"
+        nextState.diffReviewFile = null
+      }
+    }
+
+    set(nextState)
   },
 
   clearChangedFiles: () => set({ changedFiles: new Set() }),
@@ -495,6 +554,60 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   setSplitMode: (mode) => set({ splitMode: mode }),
   setSplitFile: (path) => set({ splitFilePath: path }),
 
+  setEditorMode: (mode) => {
+    const state = get()
+    if (mode === "diff") {
+      const reviewFile = state.diffReviewFile
+      const isValid = reviewFile != null && (
+        state.openFiles.some(f => f.path === reviewFile) ||
+        state.changedFiles.has(reviewFile)
+      )
+      if (!isValid) {
+        const fallback = state.changedFiles.values().next().value ?? state.openFiles[0]?.path ?? null
+        set({ editorMode: "diff", diffReviewFile: fallback })
+        return
+      }
+    }
+    set({
+      editorMode: mode,
+      diffReviewFile: mode === "diff" ? state.diffReviewFile : null,
+    })
+  },
+
+  openFileInDiffMode: (filePath) => {
+    const state = get()
+    const existing = state.openFiles.find(f => f.path === filePath)
+    const nextOpenFiles = existing
+      ? state.openFiles
+      : [...state.openFiles, { path: filePath, name: filePath.split('/').pop() ?? filePath.split('\\').pop() ?? filePath, content: '', isDirty: false }]
+
+    if (state.activeFilePath !== filePath) {
+      requestRefresh("workspace_change")
+    }
+
+    set({
+      openFiles: nextOpenFiles,
+      activeFilePath: filePath,
+      editorMode: "diff",
+      diffReviewFile: filePath,
+    })
+
+    if (!existing && state.rootPath) {
+      const absolutePath = `${state.rootPath}\\${filePath.replace(/\//g, "\\")}`
+      void readFile(absolutePath).then((content) => {
+        set((current) => ({
+          openFiles: current.openFiles.map((openFile) =>
+            openFile.path === filePath
+              ? { ...openFile, content, isDirty: false }
+              : openFile,
+          ),
+        }))
+      }).catch((error) => {
+        console.warn(`[workspace-store] Failed to hydrate diff review file "${filePath}":`, error)
+      })
+    }
+  },
+
   cursorLine: 1,
   cursorColumn: 1,
   selectedText: "",
@@ -522,21 +635,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   notifyFileEdited: (path, newContent) => {
     set((state) => {
-      const existingFile = state.openFiles.find(f => f.path === path)
+      const normalizedPath = toRelativeWorkspacePath(path, state.rootPath)
+      const existingFile = state.openFiles.find(f => f.path === normalizedPath)
       if (existingFile) {
         return {
           openFiles: state.openFiles.map(f =>
-            f.path === path ? { ...f, content: newContent, isDirty: false } : f
+            f.path === normalizedPath ? { ...f, content: newContent, isDirty: false } : f
           ),
-          activeFilePath: path,
-          lastEditedFile: path,
+          activeFilePath: normalizedPath,
+          lastEditedFile: normalizedPath,
         }
       } else {
-        const name = path.split('/').pop() ?? path.split('\\').pop() ?? path
+        const name = normalizedPath.split('/').pop() ?? normalizedPath.split('\\').pop() ?? normalizedPath
         return {
-          openFiles: [...state.openFiles, { path, name, content: newContent, isDirty: false }],
-          activeFilePath: path,
-          lastEditedFile: path,
+          openFiles: [...state.openFiles, { path: normalizedPath, name, content: newContent, isDirty: false }],
+          activeFilePath: normalizedPath,
+          lastEditedFile: normalizedPath,
         }
       }
     })
@@ -545,7 +659,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   recordFileEdit: (path) => set({ lastEditedFile: path }),
 
   persistWorkspaceState: () => {
-    const { openFiles, activeFilePath, cursorLine, cursorColumn, visibleRangeStart, visibleRangeEnd, splitMode, splitFilePath } = get()
+    const { openFiles, activeFilePath, cursorLine, cursorColumn, visibleRangeStart, visibleRangeEnd, splitMode, splitFilePath, editorMode, diffReviewFile } = get()
     const persistData = {
       openFiles: openFiles.map(f => ({ path: f.path, name: f.name })),
       activeFilePath,
@@ -555,6 +669,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       visibleRangeEnd,
       splitMode,
       splitFilePath,
+      editorMode,
+      diffReviewFile,
     }
     try {
       localStorage.setItem('agentic-workspace-state', JSON.stringify(persistData))
@@ -574,20 +690,30 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         visibleRangeEnd: number
         splitMode?: 'none' | 'horizontal' | 'vertical'
         splitFilePath?: string | null
+        editorMode?: 'editor' | 'diff'
+        diffReviewFile?: string | null
       }
       // Only restore if the root path matches (per-workspace)
       const storedRoot = localStorage.getItem('agentic-workspace-root')
       if (storedRoot !== get().rootPath) return
+      const reviewFile = data.diffReviewFile ?? null
+      const reconstructedOpenFiles = data.openFiles.map(f => ({ path: f.path, name: f.name, content: '', isDirty: false }))
+      const isValidReview = data.editorMode === "diff" && reviewFile != null && (
+        reconstructedOpenFiles.some(f => f.path === reviewFile) ||
+        get().changedFiles.has(reviewFile)
+      )
+      const activeInFiles = data.activeFilePath != null && reconstructedOpenFiles.some(f => f.path === data.activeFilePath)
       set({
-        activeFilePath: data.activeFilePath,
+        activeFilePath: activeInFiles ? data.activeFilePath : (reconstructedOpenFiles[0]?.path ?? null),
         cursorLine: data.cursorLine ?? 1,
         cursorColumn: data.cursorColumn ?? 1,
         visibleRangeStart: data.visibleRangeStart ?? 1,
         visibleRangeEnd: data.visibleRangeEnd ?? 1,
         splitMode: data.splitMode ?? 'none',
         splitFilePath: data.splitFilePath ?? null,
-        // Reconstruct openFiles from stored paths — content is loaded on open
-        openFiles: data.openFiles.map(f => ({ path: f.path, name: f.name, content: '', isDirty: false })),
+        editorMode: isValidReview ? "diff" : (data.editorMode ?? "editor"),
+        diffReviewFile: isValidReview ? reviewFile : null,
+        openFiles: reconstructedOpenFiles,
       })
     } catch { /* ignore corrupt data */ }
   },

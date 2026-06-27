@@ -97,6 +97,7 @@ export type ContextAssemblyInput = {
   contextEstimate?: ContextEstimate
   gitContext?: string
   workspaceSummary?: string
+  executionScratchpad?: string
 }
 
 export type ContextAssemblyResult = {

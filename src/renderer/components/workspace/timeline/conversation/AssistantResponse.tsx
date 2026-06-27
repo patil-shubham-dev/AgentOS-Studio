@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { RotateCcw, ChevronDown, ChevronRight, Brain, Loader2, Layers } from "lucide-react"
+import { RotateCcw, ChevronDown, ChevronRight, Brain, Loader2, Layers, Wrench, FileEdit, Terminal as TerminalIcon, AlertTriangle } from "lucide-react"
 import { useTimelineStore } from "../timeline-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useAgentStore } from "@/stores/agent-store"
@@ -15,6 +15,8 @@ import type { AgentStatus } from "@/stores/agent-store"
 import { getAgentLabel, getAgentStateIcon, mapToolToActivity } from "../../agent-visibility/AgentActivityMapper"
 import { cn } from "@/lib/utils"
 import { getSpringConfig } from "@/lib/motion"
+import { acceptAllDiffReviews, acceptDiffReviewFile, rejectDiffReviewFile } from "@/lib/diff-review"
+import { writeFile } from "@/lib/filesystem"
 
 const ACTIVITY_LABELS: Record<string, string> = {
   routing: "Looking through the project",
@@ -38,6 +40,49 @@ function getActivityLabel(session: AgentSession, hasContent: boolean): string | 
   if (phase && ACTIVITY_LABELS[phase.toLowerCase()]) return ACTIVITY_LABELS[phase.toLowerCase()]
   if (hasContent) return "Just a moment"
   return "Thinking through this"
+}
+
+function SectionDivider({ icon: Icon, label, count }: { icon: React.ComponentType<{ className?: string }>; label: string; count?: number }) {
+  return (
+    <div className="flex items-center gap-1.5 px-0.5 py-0.5 mt-1 mb-0.5 select-none">
+      <Icon className="h-3 w-3 text-white/20 shrink-0" />
+      <span className="text-[9px] font-semibold text-white/25 uppercase tracking-[0.08em]">{label}</span>
+      {count !== undefined && count > 0 && (
+        <span className="text-[8px] font-mono text-white/15 ml-1">{count}</span>
+      )}
+      <div className="flex-1 h-px bg-gradient-to-r from-white/[0.04] to-transparent ml-1" />
+    </div>
+  )
+}
+
+function buildEditSummary(session: AgentSession): string | null {
+  const edits = session.fileEdits
+  const ops = session.fileOps ?? []
+  if (edits.length === 0 && ops.length === 0) return null
+
+  const parts: string[] = []
+  const created = ops.filter(o => o.operation === "create")
+  const deleted = ops.filter(o => o.operation === "delete")
+
+  if (created.length > 0) {
+    const files = created.map(o => o.path.split("/").pop() || o.path)
+    parts.push(`Created ${files.join(", ")}`)
+  }
+  if (deleted.length > 0) {
+    const files = deleted.map(o => o.path.split("/").pop() || o.path)
+    parts.push(`Deleted ${files.join(", ")}`)
+  }
+  if (edits.length > 0) {
+    const files = edits.map(e => e.path.split("/").pop() || e.path)
+    const additions = edits.reduce((s, e) => s + e.additions, 0)
+    const deletions = edits.reduce((s, e) => s + e.deletions, 0)
+    parts.push(`Modified ${edits.length} file${edits.length > 1 ? "s" : ""}`)
+    if (additions > 0 || deletions > 0) {
+      parts.push(`(+${additions}/-${deletions})`)
+    }
+  }
+
+  return parts.length > 0 ? parts.join(" ") : null
 }
 
 function buildExecutionSummary(session: AgentSession): { main: string; details: string[] } | null {
@@ -219,11 +264,14 @@ export const AssistantResponse = memo(function AssistantResponse({
     const edit = session.fileEdits.find((fe) => fe.path === path)
     if (!edit?.oldContent) return
     try {
+      const revertedFromReview = await rejectDiffReviewFile(path)
+      if (revertedFromReview) {
+        return
+      }
       const rootPath = useWorkspaceStore.getState().rootPath
       const fullPath = rootPath ? `${rootPath}\\${path.replace(/\//g, "\\")}` : path
-      const fs = await import("@/lib/electron-api")
-      await fs.writeTextFile(fullPath, edit.oldContent)
-      useWorkspaceStore.getState().notifyFileEdited(fullPath, edit.oldContent)
+      await writeFile(fullPath, edit.oldContent)
+      useWorkspaceStore.getState().notifyFileEdited(path, edit.oldContent)
     } catch { console.warn("[AssistantResponse] Failed to revert file edit") }
   }, [session.fileEdits])
 
@@ -233,10 +281,19 @@ export const AssistantResponse = memo(function AssistantResponse({
     }
   }, [session.fileEdits, handleRevert])
 
+  const handleAcceptFile = useCallback(async (path: string) => {
+    await acceptDiffReviewFile(path)
+  }, [])
+
+  const handleAcceptAll = useCallback(async () => {
+    await acceptAllDiffReviews()
+  }, [])
+
   const agentStatuses = useAgentStore((s) => s.agentStatuses)
   const currentActivity = getActivityLabel(session, hasContent)
   const agentNarrative = isRunning && !hasContent ? getActiveAgentNarrative(agentStatuses) : null
   const executionSummary = isComplete ? buildExecutionSummary(session) : null
+  const editSummary = isComplete ? buildEditSummary(session) : null
 
   const sessionConfidence = useMemo(() => {
     if (session.confidence) return session.confidence
@@ -359,6 +416,7 @@ export const AssistantResponse = memo(function AssistantResponse({
             transition={SECTION_SPRING}
             className="py-0.5 space-y-1"
           >
+            <SectionDivider icon={Wrench} label="Tools" count={session.toolCalls.length} />
             {(() => {
               // Group tool calls by parallelGroup — tools with the same group index ran in parallel
               const groups: { parallelGroup?: number; tools: typeof session.toolCalls }[] = []
@@ -410,6 +468,7 @@ export const AssistantResponse = memo(function AssistantResponse({
             transition={SECTION_SPRING}
             className="py-0.5 space-y-1"
           >
+            <SectionDivider icon={FileEdit} label="Files" count={session.fileOps.length} />
             {session.fileOps.map((op, i) => {
               if (op.operation === "create") return <FileCreatedCard key={`op-${i}`} op={op} />
               if (op.operation === "delete") return <FileDeletedCard key={`op-${i}`} op={op} />
@@ -430,6 +489,7 @@ export const AssistantResponse = memo(function AssistantResponse({
             transition={SECTION_SPRING}
             className="py-0.5 space-y-1"
           >
+            <SectionDivider icon={TerminalIcon} label="Commands" count={session.terminalOutputs.length} />
             {session.terminalOutputs.map((term, i) => (
               <TerminalBlock key={`term-${i}`} terminal={term} />
             ))}
@@ -448,10 +508,23 @@ export const AssistantResponse = memo(function AssistantResponse({
             transition={SECTION_SPRING}
             className="py-0.5"
           >
+            <SectionDivider icon={FileEdit} label="Changes" count={session.fileEdits.length} />
+            {editSummary && (
+              <motion.div
+                initial={{ opacity: 0, x: -4 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="px-0.5 py-0.5"
+              >
+                <p className="text-[10px] text-white/40 leading-relaxed">{editSummary}</p>
+              </motion.div>
+            )}
             <MultiFileDiffCard
               files={session.fileEdits.map((fe) => ({ edit: fe }))}
               onRevert={handleRevert}
               onRevertAll={handleRevertAll}
+              onAcceptFile={handleAcceptFile}
+              onAcceptAll={handleAcceptAll}
+              onOpenInEditor={(path) => useWorkspaceStore.getState().openFileInDiffMode(path)}
             />
           </motion.div>
         )}
@@ -467,6 +540,7 @@ export const AssistantResponse = memo(function AssistantResponse({
             exit={{ opacity: 0, height: 0 }}
             transition={SECTION_SPRING}
           >
+            <SectionDivider icon={AlertTriangle} label="Issues" count={session.toolCalls.filter(tc => tc.status === "error").length} />
             <ToolErrorDisplay toolCalls={session.toolCalls} />
           </motion.div>
         )}

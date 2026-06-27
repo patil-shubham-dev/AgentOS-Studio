@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { persist } from "zustand/middleware"
 import type { DesignTokens, ComponentDefinition, DesignArtifact, DesignArtifactVersion } from "@/types"
 
 interface ApplyToCodeState {
@@ -57,100 +58,113 @@ const defaultApplyState: ApplyToCodeState = {
   errorMessage: null,
 }
 
-export const useDesignStore = create<DesignStore>((set, get) => ({
-  tokens: defaultTokens,
-  mode: "coding",
-  setTokens: (tokens) => set({ tokens }),
-  updateToken: (key, value) =>
-    set((s) => ({ tokens: { ...s.tokens, [key]: value } })),
-  setMode: (mode) => set({ mode }),
-  selectedComponent: null,
-  setSelectedComponent: (comp) => set({ selectedComponent: comp }),
+export const useDesignStore = create<DesignStore>()(
+  persist(
+    (set, get) => ({
+      tokens: defaultTokens,
+      mode: "coding",
+      setTokens: (tokens) => set({ tokens }),
+      updateToken: (key, value) =>
+        set((s) => ({ tokens: { ...s.tokens, [key]: value } })),
+      setMode: (mode) => set({ mode }),
+      selectedComponent: null,
+      setSelectedComponent: (comp) => set({ selectedComponent: comp }),
 
-  // Artifacts
-  artifacts: [],
-  currentArtifactId: null,
-  setCurrentArtifact: (id) => set({ currentArtifactId: id }),
+      // Artifacts
+      artifacts: [],
+      currentArtifactId: null,
+      setCurrentArtifact: (id) => set({ currentArtifactId: id }),
 
-  addArtifact: (data) => {
-    const id = `design-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const now = Date.now()
-    const artifact: DesignArtifact = {
-      id,
-      ...data,
-      createdAt: now,
-      updatedAt: now,
-      versions: [],
-      currentVersion: 0,
-    }
-    set((s) => ({ artifacts: [...s.artifacts, artifact], currentArtifactId: id }))
-    return id
-  },
+      addArtifact: (data) => {
+        const id = `design-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const now = Date.now()
+        const artifact: DesignArtifact = {
+          id,
+          ...data,
+          createdAt: now,
+          updatedAt: now,
+          versions: [],
+          currentVersion: 0,
+        }
+        set((s) => ({ artifacts: [...s.artifacts, artifact], currentArtifactId: id }))
+        return id
+      },
 
-  updateArtifact: (id, updates) =>
-    set((s) => ({
-      artifacts: s.artifacts.map((a) =>
-        a.id === id ? { ...a, ...updates, updatedAt: Date.now() } : a
-      ),
-    })),
+      updateArtifact: (id, updates) =>
+        set((s) => ({
+          artifacts: s.artifacts.map((a) =>
+            a.id === id ? { ...a, ...updates, updatedAt: Date.now() } : a
+          ),
+        })),
 
-  removeArtifact: (id) =>
-    set((s) => ({
-      artifacts: s.artifacts.filter((a) => a.id !== id),
-      currentArtifactId: s.currentArtifactId === id ? null : s.currentArtifactId,
-    })),
+      removeArtifact: (id) =>
+        set((s) => ({
+          artifacts: s.artifacts.filter((a) => a.id !== id),
+          currentArtifactId: s.currentArtifactId === id ? null : s.currentArtifactId,
+        })),
 
-  /** Versions capped at 50 per artifact (newest) */
-  addVersion: (artifactId, data) => {
-    const state = get()
-    const artifact = state.artifacts.find((a) => a.id === artifactId)
-    if (!artifact) return
+      /** Versions capped at 50 per artifact (newest) */
+      addVersion: (artifactId, data) => {
+        const state = get()
+        const artifact = state.artifacts.find((a) => a.id === artifactId)
+        if (!artifact) return
 
-    const nextVersion = artifact.versions.length + 1
-    const version: DesignArtifactVersion = {
-      version: nextVersion,
-      ...data,
-      timestamp: Date.now(),
-    }
+        const nextVersion = artifact.versions.length + 1
+        const version: DesignArtifactVersion = {
+          version: nextVersion,
+          ...data,
+          timestamp: Date.now(),
+        }
 
-    set((s) => ({
-      artifacts: s.artifacts.map((a) =>
-        a.id === artifactId
-          ? {
-              ...a,
-              versions: [...a.versions, version].slice(-50),
-              currentVersion: nextVersion,
-              updatedAt: Date.now(),
-            }
-          : a
-      ),
-    }))
-  },
+        set((s) => ({
+          artifacts: s.artifacts.map((a) =>
+            a.id === artifactId
+              ? {
+                  ...a,
+                  versions: [...a.versions, version].slice(-50),
+                  currentVersion: nextVersion,
+                  updatedAt: Date.now(),
+                }
+              : a
+          ),
+        }))
+      },
 
-  setCurrentVersion: (artifactId, version) =>
-    set((s) => ({
-      artifacts: s.artifacts.map((a) =>
-        a.id === artifactId ? { ...a, currentVersion: version } : a
-      ),
-    })),
+      setCurrentVersion: (artifactId, version) =>
+        set((s) => ({
+          artifacts: s.artifacts.map((a) =>
+            a.id === artifactId ? { ...a, currentVersion: version } : a
+          ),
+        })),
 
-  currentArtifact: () => {
-    const state = get()
-    return state.artifacts.find((a) => a.id === state.currentArtifactId) ?? null
-  },
+      currentArtifact: () => {
+        const state = get()
+        return state.artifacts.find((a) => a.id === state.currentArtifactId) ?? null
+      },
 
-  currentVersionData: () => {
-    const state = get()
-    const artifact = state.artifacts.find((a) => a.id === state.currentArtifactId)
-    if (!artifact) return null
-    return artifact.versions.find((v) => v.version === artifact.currentVersion) ?? null
-  },
+      currentVersionData: () => {
+        const state = get()
+        const artifact = state.artifacts.find((a) => a.id === state.currentArtifactId)
+        if (!artifact) return null
+        return artifact.versions.find((v) => v.version === artifact.currentVersion) ?? null
+      },
 
-  // Apply-to-code
-  applyToCode: defaultApplyState,
-  setApplyToCode: (partial) =>
-    set((s) => ({
-      applyToCode: { ...s.applyToCode, ...partial },
-    })),
-  resetApplyToCode: () => set({ applyToCode: defaultApplyState }),
-}))
+      // Apply-to-code
+      applyToCode: defaultApplyState,
+      setApplyToCode: (partial) =>
+        set((s) => ({
+          applyToCode: { ...s.applyToCode, ...partial },
+        })),
+      resetApplyToCode: () => set({ applyToCode: defaultApplyState }),
+    }),
+    {
+      name: "aos-design-store",
+      partialize: (state) => ({
+        tokens: state.tokens,
+        mode: state.mode,
+        artifacts: state.artifacts.slice(-20),
+        currentArtifactId: state.currentArtifactId,
+      }),
+    },
+  ),
+)

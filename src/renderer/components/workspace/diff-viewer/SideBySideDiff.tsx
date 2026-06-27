@@ -15,6 +15,7 @@ import { DiffEditor } from "@monaco-editor/react"
 import type { editor } from "monaco-editor"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { getReviewedContent } from "@/lib/diff-review"
 import {
   Check, X, CheckCheck, XCircle, FileText,
   ChevronDown, ChevronRight,
@@ -226,7 +227,7 @@ export function SideBySideDiff({
           <div className="h-[300px] min-h-[200px] max-h-[500px]">
             <DiffEditor
               original={file.originalContent}
-              modified={file.modifiedContent}
+              modified={getReviewedContent(file)}
               language={language}
               options={{
                 ...MONACO_COMMON_OPTIONS,
@@ -293,7 +294,7 @@ export function SideBySideDiff({
                         <div className="flex items-center gap-1 shrink-0">
                           {onRejectHunk && (
                             <button
-                              onClick={() => onRejectHunk(file.path, idx)}
+                              onClick={() => onRejectHunk(file.path, hunk.hunkIndex)}
                               className="rounded p-0.5 text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all"
                               title="Reject this hunk"
                             >
@@ -302,7 +303,7 @@ export function SideBySideDiff({
                           )}
                           {onAcceptHunk && (
                             <button
-                              onClick={() => onAcceptHunk(file.path, idx)}
+                              onClick={() => onAcceptHunk(file.path, hunk.hunkIndex)}
                               className="rounded p-0.5 text-white/20 hover:text-green-400 hover:bg-green-500/10 transition-all"
                               title="Accept this hunk"
                             >

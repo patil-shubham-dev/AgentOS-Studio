@@ -174,4 +174,18 @@ describe('Editor (TC-21 to TC-30)', () => {
     const parsed = JSON.parse(raw!)
     expect(parsed[0][1].content).toBe('unsaved content')
   })
+
+  it('TC-31: openFileInDiffMode hydrates unopened file content', async () => {
+    const { useWorkspaceStore } = await import('@/stores/workspace-store')
+    useWorkspaceStore.setState({ rootPath: workspace.root })
+
+    useWorkspaceStore.getState().openFileInDiffMode('src/index.ts')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const state = useWorkspaceStore.getState()
+    const file = state.openFiles.find((entry: any) => entry.path === 'src/index.ts')
+    expect(state.editorMode).toBe('diff')
+    expect(state.diffReviewFile).toBe('src/index.ts')
+    expect(file?.content).toContain('hello world')
+  })
 })

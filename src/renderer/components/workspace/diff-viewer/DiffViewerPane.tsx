@@ -17,6 +17,14 @@ import { useDiffStore } from "@/stores/diff-store"
 import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
 import { SideBySideDiff } from "./SideBySideDiff"
 import {
+  acceptAllDiffReviews,
+  acceptDiffReviewFile,
+  acceptDiffReviewHunk,
+  rejectAllDiffReviews,
+  rejectDiffReviewFile,
+  rejectDiffReviewHunk,
+} from "@/lib/diff-review"
+import {
   Code2, CheckCheck, XCircle, FileText, GitBranch,
   Eye, EyeOff, ChevronLeft, ChevronRight, Loader2,
   Check, X, AlertTriangle,
@@ -25,9 +33,6 @@ import {
 export function DiffViewerPane() {
   const {
     files,
-    acceptFile, rejectFile,
-    acceptHunk, rejectHunk,
-    acceptAll, rejectAll,
     clear,
   } = useDiffStore()
 
@@ -140,7 +145,7 @@ export function DiffViewerPane() {
 
           {/* Accept All / Reject All */}
           <button
-            onClick={rejectAll}
+            onClick={() => { void rejectAllDiffReviews() }}
             disabled={totals.pending === 0}
             className={cn(
               "flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-all",
@@ -153,7 +158,7 @@ export function DiffViewerPane() {
             Reject All
           </button>
           <button
-            onClick={acceptAll}
+            onClick={() => { void acceptAllDiffReviews() }}
             disabled={totals.pending === 0}
             className={cn(
               "flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-all",
@@ -258,10 +263,10 @@ export function DiffViewerPane() {
             <SideBySideDiff
               key={selectedFile.path}
               file={selectedFile}
-              onAcceptAll={acceptFile}
-              onRejectAll={rejectFile}
-              onAcceptHunk={acceptHunk}
-              onRejectHunk={rejectHunk}
+              onAcceptAll={(path) => { void acceptDiffReviewFile(path) }}
+              onRejectAll={(path) => { void rejectDiffReviewFile(path) }}
+              onAcceptHunk={(path, hunkIndex) => { void acceptDiffReviewHunk(path, hunkIndex) }}
+              onRejectHunk={(path, hunkIndex) => { void rejectDiffReviewHunk(path, hunkIndex) }}
               expanded={true}
             />
           ) : (

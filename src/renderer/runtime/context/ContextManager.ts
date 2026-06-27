@@ -552,6 +552,7 @@ ${rules.map(r => r.content).join('\n\n')}`
         ...(architectureContextBlock ? [architectureContextBlock] : []),
         ...(verificationPlanBlock ? [verificationPlanBlock] : []),
         ...(impactContextBlock ? [impactContextBlock] : []),
+        ...(input.executionScratchpad ? [input.executionScratchpad] : []),
       ],
     }
 

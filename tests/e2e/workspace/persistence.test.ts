@@ -7,9 +7,11 @@ describe('Persistence (TC-34 to TC-39)', () => {
   let mockStorage: Storage
 
   beforeEach(async () => {
+    vi.resetModules()
     workspace = createTestWorkspace()
     mockStorage = createMockStorage()
     vi.stubGlobal('localStorage', mockStorage)
+    vi.stubGlobal('window', { localStorage: mockStorage })
     const { useWorkspaceStore } = await import('@/stores/workspace-store')
     useWorkspaceStore.setState({
       rootPath: null, fileTree: [], openFiles: [], activeFilePath: null,
@@ -112,5 +114,39 @@ describe('Persistence (TC-34 to TC-39)', () => {
     expect(parsed.openFiles).toHaveLength(2)
     expect(parsed.cursorLine).toBe(5)
     expect(parsed.cursorColumn).toBe(10)
+  })
+
+  it('TC-40: preview tabs persist to localStorage', async () => {
+    const { usePreviewStore } = await import('@/stores/preview-store')
+    usePreviewStore.setState({ tabs: [], activeTabId: null })
+
+    usePreviewStore.getState().openUrl('https://example.com', 'Example')
+
+    const raw = mockStorage.getItem('aos-preview-store')
+    expect(raw).toBeTruthy()
+    expect(raw).toContain('https://example.com')
+    expect(raw).toContain('Example')
+  })
+
+  it('TC-41: design state persists tokens and artifacts', async () => {
+    const { useDesignStore } = await import('@/stores/design-store')
+    useDesignStore.setState({
+      artifacts: [],
+      currentArtifactId: null,
+      mode: 'coding',
+      selectedComponent: null,
+    })
+
+    useDesignStore.getState().updateToken('primaryColor', '#123456')
+    useDesignStore.getState().addArtifact({
+      name: 'Hero',
+      description: 'Landing page hero',
+      tags: ['marketing'],
+    })
+
+    const raw = mockStorage.getItem('aos-design-store')
+    expect(raw).toBeTruthy()
+    expect(raw).toContain('#123456')
+    expect(raw).toContain('Landing page hero')
   })
 })

@@ -5,6 +5,7 @@ import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { ExecutionSessionManager } from "@/runtime/sessions/ExecutionSessionManager"
 import { StreamManager } from "@/runtime/streaming/StreamManager"
+import { useDiffStore } from "@/stores/diff-store"
 
 globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   return setTimeout(() => cb(performance.now()), 0) as unknown as number
@@ -13,6 +14,7 @@ globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id)
 globalThis.performance = globalThis.performance ?? Date.now() as any
 
 function setupStores() {
+  useDiffStore.getState().clear()
   useAgentStore.setState({
     conversations: {
       coder: { messages: [], createdAt: Date.now(), updatedAt: Date.now() },

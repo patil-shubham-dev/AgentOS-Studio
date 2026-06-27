@@ -1,36 +1,57 @@
+# Dependencies
 node_modules/
-dist/
-target/
-.env
-.env.local
-*.log
-.DS_Store
-Thumbs.db
 
 # Build output
-src-tauri/target/
-packages/*/dist/
+dist/
+out/
+release/
+build/*
+!build/installer.nsh
+!build/installer-hooks.nsh
+!build/entitlements.mac.plist
+!build/wix-template.xml
+
+# Stray build artifacts at root
+index-*.js
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-nul
+*~
 
-# Tauri
-src-tauri/gen/schemas/
+# TypeScript
+*.tsbuildinfo
 
-# Heap snapshots
+# Heap snapshots (large memory dumps)
 *.heapsnapshot
 
-# Build output
-out/
-build/*
-!build/installer.nsh
-!build/installer-hooks.nsh
-release/
-benchmarks/
+# Tauri (legacy)
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Monorepo package build output
+packages/*/dist/
 
 # Test fixture repos (large generated datasets)
 tests/fixtures/repos/
+
+# Benchmark generated data
+benchmarks/
