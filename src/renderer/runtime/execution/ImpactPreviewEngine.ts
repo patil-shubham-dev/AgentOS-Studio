@@ -226,7 +226,7 @@ export class ImpactPreviewEngine {
     }
 
     const layers: string[][] = []
-    let remaining = new Set(files)
+    const remaining = new Set(files)
 
     while (remaining.size > 0) {
       const layer = [...remaining].filter(file => {

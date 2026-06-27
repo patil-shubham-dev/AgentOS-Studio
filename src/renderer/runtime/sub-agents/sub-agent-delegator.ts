@@ -466,7 +466,7 @@ async function attemptStreamingRound(
   // Only attempt streaming if we can
   try {
     let streamedContent = ""
-    let pendingToolCalls: import("@agentic-os/providers").ToolCall[] = []
+    const pendingToolCalls: import("@agentic-os/providers").ToolCall[] = []
 
     return await new Promise((resolve, reject) => {
       const onAbort = () => {

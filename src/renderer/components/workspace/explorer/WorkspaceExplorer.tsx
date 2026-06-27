@@ -175,7 +175,7 @@ function VirtualTreeRow({
     // Initial measurement
     rowHeightCache.set(rowIndex, el.getBoundingClientRect().height)
     return () => observer.disconnect()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [rowIndex, node.name, node.gitStatus, node.agentBadge?.label])
 
   return (

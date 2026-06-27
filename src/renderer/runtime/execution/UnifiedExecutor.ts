@@ -138,7 +138,7 @@ export class UnifiedExecutor {
       { type: "abort-controller", id: cleanupId, controller: ctrl },
       "execution",
     )
-    let cleanupRegistered = true
+    const cleanupRegistered = true
 
     const cb = ReliabilityManager.getInstance().circuitBreakers.getOrCreate("execution")
     if (!cb.allowRequest()) {

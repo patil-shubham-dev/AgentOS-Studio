@@ -43,7 +43,7 @@ vi.mock("@/runtime/providers/ProviderRuntime", () => ({
     setDefaultModel: vi.fn(),
     stream: vi.fn().mockImplementation(async function* () {
       const tokens = ["Hello", "! ", "I", " am", " an", " AI", " assistant", "."]
-      let fullText = "Hello! I am an AI assistant."
+      const fullText = "Hello! I am an AI assistant."
       for (const t of tokens) {
         mockTokenCalls.push(t)
         yield { type: 'token', text: t }

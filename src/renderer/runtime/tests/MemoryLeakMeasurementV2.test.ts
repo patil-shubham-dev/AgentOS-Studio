@@ -12,7 +12,7 @@ vi.mock("@/runtime/providers/ProviderRuntime", () => ({
     setDefaultModel: vi.fn(),
     stream: vi.fn().mockImplementation(async function* () {
       const tokens = ["Hello", "! ", "I", " am", " an", " AI", " assistant", "."]
-      let fullText = "Hello! I am an AI assistant."
+      const fullText = "Hello! I am an AI assistant."
       for (const t of tokens) {
         yield { type: 'token', text: t }
         await new Promise(r => setTimeout(r, 1))
@@ -45,7 +45,7 @@ function getMemoryDetails(): { heapUsed: number; heapTotal: number; external: nu
 
 function getHeapDetails(): { totalHeapSize: number; usedHeapSize: number; heapSizeLimit: number; mallocedMemory: number } {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const v8 = require("v8")
     const stats = v8.getHeapStatistics()
     return {
@@ -67,7 +67,7 @@ function forceGC(): void {
 
 function writeHeapSnapshot(label: string): void {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const v8 = require("v8")
     const filename = v8.writeHeapSnapshot(`./heap-${label}.heapsnapshot`)
     console.log(`[HeapSnapshot] written: ${filename}`)

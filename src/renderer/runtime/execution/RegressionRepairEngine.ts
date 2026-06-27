@@ -137,7 +137,7 @@ export class RegressionRepairEngine {
   ): Promise<{ attempted: number; succeeded: number; failed: number; messages: string[] }> {
     const messages: string[] = []
     let attempted = 0
-    let succeeded = 0
+    const succeeded = 0
     let failed = 0
 
     for (const detail of check.details) {

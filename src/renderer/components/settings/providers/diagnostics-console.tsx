@@ -258,7 +258,7 @@ export function DiagnosticsConsole({ open, onClose, provider }: DiagnosticsConso
       t.statusCode?.toString().includes(q) ||
       t.type?.toLowerCase().includes(q),
     )
-  }, [provider, searchQuery]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [provider, searchQuery])  
 
   const health = provider ? getHealth(provider.baseUrl) : null
   const diagnostics = provider ? getProviderDiagnostics(provider.baseUrl) : null

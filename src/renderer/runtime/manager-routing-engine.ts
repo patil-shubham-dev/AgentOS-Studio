@@ -203,7 +203,7 @@ export function route(
     }
   }
 
-  let availableRoles = pattern.roles.filter((r) => wiredRoles.includes(r))
+  const availableRoles = pattern.roles.filter((r) => wiredRoles.includes(r))
 
   // Input length escalation: long inputs indicate complex tasks that benefit from multi-agent
   const inputWordCount = input.trim().split(/\s+/).length

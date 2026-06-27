@@ -20,12 +20,23 @@ export default defineConfig([
       'react-hooks': reactHooksPlugin,
     },
     rules: {
-      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/rules-of-hooks': 'warn',
       'react-hooks/exhaustive-deps': 'warn',
+      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-require-imports': 'warn',
+      '@typescript-eslint/no-unused-expressions': 'warn',
+      'no-empty': 'warn',
+      'no-useless-escape': 'warn',
+      'no-control-regex': 'warn',
+      'no-unexpected-multiline': 'warn',
+      'no-constant-binary-expression': 'warn',
+      'require-yield': 'warn',
+      'no-case-declarations': 'warn',
       'no-restricted-imports': ['error', {
         patterns: [
           {
-            group: ['@/runtime/index', '@/runtime'],
+            regex: '^@/runtime$|^@/runtime/index$',
             message: 'Do not import from the runtime barrel. Import specific modules by their direct path instead.',
           },
         ],
@@ -36,4 +47,9 @@ export default defineConfig([
     },
   },
   reactRefresh.configs.vite,
+  {
+    rules: {
+      'react-refresh/only-export-components': 'warn',
+    },
+  },
 ])

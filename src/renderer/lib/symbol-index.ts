@@ -95,8 +95,8 @@ export class SymbolIndex {
     const tsFiles = sourceFiles.filter((p) => /\.(ts|tsx)$/i.test(p))
     const nonTsFiles = sourceFiles.filter((p) => !/\.(ts|tsx)$/i.test(p))
 
-    let symbols: SymbolInfo[] = []
-    let callGraph: CallReference[] = []
+    const symbols: SymbolInfo[] = []
+    const callGraph: CallReference[] = []
 
     if (tsFiles.length > 0) {
       try {
@@ -227,7 +227,7 @@ export class SymbolIndex {
         else if (kind === "route") nameIndex = 1
         else nameIndex = m.length - 1
 
-        let name = m[nameIndex]
+        const name = m[nameIndex]
         if (!name) continue
 
         if (kind === "route" && name) {

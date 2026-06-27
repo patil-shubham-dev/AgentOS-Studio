@@ -212,7 +212,7 @@ export class ContextManager {
     const ws = getWorkspaceContextSnapshot()
     const activeFile = ws?.activeFilePath ?? ''
 
-    let symbolRefs = new Map<string, number>()
+    const symbolRefs = new Map<string, number>()
     try {
       const activeSymbols = workspaceSymbolIndex.getSymbolsByFile(activeFile)
       for (const sym of activeSymbols) {
@@ -235,7 +235,7 @@ export class ContextManager {
       }
     } catch { }
 
-    let depScores = new Map<string, number>()
+    const depScores = new Map<string, number>()
     try {
       const graph = getDependencyGraph()
       if (graph) {

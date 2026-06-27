@@ -118,7 +118,7 @@ export class EventBus {
     }
 
     // Run V2 middlewares pre-hooks (with error reporting - no silent swallowing)
-    let processed = this.runPreMiddlewares(event)
+    const processed = this.runPreMiddlewares(event)
     if (processed === null) {
       this.emitDepth--
       return // Middleware dropped the event

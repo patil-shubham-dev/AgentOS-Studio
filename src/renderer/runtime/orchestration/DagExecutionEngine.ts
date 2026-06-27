@@ -364,7 +364,7 @@ export class DagExecutionEngine {
     }
   }
 
-  private   private initializeSharedContext(session: ExecutionSession): void {
+  private initializeSharedContext(session: ExecutionSession): void {
     if (session.sharedContext) return
 
     const ctx = new SharedPipelineContext()

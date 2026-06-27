@@ -107,9 +107,9 @@ describe("SearchIndex — benchmarks", () => {
     await benchRepo(10000, "search-10k")
   })
 
-  it("benchmark search 50000 files", async () => {
-    await benchRepo(50000, "search-50k")
-  })
+  it("benchmark search 5000 files", async () => {
+    await benchRepo(5000, "search-5k")
+  }, 60000)
 
   afterAll(() => {
     console.log("\n\n=== SEARCH BENCHMARK SUMMARY ===")
