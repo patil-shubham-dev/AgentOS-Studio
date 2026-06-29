@@ -256,7 +256,8 @@ function PaneLayout({ panes, layoutMode }: { panes: PaneConfig[]; layoutMode: st
 }
 
 export function PaneContainer({ panes }: { panes: PaneConfig[] }) {
-  const { layoutMode, reorderPanes } = usePaneStore()
+  const layoutMode = usePaneStore((s) => s.layoutMode)
+  const reorderPanes = usePaneStore((s) => s.reorderPanes)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -327,7 +328,8 @@ export function Pane({
   onClose?: () => void
   dragHandleProps?: Record<string, unknown>
 }) {
-  const { focusedPaneId, focusPane } = usePaneStore()
+  const focusedPaneId = usePaneStore((s) => s.focusedPaneId)
+  const focusPane = usePaneStore((s) => s.focusPane)
   const isFocused = focusedPaneId === id
 
   return (

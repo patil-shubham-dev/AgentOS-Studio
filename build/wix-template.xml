@@ -30,7 +30,7 @@
     <MediaTemplate EmbedCab="yes" />
 
     <!-- Branding -->
-    <Icon Id="app.ico" SourceFile="$(var.ProjectDir)resources\branding\icon.png" />
+    <Icon Id="app.ico" SourceFile="$(var.ProjectDir)resources\branding\icon.ico" />
     <Property Id="ARPPRODUCTICON" Value="app.ico" />
     <Property Id="ARPHELPLINK" Value="https://agenticos.ai/support" />
     <Property Id="ARPURLINFOABOUT" Value="https://agenticos.ai" />

@@ -10,7 +10,6 @@ export type PaneType =
   | "browser"
   | "design"
   | "explorer"
-  | "preview"
   | "tasks"
 
 export interface PaneInstance {
@@ -23,14 +22,12 @@ export interface PaneInstance {
   maxSize: number
 }
 
-export type PaneLayoutMode = "single" | "grid-2col" | "grid-3col" | "grid-4col"
+export type PaneLayoutMode = "single" | "grid-2col" | "grid-3col"
 
 export interface PaneState {
   panes: PaneInstance[]
   layoutMode: PaneLayoutMode
   focusedPaneId: string | null
-  sessionSidebarOpen: boolean
-  sessionSidebarWidth: number
   sideChatOpen: boolean
 
   registerPane: (pane: PaneInstance) => void
@@ -43,9 +40,6 @@ export interface PaneState {
   setPaneOrder: (id: string, order: number) => void
   focusPane: (id: string) => void
   setLayoutMode: (mode: PaneLayoutMode) => void
-  toggleSessionSidebar: () => void
-  setSessionSidebarOpen: (open: boolean) => void
-  setSessionSidebarWidth: (width: number) => void
   toggleSideChat: () => void
   setSideChatOpen: (open: boolean) => void
   getPane: (type: PaneType) => PaneInstance | undefined
@@ -59,9 +53,8 @@ const DEFAULT_PANES: PaneInstance[] = [
   { id: "terminal", type: "terminal", visible: false, order: 3, size: 200, minSize: 100, maxSize: 600 },
   { id: "output", type: "output", visible: false, order: 4, size: 200, minSize: 100, maxSize: 600 },
   { id: "diff", type: "diff", visible: false, order: 5, size: 480, minSize: 300, maxSize: Infinity },
-  { id: "preview", type: "preview", visible: false, order: 6, size: 480, minSize: 200, maxSize: Infinity },
-  { id: "browser", type: "browser", visible: false, order: 7, size: 480, minSize: 300, maxSize: Infinity },
-  { id: "design", type: "design", visible: false, order: 8, size: 480, minSize: 300, maxSize: Infinity },
+  { id: "browser", type: "browser", visible: false, order: 6, size: 480, minSize: 300, maxSize: Infinity },
+  { id: "design", type: "design", visible: false, order: 7, size: 480, minSize: 300, maxSize: Infinity },
 ]
 
 export const usePaneStore = create<PaneState>()(
@@ -70,8 +63,6 @@ export const usePaneStore = create<PaneState>()(
       panes: DEFAULT_PANES,
       layoutMode: "grid-2col",
       focusedPaneId: null,
-      sessionSidebarOpen: true,
-      sessionSidebarWidth: 220,
       sideChatOpen: false,
 
       registerPane: (pane) =>
@@ -153,12 +144,6 @@ export const usePaneStore = create<PaneState>()(
 
       setLayoutMode: (mode) => set({ layoutMode: mode }),
 
-      toggleSessionSidebar: () =>
-        set((s) => ({ sessionSidebarOpen: !s.sessionSidebarOpen })),
-
-      setSessionSidebarOpen: (open) => set({ sessionSidebarOpen: open }),
-      setSessionSidebarWidth: (width) => set({ sessionSidebarWidth: width }),
-
       toggleSideChat: () =>
         set((s) => ({ sideChatOpen: !s.sideChatOpen })),
 
@@ -176,8 +161,6 @@ export const usePaneStore = create<PaneState>()(
       partialize: (state) => ({
         panes: state.panes,
         layoutMode: state.layoutMode,
-        sessionSidebarOpen: state.sessionSidebarOpen,
-        sessionSidebarWidth: state.sessionSidebarWidth,
       }),
     }
   )

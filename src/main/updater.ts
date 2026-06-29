@@ -6,7 +6,7 @@ let isChecking = false
 let progressDialog: BrowserWindow | null = null
 
 const PRODUCT_NAME = 'AgenticOS'
-const BG_COLOR = '#0A0A0F'
+const BG_COLOR = '#0D0D0D'
 const TEXT_COLOR = '#E2E8F0'
 const ACCENT_COLOR = '#2563EB'
 const MUTED_COLOR = '#888888'
@@ -46,27 +46,25 @@ function renderProgressHtml(percent: number, speed: string, transferred: string,
     min-height:100vh; padding:24px;
   }
   .card {
-    background: #14141A; border:1px solid #1E1E2A;
+    background: #0D0D0D; border:1px solid rgba(255,255,255,0.08);
     border-radius:14px; padding:28px; width:100%; max-width:380px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     text-align:center;
   }
   .logo {
     width:44px; height:44px; margin:0 auto 16px;
-    background: linear-gradient(135deg, ${ACCENT_COLOR}, #7C3AED);
-    border-radius:10px; display:flex; align-items:center; justify-content:center;
-    font-size:22px; font-weight:700; color:white;
   }
+  .logo svg { width:44px; height:44px; }
   h2 { font-size:18px; font-weight:700; margin-bottom:4px; }
   .sub { font-size:12px; color:${MUTED_COLOR}; margin-bottom:20px; }
-  .bar-wrap { background:#1E1E2A; border-radius:6px; height:6px; margin-bottom:10px; overflow:hidden; }
-  .bar { height:100%; background:linear-gradient(90deg,${ACCENT_COLOR},#7C3AED); border-radius:6px; width:${percent}%; transition:width .3s; }
+  .bar-wrap { background:rgba(255,255,255,0.06); border-radius:6px; height:6px; margin-bottom:10px; overflow:hidden; }
+  .bar { height:100%; background:${ACCENT_COLOR}; border-radius:6px; width:${percent}%; transition:width .3s; }
   .info { font-size:11px; color:${MUTED_COLOR}; }
 </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">A</div>
+    <div class="logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><circle cx="100" cy="100" r="96" fill="#0D0D0D"/><circle cx="100" cy="100" r="72" fill="none" stroke="#2563EB" stroke-width="0.6" stroke-opacity="0.22"/><polygon points="100,56 138,78 138,122 100,144 62,122 62,78" fill="none" stroke="#2563EB" stroke-width="0.75" stroke-opacity="0.48" stroke-linejoin="miter"/><circle cx="100" cy="56" r="5" fill="#2563EB"/><circle cx="138" cy="78" r="5" fill="#2563EB"/><circle cx="138" cy="122" r="5" fill="#2563EB"/><circle cx="100" cy="144" r="5" fill="#2563EB"/><circle cx="62" cy="122" r="5" fill="#2563EB"/><circle cx="62" cy="78" r="5" fill="#2563EB"/><circle cx="100" cy="100" r="11" fill="#0D0D0D" stroke="#FFFFFF" stroke-width="1.3"/><circle cx="100" cy="100" r="4.2" fill="#FFFFFF"/><circle cx="100" cy="100" r="96" fill="none" stroke="#FFFFFF" stroke-width="1.5"/></svg></div>
     <h2>Downloading Update</h2>
     <div class="sub">${PRODUCT_NAME}</div>
     <div class="bar-wrap"><div class="bar"></div></div>

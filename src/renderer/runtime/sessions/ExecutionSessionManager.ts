@@ -77,6 +77,7 @@ export class ExecutionSessionManager {
   private static readonly SESSION_MAX_DURATION_MS = 300_000
   /** Max events to buffer per session for memory extraction */
   private static readonly MAX_BUFFERED_EVENTS = 1000
+  private static readonly MAX_TELEMETRY_ENTRIES = 1000
 
   /** Buffers ExecutionEvents per session ID for cross-session memory extraction */
   private sessionEventBuffer = new Map<string, ExecutionEvent[]>()
@@ -410,6 +411,9 @@ export class ExecutionSessionManager {
         const tokens = (event as any).tokens ?? (event.content ? Math.round(event.content.length / 4) : 0)
         if (tokens > 0) {
           this.runtimeTelemetry.tokenCounts.push(tokens)
+          if (this.runtimeTelemetry.tokenCounts.length > ExecutionSessionManager.MAX_TELEMETRY_ENTRIES) {
+            this.runtimeTelemetry.tokenCounts = this.runtimeTelemetry.tokenCounts.slice(-ExecutionSessionManager.MAX_TELEMETRY_ENTRIES)
+          }
         }
         break
       }
@@ -835,7 +839,13 @@ export class ExecutionSessionManager {
         break
       }
 
-      case "TOKEN":
+      case "TOKEN": {
+        const tokenStepId = this.stepByExecId.get(event.executionId)
+        if (tokenStepId) {
+          StreamManager.getInstance().append(tokenStepId, (event as any).token ?? "")
+        }
+        break
+      }
       case "MESSAGE_UPDATE":
         break
     }
@@ -919,6 +929,7 @@ export class ExecutionSessionManager {
       case "EXECUTION_FAILED":
         this.obsManager.incrementCounter("execution_failures")
         this.obsManager.addSpan(event.executionId, "execution_failed", { error: event.error })
+        this.cleanupPendingToolArgs(event.executionId)
         break
 
       case "EXECUTION_CREATED":
@@ -927,6 +938,7 @@ export class ExecutionSessionManager {
 
       case "EXECUTION_COMPLETE":
         this.obsManager.incrementCounter("executions_complete")
+        this.cleanupPendingToolArgs(event.executionId)
         break
 
       case "VERIFY_PASSED":
@@ -946,6 +958,15 @@ export class ExecutionSessionManager {
     }
   }
 
+  /** Remove all pending tool args for a given executionId (cleanup on execution end) */
+  private cleanupPendingToolArgs(executionId: string): void {
+    for (const [toolId, pending] of this.pendingToolArgs) {
+      if (pending.executionId === executionId) {
+        this.pendingToolArgs.delete(toolId)
+      }
+    }
+  }
+
   /** Record per-runtime telemetry for side-by-side validation */
   private recordRuntimeTelemetry(session: ExecutionSession, eventCount: number): void {
     const duration = session.completedAt ? session.completedAt - session.startedAt : 0
@@ -953,7 +974,12 @@ export class ExecutionSessionManager {
     if (session.status === "completed") this.runtimeTelemetry.completed++
     else if (session.status === "failed") this.runtimeTelemetry.failed++
     else if (session.status === "cancelled") this.runtimeTelemetry.cancelled++
-    if (duration > 0) this.runtimeTelemetry.durations.push(duration)
+    if (duration > 0) {
+      this.runtimeTelemetry.durations.push(duration)
+      if (this.runtimeTelemetry.durations.length > ExecutionSessionManager.MAX_TELEMETRY_ENTRIES) {
+        this.runtimeTelemetry.durations = this.runtimeTelemetry.durations.slice(-ExecutionSessionManager.MAX_TELEMETRY_ENTRIES)
+      }
+    }
 
     // Log telemetry summary every 10 sessions for observability
     this.runtimeTelemetry.count++
@@ -1035,6 +1061,9 @@ export class ExecutionSessionManager {
       })
     }      // Clear event buffer for this session
     this.sessionEventBuffer.delete(sessionId)
+
+    // Clean up any pending tool args to prevent memory leaks
+    this.pendingToolArgs.clear()
 
     // Background safety fallback: only runs if something is genuinely stuck
     this.forceStopTimer = setTimeout(() => {

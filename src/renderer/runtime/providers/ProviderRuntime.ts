@@ -1,6 +1,8 @@
-import { streamChatCompletion, directChatCompletion } from "@agentic-os/providers"
-import { resolveAdapter } from "@agentic-os/providers"
+import { streamChatCompletion, chatCompletion } from "@agentic-os/providers"
 import type { ChatMessage, ChatResponse, ToolDef, ToolCall, ChatRequest } from "@agentic-os/providers"
+import { globalProviderRegistry } from "@agentic-os/providers"
+import type { SelectionRequest, SelectionDecision } from "@agentic-os/providers"
+import { resolveByBaseUrl } from "@agentic-os/providers"
 
 export interface ProviderRequest {
   model?: string
@@ -31,8 +33,28 @@ export type StreamChunk =
 export class ProviderRuntime {
   private apiKey: string | null = null
   private baseUrl: string | null = null
+  private runtime: string | null = null
   private defaultModel = 'gpt-4o'
-  private providerType: string | null = null
+
+  static getRegistry() {
+    return globalProviderRegistry
+  }
+
+  selectModel(request?: Partial<SelectionRequest>): SelectionDecision | null {
+    const candidates = globalProviderRegistry.buildCatalogForSelection()
+    if (candidates.length === 0) return null
+    return globalProviderRegistry.selectProvider({
+      requiredCapabilities: request?.requiredCapabilities,
+      preferredModel: request?.preferredModel,
+      preferredProvider: request?.preferredProvider,
+      estimatedInputTokens: request?.estimatedInputTokens,
+      estimatedOutputTokens: request?.estimatedOutputTokens,
+      needsStreaming: request?.needsStreaming,
+      needsTools: request?.needsTools,
+      minContextWindow: request?.minContextWindow,
+      preferLocal: request?.preferLocal,
+    })
+  }
 
   constructor(baseUrl?: string, apiKey?: string) {
     if (baseUrl) this.baseUrl = baseUrl
@@ -54,7 +76,7 @@ export class ProviderRuntime {
     ]
 
     const startTime = performance.now()
-    const res: ChatResponse = await directChatCompletion(this.baseUrl, this.apiKey, {
+    const res: ChatResponse = await chatCompletion(this.baseUrl, this.apiKey, this.runtime, {
       model: request.model || this.defaultModel,
       messages,
       tools: request.tools,
@@ -81,13 +103,16 @@ export class ProviderRuntime {
         if (!this.baseUrl && active.baseUrl) this.baseUrl = active.baseUrl
         if (!this.apiKey && active.apiKey) this.apiKey = active.apiKey
         if (active.model) this.defaultModel = active.model
-        if (active.baseUrl) {
-          const adapter = resolveAdapter(active.baseUrl)
-          this.providerType = adapter?.id ?? null
-        }
       }
     } catch { }
     if (!this.baseUrl) this.baseUrl = 'https://api.openai.com/v1'
+    this.resolveRuntime()
+  }
+
+  private resolveRuntime(): void {
+    if (!this.baseUrl) return
+    const entry = resolveByBaseUrl(this.baseUrl)
+    this.runtime = entry?.runtimeKey ?? null
   }
 
   setApiKey(key: string): void {
@@ -96,8 +121,6 @@ export class ProviderRuntime {
 
   setBaseUrl(url: string): void {
     this.baseUrl = url
-    const adapter = resolveAdapter(url)
-    this.providerType = adapter?.id ?? null
   }
 
   setDefaultModel(model: string): void {
@@ -152,7 +175,7 @@ export class ProviderRuntime {
     const streamPromise = streamChatCompletion(
       this.baseUrl,
       this.apiKey,
-      null,
+      this.runtime,
       req,
       {
         onReady: () => { },
@@ -216,7 +239,7 @@ export class ProviderRuntime {
     ]
 
     try {
-      const res: ChatResponse = await directChatCompletion(this.baseUrl, this.apiKey, {
+      const res: ChatResponse = await chatCompletion(this.baseUrl, this.apiKey, this.runtime, {
         model: request.model || this.defaultModel,
         messages,
         tools: request.tools,

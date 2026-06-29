@@ -1,5 +1,11 @@
 import type { RuntimeRole } from "@/types"
 
+/**
+ * Optional LLM-based intent classifier for fallback when regex patterns
+ * yield low confidence. Called by routeWithLLMFallback when available.
+ */
+export type LLMClassifier = (input: string) => Promise<{ category: IntentCategory; confidence: number }>
+
 export type IntentCategory =
   | "conversation"
   | "coding"
@@ -242,5 +248,49 @@ export function route(
     executionStrategy: "multi-agent",
     reasoning: `Complex task classified as "${category}". Multi-agent delegation to: ${availableRoles.join(", ")}.`,
     intentCategory: category,
+  }
+}
+
+/**
+ * Compute low-confidence classification: returns true when the regex-based
+ * classifier fell back to a generic result (confidence < 0.8).
+ */
+export function isLowConfidence(category: IntentCategory, confidence: number): boolean {
+  return category === "conversation" && confidence < 0.8
+}
+
+/**
+ * Route with optional LLM fallback when regex patterns yield low confidence.
+ * Falls back to route() synchronously if no LLM classifier is provided.
+ * This is the async entry point used by the executor.
+ */
+export async function routeWithLLMFallback(
+  input: string,
+  wiredRoles: RuntimeRole[],
+  llmClassifier?: LLMClassifier,
+): Promise<RoutingDecision> {
+  const syncDecision = route(input, wiredRoles)
+  if (!isLowConfidence(syncDecision.intentCategory, 0.5) || !llmClassifier) {
+    return syncDecision
+  }
+
+  try {
+    const llmResult = await llmClassifier(input)
+    const pattern = INTENT_PATTERNS[llmResult.category]
+    const availableRoles = pattern ? pattern.roles.filter((r) => wiredRoles.includes(r)) : []
+
+    if (availableRoles.length === 0) {
+      return syncDecision
+    }
+
+    return {
+      requiresDelegation: true,
+      selectedRoles: availableRoles,
+      executionStrategy: availableRoles.length > 1 ? "multi-agent" : "single-agent",
+      reasoning: `LLM fallback: classified as "${llmResult.category}" (confidence ${llmResult.confidence}). Delegating to ${availableRoles.join(", ")}.`,
+      intentCategory: llmResult.category,
+    }
+  } catch {
+    return syncDecision
   }
 }

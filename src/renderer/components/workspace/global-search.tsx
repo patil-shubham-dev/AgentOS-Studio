@@ -106,7 +106,8 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
       setStatus("")
       setSelectedIndex(-1)
       setHasSearched(false)
-      setTimeout(() => inputRef.current?.focus(), 50)
+      const timer = setTimeout(() => inputRef.current?.focus(), 50)
+      return () => clearTimeout(timer)
     }
   }, [open])
 

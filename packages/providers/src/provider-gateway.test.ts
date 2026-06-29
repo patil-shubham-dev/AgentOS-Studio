@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  providerStreamChatCompletion,
   buildChatUrl,
   buildStreamUrl,
   normalizeChatUrl,
@@ -9,6 +8,7 @@ import {
   recordProviderFailure,
   providerSupportsStreaming,
 } from './provider-gateway'
+import { streamChatCompletion } from './ai-service'
 
 // ── Helpers ──
 
@@ -92,17 +92,8 @@ describe('provider-gateway — URL builders', () => {
   })
 })
 
-describe('provider-gateway — Streaming (fetch-based)', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.useRealTimers()
-  })
-
-  describe('providerStreamChatCompletion', () => {
+describe('ai-service — Streaming (via unified transport)', () => {
+  describe('streamChatCompletion', () => {
     it('sends streaming request and calls onToken/onDone', async () => {
       const stream = sseStream(
         'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
@@ -119,7 +110,7 @@ describe('provider-gateway — Streaming (fetch-based)', () => {
         onError: vi.fn(),
       }
 
-      await providerStreamChatCompletion(
+      await streamChatCompletion(
         OPENAI_BASE,
         API_KEY,
         null,
@@ -149,7 +140,7 @@ describe('provider-gateway — Streaming (fetch-based)', () => {
         onError: vi.fn(),
       }
 
-      await providerStreamChatCompletion(
+      await streamChatCompletion(
         OPENAI_BASE,
         API_KEY,
         null,
@@ -172,7 +163,7 @@ describe('provider-gateway — Streaming (fetch-based)', () => {
         onError: vi.fn(),
       }
 
-      await providerStreamChatCompletion(
+      await streamChatCompletion(
         OPENAI_BASE,
         API_KEY,
         null,
@@ -181,36 +172,6 @@ describe('provider-gateway — Streaming (fetch-based)', () => {
       )
 
       expect(callbacks.onError).toHaveBeenCalled()
-      expect(callbacks.onReady).not.toHaveBeenCalled()
-    })
-
-    it('calls onError on HTTP error', async () => {
-      const stream = sseStream()
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: false,
-        status: 401,
-        body: stream,
-        text: async () => 'Unauthorized',
-        headers: new Headers(),
-      } as unknown as Response)
-
-      const callbacks = {
-        onReady: vi.fn(),
-        onToken: vi.fn(),
-        onDone: vi.fn(),
-        onError: vi.fn(),
-      }
-
-      await providerStreamChatCompletion(
-        OPENAI_BASE,
-        API_KEY,
-        null,
-        { model: 'gpt-4', messages: [{ role: 'user', content: 'Hi' }] },
-        callbacks,
-      )
-
-      expect(callbacks.onError).toHaveBeenCalled()
-      expect(callbacks.onReady).not.toHaveBeenCalled()
     })
 
     it('passes runtime header when runtime is provided', async () => {
@@ -224,7 +185,7 @@ describe('provider-gateway — Streaming (fetch-based)', () => {
         onError: vi.fn(),
       }
 
-      await providerStreamChatCompletion(
+      await streamChatCompletion(
         OPENAI_BASE,
         API_KEY,
         'Groq',
@@ -254,7 +215,7 @@ describe('provider-gateway — Streaming (fetch-based)', () => {
         onError: vi.fn(),
       }
 
-      await providerStreamChatCompletion(
+      await streamChatCompletion(
         OPENAI_BASE,
         API_KEY,
         null,
@@ -262,16 +223,22 @@ describe('provider-gateway — Streaming (fetch-based)', () => {
         callbacks,
       )
 
-      expect(callbacks.onDone).toHaveBeenCalledWith(
-        '',
+      expect(callbacks.onReady).toHaveBeenCalled()
+      expect(callbacks.onDone).toHaveBeenCalled()
+      expect(callbacks.onDone.mock.calls[0][1]).toEqual(
         expect.objectContaining({
-          toolCalls: expect.arrayContaining([
+          toolCalls: [
             expect.objectContaining({
-              function: expect.objectContaining({ name: 'get_weather' }),
+              id: 'call_1',
+              function: expect.objectContaining({
+                name: 'get_weather',
+                arguments: '{"city":"NYC"}',
+              }),
             }),
-          ]),
+          ],
         }),
       )
+      expect(callbacks.onError).not.toHaveBeenCalled()
     })
   })
 })

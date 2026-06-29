@@ -2,7 +2,7 @@ import type { RuntimeRole } from "@/types"
 import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
 import type { RoutingDecision } from "@/runtime/manager-routing-engine"
 import type { AgentMode } from "@/runtime/agents/AgentExecutor"
-import { route as managerRoute } from "@/runtime/manager-routing-engine"
+import { routeWithLLMFallback } from "@/runtime/manager-routing-engine"
 import { applyModeConstraints } from "@/runtime/execution-mode"
 import { useAppStore } from "@/stores/app-store"
 import { useAgentStore } from "@/stores/agent-store"
@@ -74,6 +74,8 @@ export interface ExecuteOptions {
 const FIRST_EVENT_TIMEOUT_MS = 45_000
 const PROVIDER_TIMEOUT_MS = 30_000
 const AGENT_TIMEOUT_MS = 120_000
+/** How long to wait for a single provider stream before attempting a fallback */
+const FAST_PATH_ATTEMPT_TIMEOUT_MS = 60_000
 
 export class UnifiedExecutor {
   private static instance: UnifiedExecutor
@@ -185,7 +187,7 @@ export class UnifiedExecutor {
       trace(traceId, "routing_start")
 
       const runtimeRoles = runtimeState.wiredRuntimeRoles
-      const decision = this.assignAgentForTask(input, runtimeRoles, executionId)
+      const decision = await this.assignAgentForTask(input, runtimeRoles, providers, executionId, reqMode)
       trace(traceId, "routing_end", { strategy: decision.executionStrategy, roles: decision.selectedRoles })
       console.log(`${orchTag} routing: strategy=${decision.executionStrategy}, roles=${decision.selectedRoles?.join(",")} (${Math.round(performance.now() - t0)}ms)`)
       profileStage("gateway", stageStart)
@@ -298,103 +300,148 @@ export class UnifiedExecutor {
     t0?: number,
   ): AsyncGenerator<ExecutionEvent> {
     const runtimeState = useWorkspaceRuntime.getState()
-    const wired = runtimeState.wiredAgents.find((a) => a.runtimeRole === "manager") ?? runtimeState.wiredAgents[0]
-    if (!wired) {
+    const wiredAgents = runtimeState.wiredAgents
+    const primaryAgent = wiredAgents.find((a) => a.runtimeRole === "manager") ?? wiredAgents[0]
+    if (!primaryAgent) {
       yield { type: "EXECUTION_FAILED", executionId, error: "No agent available", durationMs: 0, timestamp: Date.now() }
       return
     }
 
     const providers = useAppStore.getState().providers ?? []
-    const provider = providers.find((p) => p.id === wired.providerId)
-    if (!provider) {
-      yield { type: "EXECUTION_FAILED", executionId, error: `Provider ${wired.providerId} not found`, durationMs: 0, timestamp: Date.now() }
-      return
+
+    // Build ordered attempt list: primary first, then any fallback agents
+    const attempts: Array<{ agent: typeof primaryAgent; provider: (typeof providers)[0] }> = []
+    const seenProviderIds = new Set<string>()
+    for (const agent of [primaryAgent, ...wiredAgents.filter((a) => a.providerId !== primaryAgent.providerId)]) {
+      const p = providers.find((pp) => pp.id === agent.providerId)
+      if (p && !seenProviderIds.has(p.id)) {
+        seenProviderIds.add(p.id)
+        attempts.push({ agent, provider: p })
+      }
+      if (attempts.length >= 2) break
     }
 
     const stepId = `${executionId}_step`
-    yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: wired.runtimeRole, roleName: safeCapitalize(wired.runtimeRole, ""), modelName: wired.model, providerName: provider.name, stepId, timestamp: Date.now() }
-    yield { type: "THINKING_STARTED", executionId, label: "Thinking", timestamp: Date.now() }
-    yield { type: "PROVIDER_CONNECTING", executionId, model: wired.model, provider: provider.name, temperature: wired.temperature, timestamp: Date.now() }
-
-    const streamManager = StreamManager.getInstance()
-    let streamedContent = ""
-    let streamTokenCount = 0
     const fcT0 = performance.now()
-    const timeoutSignal = AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
-    const combinedSignal = new AbortController()
-    const onAbort = () => combinedSignal.abort()
-    ctrl.signal.addEventListener("abort", onAbort, { once: true })
-    timeoutSignal.addEventListener("abort", () => {
-      if (!ctrl.signal.aborted) combinedSignal.abort(new DOMException("Provider timed out", "TimeoutError"))
-    }, { once: true })
+    let lastError: string | null = null
+    let firstAttempt = true
 
-    try {
-      const history = this.getProcessedHistory(activeRole)
-
-      // Check context budget before provider call
-      const budgetMgr = ContextBudgetManager.getInstance()
-      const budgetConfig = budgetMgr.createConfig()
-      const budgetUsage = budgetMgr.checkBudget(budgetConfig, history)
-      if (budgetUsage.shouldCompress) {
-        const strategy = budgetMgr.applyCompressionStrategy(budgetUsage, budgetConfig)
-        console.log(`[ContextBudget] ${strategy}`)
+    for (const { agent, provider } of attempts) {
+      if (ctrl.signal.aborted) break
+      if (!firstAttempt) {
+        const retryLabel = `Retrying with ${provider.name}...`
+        yield { type: "THINKING_UPDATE", executionId, label: retryLabel, timestamp: Date.now() }
+        yield { type: "PROVIDER_CONNECTING", executionId, model: agent.model, provider: provider.name, temperature: agent.temperature, timestamp: Date.now() }
+        console.log(`[UnifiedExecutor] fastPath fallback: trying ${provider.name}/${agent.model}`)
+      } else {
+        yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: agent.runtimeRole, roleName: safeCapitalize(agent.runtimeRole, ""), modelName: agent.model, providerName: provider.name, stepId, timestamp: Date.now() }
+        yield { type: "THINKING_STARTED", executionId, label: "Thinking", timestamp: Date.now() }
+        yield { type: "PROVIDER_CONNECTING", executionId, model: agent.model, provider: provider.name, temperature: agent.temperature, timestamp: Date.now() }
+        firstAttempt = false
       }
 
-      const providerRuntime = new ProviderRuntime(provider.baseUrl, provider.apiKey)
-      providerRuntime.setDefaultModel(wired.model)
+      // Emit a progress heartbeat every 10s while waiting for the first token
+      let heartbeatInterval: ReturnType<typeof setInterval> | null = null
+      if (!ctrl.signal.aborted) {
+        heartbeatInterval = setInterval(() => {
+          if (!ctrl.signal.aborted) {
+            const elapsed = Math.round((performance.now() - fcT0) / 1000)
+            console.log(`[UnifiedExecutor] fastPath waiting... (${elapsed}s)`)
+          }
+        }, 10_000)
+      }
 
-      let finalContent = ""
-      const stream = providerRuntime.stream({
-        systemPrompt: FAST_CHAT_PROMPT,
-        messages: [
-          ...history.map(m => ({ role: m.role as 'user' | 'assistant' | 'system', content: m.content })),
-          { role: 'user' as const, content: input },
-        ],
-        maxTokens: 4096,
-        signal: combinedSignal.signal,
-      })
-
-      for await (const chunk of stream) {
-        if (chunk.type === 'token') {
-          streamedContent += chunk.text
-          streamTokenCount++
-          streamManager.append(stepId, chunk.text, streamTokenCount <= 5)
-        } else if (chunk.type === 'done') {
-          finalContent = chunk.fullText
-        } else if (chunk.type === 'error') {
-          throw new Error(chunk.error)
+      const streamManager = StreamManager.getInstance()
+      let streamedContent = ""
+      let streamTokenCount = 0
+      const attemptStart = performance.now()
+      const timeoutSignal = AbortSignal.timeout(FAST_PATH_ATTEMPT_TIMEOUT_MS)
+      const combinedSignal = new AbortController()
+      const onAbort = () => { combinedSignal.abort(); heartbeatInterval && clearInterval(heartbeatInterval) }
+      const onTimeout = () => {
+        if (!ctrl.signal.aborted) {
+          combinedSignal.abort(new DOMException(`Provider ${provider.name} timed out after ${FAST_PATH_ATTEMPT_TIMEOUT_MS}ms`, "TimeoutError"))
+          heartbeatInterval && clearInterval(heartbeatInterval)
         }
       }
+      ctrl.signal.addEventListener("abort", onAbort, { once: true })
+      timeoutSignal.addEventListener("abort", onTimeout, { once: true })
 
-      ctrl.signal.removeEventListener("abort", onAbort)
-      const fcDuration = Math.round(performance.now() - fcT0)
-      recordProviderCall(provider.name, wired.model, fcDuration, true, executionId)
-      yield { type: "PROVIDER_CONNECTED", executionId, model: wired.model, provider: provider.name, temperature: wired.temperature, timestamp: Date.now() }
+      try {
+        const history = this.getProcessedHistory(activeRole)
 
-      if (streamTokenCount === 0 && finalContent.length > 0) {
-        streamManager.append(stepId, finalContent)
-        streamManager.flushImmediate()
-        streamedContent = finalContent
-      }
-      streamManager.complete(stepId)
+        const budgetMgr = ContextBudgetManager.getInstance()
+        const budgetConfig = budgetMgr.createConfig()
+        const budgetUsage = budgetMgr.checkBudget(budgetConfig, history)
+        if (budgetUsage.shouldCompress) {
+          const strategy = budgetMgr.applyCompressionStrategy(budgetUsage, budgetConfig)
+          console.log(`[ContextBudget] ${strategy}`)
+        }
 
-      if (!streamedContent) {
-        yield { type: "EXECUTION_FAILED", executionId, error: "Empty response", durationMs: fcDuration, timestamp: Date.now() }
+        const providerRuntime = new ProviderRuntime(provider.baseUrl, provider.apiKey)
+        providerRuntime.setDefaultModel(agent.model)
+
+        let finalContent = ""
+        const stream = providerRuntime.stream({
+          systemPrompt: FAST_CHAT_PROMPT,
+          messages: [
+            ...history.map(m => ({ role: m.role as 'user' | 'assistant' | 'system', content: m.content })),
+            { role: 'user' as const, content: input },
+          ],
+          maxTokens: 4096,
+          signal: combinedSignal.signal,
+        })
+
+        for await (const chunk of stream) {
+          if (chunk.type === 'token') {
+            streamedContent += chunk.text
+            streamTokenCount++
+            streamManager.append(stepId, chunk.text, streamTokenCount <= 5)
+          } else if (chunk.type === 'done') {
+            finalContent = chunk.fullText
+          } else if (chunk.type === 'error') {
+            throw new Error(chunk.error)
+          }
+        }
+
+        const attemptDuration = Math.round(performance.now() - attemptStart)
+        recordProviderCall(provider.name, agent.model, attemptDuration, true, executionId)
+        yield { type: "PROVIDER_CONNECTED", executionId, model: agent.model, provider: provider.name, temperature: agent.temperature, timestamp: Date.now() }
+
+        if (streamTokenCount === 0 && finalContent.length > 0) {
+          streamManager.append(stepId, finalContent)
+          streamManager.flushImmediate()
+          streamedContent = finalContent
+        }
+        streamManager.complete(stepId)
+
+        if (!streamedContent) {
+          lastError = "Empty response"
+          continue
+        }
+
+        const totalDuration = t0 ? Math.round(performance.now() - t0) : attemptDuration
+        recordAgentExecution(attemptDuration, 0, 0)
+        yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: streamedContent, finishReason: "stop", timestamp: Date.now() }
+        yield { type: "EXECUTION_COMPLETE", executionId, content: streamedContent, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: totalDuration, timestamp: Date.now() }
         return
+      } catch (err) {
+        streamManager.complete(stepId)
+        const errMsg = err instanceof Error ? err.message : String(err)
+        const elapsed = Math.round(performance.now() - attemptStart)
+        recordProviderCall(provider.name, agent.model, elapsed, false, executionId)
+        emitTelemetry({ type: "provider_failure", timestamp: Date.now(), error: errMsg, metadata: { executionId, attempt: attempts.length > 1 ? "fallback" : "primary" } })
+        lastError = errMsg
+        console.log(`[UnifiedExecutor] fastPath attempt failed (${elapsed}ms): ${errMsg}`)
+      } finally {
+        ctrl.signal.removeEventListener("abort", onAbort)
+        timeoutSignal.removeEventListener("abort", onTimeout)
+        if (heartbeatInterval) clearInterval(heartbeatInterval)
       }
-
-      const totalDuration = t0 ? Math.round(performance.now() - t0) : fcDuration
-      recordAgentExecution(fcDuration, 0, 0)
-      yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: streamedContent, finishReason: "stop", timestamp: Date.now() }
-      yield { type: "EXECUTION_COMPLETE", executionId, content: streamedContent, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: totalDuration, timestamp: Date.now() }
-    } catch (err) {
-      streamManager.complete(stepId)
-      const errMsg = err instanceof Error ? err.message : String(err)
-      const elapsed = Math.round(performance.now() - fcT0)
-      recordProviderCall(provider.name, wired.model, elapsed, false, executionId)
-      emitTelemetry({ type: "provider_failure", timestamp: Date.now(), error: errMsg, metadata: { executionId } })
-      yield { type: "EXECUTION_FAILED", executionId, error: errMsg, durationMs: elapsed, timestamp: Date.now() }
     }
+
+    // All attempts failed
+    yield { type: "EXECUTION_FAILED", executionId, error: lastError ?? "All providers failed", durationMs: Math.round(performance.now() - fcT0), timestamp: Date.now() }
   }
 
   private async *fullPath(
@@ -568,12 +615,33 @@ export class UnifiedExecutor {
     }
   }
 
-  private assignAgentForTask(input: string, wiredRoles: RuntimeRole[], executionId: string): RoutingDecision {
+  private async assignAgentForTask(input: string, wiredRoles: RuntimeRole[], providers: any[], executionId: string, reqMode?: ExecutionMode): Promise<RoutingDecision> {
     const store = useAgentStore.getState()
     store.clearAssignments()
     store.clearOrchestrationSteps()
-    const decision = managerRoute(input, wiredRoles)
-    const constrained = applyModeConstraints("autonomous", [...decision.selectedRoles], decision.intentCategory)
+
+    // Build an LLM classifier for fallback when regex patterns yield low confidence
+    const fastProvider = providers.find((p: any) => p.id === "fast-inference" || p.id === "manager")
+    const llmClassifier = fastProvider ? async (text: string) => {
+      try {
+        const { ProviderRuntime } = await import("@/runtime/providers/ProviderRuntime")
+        const runtime = new ProviderRuntime(fastProvider.baseUrl, fastProvider.apiKey)
+        runtime.setDefaultModel(fastProvider.model)
+        const result = await runtime.chat({ messages: [{ role: 'user', content: `Classify the following user request into exactly one category: conversation, coding, research, execution, planning, browser-task, ui-analysis, multi-agent. Reply with only the category name and confidence (0-1), nothing else.\n\nRequest: ${text.slice(0, 500)}` }] })
+        const categoryMatch = result.content.match(/(conversation|coding|research|execution|planning|browser-task|ui-analysis|multi-agent)/i)
+        const confidenceMatch = result.content.match(/(\d\.\d+)/)
+        return {
+          category: (categoryMatch?.[1]?.toLowerCase() ?? "conversation") as any,
+          confidence: confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.6,
+        }
+      } catch {
+        return { category: "conversation" as const, confidence: 0.5 }
+      }
+    } : undefined
+
+    const decision = await routeWithLLMFallback(input, wiredRoles, llmClassifier)
+    const mode = reqMode ?? "full"
+    const constrained = applyModeConstraints(mode, [...decision.selectedRoles], decision.intentCategory)
       .filter((role, i, arr) => arr.indexOf(role) === i)
     const result: RoutingDecision = { ...decision, selectedRoles: constrained as RoutingDecision["selectedRoles"] }
     for (const role of result.selectedRoles) {

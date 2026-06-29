@@ -1,6 +1,6 @@
 import type { PromptCategory } from '../categories/PromptCategory'
 import type { PromptNode, Importance } from '../ast/PromptNode'
-import type { ProviderCapabilities } from '../providers/ProviderCapabilities'
+import type { ProviderCapabilities } from '@agentic-os/providers'
 import type { SectionDiagnostics } from '../diagnostics/SectionDiagnostics'
 
 export type ResolutionContext = {
@@ -73,7 +73,7 @@ export function defaultContext(overrides?: Partial<ResolutionContext>): Resoluti
       supportsCacheControl: false,
       supportsStreamingTools: true,
       supportsJsonMode: false,
-      maxContextWindow: 128000,
+      contextWindow: 128000,
       maxOutputTokens: 4096,
     },
     memorySummary: undefined,

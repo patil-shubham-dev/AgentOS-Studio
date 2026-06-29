@@ -1,20 +1,8 @@
-/**
- * DiffViewerPane — full diff viewer panel for the docking area.
- *
- * Shows all pending file diffs with:
- *   - File tree sidebar showing all changed files with status indicators
- *   - Side-by-side Monaco DiffEditor for the selected file
- *   - Per-file and per-hunk accept/reject controls
- *   - Global Accept All / Reject All toolbar
- *   - Summary statistics
- *   - Integration with the diff-store for state management
- */
-
 import { useState, useMemo, useCallback, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useDiffStore } from "@/stores/diff-store"
-import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
+import { useWorkspaceStore } from "@/stores/workspace-store"
 import { SideBySideDiff } from "./SideBySideDiff"
 import {
   acceptAllDiffReviews,
@@ -30,23 +18,33 @@ import {
   Check, X, AlertTriangle,
 } from "lucide-react"
 
-export function DiffViewerPane() {
-  const {
-    files,
-    clear,
-  } = useDiffStore()
+interface DiffViewerPaneProps {
+  /** When provided, renders in inline mode with a Back button */
+  onSwitchToEditor?: () => void
+  /** File path to focus when switching to diff mode */
+  diffReviewFile?: string | null
+}
+
+export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerPaneProps) {
+  const files = useDiffStore((s) => s.files)
+  const clear = useDiffStore((s) => s.clear)
 
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [showSidebar, setShowSidebar] = useState(true)
+  const [focusedHunk, setFocusedHunk] = useState(0)
   const fileList = useMemo(() => Array.from(files.values()), [files])
 
-  // Auto-select first file when files change
+  const isInline = !!onSwitchToEditor
+
   useEffect(() => {
-    if (fileList.length > 0 && (!selectedPath || !files.has(selectedPath))) {
+    const target = diffReviewFile ?? null
+    if (target && files.has(target)) {
+      setSelectedPath(target)
+    } else if (fileList.length > 0 && (!selectedPath || !files.has(selectedPath))) {
       const first = fileList.find((f) => f.status === "pending") ?? fileList[0]
       setSelectedPath(first.path)
     }
-  }, [fileList.length])
+  }, [fileList.length, diffReviewFile])
 
   const selectedFile = selectedPath ? files.get(selectedPath) ?? null : null
 
@@ -65,7 +63,6 @@ export function DiffViewerPane() {
     return { files, additions, deletions, pending, accepted, rejected }
   }, [fileList])
 
-  // Compute hunk status summary text
   const hunkSummary = useMemo(() => {
     if (!selectedFile) return ""
     const a = selectedFile.hunks.filter((h) => h.status === "accepted").length
@@ -73,6 +70,31 @@ export function DiffViewerPane() {
     const p = selectedFile.hunks.filter((h) => h.status === "pending").length
     return `${a} accepted, ${r} rejected, ${p} pending`
   }, [selectedFile])
+
+  const currentIndex = selectedPath ? fileList.findIndex((f) => f.path === selectedPath) : -1
+
+  const navigatePrev = useCallback(() => {
+    if (currentIndex > 0) {
+      const prev = fileList[currentIndex - 1]
+      setSelectedPath(prev.path)
+      useWorkspaceStore.getState().openFileInDiffMode(prev.path)
+    }
+  }, [currentIndex, fileList])
+
+  const navigateNext = useCallback(() => {
+    if (currentIndex < fileList.length - 1) {
+      const next = fileList[currentIndex + 1]
+      setSelectedPath(next.path)
+      useWorkspaceStore.getState().openFileInDiffMode(next.path)
+    }
+  }, [currentIndex, fileList])
+
+  const handleSidebarFileClick = useCallback((path: string) => {
+    setSelectedPath(path)
+    if (isInline) {
+      useWorkspaceStore.getState().openFileInDiffMode(path)
+    }
+  }, [isInline])
 
   if (fileList.length === 0) {
     return (
@@ -95,6 +117,21 @@ export function DiffViewerPane() {
       {/* ── Global toolbar ── */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.06] bg-white/[0.02] shrink-0">
         <div className="flex items-center gap-2">
+          {/* Back button (inline mode only) */}
+          {isInline && (
+            <>
+              <button
+                onClick={onSwitchToEditor}
+                className="rounded px-1.5 py-0.5 text-[9px] text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
+                title="Return to editor"
+              >
+                <ChevronLeft className="h-3 w-3 inline mr-1" />
+                Back
+              </button>
+              <span className="text-white/15 text-[8px]">|</span>
+            </>
+          )}
+
           {/* Toggle sidebar */}
           <button
             onClick={() => setShowSidebar((v) => !v)}
@@ -114,7 +151,7 @@ export function DiffViewerPane() {
           </button>
 
           {/* Summary stats */}
-          <span className="text-[10px] font-medium text-white/30 uppercase tracking-widest">
+          <span className="text-[9px] font-medium text-white/30 uppercase tracking-widest">
             Changes
           </span>
           <span className="text-[9px] text-white/20 bg-white/[0.04] rounded px-1 py-0.5">
@@ -128,7 +165,7 @@ export function DiffViewerPane() {
         </div>
 
         <div className="flex items-center gap-1.5">
-          {/* File-sidebar toggle visibility */}
+          {/* Sidebar toggle button */}
           <button
             onClick={() => setShowSidebar((v) => !v)}
             className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
@@ -140,7 +177,6 @@ export function DiffViewerPane() {
             )}
           </button>
 
-          {/* Spacer */}
           <div className="w-px h-4 bg-white/[0.06]" />
 
           {/* Accept All / Reject All */}
@@ -171,14 +207,18 @@ export function DiffViewerPane() {
             Accept All
           </button>
 
-          {/* Clear */}
-          <div className="w-px h-4 bg-white/[0.06]" />
-          <button
-            onClick={clear}
-            className="rounded px-1.5 py-0.5 text-[9px] text-white/20 hover:text-white/50 hover:bg-white/[0.04] transition-all"
-          >
-            Clear
-          </button>
+          {/* Clear (panel mode only) */}
+          {!isInline && (
+            <>
+              <div className="w-px h-4 bg-white/[0.06]" />
+              <button
+                onClick={clear}
+                className="rounded px-1.5 py-0.5 text-[9px] text-white/20 hover:text-white/50 hover:bg-white/[0.04] transition-all"
+              >
+                Clear
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -210,7 +250,7 @@ export function DiffViewerPane() {
                     return (
                       <button
                         key={file.path}
-                        onClick={() => setSelectedPath(file.path)}
+                        onClick={() => handleSidebarFileClick(file.path)}
                         className={cn(
                           "flex items-center gap-2 w-full px-2.5 py-1.5 text-left transition-colors",
                           isSelected
@@ -279,6 +319,30 @@ export function DiffViewerPane() {
 
       {/* ── Status bar ── */}
       <div className="flex items-center gap-3 px-3 py-1 border-t border-white/[0.04] bg-white/[0.01] shrink-0">
+        {/* Prev/Next navigation (inline mode) */}
+        {isInline && fileList.length > 1 && (
+          <div className="flex items-center gap-1 mr-2">
+            <button
+              onClick={navigatePrev}
+              disabled={currentIndex <= 0}
+              className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all disabled:text-white/10 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="h-3 w-3" />
+            </button>
+            <span className="text-[9px] text-white/30 min-w-[4ch] text-center">
+              {currentIndex + 1}/{fileList.length}
+            </span>
+            <button
+              onClick={navigateNext}
+              disabled={currentIndex >= fileList.length - 1}
+              className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all disabled:text-white/10 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="h-3 w-3" />
+            </button>
+            <div className="w-px h-4 bg-white/[0.06] ml-1" />
+          </div>
+        )}
+
         <div className="flex items-center gap-1.5 text-[9px] text-white/25">
           <Check className="h-2.5 w-2.5 text-green-400/50" />
           <span>{totals.accepted} accepted</span>

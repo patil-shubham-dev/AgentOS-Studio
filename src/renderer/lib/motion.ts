@@ -105,13 +105,17 @@ export const heightCollapse: Variants = {
   exit: { height: 0, opacity: 0, transition: getTransition("normal", "exit") },
 }
 
+// ── Stable transition constants ──
+const SPRING_STIFF: Transition = { type: "spring", stiffness: 600, damping: 40 } as unknown as Transition
+const SPRING_SNAPPY: Transition = { type: "spring", stiffness: 600, damping: 28 } as unknown as Transition
+
 // ── Spring config getter (used by ProjectMapPanel et al.) ──
 export function getSpringConfig(name: "default" | "gentle" | "bouncy" | "stiff" | "snappy" = "default"): Transition {
   switch (name) {
     case "gentle": return EASING.springGentle as unknown as Transition
     case "bouncy": return EASING.springBouncy as unknown as Transition
-    case "stiff": return { type: "spring" as const, stiffness: 600, damping: 40 } as unknown as Transition
-    case "snappy": return { type: "spring" as const, stiffness: 600, damping: 28 } as unknown as Transition
+    case "stiff": return SPRING_STIFF
+    case "snappy": return SPRING_SNAPPY
     default: return EASING.spring as unknown as Transition
   }
 }

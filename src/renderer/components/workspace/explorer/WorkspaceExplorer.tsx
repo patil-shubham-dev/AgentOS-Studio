@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffe
 import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useDiffStore } from "@/stores/diff-store"
+import { useDiagnosticsStore } from "@/stores/diagnostics-store"
 import { useTreeModel } from "./hooks/useTreeModel"
 import { useFileActions } from "./hooks/useFileActions"
 import { useGitStatus } from "./hooks/useGitStatus"
@@ -11,9 +12,10 @@ import { SearchBar } from "./components/SearchBar"
 import { ProjectMapPanel } from "./components/ProjectMapPanel"
 import type { ExplorerHandle } from "./types"
 import {
-  FilePlus, FolderPlus, Search, FileCode,
+  FilePlus, FolderPlus, Search, FileCode, X, Pin,
   ChevronRight, ChevronDown, Loader2,
   Hash, Sparkles, Pencil, Eye, ListChecks,
+  AlertCircle, AlertTriangle,
 } from "lucide-react"
 import { useComponentState } from "@/lib/state/useComponentState"
 import { workspaceSymbolIndex, type SymbolInfo } from "@/lib/symbol-index"
@@ -57,6 +59,8 @@ interface FlatNode {
   agentBadge?: { label: string; color: string; icon?: string }
   hasChildren: boolean
   isRelevant?: boolean
+  errorCount?: number
+  warningCount?: number
 }
 
 /** Default height for a tree row without any indicators */
@@ -162,6 +166,10 @@ function VirtualTreeRow({
   const hasPendingDiff = pendingDiff?.status === "pending"
   const measureRef = useRef<HTMLDivElement>(null)
 
+  const diagnostics = useDiagnosticsStore((s) => s.diagnostics)
+  const fileErrors = !node.isDir ? diagnostics.filter((d) => d.filePath === node.path && d.severity === "error").length : 0
+  const fileWarnings = !node.isDir ? diagnostics.filter((d) => d.filePath === node.path && d.severity === "warning").length : 0
+
   // Measure actual row height after mount and when row content changes
   useEffect(() => {
     const el = measureRef.current
@@ -251,6 +259,24 @@ function VirtualTreeRow({
         </span>
       )}
 
+      {/* Diagnostics badges */}
+      {!node.isDir && (fileErrors > 0 || fileWarnings > 0) && (
+        <span className="ml-auto flex items-center gap-1 shrink-0">
+          {fileErrors > 0 && (
+            <span className="flex items-center gap-0.5 text-[8px] text-red-400/70 font-medium">
+              <AlertCircle className="h-2 w-2" />
+              {fileErrors}
+            </span>
+          )}
+          {fileWarnings > 0 && (
+            <span className="flex items-center gap-0.5 text-[8px] text-yellow-400/60 font-medium">
+              <AlertTriangle className="h-2 w-2" />
+              {fileWarnings}
+            </span>
+          )}
+        </span>
+      )}
+
       {node.agentBadge && badgeStyle && badgeKey !== "error" && badgeKey !== "relevant" && (
         <span className={cn(
           "ml-auto flex items-center gap-0.5 text-[8px] px-1 rounded truncate max-w-[72px]",
@@ -271,6 +297,15 @@ function VirtualTreeRow({
   )
 }
 
+function getDiagnosticsForPath(
+  path: string
+): { errorCount: number; warningCount: number } {
+  const all = useDiagnosticsStore.getState().diagnostics
+  const errors = all.filter((d) => d.filePath === path && d.severity === "error").length
+  const warnings = all.filter((d) => d.filePath === path && d.severity === "warning").length
+  return { errorCount: errors, warningCount: warnings }
+}
+
 function flattenTree(
   entries: FileEntry[],
   expandedPaths: Set<string>,
@@ -288,6 +323,7 @@ function flattenTree(
     const entryPath = entry.path || entry.name
     const isExpanded = expandedPaths.has(entryPath)
     const activity = fileActivities[entryPath] || undefined
+    const diag = getDiagnosticsForPath(entryPath)
     result.push({
       id: entryPath,
       name: entry.name,
@@ -300,6 +336,8 @@ function flattenTree(
       agentBadge: activity,
       hasChildren: entry.is_dir && entry.children.length > 0,
       isRelevant: activity?.label === "Relevant",
+      errorCount: diag.errorCount,
+      warningCount: diag.warningCount,
     })
     if (entry.is_dir && isExpanded && entry.children) {
       result.push(...flattenTree(entry.children, expandedPaths, gitStatus, fileActivities, depth + 1))
@@ -318,6 +356,9 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
     const isLoading = useWorkspaceStore((s) => s.isLoading)
     const openFile = useWorkspaceStore((s) => s.openFile)
     const activeFilePath = useWorkspaceStore((s) => s.activeFilePath)
+    const pinnedFiles = useWorkspaceStore((s) => s.pinnedFiles)
+    const recentlyOpened = useWorkspaceStore((s) => s.recentlyOpened)
+    const togglePinFile = useWorkspaceStore((s) => s.togglePinFile)
 
     const [searchQuery, setSearchQuery] = useState("")
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
@@ -529,7 +570,223 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
       isEmpty: !!rootPath && !isLoading && fileTree.length === 0 && !hasModel,
     })
 
+    const openFiles = useWorkspaceStore((s) => s.openFiles)
     const fileCount = useMemo(() => countAllNodes(fileTree), [fileTree])
+
+    const fileNameFromPath = useCallback((path: string): string => {
+      return path.split(/[/\\]+/).pop() ?? path
+    }, [])
+
+    // ── Pinned Files section ──
+    const PinnedFilesSection = useCallback(() => {
+      if (pinnedFiles.length === 0) return null
+
+      return (
+        <div className="border-b border-white/[0.04]">
+          <div className="flex items-center justify-between px-2 py-1">
+            <div className="flex items-center gap-1.5">
+              <Pin className="h-3 w-3 shrink-0 text-white/30" />
+              <span className="text-[9px] font-medium text-white/25 uppercase tracking-wider">
+                Pinned
+              </span>
+              <span className="text-[8px] text-white/15">{pinnedFiles.length}</span>
+            </div>
+          </div>
+          <div className="space-y-0.5 px-1 pb-1">
+            {pinnedFiles.map((filePath) => {
+              const name = fileNameFromPath(filePath)
+              const isActive = filePath === activeFilePath
+              return (
+                <div
+                  key={filePath}
+                  onClick={() => {
+                    const root = useWorkspaceStore.getState().rootPath
+                    if (!root) return
+                    const absPath = `${root}\\${filePath.replace(/\//g, "\\")}`
+                    const readAndOpen = async () => {
+                      try {
+                        const content = await readFile(absPath)
+                        openFile({ path: filePath, name, content, isDirty: false })
+                      } catch {
+                        openFile({ path: filePath, name, content: "", isDirty: false })
+                      }
+                    }
+                    readAndOpen()
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded px-2 py-[3px] cursor-pointer group",
+                    isActive ? "bg-blue-500/[0.08]" : "hover:bg-white/[0.03]",
+                  )}
+                >
+                  <FileCode className="h-3 w-3 shrink-0 text-amber-400/40" />
+                  <span className={cn(
+                    "truncate text-[11px] flex-1",
+                    isActive ? "text-blue-300 font-medium" : "text-white/45",
+                  )}>
+                    {name}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      useWorkspaceStore.getState().unpinFile(filePath)
+                    }}
+                    className="rounded p-0.5 text-white/15 opacity-0 group-hover:opacity-100 hover:text-white/50 hover:bg-white/[0.06] transition-all shrink-0"
+                    title="Unpin file"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }, [pinnedFiles, activeFilePath, openFile, fileNameFromPath])
+
+    // ── Recent Files section ──
+    const RecentFilesSection = useCallback(() => {
+      if (recentlyOpened.length === 0) return null
+      const recent = recentlyOpened.slice(0, 10)
+
+      return (
+        <div className="border-b border-white/[0.04]">
+          <div className="flex items-center justify-between px-2 py-1">
+            <div className="flex items-center gap-1.5">
+              <FileCode className="h-3 w-3 shrink-0 text-white/30" />
+              <span className="text-[9px] font-medium text-white/25 uppercase tracking-wider">
+                Recent
+              </span>
+              <span className="text-[8px] text-white/15">{recent.length}</span>
+            </div>
+          </div>
+          <div className="space-y-0.5 px-1 pb-1">
+            {recent.map(({ path: filePath, timestamp }) => {
+              const name = fileNameFromPath(filePath)
+              const isActive = filePath === activeFilePath
+              const ago = Math.round((Date.now() - timestamp) / 1000)
+              const timeLabel = ago < 60 ? `${ago}s` : ago < 3600 ? `${Math.round(ago / 60)}m` : ago < 86400 ? `${Math.round(ago / 3600)}h` : `${Math.round(ago / 86400)}d`
+              return (
+                <div
+                  key={filePath}
+                  onClick={() => {
+                    const root = useWorkspaceStore.getState().rootPath
+                    if (!root) return
+                    const absPath = `${root}\\${filePath.replace(/\//g, "\\")}`
+                    const readAndOpen = async () => {
+                      try {
+                        const content = await readFile(absPath)
+                        openFile({ path: filePath, name, content, isDirty: false })
+                      } catch {
+                        openFile({ path: filePath, name, content: "", isDirty: false })
+                      }
+                    }
+                    readAndOpen()
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded px-2 py-[3px] cursor-pointer group",
+                    isActive ? "bg-blue-500/[0.08]" : "hover:bg-white/[0.03]",
+                  )}
+                >
+                  <FileCode className="h-3 w-3 shrink-0 text-blue-400/30" />
+                  <span className={cn(
+                    "truncate text-[11px] flex-1",
+                    isActive ? "text-blue-300 font-medium" : "text-white/45",
+                  )}>
+                    {name}
+                  </span>
+                  <span className="text-[8px] text-white/20 shrink-0 mr-1">{timeLabel}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      useWorkspaceStore.getState().togglePinFile(filePath)
+                    }}
+                    className="rounded p-0.5 text-white/15 opacity-0 group-hover:opacity-100 hover:text-amber-400/50 hover:bg-white/[0.06] transition-all shrink-0"
+                    title="Pin file"
+                  >
+                    <Pin className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }, [recentlyOpened, activeFilePath, openFile, fileNameFromPath])
+
+    // ── Open Editors section ──
+    const OpenEditorsSection = useCallback(() => {
+      if (openFiles.length === 0) return null
+
+      return (
+        <div className="border-b border-white/[0.04]">
+          <div className="flex items-center justify-between px-2 py-1">
+            <div className="flex items-center gap-1.5">
+              <FileCode className="h-3 w-3 shrink-0 text-white/30" />
+              <span className="text-[9px] font-medium text-white/25 uppercase tracking-wider">
+                Open Editors
+              </span>
+              <span className="text-[8px] text-white/15">{openFiles.length}</span>
+            </div>
+          </div>
+          <div className="space-y-0.5 px-1 pb-1">
+            {openFiles.map((file) => {
+              const isActive = file.path === activeFilePath
+              const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
+              return (
+                <div
+                  key={file.path}
+                  onClick={() => {
+                    const rootPath = useWorkspaceStore.getState().rootPath
+                    if (!rootPath) return
+                    const absPath = `${rootPath}\\${file.path.replace(/\//g, "\\")}`
+                    const readAndOpen = async () => {
+                      try {
+                        const content = await readFile(absPath)
+                        openFile({ path: file.path, name: file.name, content, isDirty: false })
+                      } catch {
+                        openFile({ path: file.path, name: file.name, content: file.content || "", isDirty: file.isDirty })
+                      }
+                    }
+                    readAndOpen()
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded px-2 py-[3px] cursor-pointer group",
+                    isActive ? "bg-blue-500/[0.08]" : "hover:bg-white/[0.03]",
+                  )}
+                >
+                  <FileCode className={cn(
+                    "h-3 w-3 shrink-0",
+                    ext === "ts" || ext === "tsx" ? "text-blue-400/50" :
+                    ext === "css" || ext === "scss" ? "text-pink-400/50" :
+                    ext === "json" ? "text-yellow-400/50" :
+                    "text-blue-400/30"
+                  )} />
+                  <span className={cn(
+                    "truncate text-[11px] flex-1",
+                    isActive ? "text-blue-300 font-medium" :
+                    file.isDirty ? "text-white/60 font-medium" : "text-white/45",
+                  )}>
+                    {file.name}
+                  </span>
+                  {file.isDirty && (
+                    <span className="h-2 w-2 rounded-full bg-yellow-400/60 shrink-0" title="Unsaved changes" />
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      useWorkspaceStore.getState().closeFile(file.path)
+                    }}
+                    className="rounded p-0.5 text-white/15 opacity-0 group-hover:opacity-100 hover:text-white/50 hover:bg-white/[0.06] transition-all shrink-0"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }, [openFiles, activeFilePath, openFile])
 
     if (state.category === "disabled" && onOpenWorkspace) {
       return (
@@ -593,6 +850,12 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
           onChange={setSearchQuery}
           onClear={() => setSearchQuery("")}
         />
+
+        <div className="overflow-y-auto">
+          {!isSearching && <PinnedFilesSection />}
+          {!isSearching && <RecentFilesSection />}
+          {!isSearching && <OpenEditorsSection />}
+        </div>
 
         <div
           ref={scrollRef}
@@ -794,6 +1057,12 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
                   <ContextMenuItem label="Duplicate" icon={<FileCode className="h-3 w-3" />} onClick={() => { actions.duplicateEntry(contextMenu.path); closeContextMenu() }} />
                 )}
                 <ContextMenuItem label="Reveal in Explorer" icon={<Eye className="h-3 w-3" />} onClick={() => { actions.revealInOs(contextMenu.path); closeContextMenu() }} />
+                <div className="h-px bg-white/[0.06] mx-2 my-1" />
+                {pinnedFiles.includes(contextMenu.path) ? (
+                  <ContextMenuItem label="Unpin File" icon={<Pin className="h-3 w-3" />} onClick={() => { togglePinFile(contextMenu.path); closeContextMenu() }} />
+                ) : (
+                  <ContextMenuItem label="Pin File" icon={<Pin className="h-3 w-3" />} onClick={() => { togglePinFile(contextMenu.path); closeContextMenu() }} />
+                )}
                 <div className="h-px bg-white/[0.06] mx-2 my-1" />
                 <ContextMenuItem label="Delete" icon={<FilePlus className="h-3 w-3 rotate-45" />} className="text-red-400 hover:bg-red-500/10" onClick={() => { if (confirm(`Delete ${contextMenu.path.split(/[/\\]+/).pop()}?`)) { actions.deleteEntry(contextMenu.path) }; closeContextMenu() }} />
               </motion.div>

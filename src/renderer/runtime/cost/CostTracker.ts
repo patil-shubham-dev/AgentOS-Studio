@@ -101,6 +101,9 @@ export class CostTracker {
       label,
     }
     this.entries.push(entry)
+    if (this.entries.length > 1000) {
+      this.entries = this.entries.slice(-1000)
+    }
     this.saveToStorage()
     this.notifyListeners()
     return entry

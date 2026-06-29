@@ -195,6 +195,7 @@ const api = {
     const validPrefixes = [
       'open-folder', 'open-workspace', 'file-changed', 'toggle-sidebar', 'toggle-terminal',
       'command-palette', 'global-search', 'new-chat', 'new-terminal', 'kill-terminal',
+      'show-about',
       'navigate', 'open-settings', 'open-git-panel', 'open-dashboard', 'check-updates',
       'update-status', 'update-progress', 'terminal-data', 'terminal-exit',
       'cancel-execution', 'git-diff', 'file-save', 'file-save-all',

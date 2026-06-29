@@ -32,7 +32,7 @@ export class WorkspaceErrorBoundary extends Component<WorkspaceErrorBoundaryProp
       error: error.message,
       stack: error.stack,
       componentStack: info.componentStack ?? undefined,
-      route: "/code-canvas",
+      route: "/",
     }).catch(() => {})
   }
 
@@ -46,7 +46,7 @@ export class WorkspaceErrorBoundary extends Component<WorkspaceErrorBoundaryProp
       type: "workspace",
       error: this.state.error?.message ?? "Unknown workspace crash",
       stack: this.state.error?.stack ?? undefined,
-      route: "/code-canvas",
+      route: "/",
       metadata: { action: "user_report", fromErrorBoundary: true },
     }).catch(() => {})
   }

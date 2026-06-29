@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { generateUnifiedDiff } from "@/lib/diff-engine"
 import { InlineDiffViewer } from "./inline-diff-viewer"
 import { requestAIEdit } from "@/lib/ai-edit/ai-edit-service"
 import { streamAIEdit, type StreamingEditState } from "@/lib/ai-edit/ai-edit-streaming-service"
@@ -28,22 +29,6 @@ interface InlineEditOverlayProps {
   filePath: string
   language: string
   fullFileContent: string
-}
-
-function generateUnifiedDiff(original: string, edited: string): string {
-  if (original === edited) return ""
-  const origLines = original.split("\n")
-  const editLines = edited.split("\n")
-  let startOld = 0, startNew = 0, endOld = origLines.length, endNew = editLines.length
-  while (startOld < origLines.length && startNew < editLines.length && origLines[startOld] === editLines[startNew]) { startOld++; startNew++ }
-  while (endOld > startOld && endNew > startNew && origLines[endOld - 1] === editLines[endNew - 1]) { endOld--; endNew-- }
-  const oldCount = endOld - startOld
-  const newCount = endNew - startNew
-  if (oldCount === 0 && newCount === 0) return ""
-  const lines = [`@@ -${startOld + 1},${oldCount} +${startNew + 1},${newCount} @@`]
-  for (let i = startOld; i < endOld; i++) lines.push(`-${origLines[i]}`)
-  for (let i = startNew; i < endNew; i++) lines.push(`+${editLines[i]}`)
-  return lines.join("\n")
 }
 
 function StreamingProgress({ tokenCount, text }: { tokenCount: number; text: string }) {

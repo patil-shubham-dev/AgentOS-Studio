@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect, useState } from "react"
+import { memo, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -34,6 +34,9 @@ const codeComponents: Components = {
   },
 }
 
+const remarkPlugins = [remarkGfm]
+const rehypePlugins = [rehypeHighlight]
+
 function formatMetrics(tps: number, latency: number): string {
   if (latency <= 0 && tps <= 0) return ""
   const items: string[] = []
@@ -48,15 +51,18 @@ export const StableMarkdownRenderer = memo(function StableMarkdownRenderer({
   tokensPerSecond = 0,
   latency = 0,
 }: StableMarkdownRendererProps) {
-  const cursorRef = useRef<HTMLSpanElement>(null)
-  const [showCursor, setShowCursor] = useState(true)
-
-  // Blink cursor during streaming
-  useEffect(() => {
-    if (!isStreaming) { setShowCursor(false); return }
-    const interval = setInterval(() => setShowCursor(v => !v), 530)
-    return () => clearInterval(interval)
-  }, [isStreaming])
+  const streamingComponents = useMemo<Components>(() => ({
+    ...codeComponents,
+    text({ children }) {
+      if (!isStreaming || !children) return <>{children}</>
+      return (
+        <>
+          {children}
+          <span className="inline-block w-[2px] h-[1em] bg-blue-400/60 align-text-bottom ml-[1px] animate-pulse" />
+        </>
+      )
+    },
+  }), [isStreaming])
 
   if (!text && !isStreaming) return null
 
@@ -86,20 +92,9 @@ export const StableMarkdownRenderer = memo(function StableMarkdownRenderer({
 
       {/* Single renderer — ReactMarkdown during streaming AND after, no flicker */}
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
-        components={{
-          ...codeComponents,
-          text({ children }) {
-            if (!isStreaming || !children) return <>{children}</>
-            return (
-              <>
-                {children}
-                {showCursor && <span ref={cursorRef} className="inline-block w-[2px] h-[1em] bg-blue-400/60 align-text-bottom ml-[1px] animate-pulse" />}
-              </>
-            )
-          },
-        }}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        components={streamingComponents}
       >
         {text || (isStreaming ? " " : "")}
       </ReactMarkdown>

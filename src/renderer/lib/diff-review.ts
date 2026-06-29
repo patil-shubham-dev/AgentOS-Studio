@@ -1,11 +1,32 @@
 import { computeDiff, generateUnifiedDiff, type UnifiedDiffHunk } from "@/lib/diff-engine"
 import { writeFile, readFile } from "@/lib/filesystem"
 import { exists } from "@/lib/electron-api"
+import { FileHistoryManager } from "@/lib/file-history"
 import { useDiffStore, type DiffFileEntry, type DiffHunkStatus } from "@/stores/diff-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
 export type DiffReviewSource = DiffFileEntry["source"]
 type PendingBehavior = "modified" | "original"
+
+/**
+ * Tracks the last content we wrote for each absolute file path.
+ * Used by safety checks to distinguish "we wrote this" from "external modification".
+ */
+const MAX_WRITTEN_CONTENT = 1000
+export const writtenContent = new Map<string, string>()
+
+function setWrittenContent(absolutePath: string, content: string): void {
+  if (writtenContent.size >= MAX_WRITTEN_CONTENT && !writtenContent.has(absolutePath)) {
+    const key = writtenContent.keys().next().value
+    if (key !== undefined) writtenContent.delete(key)
+  }
+  writtenContent.set(absolutePath, content)
+}
+
+function isOurLastWrite(absolutePath: string, currentContent: string): boolean {
+  const last = writtenContent.get(absolutePath)
+  return last !== undefined && last === currentContent
+}
 
 function normalizeWorkspacePath(path: string): string {
   return path.replace(/\\/g, "/")
@@ -81,14 +102,16 @@ function getResolvedHunkLines(
 export function getReviewedContent(
   entry: DiffFileEntry,
   pendingBehavior: PendingBehavior = "modified",
+  baseContent?: string,
 ): string {
+  const base = baseContent ?? entry.originalContent
   const hunks = computeDiff(entry.originalContent, entry.modifiedContent)
   if (hunks.length === 0) {
-    return pendingBehavior === "modified" ? entry.modifiedContent : entry.originalContent
+    return pendingBehavior === "modified" ? entry.modifiedContent : base
   }
 
   // Process hunks in reverse order to avoid index shifting
-  let result = entry.originalContent
+  let result = base
   for (let i = hunks.length - 1; i >= 0; i--) {
     const hunk = hunks[i]
     const hunkState = entry.hunks.find((candidate) => candidate.hunkIndex === i)
@@ -130,7 +153,7 @@ async function checkExternalModification(entry: DiffFileEntry): Promise<string |
 
   const fileExists = await exists(absolutePath)
   if (!fileExists) {
-    return `File "${entry.path}" no longer exists on disk. The reviewed content will still be written.`
+    return `File "${entry.path}" no longer exists on disk.`
   }
 
   const currentContent = await readFile(absolutePath)
@@ -141,24 +164,38 @@ async function checkExternalModification(entry: DiffFileEntry): Promise<string |
   return null
 }
 
-async function syncReviewedEntry(entry: DiffFileEntry, pendingBehavior: PendingBehavior): Promise<boolean> {
+async function syncReviewedEntry(entry: DiffFileEntry, pendingBehavior: PendingBehavior, force = false): Promise<boolean> {
   const workspaceStore = useWorkspaceStore.getState()
   const absolutePath = toAbsoluteWorkspacePath(workspaceStore.rootPath, entry.path)
 
   const dirtyWarning = getDirtyBufferWarning(entry)
-  if (dirtyWarning) {
+  if (dirtyWarning && !force) {
     console.warn(dirtyWarning)
+    return false
   }
 
-  const modWarning = await checkExternalModification(entry)
-  if (modWarning) {
-    console.warn(modWarning)
+  let currentContent: string | undefined
+  if (!force) {
+    const fileExists = await exists(absolutePath)
+    if (!fileExists) {
+      console.error(`[diff-review] Blocked write to "${entry.path}": file no longer exists on disk. Use force=true to override.`)
+      return false
+    }
+    currentContent = await readFile(absolutePath)
+    if (currentContent !== entry.originalContent && !isOurLastWrite(absolutePath, currentContent)) {
+      console.error(`[diff-review] Blocked write to "${entry.path}": file was modified externally. Use force=true to override.`)
+      return false
+    }
   }
 
-  const reviewedContent = getReviewedContent(entry, pendingBehavior)
+  // Pass actual file content as base so reviewed content is based on what's on disk,
+  // not stale entry.originalContent — avoids incorrect merge results if file was modified.
+  const reviewedContent = getReviewedContent(entry, pendingBehavior, currentContent)
 
   await writeFile(absolutePath, reviewedContent)
-  setDiffEntry(entry)
+  setWrittenContent(absolutePath, reviewedContent)
+  const updatedEntry = { ...entry, originalContent: reviewedContent }
+  setDiffEntry(updatedEntry)
   workspaceStore.notifyFileEdited(entry.path, reviewedContent)
   return true
 }
@@ -182,17 +219,39 @@ export function buildDiffFileEntry(
   }
 }
 
-async function commitDiffEntry(entry: DiffFileEntry, content: string): Promise<boolean> {
+async function commitDiffEntry(entry: DiffFileEntry, content: string, force = false): Promise<boolean> {
   const workspaceStore = useWorkspaceStore.getState()
   const absolutePath = toAbsoluteWorkspacePath(workspaceStore.rootPath, entry.path)
 
+  if (!force) {
+    const fileExists = await exists(absolutePath)
+    if (!fileExists) {
+      console.error(`[diff-review] Blocked write to "${entry.path}": file no longer exists on disk. Use force=true to override.`)
+      return false
+    }
+    const currentContent = await readFile(absolutePath)
+    if (currentContent !== entry.originalContent && !isOurLastWrite(absolutePath, currentContent)) {
+      console.error(`[diff-review] Blocked write to "${entry.path}": file was modified externally. Use force=true to override.`)
+      return false
+    }
+  }
+
+  // Create snapshot before writing so accepted diffs can be undone
+  try {
+    const history = FileHistoryManager.getInstance()
+    await history.createSnapshot(absolutePath, content, `diff-review-${Date.now()}`)
+  } catch (err) {
+    console.warn(`[diff-review] Failed to create snapshot for ${absolutePath}:`, err)
+  }
+
   await writeFile(absolutePath, content)
+  setWrittenContent(absolutePath, content)
   setDiffEntry(entry)
   workspaceStore.notifyFileEdited(entry.path, content)
   return true
 }
 
-async function commitDiffDecision(path: string, content: string, accepted: boolean): Promise<boolean> {
+async function commitDiffDecision(path: string, content: string, accepted: boolean, force = false): Promise<boolean> {
   const entry = useDiffStore.getState().files.get(path)
   if (!entry) return false
 
@@ -204,24 +263,24 @@ async function commitDiffDecision(path: string, content: string, accepted: boole
       status: accepted ? "accepted" : "rejected",
     })),
   }
-  return commitDiffEntry(nextEntry, content)
+  return commitDiffEntry(nextEntry, content, force)
 }
 
-export async function acceptDiffReviewFile(path: string): Promise<boolean> {
+export async function acceptDiffReviewFile(path: string, force = false): Promise<boolean> {
   const normalizedPath = normalizeWorkspacePath(path)
   const entry = useDiffStore.getState().files.get(normalizedPath)
   if (!entry) return false
-  return commitDiffDecision(normalizedPath, entry.modifiedContent, true)
+  return commitDiffDecision(normalizedPath, entry.modifiedContent, true, force)
 }
 
-export async function rejectDiffReviewFile(path: string): Promise<boolean> {
+export async function rejectDiffReviewFile(path: string, force = false): Promise<boolean> {
   const normalizedPath = normalizeWorkspacePath(path)
   const entry = useDiffStore.getState().files.get(normalizedPath)
   if (!entry) return false
-  return commitDiffDecision(normalizedPath, entry.originalContent, false)
+  return commitDiffDecision(normalizedPath, entry.originalContent, false, force)
 }
 
-export async function acceptDiffReviewHunk(path: string, hunkIndex: number): Promise<boolean> {
+export async function acceptDiffReviewHunk(path: string, hunkIndex: number, force = false): Promise<boolean> {
   const normalizedPath = normalizeWorkspacePath(path)
   const entry = useDiffStore.getState().files.get(normalizedPath)
   if (!entry) return false
@@ -229,10 +288,12 @@ export async function acceptDiffReviewHunk(path: string, hunkIndex: number): Pro
   const nextEntry = withUpdatedHunkStatus(entry, hunkIndex, "accepted")
   if (!nextEntry) return false
 
-  return syncReviewedEntry(nextEntry, "modified")
+  const result = await syncReviewedEntry(nextEntry, "modified", force)
+  if (!result) return false
+  return true
 }
 
-export async function rejectDiffReviewHunk(path: string, hunkIndex: number): Promise<boolean> {
+export async function rejectDiffReviewHunk(path: string, hunkIndex: number, force = false): Promise<boolean> {
   const normalizedPath = normalizeWorkspacePath(path)
   const entry = useDiffStore.getState().files.get(normalizedPath)
   if (!entry) return false
@@ -240,19 +301,27 @@ export async function rejectDiffReviewHunk(path: string, hunkIndex: number): Pro
   const nextEntry = withUpdatedHunkStatus(entry, hunkIndex, "rejected")
   if (!nextEntry) return false
 
-  return syncReviewedEntry(nextEntry, "modified")
+  const result = await syncReviewedEntry(nextEntry, "modified", force)
+  if (!result) return false
+  return true
 }
 
-export async function acceptAllDiffReviews(): Promise<void> {
+export async function acceptAllDiffReviews(force = false): Promise<number> {
   const paths = Array.from(useDiffStore.getState().files.keys())
-  for (const path of paths) {
-    await acceptDiffReviewFile(path)
+  let accepted = 0
+  const results = await Promise.allSettled(paths.map((path) => acceptDiffReviewFile(path, force)))
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value) accepted++
   }
+  return accepted
 }
 
-export async function rejectAllDiffReviews(): Promise<void> {
+export async function rejectAllDiffReviews(force = false): Promise<number> {
   const paths = Array.from(useDiffStore.getState().files.keys())
-  for (const path of paths) {
-    await rejectDiffReviewFile(path)
+  let rejected = 0
+  const results = await Promise.allSettled(paths.map((path) => rejectDiffReviewFile(path, force)))
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value) rejected++
   }
+  return rejected
 }

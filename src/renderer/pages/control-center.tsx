@@ -255,8 +255,8 @@ function OnboardingTaskList({ onNavigate }: { onNavigate: (path: string) => void
   const tasks = [
     { label: "Add a Provider", done: providers.length > 0, action: () => onNavigate("/settings"), icon: Plus },
     { label: "Set API Key", done: providers.some((p) => p.apiKey.length > 0), action: () => onNavigate("/settings"), icon: Settings2 },
-    { label: "Configure Manager Role", done: roleConfigs.some((r) => r.name.toLowerCase() === "manager" && r.providerId && r.model), action: () => onNavigate("/agents"), icon: Cpu },
-    { label: "Open a Workspace", done: !!rootPath, action: () => onNavigate("/code-canvas"), icon: Rocket },
+    { label: "Configure Manager Role", done: roleConfigs.some((r) => r.name.toLowerCase() === "manager" && r.providerId && r.model), action: () => onNavigate("/settings"), icon: Cpu },
+    { label: "Open a Workspace", done: !!rootPath, action: () => onNavigate("/"), icon: Rocket },
   ]
 
   const done = tasks.filter((t) => t.done).length

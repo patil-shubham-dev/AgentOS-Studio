@@ -38,6 +38,7 @@ export interface StreamingTransportOptions {
   firstChunkTimeoutMs?: number
   idleChunkTimeoutMs?: number
   maxDurationMs?: number
+  requestId?: string
   onMetrics?: (metrics: StreamMetrics) => void
   onStateChange?: (state: StreamState) => void
 }
@@ -61,11 +62,13 @@ export function parseSseLine(line: string, lineNumber: number): SseChunk | null 
   return { raw: line, event: undefined, data: trimmed, lineNumber }
 }
 
-export function parseOpenAiStreamChunk(data: string): {
+export type ParsedChunk = {
   content?: string
   finishReason?: string | null
   toolCalls?: Array<{ index: number; id?: string; name?: string; arguments?: string }>
-} | null {
+}
+
+export function parseOpenAiStreamChunk(data: string): ParsedChunk | null {
   if (data === "[DONE]") return { finishReason: "stop" }
 
   try {
@@ -74,7 +77,7 @@ export function parseOpenAiStreamChunk(data: string): {
     if (!choice) return { content: "", finishReason: null }
 
     const delta = choice.delta ?? {}
-    const result: ReturnType<typeof parseOpenAiStreamChunk> = {}
+    const result: ParsedChunk = {}
 
     if (delta.content !== undefined && delta.content !== null) {
       result.content = String(delta.content)
@@ -94,6 +97,30 @@ export function parseOpenAiStreamChunk(data: string): {
     }
 
     return result
+  } catch {
+    return null
+  }
+}
+
+export function parseGeminiStreamChunk(data: string): ParsedChunk | null {
+  try {
+    const parsed = JSON.parse(data)
+    const candidates = parsed.candidates
+    if (!candidates || !Array.isArray(candidates) || candidates.length === 0) return null
+    const candidate = candidates[0]
+    const parts = candidate.content?.parts
+    if (!parts || !Array.isArray(parts)) return null
+    const text = parts.map((p: any) => p.text ?? "").join("")
+    const result: ParsedChunk = {}
+    if (text) result.content = text
+    if (candidate.finishReason) {
+      const upper = String(candidate.finishReason).toUpperCase()
+      if (upper === "STOP") result.finishReason = "stop"
+      else if (upper === "MAX_TOKENS") result.finishReason = "length"
+      else if (upper === "SAFETY" || upper === "RECITATION") result.finishReason = "content_filter"
+      else result.finishReason = candidate.finishReason.toLowerCase()
+    }
+    return Object.keys(result).length > 0 ? result : null
   } catch {
     return null
   }
@@ -211,7 +238,13 @@ export class SseParser {
       return
     }
 
-    const parsed = parseOpenAiStreamChunk(data)
+    let parsed = parseOpenAiStreamChunk(data)
+
+    if (!parsed || (!parsed.content && parsed.finishReason === undefined && !parsed.toolCalls)) {
+      const gemini = parseGeminiStreamChunk(data)
+      if (gemini) parsed = gemini
+    }
+
     if (!parsed) return
 
     if (parsed.content) {
@@ -222,9 +255,6 @@ export class SseParser {
       for (const tc of parsed.toolCalls) {
         const isNew = !this.toolCallBuffers.has(tc.index)
         const existing = this.toolCallBuffers.get(tc.index) ?? { id: "", name: "", arguments: "" }
-
-        const prevId = existing.id
-        const prevName = existing.name
 
         if (tc.id) existing.id = tc.id
         if (tc.name) existing.name = tc.name
@@ -266,8 +296,9 @@ export async function streamingTransportFetch(
   const idleChunkTimeout = options.idleChunkTimeoutMs ?? 60_000
   const maxDuration = options.maxDurationMs ?? 300_000
   const shortUrl = options.url?.slice(0, 80)
+  const rid = options.requestId ?? ""
 
-  console.log(`${STREAM_LOG} ▶ connect start (url=${shortUrl}, timeoutMs=${timeoutMs}, firstChunkMs=${firstChunkTimeout})`)
+  console.log(`${STREAM_LOG} ▶ connect start (url=${shortUrl}, rid=${rid}, timeoutMs=${timeoutMs}, firstChunkMs=${firstChunkTimeout})`)
 
   const abortCtrl = new AbortController()
   const signal = options.signal

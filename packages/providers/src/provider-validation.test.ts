@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { normalizeError, ProviderError, safeValidateProvider, safeDetectRuntime, resolveAdapter } from './provider-manager'
+import { normalizeError, ProviderError, safeValidateProvider, safeDetectRuntime, resolveProviderManagerAdapter } from './provider-manager'
 import { validateProvider } from './provider-gateway'
 
 const mockTauriFetch = vi.hoisted(() => vi.fn())
@@ -79,32 +79,32 @@ describe('normalizeError', () => {
   })
 })
 
-describe('resolveAdapter', () => {
+describe('resolveProviderManagerAdapter', () => {
   it('resolves openai.com', () => {
-    const adapter = resolveAdapter('https://api.openai.com/v1')
+    const adapter = resolveProviderManagerAdapter('https://api.openai.com/v1')
     expect(adapter.id).toBe('openai')
     expect(adapter.isOpenAiCompatible).toBe(true)
   })
 
   it('resolves anthropic.com', () => {
-    const adapter = resolveAdapter('https://api.anthropic.com')
+    const adapter = resolveProviderManagerAdapter('https://api.anthropic.com')
     expect(adapter.id).toBe('anthropic')
     expect(adapter.isOpenAiCompatible).toBe(false)
   })
 
   it('resolves nvidia.com', () => {
-    const adapter = resolveAdapter('https://integrate.api.nvidia.com/v1')
+    const adapter = resolveProviderManagerAdapter('https://integrate.api.nvidia.com/v1')
     expect(adapter.id).toBe('nvidia')
     expect(adapter.runtimeKey).toBe('Nvidia NIM')
   })
 
   it('resolves localhost as local', () => {
-    const adapter = resolveAdapter('http://localhost:11434')
+    const adapter = resolveProviderManagerAdapter('http://localhost:11434')
     expect(adapter.isLocal).toBe(true)
   })
 
   it('falls back to unknown for unrecognized URLs', () => {
-    const adapter = resolveAdapter('https://custom.example.com/v1')
+    const adapter = resolveProviderManagerAdapter('https://custom.example.com/v1')
     expect(adapter.id).toBe('unknown')
     expect(adapter.isOpenAiCompatible).toBe(true)
   })

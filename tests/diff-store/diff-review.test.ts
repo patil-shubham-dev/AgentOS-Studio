@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createMockStorage } from "../e2e/helpers/workspace-test-utils"
 
-const writeFileMock = vi.fn(async () => {})
-const existsMock = vi.fn(async () => true)
-const readFileMock = vi.fn(async () => "")
+const fileContents = new Map<string, string>()
+const writeFileMock = vi.fn(async (path: string, content: string) => { fileContents.set(path, content) })
+const existsMock = vi.fn(async (path: string) => fileContents.has(path))
+const readFileMock = vi.fn(async (path: string) => fileContents.get(path) ?? "")
 
 vi.mock("@/lib/filesystem", async () => {
   const actual = await vi.importActual<typeof import("@/lib/filesystem")>("@/lib/filesystem")
@@ -29,6 +30,8 @@ describe("diff review helpers", () => {
 
     const { useDiffStore } = await import("@/stores/diff-store")
     const { useWorkspaceStore } = await import("@/stores/workspace-store")
+    const { writtenContent } = await import("@/lib/diff-review")
+    writtenContent.clear()
 
     useDiffStore.getState().clear()
     useWorkspaceStore.setState({
@@ -65,6 +68,7 @@ describe("diff review helpers", () => {
     const { useDiffStore } = await import("@/stores/diff-store")
     const { useWorkspaceStore } = await import("@/stores/workspace-store")
 
+    fileContents.set("C:\\workspace\\src\\test.ts", "before\n")
     useDiffStore.getState().addFileDiff(
       buildDiffFileEntry("src/test.ts", "before\n", "after\n"),
     )
@@ -116,6 +120,7 @@ describe("diff review helpers", () => {
       "line-12",
     ].join("\n")
 
+    fileContents.set("C:\\workspace\\src\\test.ts", original)
     const entry = buildDiffFileEntry("src/test.ts", original, modified)
     expect(entry.hunks).toHaveLength(2)
     useDiffStore.getState().addFileDiff(entry)

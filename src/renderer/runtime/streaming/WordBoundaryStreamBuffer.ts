@@ -1,19 +1,15 @@
 const WORD_BOUNDARY = /[\s\n\r.!?;:)]$/
 
 export class WordBoundaryStreamBuffer {
-  private buffer = new Map<string, string[]>()
+  private buffer = new Map<string, string>()
   private pendingBoundary = false
   private wordCount = 0
 
   append(stepId: string, token: string): string | null {
-    let tokens = this.buffer.get(stepId)
-    if (!tokens) {
-      tokens = []
-      this.buffer.set(stepId, tokens)
-    }
-    tokens.push(token)
-    const combined = tokens.join("")
-    if (WORD_BOUNDARY.test(combined)) {
+    const existing = this.buffer.get(stepId) ?? ""
+    const combined = existing + token
+    this.buffer.set(stepId, combined)
+    if (!this.pendingBoundary && WORD_BOUNDARY.test(combined)) {
       this.pendingBoundary = true
       this.wordCount++
     }
@@ -24,19 +20,19 @@ export class WordBoundaryStreamBuffer {
   }
 
   flush(stepId: string): string | null {
-    const tokens = this.buffer.get(stepId)
-    if (!tokens || tokens.length === 0) return null
+    const text = this.buffer.get(stepId)
+    if (!text || text.length === 0) return null
     this.buffer.delete(stepId)
     this.pendingBoundary = false
     this.wordCount = 0
-    return tokens.join("")
+    return text
   }
 
   flushAll(): Array<{ stepId: string; text: string }> {
     const result: Array<{ stepId: string; text: string }> = []
-    for (const [stepId, tokens] of this.buffer) {
-      if (tokens.length > 0) {
-        result.push({ stepId, text: tokens.join("") })
+    for (const [stepId, text] of this.buffer) {
+      if (text.length > 0) {
+        result.push({ stepId, text })
       }
     }
     this.buffer.clear()
@@ -46,8 +42,8 @@ export class WordBoundaryStreamBuffer {
   }
 
   hasPending(stepId: string): boolean {
-    const tokens = this.buffer.get(stepId)
-    return tokens !== undefined && tokens.length > 0
+    const text = this.buffer.get(stepId)
+    return text !== undefined && text.length > 0
   }
 
   clear(stepId: string): void {

@@ -5,29 +5,16 @@ import { SafeErrorBoundary } from '@/core/error-boundaries'
 import { ControlCenterPage } from '@/pages/control-center'
 import { CodeCanvasPage } from '@/pages/code-canvas'
 import { SettingsPage } from '@/pages/settings'
-import { InstallPanel } from '@/pages/install-panel'
-import { InstallWizard } from '@/pages/install-wizard'
-import { UninstallWizard } from '@/pages/uninstall-wizard'
-import { UpdatePanel } from '@/pages/update-panel'
-import { ResetPanel } from '@/pages/reset-panel'
-import { AgentsPage } from '@/pages/agents'
-import { LogsPage } from '@/pages/logs'
 import { GitPage } from '@/pages/git'
-import { MemoryPage } from '@/pages/memory'
-import { PersonasPage } from '@/pages/personas'
-import { ContextDashboardPage } from '@/pages/context-dashboard'
-import { PerformanceDashboardPage } from '@/pages/performance-dashboard'
-import { OrchestrationDashboardPage } from '@/pages/orchestration-dashboard'
-import { PluginsPage } from '@/pages/plugins'
-import { AuditPage } from '@/pages/audit'
 import { RuntimeHealthPanel } from '@/components/runtime/RuntimeHealthPanel'
 import { StressTestPage } from '@/pages/__stress-test'
 import { useLeakTracker } from '@/performance/leak-detector'
 import { ReducedMotionProvider } from '@/lib/reduced-motion'
 import { WelcomeWizard } from '@/components/workspace/WelcomeWizard'
+import { AboutDialog } from '@/components/AboutDialog'
 import { StartupTiming } from '@/lib/startup-timing'
 import { StartupStore, type StartupPhase } from '@/lib/startup-store'
-import { StartupDiagnosticsPage } from '@/pages/startup-diagnostics'
+import logoSvg from '@/assets/branding/logo.svg'
 
 export function AppLoadingOverlay() {
   const [services, setServices] = useState(StartupStore.getServices())
@@ -50,18 +37,11 @@ export function AppLoadingOverlay() {
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       height: '100%', width: '100%', background: '#0d0d10',
-      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+      fontFamily: 'Inter Variable, Inter, system-ui, sans-serif',
       gap: '20px', userSelect: 'none', padding: '40px',
     }}>
-      <div style={{
-        width: '48px', height: '48px', borderRadius: '12px',
-        background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '22px', fontWeight: 700, color: '#fff',
-      }}>
-        A
-      </div>
-      <div style={{ fontSize: '15px', fontWeight: 600, color: '#e2e8f0', letterSpacing: '-0.2px' }}>
+      <img src={logoSvg} alt="AgenticOS" width={64} height={64} />
+      <div style={{ fontSize: 'var(--font-size-heading-s)', fontWeight: 600, color: '#e2e8f0', letterSpacing: '-0.2px' }}>
         {currentService
           ? `Loading ${currentService.name}...`
           : failedService
@@ -167,37 +147,29 @@ export default function App({ startupPhase }: AppProps) {
     <RootErrorBoundary>
     <ReducedMotionProvider>
     <SafeErrorBoundary name="Application">
+      <AboutDialog />
       <WelcomeWizard open={showWelcome} onClose={() => setShowWelcome(false)} />
       <Routes>
         <Route element={<AppShell />}>
+          {/* Workspace is the default landing page */}
           <Route path="/" element={
             startupPhase === 'booting'
               ? <AppLoadingOverlay />
-              : <SafeErrorBoundary name="Route"><RouteContainer><ControlCenterPage /></RouteContainer></SafeErrorBoundary>
+              : <SafeErrorBoundary name="CodeCanvas"><RouteContainer><CodeCanvasPage /></RouteContainer></SafeErrorBoundary>
           } />
-          <Route path="/control-center" element={
+          <Route path="/code-canvas" element={
+            startupPhase === 'booting'
+              ? <AppLoadingOverlay />
+              : <SafeErrorBoundary name="CodeCanvas"><RouteContainer><CodeCanvasPage /></RouteContainer></SafeErrorBoundary>
+          } />
+          {/* Dashboard moved to /dashboard */}
+          <Route path="/dashboard" element={
             startupPhase === 'booting'
               ? <AppLoadingOverlay />
               : <SafeErrorBoundary name="Route"><RouteContainer><ControlCenterPage /></RouteContainer></SafeErrorBoundary>
           } />
-          <Route path="/code-canvas" element={<SafeErrorBoundary name="CodeCanvas"><RouteContainer><CodeCanvasPage /></RouteContainer></SafeErrorBoundary>} />
           <Route path="/settings" element={<SafeErrorBoundary name="Settings"><RouteContainer><SettingsPage /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/settings/install" element={<SafeErrorBoundary name="InstallPanel"><RouteContainer><InstallPanel /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/settings/install-wizard" element={<SafeErrorBoundary name="InstallWizard"><InstallWizard /></SafeErrorBoundary>} />
-          <Route path="/settings/uninstall-wizard" element={<SafeErrorBoundary name="UninstallWizard"><UninstallWizard /></SafeErrorBoundary>} />
-          <Route path="/settings/update" element={<SafeErrorBoundary name="UpdatePanel"><RouteContainer><UpdatePanel /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/settings/reset" element={<SafeErrorBoundary name="ResetPanel"><RouteContainer><ResetPanel /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/settings/startup-diagnostics" element={<SafeErrorBoundary name="StartupDiagnostics"><RouteContainer><StartupDiagnosticsPage /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/agents" element={<SafeErrorBoundary name="Agents"><RouteContainer><AgentsPage /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/logs" element={<SafeErrorBoundary name="Logs"><RouteContainer><LogsPage /></RouteContainer></SafeErrorBoundary>} />
           <Route path="/git" element={<SafeErrorBoundary name="Git"><RouteContainer><GitPage /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/memory" element={<SafeErrorBoundary name="Memory"><RouteContainer><MemoryPage /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/personas" element={<SafeErrorBoundary name="Personas"><RouteContainer><PersonasPage /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/context" element={<SafeErrorBoundary name="ContextDashboard"><RouteContainer><ContextDashboardPage /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/performance" element={<SafeErrorBoundary name="PerformanceDashboard"><RouteContainer><PerformanceDashboardPage /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/orchestration" element={<SafeErrorBoundary name="OrchestrationDashboard"><RouteContainer><OrchestrationDashboardPage /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/plugins" element={<SafeErrorBoundary name="Plugins"><RouteContainer><PluginsPage /></RouteContainer></SafeErrorBoundary>} />
-          <Route path="/audit" element={<SafeErrorBoundary name="Audit"><RouteContainer><AuditPage /></RouteContainer></SafeErrorBoundary>} />
           {import.meta.env.DEV && (
             <>
               <Route path="/__health" element={<SafeErrorBoundary name="Health"><RuntimeHealthPanel /></SafeErrorBoundary>} />
@@ -207,7 +179,7 @@ export default function App({ startupPhase }: AppProps) {
           <Route path="*" element={
             startupPhase === 'booting'
               ? <AppLoadingOverlay />
-              : <SafeErrorBoundary name="Fallback"><RouteContainer><ControlCenterPage /></RouteContainer></SafeErrorBoundary>
+              : <SafeErrorBoundary name="CodeCanvas"><RouteContainer><CodeCanvasPage /></RouteContainer></SafeErrorBoundary>
           } />
         </Route>
       </Routes>

@@ -1,4 +1,3 @@
-# AgenticOS Installer Screenshot Capture Script
 param([string]$InstallerPath = "release\AgenticOS Setup 3.0.0.exe")
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -9,6 +8,7 @@ New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
 
 Write-Output "=== AgenticOS Installer Screenshot Capture ==="
 Write-Output "Launching installer: $InstallerPath"
+Write-Output "Each page will wait 90 seconds before capture."
 
 $proc = Start-Process -FilePath $InstallerPath -PassThru
 Start-Sleep -Seconds 3
@@ -27,41 +27,38 @@ function Take-Screenshot {
     Write-Output "  Saved: $name"
 }
 
-Write-Output ""
-Write-Output "--- Capture Sequence ---"
+$pageNum = 1
 
-# Page 1: Welcome
-Write-Output "Page 1/5: Welcome"
+Write-Output "`n--- Page $pageNum/?: Welcome ---"
+Write-Output "  Waiting 90s for page to render..."
+Start-Sleep -Seconds 90
 Take-Screenshot "01-welcome.png"
+$pageNum++
 
-# Page 2: Options (press Enter for Next)
-Write-Output "Page 2/5: Options"
-[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-Start-Sleep -Seconds 2
-Take-Screenshot "02-options.png"
+# Loop through remaining pages — press Enter, wait 90s, screenshot, repeat
+while ($pageNum -le 20) {
+    Write-Output "`n--- Page $pageNum/? ---"
+    Write-Output "  Pressing Enter to advance..."
+    [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+    Start-Sleep -Seconds 1
+    
+    Write-Output "  Waiting 90s for page to render..."
+    Start-Sleep -Seconds 90
+    
+    $num = $pageNum.ToString("00")
+    Take-Screenshot "$num-page.png"
+    
+    $pageNum++
+}
 
-# Page 3: Directory
-Write-Output "Page 3/5: Directory"
-[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-Start-Sleep -Seconds 2
-Take-Screenshot "03-directory.png"
+Write-Output "`n=== Capture complete ==="
+Write-Output "Checking for additional pages..."
 
-# Page 4: Installing (click Next to start install)
-Write-Output "Page 4/5: Installing"
+# One more check — press Enter, wait, see if window closes
 [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
 Start-Sleep -Seconds 5
-Take-Screenshot "04-installing.png"
 
-# Page 5: Complete
-Write-Output "Page 5/5: Complete"
-Start-Sleep -Seconds 3
-Take-Screenshot "05-complete.png"
-
-# Close
-[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-Start-Sleep -Seconds 1
-
-Write-Output ""
-Write-Output "=== Screenshots Captured ==="
 Write-Output "Location: $((Resolve-Path $reportDir).Path)"
-$proc | Stop-Process -Force -ErrorAction SilentlyContinue
+
+# Don't kill the process — let user see the final state
+Write-Output "Installer process left running for user inspection."

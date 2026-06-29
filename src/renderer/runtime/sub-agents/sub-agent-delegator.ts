@@ -19,7 +19,7 @@ import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import type { ChatMessage, ChatResponse, ToolDef, ToolCall } from "@agentic-os/providers"
-import { directChatCompletion, streamChatCompletion } from "@agentic-os/providers"
+import { chatCompletion, streamChatCompletion } from "@agentic-os/providers"
 import { trace } from "@/lib/execution-trace"
 import { EventBus } from "@/runtime/EventBus"
 import { ToolExecutionSandbox } from "@/runtime/tools/ToolExecutionSandbox"
@@ -349,7 +349,7 @@ export async function executeSubAgent(request: SubAgentDelegationRequest): Promi
           finish_reason: streamedContent.toolCalls?.length ? "tool_calls" : "stop",
         }
       } else {
-        res = await directChatCompletion(provider.baseUrl, provider.apiKey, { model, messages: msgs, tools, maxTokens: 4096 }, signal)
+        res = await chatCompletion(provider.baseUrl, provider.apiKey, provider.runtime, { model, messages: msgs, tools, maxTokens: 4096 }, signal)
         msgs.push(res.message)
         if (res.usage) totalTokens += res.usage.total_tokens
       }

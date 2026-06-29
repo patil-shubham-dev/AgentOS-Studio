@@ -17,6 +17,7 @@ export class FileWatcher {
   private readonly DEBOUNCE_MS = 300
   private readonly BULK_THROTTLE_MS = 5000
   private readonly BULK_THRESHOLD = 10
+  private readonly MAX_PENDING_CHANGES = 1000
   private rootPath = ""
   private onFileChanged?: (event: FileChangeEvent) => void
 
@@ -72,6 +73,9 @@ export class FileWatcher {
   }
 
   private handleChange(event: FileChangeEvent): void {
+    if (this.pendingChanges.length >= this.MAX_PENDING_CHANGES) {
+      this.pendingChanges.splice(0, this.pendingChanges.length - this.MAX_PENDING_CHANGES + 1)
+    }
     this.pendingChanges.push(event)
     this.onFileChanged?.(event)
 

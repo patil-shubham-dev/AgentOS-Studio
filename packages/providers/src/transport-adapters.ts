@@ -37,8 +37,26 @@ export interface ModelsResponse {
   models: Array<{ id: string; name: string }>
 }
 
+export interface ProviderCapabilities {
+  supportsSystemPrompts: boolean
+  supportsToolCalling: boolean
+  supportsStreaming: boolean
+  supportsVision: boolean
+  supportsReasoning: boolean
+  supportsJsonMode: boolean
+  supportsStructuredOutput: boolean
+  supportsCacheControl: boolean
+  supportsStreamingTools: boolean
+  supportsEmbeddings: boolean
+  supportsImageGeneration: boolean
+  supportsAudio: boolean
+  contextWindow: number
+  maxOutputTokens: number
+}
+
 export interface TransportAdapter {
   name: string
+  getCapabilities(model?: string): ProviderCapabilities
   buildChatUrl(requestModel?: string): string
   buildModelsUrl(): string
   buildHeaders(): Record<string, string>
@@ -89,12 +107,62 @@ function normalizeBaseUrl(raw: string): string {
   return raw.replace(/\/+$/, "")
 }
 
+const OPENAI_DEFAULT_CAPS: ProviderCapabilities = {
+  supportsSystemPrompts: true,
+  supportsToolCalling: true,
+  supportsStreaming: true,
+  supportsVision: false,
+  supportsReasoning: false,
+  supportsJsonMode: true,
+  supportsStructuredOutput: true,
+  supportsCacheControl: false,
+  supportsStreamingTools: true,
+  supportsEmbeddings: true,
+  supportsImageGeneration: false,
+  supportsAudio: false,
+  contextWindow: 128000,
+  maxOutputTokens: 16384,
+}
+
 export class OpenAITransportAdapter implements TransportAdapter {
   name = "openai-compatible"
   protected config: TransportAdapterConfig
 
   constructor(config: TransportAdapterConfig) {
     this.config = config
+  }
+
+  getCapabilities(model?: string): ProviderCapabilities {
+    if (!model) return { ...OPENAI_DEFAULT_CAPS }
+    const m = model.toLowerCase()
+    const caps = { ...OPENAI_DEFAULT_CAPS }
+    if (m.includes("gpt-4o") || m.includes("gpt-4.5")) {
+      caps.supportsVision = true
+      caps.contextWindow = 128000
+      caps.maxOutputTokens = 16384
+    } else if (m.includes("gpt-4-turbo")) {
+      caps.supportsVision = true
+      caps.contextWindow = 128000
+      caps.maxOutputTokens = 4096
+    } else if (m.includes("gpt-4")) {
+      caps.contextWindow = 8192
+      caps.maxOutputTokens = 8192
+    } else if (m.includes("gpt-3.5")) {
+      caps.contextWindow = 16384
+      caps.maxOutputTokens = 4096
+    } else if (m.includes("o1") || m.includes("o3")) {
+      caps.supportsReasoning = true
+      caps.supportsVision = true
+      caps.contextWindow = 200000
+      caps.maxOutputTokens = 100000
+    } else if (m.includes("o4")) {
+      caps.supportsReasoning = true
+      caps.supportsVision = true
+      caps.contextWindow = 200000
+      caps.maxOutputTokens = 128000
+    }
+    if (m.includes("vision") || m.includes("vv")) caps.supportsVision = true
+    return caps
   }
 
   buildChatUrl(_requestModel?: string): string {
@@ -193,8 +261,36 @@ export class OpenAITransportAdapter implements TransportAdapter {
   }
 }
 
+const NVIDIA_NIM_CAPS: ProviderCapabilities = {
+  supportsSystemPrompts: true,
+  supportsToolCalling: true,
+  supportsStreaming: true,
+  supportsVision: false,
+  supportsReasoning: false,
+  supportsJsonMode: true,
+  supportsStructuredOutput: false,
+  supportsCacheControl: false,
+  supportsStreamingTools: true,
+  supportsEmbeddings: false,
+  supportsImageGeneration: false,
+  supportsAudio: false,
+  contextWindow: 128000,
+  maxOutputTokens: 4096,
+}
+
 export class NvidiaNimAdapter extends OpenAITransportAdapter {
   name = "nvidia-nim"
+
+  getCapabilities(model?: string): ProviderCapabilities {
+    const caps = { ...NVIDIA_NIM_CAPS }
+    if (!model) return caps
+    const m = model.toLowerCase()
+    if (m.includes("llama") || m.includes("nemotron")) {
+      caps.supportsToolCalling = true
+    }
+    if (m.includes("vision") || m.includes("vlm")) caps.supportsVision = true
+    return caps
+  }
 
   buildModelsUrl(): string {
     const base = normalizeBaseUrl(this.config.baseUrl)
@@ -217,8 +313,46 @@ export class NvidiaNimAdapter extends OpenAITransportAdapter {
   }
 }
 
+const OLLAMA_CAPS: ProviderCapabilities = {
+  supportsSystemPrompts: true,
+  supportsToolCalling: true,
+  supportsStreaming: true,
+  supportsVision: false,
+  supportsReasoning: false,
+  supportsJsonMode: true,
+  supportsStructuredOutput: false,
+  supportsCacheControl: false,
+  supportsStreamingTools: true,
+  supportsEmbeddings: true,
+  supportsImageGeneration: false,
+  supportsAudio: false,
+  contextWindow: 8192,
+  maxOutputTokens: 4096,
+}
+
 export class OllamaAdapter extends OpenAITransportAdapter {
   name = "ollama"
+
+  getCapabilities(model?: string): ProviderCapabilities {
+    const caps = { ...OLLAMA_CAPS }
+    if (!model) return caps
+    const m = model.toLowerCase()
+    if (m.includes("llava") || m.includes("bakllava") || m.includes("moondream") || m.includes("vision")) {
+      caps.supportsVision = true
+    }
+    if (m.includes("llama3") || m.includes("qwen2") || m.includes("mistral") || m.includes("deepseek") || m.includes("command-r")) {
+      caps.supportsToolCalling = true
+    }
+    if (m.includes("qwen2.5")) {
+      caps.contextWindow = 32768
+      caps.maxOutputTokens = 8192
+    }
+    if (m.includes("deepseek-r1")) {
+      caps.supportsReasoning = true
+      caps.contextWindow = 16384
+    }
+    return caps
+  }
 
   buildModelsUrl(): string {
     const base = normalizeBaseUrl(this.config.baseUrl)
@@ -242,12 +376,198 @@ export class OllamaAdapter extends OpenAITransportAdapter {
   }
 }
 
+const GROQ_DEFAULT_CAPS: ProviderCapabilities = {
+  supportsSystemPrompts: true,
+  supportsToolCalling: true,
+  supportsStreaming: true,
+  supportsVision: false,
+  supportsReasoning: false,
+  supportsJsonMode: true,
+  supportsStructuredOutput: false,
+  supportsCacheControl: false,
+  supportsStreamingTools: true,
+  supportsEmbeddings: false,
+  supportsImageGeneration: false,
+  supportsAudio: false,
+  contextWindow: 128000,
+  maxOutputTokens: 8192,
+}
+
+export class GroqAdapter extends OpenAITransportAdapter {
+  name = "groq"
+
+  getCapabilities(model?: string): ProviderCapabilities {
+    if (!model) return { ...GROQ_DEFAULT_CAPS }
+    const caps = { ...GROQ_DEFAULT_CAPS }
+    const m = model.toLowerCase()
+    if (m.includes("llama")) {
+      caps.supportsToolCalling = true
+      if (m.includes("3.1") || m.includes("3-1")) caps.contextWindow = 128000
+      else caps.contextWindow = 8192
+    } else if (m.includes("mixtral")) {
+      caps.supportsToolCalling = true
+      caps.contextWindow = 32768
+    } else if (m.includes("gemma")) {
+      caps.contextWindow = 8192
+    } else if (m.includes("llava")) {
+      caps.supportsVision = true
+      caps.contextWindow = 4096
+    } else if (m.includes("qwen")) {
+      caps.supportsToolCalling = true
+      caps.contextWindow = 32768
+    } else if (m.includes("deepseek")) {
+      caps.supportsToolCalling = true
+      caps.contextWindow = 128000
+    } else if (m.includes("distil") || m.includes("distill")) {
+      caps.supportsToolCalling = true
+      caps.contextWindow = 32768
+    }
+    return caps
+  }
+}
+
+const DEEPSEEK_DEFAULT_CAPS: ProviderCapabilities = {
+  supportsSystemPrompts: true,
+  supportsToolCalling: true,
+  supportsStreaming: true,
+  supportsVision: false,
+  supportsReasoning: false,
+  supportsJsonMode: true,
+  supportsStructuredOutput: false,
+  supportsCacheControl: false,
+  supportsStreamingTools: true,
+  supportsEmbeddings: false,
+  supportsImageGeneration: false,
+  supportsAudio: false,
+  contextWindow: 128000,
+  maxOutputTokens: 8192,
+}
+
+export class DeepSeekAdapter extends OpenAITransportAdapter {
+  name = "deepseek"
+
+  getCapabilities(model?: string): ProviderCapabilities {
+    if (!model) return { ...DEEPSEEK_DEFAULT_CAPS }
+    const caps = { ...DEEPSEEK_DEFAULT_CAPS }
+    const m = model.toLowerCase()
+    if (m.includes("deepseek-chat")) {
+      caps.supportsToolCalling = true
+      caps.contextWindow = 128000
+      caps.maxOutputTokens = 8192
+    } else if (m.includes("deepseek-reasoner") || m.includes("deepseek-r1")) {
+      caps.supportsReasoning = true
+      caps.supportsToolCalling = false
+      caps.contextWindow = 128000
+      caps.maxOutputTokens = 8192
+    } else if (m.includes("deepseek-coder")) {
+      caps.supportsToolCalling = true
+      caps.contextWindow = 128000
+      caps.maxOutputTokens = 8192
+    }
+    return caps
+  }
+}
+
+const OPENROUTER_DEFAULT_CAPS: ProviderCapabilities = {
+  supportsSystemPrompts: true,
+  supportsToolCalling: true,
+  supportsStreaming: true,
+  supportsVision: false,
+  supportsReasoning: false,
+  supportsJsonMode: true,
+  supportsStructuredOutput: true,
+  supportsCacheControl: false,
+  supportsStreamingTools: true,
+  supportsEmbeddings: false,
+  supportsImageGeneration: false,
+  supportsAudio: false,
+  contextWindow: 128000,
+  maxOutputTokens: 16384,
+}
+
+export class OpenRouterAdapter extends OpenAITransportAdapter {
+  name = "openrouter"
+
+  getCapabilities(model?: string): ProviderCapabilities {
+    if (!model) return { ...OPENROUTER_DEFAULT_CAPS }
+    const m = model.toLowerCase()
+    const caps = { ...OPENROUTER_DEFAULT_CAPS }
+    if (m.includes("vision") || m.includes("vl")) {
+      caps.supportsVision = true
+    }
+    if (m.includes("gpt") || m.includes("o1") || m.includes("o3") || m.includes("o4")) {
+      return new OpenAITransportAdapter(this.config).getCapabilities(model)
+    }
+    if (m.includes("claude")) {
+      return new AnthropicTransportAdapter(this.config).getCapabilities(model)
+    }
+    if (m.includes("gemini")) {
+      return new GeminiTransportAdapter(this.config).getCapabilities(model)
+    }
+    return caps
+  }
+
+  buildHeaders(): Record<string, string> {
+    return {
+      ...super.buildHeaders(),
+      "HTTP-Referer": "https://agentic-os.ai",
+      "X-Title": this.config.providerName || "AgenticOS",
+    }
+  }
+}
+
+const ANTHROPIC_DEFAULT_CAPS: ProviderCapabilities = {
+  supportsSystemPrompts: true,
+  supportsToolCalling: true,
+  supportsStreaming: true,
+  supportsVision: true,
+  supportsReasoning: false,
+  supportsJsonMode: false,
+  supportsStructuredOutput: false,
+  supportsCacheControl: true,
+  supportsStreamingTools: true,
+  supportsEmbeddings: false,
+  supportsImageGeneration: false,
+  supportsAudio: false,
+  contextWindow: 200000,
+  maxOutputTokens: 8192,
+}
+
 export class AnthropicTransportAdapter implements TransportAdapter {
   name = "anthropic"
   protected config: TransportAdapterConfig
 
   constructor(config: TransportAdapterConfig) {
     this.config = config
+  }
+
+  getCapabilities(model?: string): ProviderCapabilities {
+    const caps = { ...ANTHROPIC_DEFAULT_CAPS }
+    if (!model) return caps
+    const m = model.toLowerCase()
+    if (m.includes("claude-3-opus")) {
+      caps.maxOutputTokens = 4096
+    } else if (m.includes("claude-3-sonnet")) {
+      caps.maxOutputTokens = 4096
+    } else if (m.includes("claude-3-haiku")) {
+      caps.maxOutputTokens = 4096
+    } else if (m.includes("claude-3.5-sonnet") || m.includes("claude-3-5-sonnet")) {
+      caps.maxOutputTokens = 8192
+    } else if (m.includes("claude-3.7-sonnet") || m.includes("claude-3-7-sonnet")) {
+      caps.supportsReasoning = true
+      caps.maxOutputTokens = 64000
+    } else if (m.includes("claude-3.5-haiku") || m.includes("claude-3-5-haiku")) {
+      caps.maxOutputTokens = 8192
+    } else if (m.includes("claude-opus-4") || m.includes("opus-4")) {
+      caps.supportsReasoning = true
+      caps.maxOutputTokens = 128000
+    } else if (m.includes("claude-sonnet-4") || m.includes("sonnet-4")) {
+      caps.supportsReasoning = true
+      caps.maxOutputTokens = 128000
+    } else if (m.includes("claude-haiku-4") || m.includes("haiku-4")) {
+      caps.maxOutputTokens = 64000
+    }
+    return caps
   }
 
   buildChatUrl(_requestModel?: string): string {
@@ -348,12 +668,51 @@ export class AnthropicTransportAdapter implements TransportAdapter {
   }
 }
 
+const GEMINI_DEFAULT_CAPS: ProviderCapabilities = {
+  supportsSystemPrompts: true,
+  supportsToolCalling: true,
+  supportsStreaming: true,
+  supportsVision: true,
+  supportsReasoning: false,
+  supportsJsonMode: true,
+  supportsStructuredOutput: true,
+  supportsCacheControl: false,
+  supportsStreamingTools: true,
+  supportsEmbeddings: true,
+  supportsImageGeneration: false,
+  supportsAudio: true,
+  contextWindow: 1048576,
+  maxOutputTokens: 8192,
+}
+
 export class GeminiTransportAdapter implements TransportAdapter {
   name = "gemini"
   protected config: TransportAdapterConfig
 
   constructor(config: TransportAdapterConfig) {
     this.config = config
+  }
+
+  getCapabilities(model?: string): ProviderCapabilities {
+    const caps = { ...GEMINI_DEFAULT_CAPS }
+    if (!model) return caps
+    const m = model.toLowerCase()
+    if (m.includes("gemini-1.5-pro")) {
+      caps.maxOutputTokens = 8192
+    } else if (m.includes("gemini-1.5-flash")) {
+      caps.maxOutputTokens = 8192
+    } else if (m.includes("gemini-2.0-flash") || m.includes("gemini-2.5-flash")) {
+      caps.supportsReasoning = true
+      caps.maxOutputTokens = 8192
+    } else if (m.includes("gemini-2.5-pro")) {
+      caps.supportsReasoning = true
+      caps.maxOutputTokens = 65536
+      caps.contextWindow = 1048576
+    } else if (m.includes("gemini-2.0-pro")) {
+      caps.supportsReasoning = true
+      caps.maxOutputTokens = 8192
+    }
+    return caps
   }
 
   buildChatUrl(requestModel?: string): string {
@@ -378,11 +737,18 @@ export class GeminiTransportAdapter implements TransportAdapter {
   buildCompletionBody(req: CompletionRequest): Record<string, unknown> {
     const contents = req.messages
       .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "model")
-      .map((m) => ({
-        role: m.role === "assistant" ? "model" : m.role,
-        parts: [{ text: m.content ?? "" }],
-      }))
-    return {
+      .map((m) => {
+        const parts: Record<string, unknown>[] = []
+        if (m.content) {
+          parts.push({ text: m.content })
+        }
+        return {
+          role: m.role === "assistant" ? "model" : m.role,
+          parts,
+        }
+      })
+
+    const body: Record<string, unknown> = {
       contents,
       generationConfig: {
         maxOutputTokens: req.maxTokens ?? 8192,
@@ -390,16 +756,46 @@ export class GeminiTransportAdapter implements TransportAdapter {
         topP: req.topP,
       },
     }
+
+    if (req.tools && req.tools.length > 0) {
+      body.tools = [{
+        functionDeclarations: req.tools.map((t) => ({
+          name: t.function.name,
+          description: t.function.description,
+          parameters: t.function.parameters,
+        })),
+      }]
+    }
+
+    return body
   }
 
   parseCompletionResponse(bodyText: string): CompletionResponse {
     const data = JSON.parse(bodyText)
     const candidates = data.candidates
-    const content = candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ?? ""
-    const finishReason = candidates?.[0]?.finishReason ?? null
+    const candidate = candidates?.[0]
+    const contentParts = candidate?.content?.parts ?? []
+
+    const textParts = contentParts.filter((p: any) => p.text !== undefined)
+    const content = textParts.map((p: any) => p.text).join("")
+
+    const functionCallParts = contentParts.filter((p: any) => p.functionCall !== undefined)
+    const toolCalls = functionCallParts.length > 0
+      ? functionCallParts.map((p: any, i: number) => ({
+          id: p.functionCall.name + "_" + i,
+          type: "function" as const,
+          function: {
+            name: p.functionCall.name,
+            arguments: typeof p.functionCall.args === "string" ? p.functionCall.args : JSON.stringify(p.functionCall.args ?? {}),
+          },
+        }))
+      : undefined
+
+    const finishReason = candidate?.finishReason ?? null
     return {
       content,
       finishReason: this.normalizeFinishReason(finishReason),
+      toolCalls,
       usage: data.usageMetadata ? {
         promptTokens: data.usageMetadata.promptTokenCount ?? 0,
         completionTokens: data.usageMetadata.candidatesTokenCount ?? 0,
@@ -441,7 +837,7 @@ export class GeminiTransportAdapter implements TransportAdapter {
   }
 }
 
-export type AdapterType = "openai" | "anthropic" | "nvidia-nim" | "ollama" | "gemini"
+export type AdapterType = "openai" | "anthropic" | "nvidia-nim" | "ollama" | "gemini" | "groq" | "deepseek" | "openrouter"
 
 export function resolveAdapter(config: TransportAdapterConfig): TransportAdapter {
   const url = config.baseUrl.toLowerCase()
@@ -457,6 +853,15 @@ export function resolveAdapter(config: TransportAdapterConfig): TransportAdapter
   }
   if (url.includes("11434") || url.includes("ollama") || config.runtime === "Ollama") {
     return new OllamaAdapter(config)
+  }
+  if (url.includes("groq.com") || config.runtime === "Groq") {
+    return new GroqAdapter(config)
+  }
+  if (url.includes("deepseek.com") || config.runtime === "DeepSeek") {
+    return new DeepSeekAdapter(config)
+  }
+  if (url.includes("openrouter.ai") || config.runtime === "OpenRouter") {
+    return new OpenRouterAdapter(config)
   }
 
   return new OpenAITransportAdapter(config)

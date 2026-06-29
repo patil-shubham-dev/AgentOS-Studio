@@ -6,7 +6,7 @@ export type PaneAction =
   | { type: "focus"; pane: PaneType }
   | { type: "open"; pane: PaneType }
   | { type: "close"; pane: PaneType }
-  | { type: "navigate"; pane: "browser" | "preview"; url: string }
+  | { type: "navigate"; pane: "browser"; url: string }
   | { type: "showArtifact"; artifactId: string }
   | { type: "showDiff"; filePath: string }
   | { type: "runAgent"; task: string }
@@ -15,8 +15,6 @@ export type PaneAction =
 export interface PaneState {
   browserUrl: string
   browserHistory: string[]
-  previewUrl: string
-  previewHistory: string[]
   activeArtifactId: string | null
   activeDesignVersion: string | null
   agentTask: string | null
@@ -36,8 +34,6 @@ export const usePanelCoordinator = create<PanelCoordinator>((set, get) => ({
   paneState: {
     browserUrl: "",
     browserHistory: [],
-    previewUrl: "",
-    previewHistory: [],
     activeArtifactId: null,
     activeDesignVersion: null,
     agentTask: null,
@@ -78,19 +74,16 @@ export const usePanelCoordinator = create<PanelCoordinator>((set, get) => ({
 
       case "navigate": {
         const state = get()
-        const history = action.pane === "browser"
-          ? state.paneState.browserHistory
-          : state.paneState.previewHistory
-        const newHistory = [...history.filter((u) => u !== action.url), action.url].slice(-50)
+        const newHistory = [...state.paneState.browserHistory.filter((u) => u !== action.url), action.url].slice(-50)
         set({
           paneState: {
             ...state.paneState,
-            [action.pane === "browser" ? "browserUrl" : "previewUrl"]: action.url,
-            [action.pane === "browser" ? "browserHistory" : "previewHistory"]: newHistory,
+            browserUrl: action.url,
+            browserHistory: newHistory,
           },
         })
-        paneStore.ensurePane(action.pane)
-        paneStore.focusPane(action.pane)
+        paneStore.ensurePane("browser")
+        paneStore.focusPane("browser")
         break
       }
 

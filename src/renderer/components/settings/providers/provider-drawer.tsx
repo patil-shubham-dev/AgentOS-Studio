@@ -3,9 +3,10 @@ import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useAppStore } from "@/stores/app-store"
 import { cancelPendingValidation, cancelPendingDiscovery, testConnection } from "@agentic-os/providers"
-import { safeDetectRuntime, safeValidateProvider, safeDiscoverModels, resolveAdapter } from "@agentic-os/providers"
+import { safeDetectRuntime, safeValidateProvider, safeDiscoverModels, resolveProviderManagerAdapter } from "@agentic-os/providers"
 import { getHealth, getProviderDiagnostics, getHealthInfo, PROVIDER_HEALTH_META } from "@agentic-os/providers"
 import type { GatewayProvider, ProviderModel, RuntimeInfo } from "@/types"
+import { useToastStore } from "@/stores/toast-store"
 import {
   X, Eye, EyeOff, ChevronLeft, Brain, Code2, Image, Zap, RefreshCw, Globe, Search, Check, Star, Terminal, Shield, Server, Radio, Activity, Clock, Wifi, WifiOff, AlertTriangle, Settings2, Bug, BookOpen, Box, Sliders, Copy, Cpu, Loader2, Network,
 } from "lucide-react"
@@ -297,28 +298,35 @@ export function ProviderDrawer({ open, onClose, editProvider }: ProviderDrawerPr
   }
 
   function handleSave() {
-    const models = availableModels.filter((m) => selectedModels.includes(m.id))
-    const runtime = runtimeInfo?.runtime ?? null
-    const adapter = resolveAdapter(baseUrl)
+    try {
+      const models = availableModels.filter((m) => selectedModels.includes(m.id))
+      const runtime = runtimeInfo?.runtime ?? null
+      const adapter = resolveProviderManagerAdapter(baseUrl)
 
-    function generateId(): string {
-      return editProvider?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    }
+      function generateId(): string {
+        return editProvider?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      }
 
-    const provider: GatewayProvider = {
-      id: generateId(),
-      name,
-      baseUrl,
-      apiKey,
-      runtime,
-      isLocal: runtimeInfo?.isLocal ?? adapter?.isLocal ?? false,
-      isOpenAiCompatible: runtimeInfo?.isOpenAiCompatible ?? adapter?.isOpenAiCompatible ?? true,
-      models,
-      createdAt: editProvider?.createdAt ?? new Date().toISOString(),
+      const provider: GatewayProvider = {
+        id: generateId(),
+        name,
+        baseUrl,
+        apiKey,
+        runtime,
+        isLocal: runtimeInfo?.isLocal ?? adapter?.isLocal ?? false,
+        isOpenAiCompatible: runtimeInfo?.isOpenAiCompatible ?? adapter?.isOpenAiCompatible ?? true,
+        models,
+        createdAt: editProvider?.createdAt ?? new Date().toISOString(),
+      }
+      if (isEditing) updateProvider(editProvider!.id, provider)
+      else addProvider(provider)
+      onClose(true)
+      useToastStore.getState().addToast(`Provider "${name}" ${isEditing ? "updated" : "added"}`, "success", 3000)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error("[ProviderDrawer] Failed to save provider:", msg)
+      useToastStore.getState().addToast(`Failed to save provider: ${msg}`, "error", 5000)
     }
-    if (isEditing) updateProvider(editProvider!.id, provider)
-    else addProvider(provider)
-    onClose(true)
   }
 
   const providerIcon = runtimeInfo?.runtime

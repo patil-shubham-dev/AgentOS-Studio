@@ -2,7 +2,7 @@ import type { TransportRequest, TransportResponse, TransportConfig, TransportTim
 import { DEFAULT_TRANSPORT_CONFIG } from "./transport-types"
 import type { TransportMiddleware } from "./transport-middleware"
 import { composeMiddleware, RequestIdMiddleware, AuthMiddleware, RetryMiddleware, DiagnosticsMiddleware } from "./transport-middleware"
-import type { TransportAdapter, TransportAdapterConfig, CompletionRequest } from "./transport-adapters"
+import type { TransportAdapter, TransportAdapterConfig, CompletionRequest, ProviderCapabilities } from "./transport-adapters"
 import { resolveAdapter } from "./transport-adapters"
 import type { StreamingTransportOptions, StreamCallbacks } from "./streaming-transport"
 import { streamingTransportFetch, SseParser } from "./streaming-transport"
@@ -117,6 +117,11 @@ export class ProviderTransport {
     return { models: models.models, latencyMs: Math.round(performance.now() - t0) }
   }
 
+  getCapabilities(adapterConfig: TransportAdapterConfig, model?: string): ProviderCapabilities {
+    const adapter = resolveAdapter(adapterConfig)
+    return adapter.getCapabilities(model)
+  }
+
   async chatCompletion(
     adapterConfig: TransportAdapterConfig,
     request: CompletionRequest,
@@ -168,6 +173,7 @@ export class ProviderTransport {
     const url = adapter.buildChatUrl(request.model)
     const headers = adapter.buildHeaders()
     const body = adapter.buildCompletionBody({ ...request, stream: true })
+    const requestId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
     const streamCallbacks: StreamCallbacks = {
       onToken: callbacks.onToken,
@@ -199,6 +205,7 @@ export class ProviderTransport {
         maxDurationMs: this.config.maxStreamDurationMs,
         onMetrics: callbacks.onMetrics,
         onStateChange: callbacks.onStateChange,
+        requestId,
       },
       streamCallbacks,
     )
@@ -211,5 +218,5 @@ export { RequestIdMiddleware, AuthMiddleware, RetryMiddleware, DiagnosticsMiddle
 export { TransportError, classifyHttpError, classifyNetworkError } from "./transport-errors"
 export type { TransportRequest, TransportResponse, TransportConfig, TransportTimeline, StreamMetrics } from "./transport-types"
 export type { TransportMiddleware } from "./transport-middleware"
-export type { TransportAdapter, TransportAdapterConfig, CompletionRequest, CompletionResponse } from "./transport-adapters"
+export type { TransportAdapter, TransportAdapterConfig, CompletionRequest, CompletionResponse, ProviderCapabilities } from "./transport-adapters"
 export type { StreamCallbacks } from "./streaming-transport"

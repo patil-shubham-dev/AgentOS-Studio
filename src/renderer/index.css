@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/source-serif-4";
+@import "@fontsource-variable/cormorant-garamond";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -23,8 +26,10 @@
   --color-input: hsl(0 0% 89.8%);
   --color-ring: hsl(0 0% 3.9%);
   --radius: 0.5rem;
-  --font-sans: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', ui-monospace, monospace;
+  --font-sans: 'Inter Variable', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace;
+  --font-serif: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
+  --font-display: 'Cormorant Garamond Variable', Georgia, 'Times New Roman', serif;
   --motion-fast: 100ms;
   --motion-normal: 200ms;
   --motion-slow: 300ms;
@@ -54,16 +59,52 @@
   --border-subtle: rgba(255, 255, 255, 0.04);
   --border-hover: rgba(255, 255, 255, 0.12);
 
-  /* ── Typography scale ── */
-  --font-size-xs: 10px;
-  --font-size-sm: 11px;
-  --font-size-base: 12px;
-  --font-size-md: 13px;
-  --font-size-lg: 14px;
-  --font-size-xl: 15px;
-  --font-size-2xl: 18px;
-  --font-size-3xl: 24px;
-  --font-size-4xl: 36px;
+  /* ── Semantic typography scale ── */
+  /* Display — Cormorant Garamond, rare/high-impact */
+  --font-size-display-xl: 48px;
+  --font-size-display-l: 36px;
+
+  /* Headings — Inter, UI hierarchy */
+  --font-size-heading-xl: 24px;
+  --font-size-heading-l: 20px;
+  --font-size-heading-m: 18px;
+  --font-size-heading-s: 15px;
+
+  /* Body — Inter, reading in UI contexts */
+  --font-size-body-l: 14px;
+  --font-size-body: 13px;
+  --font-size-body-sm: 12px;
+
+  /* UI controls — Inter, dense interface */
+  --font-size-ui: 12px;
+  --font-size-ui-sm: 11px;
+  --font-size-ui-xs: 10px;
+
+  /* Meta — Inter, lowest hierarchy */
+  --font-size-caption: 9px;
+  --font-size-overline: 10px;
+
+  /* Code — JetBrains Mono */
+  --font-size-code: 12.5px;
+  --font-size-code-sm: 11px;
+  --font-size-code-xs: 10px;
+
+  /* Prose — Source Serif 4, reading content */
+  --font-size-prose-body: 16px;
+  --font-size-prose-h1: 24px;
+  --font-size-prose-h2: 20px;
+  --font-size-prose-h3: 17px;
+
+  /* ── Legacy size aliases (deprecated, use semantic tokens) ── */
+  --font-size-xs: 10px;    /* → use text-ui-xs or text-caption    */
+  --font-size-sm: 11px;    /* → use text-ui-sm                     */
+  --font-size-base: 12px;  /* → use text-ui or text-body-sm        */
+  --font-size-md: 13px;    /* → use text-body                      */
+  --font-size-lg: 14px;    /* → use text-body-l                    */
+  --font-size-xl: 15px;    /* → use text-heading-s                 */
+  --font-size-2xl: 18px;   /* → use text-heading-m                 */
+  --font-size-3xl: 24px;   /* → use text-heading-xl or text-display-l */
+  --font-size-4xl: 36px;   /* → use text-display-l                 */
 
   --leading-none: 1;
   --leading-tight: 1.25;
@@ -126,8 +167,10 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
-  -webkit-font-smoothing: subpixel-antialiased;
-  -moz-osx-font-smoothing: auto;
+  font-size: var(--font-size-body);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   margin: 0;
   padding: 0;
@@ -466,8 +509,9 @@ kbd {
   align-items: center;
   justify-content: center;
   padding: 0 4px;
-  font-size: 10px;
-  font-family: inherit;
+  font-size: var(--font-size-caption);
+  font-family: var(--font-sans);
+  font-weight: 500;
   background: var(--color-muted);
   border: 1px solid var(--color-border);
   border-radius: 4px;
@@ -632,34 +676,48 @@ kbd {
   animation: slide-down 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-/* ── Claude-style prose for assistant messages ── */
+/* ── Premium editorial prose for assistant messages ── */
+/* Source Serif 4 for reading, like a beautifully typeset technical journal */
 
 .prose-claude {
   --prose-max-width: 800px;
   color: var(--color-foreground);
-  font-size: 15px;
-  line-height: 1.65;
-  letter-spacing: 0.005em;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-prose-body);
+  line-height: 1.7;
+  letter-spacing: 0.008em;
   font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-ligatures: common-ligatures;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
 }
 
 .prose-claude p {
-  margin: 0.4em 0;
-  color: rgba(255, 255, 255, 0.85);
+  margin: 0.6em 0;
+  color: var(--text-primary);
+  orphans: 2;
+  widows: 2;
 }
 
 .prose-claude p:first-child {
   margin-top: 0;
 }
 
+.prose-claude p:last-child {
+  margin-bottom: 0;
+}
+
 .prose-claude strong {
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--text-primary);
   font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
 .prose-claude em {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--text-secondary);
   font-style: italic;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
 }
 
 .prose-claude a {
@@ -675,84 +733,102 @@ kbd {
 }
 
 .prose-claude h1 {
-  font-size: 1.3em;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-prose-h1);
   font-weight: 650;
-  margin: 0.9em 0 0.3em;
-  color: rgba(255, 255, 255, 0.95);
+  margin: 1.2em 0 0.4em;
+  color: var(--text-primary);
   letter-spacing: -0.025em;
   line-height: 1.3;
 }
 
+.prose-claude h1:first-child {
+  margin-top: 0;
+}
+
 .prose-claude h2 {
-  font-size: 1.1em;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-prose-h2);
   font-weight: 620;
-  margin: 0.8em 0 0.25em;
-  color: rgba(255, 255, 255, 0.92);
+  margin: 1em 0 0.35em;
+  color: var(--text-primary);
   letter-spacing: -0.015em;
   line-height: 1.35;
 }
 
 .prose-claude h3 {
-  font-size: 1em;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-prose-h3);
   font-weight: 600;
-  margin: 0.6em 0 0.2em;
-  color: rgba(255, 255, 255, 0.88);
+  margin: 0.8em 0 0.3em;
+  color: var(--text-primary);
   letter-spacing: -0.01em;
+  line-height: 1.4;
 }
 
 .prose-claude h4 {
-  font-size: 0.95em;
+  font-family: var(--font-sans);
+  font-size: calc(var(--font-size-prose-h3) * 0.95);
   font-weight: 580;
-  margin: 0.5em 0 0.15em;
-  color: rgba(255, 255, 255, 0.85);
+  margin: 0.7em 0 0.25em;
+  color: var(--text-secondary);
 }
 
 .prose-claude ul,
 .prose-claude ol {
-  margin: 0.3em 0;
-  padding-left: 1.5em;
+  margin: 0.5em 0;
+  padding-left: 1.6em;
 }
 
 .prose-claude li {
-  margin: 0.15em 0;
-  color: rgba(255, 255, 255, 0.82);
+  margin: 0.25em 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
 }
 
 .prose-claude li::marker {
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--text-quaternary);
+}
+
+.prose-claude li > ul,
+.prose-claude li > ol {
+  margin: 0.15em 0;
 }
 
 .prose-claude blockquote {
-  border-left: 2.5px solid rgba(147, 197, 253, 0.25);
-  padding-left: 1em;
-  margin: 0.6em 0;
-  color: rgba(255, 255, 255, 0.55);
+  border-left: 2.5px solid rgba(147, 197, 253, 0.2);
+  padding-left: 1.1em;
+  margin: 0.8em 0;
+  color: var(--text-tertiary);
   font-style: italic;
+  line-height: 1.6;
 }
 
 .prose-claude hr {
   border: none;
   height: 1px;
-  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.06), transparent);
-  margin: 1.2em 0;
+  background: linear-gradient(to right, transparent, var(--border-default), transparent);
+  margin: 1.5em 0;
 }
 
 .prose-claude .table-wrapper {
   overflow-x: auto;
-  margin: 0.6em 0;
+  margin: 0.8em 0;
 }
 
 .prose-claude table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88em;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--leading-normal);
 }
 
 .prose-claude th {
   text-align: left;
-  padding: 0.45em 0.7em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.55);
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-tertiary);
   font-weight: 500;
   font-size: 0.85em;
   text-transform: uppercase;
@@ -760,15 +836,15 @@ kbd {
 }
 
 .prose-claude td {
-  padding: 0.35em 0.7em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.75);
+  padding: 0.4em 0.75em;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
 }
 
 .prose-claude img {
   border-radius: 8px;
   max-width: 100%;
-  margin: 0.6em 0;
+  margin: 0.8em 0;
 }
 
 /* ── Streaming text container ── */
@@ -784,7 +860,7 @@ kbd {
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--text-primary);
 }
 
 .streaming-pre code {
@@ -955,10 +1031,11 @@ kbd {
   align-items: center;
   gap: 0.5rem;
   padding: 0.25rem 0;
-  color: rgba(255, 255, 255, 0.25);
-  font-size: 12px;
+  color: var(--text-quaternary);
+  font-size: var(--font-size-ui);
   font-weight: 400;
   letter-spacing: 0.01em;
+  font-family: var(--font-sans);
 }
 
 /* ── Debug breakpoints ── */

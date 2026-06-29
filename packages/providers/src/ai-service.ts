@@ -1,10 +1,14 @@
-import { tauriFetch } from "./http-client"
-import { providerChatCompletion, providerStreamChatCompletion, buildChatUrl, buildStreamUrl } from "./provider-gateway"
-import { resolveAdapter } from "./provider-manager"
+import { ProviderTransport } from "./transport"
+import type { CompletionRequest, TransportAdapterConfig } from "./transport-adapters"
 import type { ChatRequest, ChatResponse, StreamCallbacks, ToolCall } from "./provider-gateway"
 
 export type { ChatMessage, ToolCall, ToolDef, ChatRequest, ChatResponse, UsageInfo } from "./provider-gateway"
-export type { StreamCallbacks } from "./provider-gateway"
+export interface StreamCallbacks {
+  onToken: (token: string) => void
+  onReady: () => void
+  onDone: (fullContent: string, meta?: { toolCalls?: ToolCall[]; finishReason?: string | null }) => void
+  onError: (error: Error) => void
+}
 
 const LOG_PREFIX = "[AIService]"
 
@@ -39,12 +43,48 @@ export async function chatCompletion(
   req: ChatRequest,
   signal?: AbortSignal,
 ): Promise<ChatResponse> {
-  const adapter = resolveAdapter(baseUrl)
-  const resolvedRuntime = runtime ?? adapter?.runtimeKey ?? null
-  const isOpenAiCompatible = adapter?.isOpenAiCompatible ?? true
-  const normalizedUrl = buildChatUrl(baseUrl, isOpenAiCompatible)
   logTokenDiagnostics("chatCompletion", { model: req.model, maxTokens: req.maxTokens, messages: req.messages.length })
-  return providerChatCompletion(normalizedUrl, apiKey, resolvedRuntime, req, signal)
+
+  const transport = new ProviderTransport()
+  const providerName = runtime ?? baseUrl.replace(/^https?:\/\//, "").split(".")[0]
+
+  const adapterConfig: TransportAdapterConfig = {
+    baseUrl,
+    apiKey,
+    runtime,
+    providerId: providerName.toLowerCase(),
+    providerName,
+  }
+
+  const result = await transport.chatCompletion(adapterConfig, {
+    model: req.model,
+    messages: req.messages as CompletionRequest["messages"],
+    maxTokens: req.maxTokens,
+    temperature: req.temperature,
+    topP: req.top_p,
+    tools: req.tools as CompletionRequest["tools"],
+    signal,
+  })
+
+  return {
+    message: {
+      role: "assistant",
+      content: result.content,
+      tool_calls: result.toolCalls?.map((tc) => ({
+        id: tc.id,
+        type: "function" as const,
+        function: { name: tc.function.name, arguments: tc.function.arguments },
+      })),
+    },
+    finish_reason: result.finishReason,
+    usage: result.usage
+      ? {
+          prompt_tokens: result.usage.promptTokens,
+          completion_tokens: result.usage.completionTokens,
+          total_tokens: result.usage.totalTokens,
+        }
+      : undefined,
+  }
 }
 
 export async function streamChatCompletion(
@@ -55,12 +95,77 @@ export async function streamChatCompletion(
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
 ): Promise<void> {
-  const adapter = resolveAdapter(baseUrl)
-  const resolvedRuntime = runtime ?? adapter?.runtimeKey ?? null
-  const isOpenAiCompatible = adapter?.isOpenAiCompatible ?? true
-  const normalizedUrl = buildChatUrl(baseUrl, isOpenAiCompatible)
   logTokenDiagnostics("streamChatCompletion", { model: req.model, maxTokens: req.maxTokens, messages: req.messages.length })
-  return providerStreamChatCompletion(normalizedUrl, apiKey, resolvedRuntime, req, callbacks, signal, isOpenAiCompatible)
+
+  const transport = new ProviderTransport()
+  const providerName = runtime ?? baseUrl.replace(/^https?:\/\//, "").split(".")[0]
+
+  const adapterConfig: TransportAdapterConfig = {
+    baseUrl,
+    apiKey,
+    runtime,
+    providerId: providerName.toLowerCase(),
+    providerName,
+  }
+
+  const completionRequest: CompletionRequest = {
+    model: req.model,
+    messages: req.messages as CompletionRequest["messages"],
+    stream: true,
+    maxTokens: req.maxTokens,
+    temperature: req.temperature,
+    topP: req.top_p,
+    tools: req.tools,
+    signal,
+  }
+
+  let fullContent = ""
+  let collectedToolCalls: ToolCall[] = []
+  let finishReason: string | null = null
+  let readyFired = false
+
+  await transport.streamChatCompletion(adapterConfig, completionRequest, {
+    onStateChange: (state) => {
+      if (state === "streaming" && !readyFired) {
+        readyFired = true
+        callbacks.onReady()
+      }
+    },
+    onToken: (token: string) => {
+      if (!readyFired) {
+        readyFired = true
+        callbacks.onReady()
+      }
+      fullContent += token
+      callbacks.onToken(token)
+    },
+    onToolCallBegin: () => {},
+    onToolCallDelta: () => {},
+    onToolCallEnd: () => {},
+    onToolCallsComplete: (toolCalls) => {
+      collectedToolCalls = toolCalls.map((tc) => ({
+        id: tc.id,
+        type: "function" as const,
+        function: { name: tc.name, arguments: tc.arguments },
+      }))
+    },
+    onFinish: (reason) => {
+      finishReason = reason
+    },
+    onError: (error) => {
+      callbacks.onError(error instanceof Error ? error : new Error(error.message))
+    },
+    onDone: () => {
+      if (!readyFired) {
+        readyFired = true
+        callbacks.onReady()
+      }
+      callbacks.onDone(fullContent, {
+        toolCalls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined,
+        finishReason,
+      })
+    },
+  })
 }
 
 let streamCounter = 0
@@ -84,36 +189,54 @@ export async function tauriStreamChatCompletion(
     return
   }
 
-  // Use the fetch-based providerStreamChatCompletion directly.
-  // In the Tauri WebView, fetch() works identically to browser fetch,
-  // so there is no need to route through Tauri IPC for streaming.
-  const req: ChatRequest = {
-    model,
-    messages: messages.map((m) => ({
-      role: m.role,
-      content: m.content ?? "",
-      ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}),
-      ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
-    })),
-    tools: tools?.map((t) => ({
-      type: "function" as const,
-      function: { name: t.function.name, description: t.function.description, parameters: t.function.parameters },
-    })),
+  const transport = new ProviderTransport()
+  const providerName = endpoint.replace(/^https?:\/\//, "").split(".")[0]
+
+  const adapterConfig: TransportAdapterConfig = {
+    baseUrl: endpoint,
+    apiKey,
+    runtime: null,
+    providerId: providerName.toLowerCase(),
+    providerName,
   }
 
-  const streamCallbacks: StreamCallbacks = {
-    onReady: () => {},
-    onToken: (token: string) => callbacks.onToken(token),
-    onDone: (_fullContent: string, meta) => {
-      if (meta?.toolCalls && meta.toolCalls.length > 0) {
-        callbacks.onToolCalls(meta.toolCalls)
+  const completionRequest: CompletionRequest = {
+    model,
+    messages: messages as CompletionRequest["messages"],
+    stream: true,
+    tools,
+    signal,
+  }
+
+  let fullContent = ""
+  let collectedToolCalls: ToolCall[] = []
+
+  await transport.streamChatCompletion(adapterConfig, completionRequest, {
+    onToken: (token: string) => {
+      fullContent += token
+      callbacks.onToken(token)
+    },
+    onToolCallBegin: () => {},
+    onToolCallDelta: () => {},
+    onToolCallEnd: () => {},
+    onToolCallsComplete: (tcArray) => {
+      collectedToolCalls = tcArray.map((tc) => ({
+        id: tc.id,
+        type: "function" as const,
+        function: { name: tc.name, arguments: tc.arguments },
+      }))
+    },
+    onFinish: () => {},
+    onError: (error) => {
+      callbacks.onError(error instanceof Error ? error : new Error(error.message))
+    },
+    onDone: () => {
+      if (collectedToolCalls.length > 0) {
+        callbacks.onToolCalls(collectedToolCalls)
       }
       callbacks.onDone()
     },
-    onError: (err: Error) => callbacks.onError(err),
-  }
-
-  return providerStreamChatCompletion(endpoint, apiKey, null, req, streamCallbacks, signal, true)
+  })
 }
 
 export async function directChatCompletion(
@@ -122,9 +245,6 @@ export async function directChatCompletion(
   req: ChatRequest,
   signal?: AbortSignal,
 ): Promise<ChatResponse> {
-  const adapter = resolveAdapter(baseUrl)
-  const isOpenAiCompatible = adapter?.isOpenAiCompatible ?? true
-  const url = buildStreamUrl(baseUrl, isOpenAiCompatible)
   const model = req.model ?? "unknown"
   const apiKeyPresent = !!apiKey
   const apiKeyPrefix = apiKeyPresent ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` : "none"
@@ -132,72 +252,58 @@ export async function directChatCompletion(
   console.log(`[PROVIDER] directChatCompletion`, {
     model,
     baseUrl: baseUrl?.slice(0, 60),
-    url: url?.slice(0, 80),
     apiKeyPresent,
     apiKeyPrefix,
-    adapterId: adapter?.id ?? "unknown",
-    isOpenAiCompatible,
     stream: false,
     messageCount: req.messages?.length ?? 0,
   })
 
-  let response: Response
+  const transport = new ProviderTransport()
+  const providerName = baseUrl.replace(/^https?:\/\//, "").split(".")[0]
+  const adapterConfig: TransportAdapterConfig = {
+    baseUrl,
+    apiKey,
+    runtime: null,
+    providerId: providerName.toLowerCase(),
+    providerName,
+  }
+
+  let result: Awaited<ReturnType<ProviderTransport["chatCompletion"]>>
   try {
-    response = await tauriFetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: req.model,
-        messages: req.messages,
-        tools: req.tools,
-        stream: false,
-        max_tokens: req.maxTokens ?? 8192,
-      }),
+    result = await transport.chatCompletion(adapterConfig, {
+      model: req.model,
+      messages: req.messages as CompletionRequest["messages"],
+      maxTokens: req.maxTokens,
+      temperature: req.temperature,
+      topP: req.top_p,
+      tools: req.tools as CompletionRequest["tools"],
       signal: signal ?? AbortSignal.timeout(180000),
     })
-  } catch (fetchErr: unknown) {
-    const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
-    console.error(`[PROVIDER] FETCH FAILED`, { model, url, error: msg })
-    throw new Error(`Provider request failed — fetch error for ${model} at ${url}: ${msg}`)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[PROVIDER] CHAT FAILED`, { model, baseUrl: baseUrl?.slice(0, 60), error: msg })
+    throw new Error(`Provider request failed for ${model}: ${msg}`)
   }
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "")
-    console.error(`[PROVIDER] HTTP ${response.status}`, { model, url, status: response.status, body: text.slice(0, 500) })
-    throw new Error(`Provider returned ${response.status} for ${model} at ${url}: ${text.slice(0, 300)}`)
-  }
-
-  console.log(`[PROVIDER] response OK`, { model, status: response.status })
-
-  let json: any
-  try {
-    json = await response.json()
-  } catch (parseErr: unknown) {
-    const msg = parseErr instanceof Error ? parseErr.message : String(parseErr)
-    console.error(`[PROVIDER] JSON PARSE FAILED`, { model, error: msg })
-    throw new Error(`Provider response parse failed for ${model}: ${msg}`)
-  }
-
-  if (!json.choices?.[0]?.message?.content && json.choices?.[0]?.message) {
-    console.warn(`[PROVIDER] Empty content in response`, { model, finishReason: json.choices?.[0]?.finish_reason })
-  }
-
-  const message = json.choices?.[0]?.message ?? {}
+  console.log(`[PROVIDER] response OK`, { model, latencyMs: result.latencyMs })
 
   return {
     message: {
       role: "assistant",
-      content: message.content ?? "",
-      tool_calls: message.tool_calls ?? [],
+      content: result.content,
+      tool_calls: result.toolCalls?.map((tc) => ({
+        id: tc.id,
+        type: "function" as const,
+        function: { name: tc.function.name, arguments: tc.function.arguments },
+      })),
     },
-    finish_reason: json.choices?.[0]?.finish_reason ?? null,
-    usage: json.usage ?? {
-      prompt_tokens: 0,
-      completion_tokens: 0,
-      total_tokens: 0,
-    },
+    finish_reason: result.finishReason,
+    usage: result.usage
+      ? {
+          prompt_tokens: result.usage.promptTokens,
+          completion_tokens: result.usage.completionTokens,
+          total_tokens: result.usage.totalTokens,
+        }
+      : { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
   }
 }

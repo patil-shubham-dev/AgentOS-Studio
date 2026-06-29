@@ -1,6 +1,7 @@
 const DEFAULT_MAX_ENTRIES = 100
 const DEFAULT_TTL_MS = 60_000
 const DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024
+export const MAX_CACHED_FILE_SIZE = DEFAULT_MAX_FILE_SIZE
 
 interface CacheEntry {
   content: string
@@ -64,7 +65,10 @@ export class FileContentCache {
   }
 
   set(path: string, content: string): void {
-    if (content.length > this.maxFileSize) return
+    if (content.length > this.maxFileSize) {
+      console.warn(`[FileContentCache] Not caching ${path} (${content.length} bytes exceeds max ${this.maxFileSize})`)
+      return
+    }
 
     const key = this.normalizePath(path)
 

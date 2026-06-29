@@ -1,19 +1,20 @@
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
-import { useNavigate, useLocation } from "react-router-dom"
-import { InstallPanel } from "@/pages/install-panel"
-import { InstallWizard } from "@/pages/install-wizard"
-import { UninstallWizard } from "@/pages/uninstall-wizard"
-import { UpdatePanel } from "@/pages/update-panel"
-import { ResetPanel } from "@/pages/reset-panel"
 import { ProvidersTab } from "@/components/settings/providers-tab"
 import { ModelsTab } from "@/components/settings/models-tab"
 import { ToolsTab } from "@/components/settings/tools-tab"
 import { RuntimeTab } from "@/components/settings/runtime-tab"
+import { LogsTab } from "@/components/settings/logs-tab"
+import { AgentsPage } from "@/pages/agents"
+import { MemoryPage } from "@/pages/memory"
+import { ContextDashboardPage } from "@/pages/context-dashboard"
+import { PersonasPage } from "@/pages/personas"
+import { PluginsPage } from "@/pages/plugins"
 import {
   Cpu, Box, Brain, Wrench, Terminal,
-  Search, Command, ChevronLeft, Settings2, Package, ArrowUpCircle, Trash2,
+  Search, Command, ChevronLeft, Settings2,
+  Users, Palette, Puzzle, ScrollText, Activity,
 } from "lucide-react"
 import { WiringIndicator } from "@/components/settings/wiring-indicator"
 import { useLeakTracker } from "@/performance/leak-detector"
@@ -25,7 +26,6 @@ interface NavItem {
   icon: ElementType
   shortcut: string
   description: string
-  path?: string
 }
 
 const navItems: NavItem[] = [
@@ -33,27 +33,21 @@ const navItems: NavItem[] = [
   { id: "models", label: "Models", icon: Box, shortcut: "2", description: "Model selection, config & benchmarks" },
   { id: "tools", label: "MCP Servers", icon: Wrench, shortcut: "3", description: "MCP server connections & tools" },
   { id: "runtime", label: "Runtime", icon: Terminal, shortcut: "4", description: "Execution environment & sandbox config" },
-  { id: "install", label: "Installation", icon: Package, shortcut: "5", description: "Install info, wizard & shell integration", path: "/settings/install" },
-  { id: "update", label: "Updates", icon: ArrowUpCircle, shortcut: "6", description: "App updates & auto-update", path: "/settings/update" },
-  { id: "reset", label: "Reset", icon: Trash2, shortcut: "7", description: "Clear data & factory reset", path: "/settings/reset" },
+  { id: "agents", label: "Agents", icon: Users, shortcut: "5", description: "Agent role management & capabilities" },
+  { id: "memory", label: "Memory", icon: Brain, shortcut: "6", description: "Memory system management & inspection" },
+  { id: "context", label: "Context", icon: Activity, shortcut: "7", description: "Context budget monitoring & usage" },
+  { id: "personas", label: "Personas", icon: Palette, shortcut: "8", description: "Persona management & creation" },
+  { id: "plugins", label: "Plugins", icon: Puzzle, shortcut: "9", description: "Plugin management & configuration" },
+  { id: "logs", label: "Logs", icon: ScrollText, shortcut: "0", description: "System logs & debugging" },
 ]
 
 export function SettingsPage() {
   useLeakTracker("SettingsPage")
-  const navigate = useNavigate()
-  const location = useLocation()
   const [activeTab, setActiveTab] = useState("providers")
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    const pathTab = location.pathname.split("/").pop()
-    if (pathTab && ["install", "install-wizard", "uninstall-wizard", "update", "reset"].includes(pathTab)) {
-      setActiveTab(pathTab)
-    }
-  }, [location.pathname])
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -65,25 +59,19 @@ export function SettingsPage() {
       const num = parseInt(e.key)
       if (num >= 1 && num <= 9 && !(e.metaKey || e.ctrlKey)) {
         const item = navItems[num - 1]
-        if (item) {
-          setActiveTab(item.id)
-          if (item.path) navigate(item.path)
-        }
+        if (item) setActiveTab(item.id)
       }
       if (e.key === "0" && !(e.metaKey || e.ctrlKey)) {
-        setActiveTab("reset")
-        navigate("/settings/reset")
+        const item = navItems[9]
+        if (item) setActiveTab(item.id)
       }
     }
     window.addEventListener("keydown", handleKey)
     return () => window.removeEventListener("keydown", handleKey)
-  }, [navigate])
+  }, [])
 
   const handleTabClick = (item: NavItem) => {
     setActiveTab(item.id)
-    if (item.path) {
-      navigate(item.path)
-    }
   }
 
   const filteredNav = navItems.filter((item) => {
@@ -278,11 +266,12 @@ export function SettingsPage() {
               {activeTab === "models" && <div className="p-6 max-w-6xl mx-auto"><ModelsTab /></div>}
               {activeTab === "tools" && <div className="p-6 max-w-6xl mx-auto"><ToolsTab /></div>}
               {activeTab === "runtime" && <div className="p-6 max-w-6xl mx-auto"><RuntimeTab /></div>}
-              {activeTab === "install" && <InstallPanel />}
-              {activeTab === "install-wizard" && <InstallWizard />}
-              {activeTab === "uninstall-wizard" && <UninstallWizard />}
-              {activeTab === "update" && <UpdatePanel />}
-              {activeTab === "reset" && <ResetPanel />}
+              {activeTab === "agents" && <div className="p-6 max-w-6xl mx-auto"><AgentsPage /></div>}
+              {activeTab === "memory" && <div className="p-6 max-w-6xl mx-auto"><MemoryPage /></div>}
+              {activeTab === "context" && <div className="p-6 max-w-6xl mx-auto"><ContextDashboardPage /></div>}
+              {activeTab === "personas" && <div className="p-6 max-w-6xl mx-auto"><PersonasPage /></div>}
+              {activeTab === "plugins" && <div className="p-6 max-w-6xl mx-auto"><PluginsPage /></div>}
+              {activeTab === "logs" && <div className="p-6 max-w-6xl mx-auto"><LogsTab /></div>}
             </motion.div>
           </AnimatePresence>
         </div>

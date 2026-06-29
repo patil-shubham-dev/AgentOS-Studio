@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ImpactPreviewEngine, type ImpactPreview } from "@/runtime/execution/ImpactPreviewEngine"
 import { EditDependencyGraph } from "@/runtime/execution/EditDependencyGraph"
@@ -96,10 +96,12 @@ export function EditPreviewModal({ open, task, editedFiles, onApprove, onReject,
     }
   }, [editedFiles, open, task])
 
-  if (!open) return null
+  const activeSnapshots = useMemo(() => {
+    if (!open) return []
+    return WorkspaceSnapshotManager.getInstance().listActive()
+  }, [open])
 
-  const snapshotMgr = WorkspaceSnapshotManager.getInstance()
-  const activeSnapshots = snapshotMgr.listActive()
+  if (!open) return null
 
   return (
     <AnimatePresence>

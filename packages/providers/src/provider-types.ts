@@ -113,19 +113,6 @@ export interface ProviderHealthInfo {
   diagnostics: ProviderDiagnostics
 }
 
-// ── Capability Discovery Result ──
-
-export interface ProviderCapabilities {
-  streaming: boolean
-  tools: boolean
-  vision: boolean
-  reasoning: boolean
-  jsonMode: boolean
-  embeddings: boolean
-  contextWindow: number
-  maxOutputTokens: number
-}
-
 // ── Provider Health Colors for UI ──
 
 export const PROVIDER_HEALTH_META: Record<ProviderHealthState, {

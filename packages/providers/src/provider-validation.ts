@@ -1,5 +1,6 @@
 import { tauriFetch } from "./http-client"
-import type { ValidationRun, ValidationStepResult, ProviderCapabilities } from "./provider-types"
+import type { ValidationRun, ValidationStepResult } from "./provider-types"
+import type { ProviderCapabilities } from "./transport-adapters"
 import { recordValidationRun, recordSuccess, recordFailure, addTrace } from "./provider-health"
 
 // ── Helpers ──
@@ -644,12 +645,12 @@ export async function validateStreaming(
 // ── Step 5: Capability Discovery ──
 
 const CAPABILITY_PATTERNS: { key: keyof ProviderCapabilities; pattern: RegExp; label: string }[] = [
-  { key: "reasoning", pattern: /o1|o3|reason|deepseek-r1|claude-3-opus|claude-4|claude-5/i, label: "Reasoning" },
-  { key: "vision", pattern: /vision|gpt-4o|claude-3|claude-4|claude-5|gemini|llava|cogvlm|qwen-vl|internvl/i, label: "Vision" },
-  { key: "tools", pattern: /gpt-4|gpt-3\.5|claude|gemini|llama-3|mistral|mixtral|deepseek|qwen/i, label: "Tools" },
-  { key: "streaming", pattern: /./, label: "Streaming" }, // Most models support streaming
-  { key: "jsonMode", pattern: /gpt-4|gpt-3\.5|claude-3|claude-4|gemini|llama-3|mistral-large|deepseek|qwen-2/i, label: "JSON Mode" },
-  { key: "embeddings", pattern: /embed|text-embedding|ada-002/i, label: "Embeddings" },
+  { key: "supportsReasoning", pattern: /o1|o3|reason|deepseek-r1|claude-3-opus|claude-4|claude-5/i, label: "Reasoning" },
+  { key: "supportsVision", pattern: /vision|gpt-4o|claude-3|claude-4|claude-5|gemini|llava|cogvlm|qwen-vl|internvl/i, label: "Vision" },
+  { key: "supportsToolCalling", pattern: /gpt-4|gpt-3\.5|claude|gemini|llama-3|mistral|mixtral|deepseek|qwen/i, label: "Tools" },
+  { key: "supportsStreaming", pattern: /./, label: "Streaming" },
+  { key: "supportsJsonMode", pattern: /gpt-4|gpt-3\.5|claude-3|claude-4|gemini|llama-3|mistral-large|deepseek|qwen-2/i, label: "JSON Mode" },
+  { key: "supportsEmbeddings", pattern: /embed|text-embedding|ada-002/i, label: "Embeddings" },
 ]
 
 const CONTEXT_WINDOWS: [RegExp, number][] = [
@@ -677,12 +678,18 @@ export function detectCapabilities(modelIds: string[]): ProviderCapabilities {
   const allModels = modelIds.join(" ")
 
   const caps: ProviderCapabilities = {
-    streaming: true,
-    tools: false,
-    vision: false,
-    reasoning: false,
-    jsonMode: false,
-    embeddings: false,
+    supportsSystemPrompts: true,
+    supportsToolCalling: false,
+    supportsStreaming: true,
+    supportsVision: false,
+    supportsReasoning: false,
+    supportsJsonMode: false,
+    supportsStructuredOutput: false,
+    supportsCacheControl: false,
+    supportsStreamingTools: false,
+    supportsEmbeddings: false,
+    supportsImageGeneration: false,
+    supportsAudio: false,
     contextWindow: 4096,
     maxOutputTokens: 4096,
   }
@@ -702,8 +709,8 @@ export function detectCapabilities(modelIds: string[]): ProviderCapabilities {
 
   // If no models, set defaults
   if (modelIds.length === 0) {
-    caps.streaming = true
-    caps.tools = true
+    caps.supportsStreaming = true
+    caps.supportsToolCalling = true
     caps.contextWindow = 128000
   }
 

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" width="520" height="120">
+  <title>AgenticOS Wordmark</title>
+  <desc>AgenticOS wordmark in Cormorant Garamond, white on dark background</desc>
+
+  <!-- Dark background -->
+  <rect x="0" y="0" width="520" height="120" fill="#0D0D0D"/>
+
+  <!-- Wordmark: AgenticOS — Cormorant Garamond, premium editorial weight -->
+  <!-- "Agentic" in 500, "OS" in 600 — same color white, subtle weight contrast -->
+  <text
+    x="260"
+    y="72"
+    text-anchor="middle"
+    dominant-baseline="auto"
+    font-family="'Cormorant Garamond Variable', 'Cormorant Garamond', Georgia, serif"
+    font-size="64"
+    font-weight="500"
+    letter-spacing="-1"
+    fill="#FFFFFF">Agentic<tspan font-weight="600" fill="#FFFFFF">OS</tspan></text>
+
+  <!-- Hairline rule below — structural detail, accent color -->
+  <line x1="60" y1="90" x2="460" y2="90" stroke="#2563EB" stroke-width="0.6" stroke-opacity="0.5"/>
+
+  <!-- Tagline — spaced caps, muted, light weight for contrast -->
+  <text
+    x="260"
+    y="110"
+    text-anchor="middle"
+    font-family="'Inter Variable', Inter, system-ui, sans-serif"
+    font-size="9"
+    font-weight="400"
+    letter-spacing="4.5"
+    fill="#555555">MULTI-AGENT AI WORKSPACE</text>
+
+</svg>

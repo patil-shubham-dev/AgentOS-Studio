@@ -39,11 +39,12 @@ export class WorkspaceRuntimeService implements KernelService {
 
   health(): ServiceHealth {
     const state = useWorkspaceRuntime.getState()
+    const processOk = this._status === "running" && state.status !== "error"
     return {
       status: this._status,
-      healthy: this._status === "running" && state.health === "healthy",
-      message: `status=${state.status}, health=${state.health}`,
-      error: this._error ?? state.error ?? undefined,
+      healthy: processOk,
+      message: `status=${state.status}, health=${state.health}, providers=${state.totalProviders}`,
+      error: state.status === "error" ? (this._error ?? state.error ?? "Runtime error") : undefined,
       uptime: this.startTime > 0 ? Date.now() - this.startTime : 0,
     }
   }

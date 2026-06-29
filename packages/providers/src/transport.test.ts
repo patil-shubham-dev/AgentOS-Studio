@@ -525,6 +525,14 @@ describe("Abort / Cancel", () => {
 // ══════════════════════════════════════════════════════════════
 
 describe("Error Handling", () => {
+  it("classifies HTTP 400 with error message body uses parsed message", () => {
+    const body = JSON.stringify({ error: { message: "Incorrect API key provided", code: "invalid_api_key" } })
+    const err = classifyHttpError(400, body)
+    expect(err.code).toBe("HTTP_ERROR")
+    expect(err.message).toBe("Incorrect API key provided")
+    expect(err.retryable).toBe(false)
+  })
+
   it("classifies HTTP 401 as auth failure", () => {
     const err = classifyHttpError(401)
     expect(err.code).toBe("AUTH_FAILED")
@@ -562,6 +570,24 @@ describe("Error Handling", () => {
   it("classifies abort errors", () => {
     const err = classifyNetworkError(new DOMException("Aborted", "AbortError"))
     expect(err.code).toBe("ABORTED")
+  })
+
+  it("classifies 'certificate verify failed' as CONNECTION_FAILED with retryable=true", () => {
+    const err = classifyNetworkError(new Error("certificate verify failed"))
+    expect(err.code).toBe("CONNECTION_FAILED")
+    expect(err.retryable).toBe(true)
+  })
+
+  it("classifies 'EAI_AGAIN' as CONNECTION_FAILED with retryable=true", () => {
+    const err = classifyNetworkError(new Error("EAI_AGAIN"))
+    expect(err.code).toBe("CONNECTION_FAILED")
+    expect(err.retryable).toBe(true)
+  })
+
+  it("classifies 'TLS error' as CONNECTION_FAILED with retryable=true", () => {
+    const err = classifyNetworkError(new Error("TLS error"))
+    expect(err.code).toBe("CONNECTION_FAILED")
+    expect(err.retryable).toBe(true)
   })
 
   it("isRetryable helper works", () => {

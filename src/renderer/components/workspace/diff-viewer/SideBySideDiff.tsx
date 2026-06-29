@@ -126,6 +126,17 @@ export function SideBySideDiff({
   const isAllRejected = file.status === "rejected"
   const isPending = file.status === "pending"
 
+  const diffEditorOptions = useMemo(() => ({
+    ...MONACO_COMMON_OPTIONS,
+    originalEditable: false,
+    enableSplitViewResizing: true,
+    splitViewDefaultRatio: 0.5,
+    diffCodeLens: false,
+    renderIndicators: true,
+    ignoreTrimWhitespace: true,
+    maxComputationTime: 5000,
+  }), [])
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -4 }}
@@ -229,16 +240,7 @@ export function SideBySideDiff({
               original={file.originalContent}
               modified={getReviewedContent(file)}
               language={language}
-              options={{
-                ...MONACO_COMMON_OPTIONS,
-                originalEditable: false,
-                enableSplitViewResizing: true,
-                splitViewDefaultRatio: 0.5,
-                diffCodeLens: false,
-                renderIndicators: true,
-                ignoreTrimWhitespace: true,
-                maxComputationTime: 5000,
-              }}
+              options={diffEditorOptions}
               onMount={handleMount}
               theme="vs-dark"
             />

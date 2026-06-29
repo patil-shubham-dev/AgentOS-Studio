@@ -9,8 +9,7 @@ import { PromptCompositionEngine } from '@/runtime/prompting/composition/PromptC
 import { MigrationValidator, type MigrationMode } from '@/runtime/prompting/migration/MigrationValidator'
 import { registerDefaultSections } from '@/runtime/prompting/sections'
 import { defaultContext, type ResolutionContext } from '@/runtime/prompting/registry/SectionDefinition'
-import { CapabilityResolver } from '@/runtime/prompting/providers/CapabilityResolver'
-import { getFormatterForProvider } from '@/runtime/prompting/formatters'
+import { resolveCapabilitiesForModel } from '@/runtime/prompting/providers/resolve-capabilities'
 import { RuntimeOS } from '@/runtime/RuntimeOS'
 import { getWorkspaceContextSnapshot } from '@/stores/workspace-store'
 
@@ -78,7 +77,6 @@ export class ContextManager {
   private promptRegistry: PromptRegistry
   private compositionEngine: PromptCompositionEngine
   private migrationValidator: MigrationValidator
-  private capabilityResolver: CapabilityResolver
   private runtimeOS: RuntimeOS | null = null
   private cacheManager: PromptCacheManager
   private fileCache: ContextFileCache
@@ -110,7 +108,6 @@ export class ContextManager {
     this.compositionEngine = new PromptCompositionEngine(this.promptRegistry)
     this.migrationValidator = new MigrationValidator()
     this.migrationValidator.setMode(this.config.migrationMode!)
-    this.capabilityResolver = new CapabilityResolver()
 
     this.cacheManager = PromptCacheManager.getInstance()
     this.fileCache = new ContextFileCache()
@@ -354,7 +351,7 @@ export class ContextManager {
     input: ContextAssemblyInput,
     options?: { cacheOptimize?: boolean; skipCache?: boolean }
   ): Promise<ContextAssemblyResult> {
-    const providerCapabilities = this.capabilityResolver.resolveFromModel(this.currentModel)
+    const providerCapabilities = resolveCapabilitiesForModel(this.currentModel)
 
     // Inject active persona instruction into custom instructions
     const activePersona = usePersonaStore.getState().activePersona
@@ -633,7 +630,7 @@ ${rules.map(r => r.content).join('\n\n')}`
   }
 
   async buildContext(input: string, role: string): Promise<{ promptBlock: string }> {
-    const providerCapabilities = this.capabilityResolver.resolveFromModel(this.currentModel)
+    const providerCapabilities = resolveCapabilitiesForModel(this.currentModel)
 
     const resolveCtx: ResolutionContext = defaultContext({
       role,
@@ -661,10 +658,6 @@ ${rules.map(r => r.content).join('\n\n')}`
     const result = await this.compositionEngine.compose(plan, resolveCtxFinal)
 
     return { promptBlock: result.promptText }
-  }
-
-  selectFormatter(providerName?: string) {
-    return getFormatterForProvider(providerName)
   }
 
   getRegistry(): PromptRegistry {

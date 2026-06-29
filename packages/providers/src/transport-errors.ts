@@ -1,7 +1,6 @@
 export type TransportErrorCode =
   | "CONNECTION_FAILED"
   | "CONNECTION_TIMEOUT"
-  | "HEADERS_TIMEOUT"
   | "FIRST_CHUNK_TIMEOUT"
   | "IDLE_CHUNK_TIMEOUT"
   | "STREAM_DURATION_EXCEEDED"
@@ -13,8 +12,6 @@ export type TransportErrorCode =
   | "ABORTED"
   | "CANCELLED"
   | "NO_BODY"
-  | "PROVIDER_OFFLINE"
-  | "INVALID_RESPONSE"
   | "UNKNOWN"
 
 export class TransportError extends Error {
@@ -92,7 +89,7 @@ export function classifyNetworkError(err: unknown): TransportError {
   if (msg.includes("timeout") || msg.includes("timed out")) {
     return new TransportError("CONNECTION_TIMEOUT", `Connection timed out: ${msg.slice(0, 100)}`, { retryable: true, cause: err })
   }
-  if (msg.includes("ENOTFOUND") || msg.includes("DNS") || msg.includes("dns")) {
+  if (msg.includes("ENOTFOUND") || msg.includes("EAI_AGAIN") || msg.includes("DNS") || msg.includes("dns") || msg.includes("temporary failure in name resolution")) {
     return new TransportError("CONNECTION_FAILED", `DNS resolution failed: ${msg.slice(0, 100)}`, { retryable: true, cause: err })
   }
   if (msg.includes("ECONNREFUSED") || msg.includes("Connection refused")) {
@@ -103,6 +100,9 @@ export function classifyNetworkError(err: unknown): TransportError {
   }
   if (msg.includes("fetch") || msg.includes("NetworkError") || msg.includes("network")) {
     return new TransportError("CONNECTION_FAILED", `Network error: ${msg.slice(0, 100)}`, { retryable: true, cause: err })
+  }
+  if (msg.includes("CERT") || msg.includes("certificate") || msg.includes("SSL") || msg.includes("TLS")) {
+    return new TransportError("CONNECTION_FAILED", `TLS/SSL error: ${msg.slice(0, 100)}`, { retryable: true, cause: err })
   }
   if (msg.includes("parse") || msg.includes("JSON")) {
     return new TransportError("PARSE_ERROR", `Parse error: ${msg.slice(0, 100)}`, { cause: err })
@@ -115,11 +115,9 @@ export function isRetryable(code: TransportErrorCode): boolean {
   switch (code) {
     case "CONNECTION_FAILED":
     case "CONNECTION_TIMEOUT":
-    case "HEADERS_TIMEOUT":
     case "FIRST_CHUNK_TIMEOUT":
     case "IDLE_CHUNK_TIMEOUT":
     case "RATE_LIMITED":
-    case "PROVIDER_OFFLINE":
       return true
     default:
       return false

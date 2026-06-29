@@ -17,6 +17,8 @@ export interface GatewayOptions {
   correlationId?: string
 }
 
+const MAX_BUFFERED_EVENTS = 1000
+
 export class UnifiedExecutionGateway {
   private static instance: UnifiedExecutionGateway
   private engineeringLoop = new AutonomousEngineeringLoop()
@@ -62,7 +64,9 @@ export class UnifiedExecutionGateway {
         input, activeRole, correlationId, goalId: options.goalId,
         mode: mode ?? "full", signal,
       })) {
-        events.push(event)
+        if (events.length < MAX_BUFFERED_EVENTS) {
+          events.push(event)
+        }
       }
 
       const engineeringResult = await this.engineeringLoop.execute(input, editedFiles, signal)

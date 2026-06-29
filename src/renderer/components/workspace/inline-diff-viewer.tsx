@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { computeDiff, type UnifiedDiffHunk } from "@/lib/diff-engine"
 import { Check, X, ChevronDown, ChevronUp, Code2, Loader2 } from "lucide-react"
 
 interface DiffLine {
@@ -30,34 +31,21 @@ interface InlineDiffViewerProps {
 }
 
 function computeHunks(original: string, edited: string): Hunk[] {
-  const origLines = original.split("\n")
-  const editLines = edited.split("\n")
-  const hunks: Hunk[] = []
-  let i = 0, j = 0
-
-  while (i < origLines.length || j < editLines.length) {
-    if (i < origLines.length && j < editLines.length && origLines[i] === editLines[j]) { i++; j++; continue }
-
-    const hunkStartOld = i, hunkStartNew = j
-    const removed: string[] = []
-    while (i < origLines.length) { if (j < editLines.length && origLines[i] === editLines[j]) break; removed.push(origLines[i]); i++ }
-    const added: string[] = []
-    while (j < editLines.length) { if (i < origLines.length && origLines[i] === editLines[j]) break; added.push(editLines[j]); j++ }
-
-    const lines: DiffLine[] = []
-    let remIdx = 0, addIdx = 0
-    removed.forEach(() => { lines.push({ type: "remove", content: removed[remIdx], oldLine: hunkStartOld + remIdx + 1, newLine: null }); remIdx++ })
-    added.forEach(() => { lines.push({ type: "add", content: added[addIdx], oldLine: null, newLine: hunkStartNew + addIdx + 1 }); addIdx++ })
-
-    let contextLines = 0
-    while (i < origLines.length && j < editLines.length && origLines[i] === editLines[j] && contextLines < 3) {
-      lines.push({ type: "context", content: origLines[i], oldLine: i + 1, newLine: j + 1 }); i++; j++; contextLines++
+  const hunks = computeDiff(original, edited)
+  return hunks.map((hunk) => {
+    const lines: DiffLine[] = hunk.lines.map((line) => {
+      const type = line.startsWith("+") ? "add" : line.startsWith("-") ? "remove" : "context"
+      const content = line.slice(1)
+      return { type, content, oldLine: null, newLine: null } as DiffLine
+    })
+    return {
+      oldStart: hunk.oldStart,
+      oldCount: hunk.oldLines,
+      newStart: hunk.newStart,
+      newCount: hunk.newLines,
+      lines,
     }
-
-    hunks.push({ oldStart: hunkStartOld + 1, oldCount: removed.length, newStart: hunkStartNew + 1, newCount: added.length, lines })
-    while (i < origLines.length && j < editLines.length && origLines[i] === editLines[j]) { i++; j++ }
-  }
-  return hunks
+  })
 }
 
 export function InlineDiffViewer({

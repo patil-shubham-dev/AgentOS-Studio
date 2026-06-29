@@ -55,7 +55,6 @@ export class StreamManager {
     }
 
     this.idle = false
-    this.lastActivityAt = Date.now()
 
     const result = this.wordBuffer.append(stepId, token)
     if (result !== null) {
@@ -119,15 +118,6 @@ export class StreamManager {
     }
     for (const { stepId, text } of pending) {
       this.dispatch(stepId, text)
-    }
-  }
-
-  private evictStaleStreams(): void {
-    const cutoff = performance.now() - this.STREAM_TTL_MS
-    for (const [stepId, stream] of this.streams) {
-      if (stream.lastFlushedAt > 0 && stream.lastFlushedAt < cutoff && stream.tokens.length === 0) {
-        this.streams.delete(stepId)
-      }
     }
   }
 

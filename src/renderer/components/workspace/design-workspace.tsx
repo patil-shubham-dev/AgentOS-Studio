@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react"
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDesignStore } from "@/stores/design-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -13,7 +13,7 @@ import {
   GitBranch, ChevronRight, ChevronDown, X,
   Search, AlertCircle, CheckCircle2,
   Maximize2, Minimize2, ArrowUpToLine,
-  Layers,
+  Layers, Globe,
 } from "lucide-react"
 import { PremiumEmptyState, getDesignEmptyState } from "./premium-empty-state"
 import { DesignPreviewSkeleton } from "@/components/ui/Skeleton"
@@ -280,6 +280,8 @@ function CodeEditor({ code, onSave }: { code: string; onSave: (code: string) => 
 
 // ── Main DesignWorkspace ──
 
+const PreviewPane = lazy(() => import("@/components/workspace/preview/PreviewPane").then(m => ({ default: m.PreviewPane })))
+
 export function DesignWorkspace() {
   const artifacts = useDesignStore((s) => s.artifacts)
   const currentArtifactId = useDesignStore((s) => s.currentArtifactId)
@@ -295,7 +297,7 @@ export function DesignWorkspace() {
 
   const [showCreate, setShowCreate] = useState(false)
   const [search, setSearch] = useState("")
-  const [previewMode, setPreviewMode] = useState<"code" | "visual" | "split">("split")
+  const [previewMode, setPreviewMode] = useState<"code" | "visual" | "split" | "live">("split")
   const [devicePreset, setDevicePreset] = useState(DEVICE_PRESETS[0])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -676,6 +678,19 @@ export function DesignWorkspace() {
                   >
                     <FileCode className="h-3 w-3" aria-hidden="true" />
                   </button>
+                  <button
+                    onClick={() => setPreviewMode("live")}
+                    role="radio"
+                    aria-checked={previewMode === "live"}
+                    className={cn(
+                      "rounded p-1 transition-all",
+                      previewMode === "live" ? "bg-white/[0.08] text-white/70" : "text-white/30 hover:text-white/60",
+                    )}
+                    title="Live browser preview"
+                    aria-label="Live browser preview"
+                  >
+                    <Globe className="h-3 w-3" aria-hidden="true" />
+                  </button>
                 </div>
 
                 {/* Device presets */}
@@ -782,78 +797,89 @@ export function DesignWorkspace() {
 
             {/* Main content area with split panels */}
             <div className="flex-1 flex overflow-hidden">
-              {/* Code panel */}
-              {(previewMode === "code" || previewMode === "split") && currentVersionData && (
-                <div className={cn(
-                  "flex flex-col overflow-hidden",
-                  previewMode === "split" ? "flex-1" : "w-full",
-                )}>
-                  <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.06] bg-[#0c0c0d]">
-                    <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">Code</span>
-                    <button
-                      onClick={() => copyToClipboard(currentVersionData.code)}
-                      className="rounded p-0.5 text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-all"
-                      title="Copy code"
-                    >
-                      <Copy className="h-2.5 w-2.5" />
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-auto">
-                    <CodeEditor
-                      code={currentVersionData.code}
-                      onSave={async (newCode) => {
-                        if (!currentArtifact) return
-                        addVersion(currentArtifact.id, {
-                          label: "Manual edit",
-                          code: newCode,
-                          htmlPreview: generateHtmlPreview(newCode),
-                          changes: "Edited in design pane",
-                        })
-                        pulse("success")
-                        notify("Code updated — new version created", "success", "success", 2000)
-                      }}
-                    />
-                  </div>
+              {previewMode === "live" ? (
+                /* ── Live browser preview (merged from PreviewPane) ── */
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading preview...</div>}>
+                    <PreviewPane />
+                  </Suspense>
                 </div>
-              )}
-
-              {/* Visual preview panel */}
-              {(previewMode === "visual" || previewMode === "split") && (
-                <div className={cn(
-                  "flex flex-col overflow-hidden",
-                  previewMode === "split"
-                    ? "flex-1 border-l border-white/[0.06]"
-                    : "w-full",
-                  previewMode === "visual" ? "border-l-0" : "",
-                )}>
-                  <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.06] bg-[#0c0c0d]">
-                    <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">Preview</span>
-                    <span className="text-[8px] text-white/20 font-mono">{devicePreset.width}×{devicePreset.height}</span>
-                  </div>
-                  <div className="flex-1 overflow-auto bg-muted/20 flex items-start justify-center p-4">
-                    {currentVersionData ? (
-                      <div className="relative transition-all duration-200 overflow-hidden rounded-lg border border-white/[0.06]"
-                        style={{ width: Math.min(devicePreset.width, 750), height: Math.min(devicePreset.height, 500) }}
-                      >
-                        {previewLoading && (
-                          <div className="absolute inset-0 z-10"><DesignPreviewSkeleton /></div>
-                        )}
-                        <iframe
-                          srcDoc={htmlPreviewSrc}
-                          title="Design Preview"
-                          className="w-full h-full bg-[#0a0a0b]"
-                          sandbox="allow-scripts"
-                          onLoad={() => setPreviewLoading(false)}
+              ) : (
+                <>
+                  {/* Code panel */}
+                  {(previewMode === "code" || previewMode === "split") && currentVersionData && (
+                    <div className={cn(
+                      "flex flex-col overflow-hidden",
+                      previewMode === "split" ? "flex-1" : "w-full",
+                    )}>
+                      <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.06] bg-[#0c0c0d]">
+                        <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">Code</span>
+                        <button
+                          onClick={() => copyToClipboard(currentVersionData.code)}
+                          className="rounded p-0.5 text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+                          title="Copy code"
+                        >
+                          <Copy className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-auto">
+                        <CodeEditor
+                          code={currentVersionData.code}
+                          onSave={async (newCode) => {
+                            if (!currentArtifact) return
+                            addVersion(currentArtifact.id, {
+                              label: "Manual edit",
+                              code: newCode,
+                              htmlPreview: generateHtmlPreview(newCode),
+                              changes: "Edited in design pane",
+                            })
+                            pulse("success")
+                            notify("Code updated — new version created", "success", "success", 2000)
+                          }}
                         />
                       </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2 pt-16">
-                        <EyeOff className="h-5 w-5 text-white/15" />
-                        <p className="text-[10px] text-white/30">No version data to preview</p>
+                    </div>
+                  )}
+
+                  {/* Visual preview panel */}
+                  {(previewMode === "visual" || previewMode === "split") && (
+                    <div className={cn(
+                      "flex flex-col overflow-hidden",
+                      previewMode === "split"
+                        ? "flex-1 border-l border-white/[0.06]"
+                        : "w-full",
+                      previewMode === "visual" ? "border-l-0" : "",
+                    )}>
+                      <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.06] bg-[#0c0c0d]">
+                        <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">Preview</span>
+                        <span className="text-[8px] text-white/20 font-mono">{devicePreset.width}×{devicePreset.height}</span>
                       </div>
-                    )}
-                  </div>
-                </div>
+                      <div className="flex-1 overflow-auto bg-muted/20 flex items-start justify-center p-4">
+                        {currentVersionData ? (
+                          <div className="relative transition-all duration-200 overflow-hidden rounded-lg border border-white/[0.06]"
+                            style={{ width: Math.min(devicePreset.width, 750), height: Math.min(devicePreset.height, 500) }}
+                          >
+                            {previewLoading && (
+                              <div className="absolute inset-0 z-10"><DesignPreviewSkeleton /></div>
+                            )}
+                            <iframe
+                              srcDoc={htmlPreviewSrc}
+                              title="Design Preview"
+                              className="w-full h-full bg-[#0a0a0b]"
+                              sandbox="allow-scripts"
+                              onLoad={() => setPreviewLoading(false)}
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 pt-16">
+                            <EyeOff className="h-5 w-5 text-white/15" />
+                            <p className="text-[10px] text-white/30">No version data to preview</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

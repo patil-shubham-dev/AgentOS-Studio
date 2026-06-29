@@ -1,6 +1,6 @@
 import type { AgentStore, OrchestrationStep, AgentAssignment } from "@/stores/agent-store"
 
-export type WorkspacePanel = "code" | "browser" | "design" | "preview"
+export type WorkspacePanel = "code" | "browser" | "design"
 
 export type TabInteractionEvent =
   | { type: "TAB_CLICK"; panel: WorkspacePanel; timestamp: number }

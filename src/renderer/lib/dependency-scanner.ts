@@ -161,12 +161,22 @@ export class DependencyScanner {
     const typeOnlyImportMap = new Map<string, boolean>()
     const barrelFileMap = new Map<string, boolean>()
 
-    for (const absPath of scannedFiles) {
-      try {
-        const content = contentProvider
-          ? await contentProvider(absPath)
-          : await readFile(absPath)
+    const BATCH_SIZE = 50
+    for (let batchStart = 0; batchStart < scannedFiles.length; batchStart += BATCH_SIZE) {
+      const batch = scannedFiles.slice(batchStart, batchStart + BATCH_SIZE)
+      const contents = await Promise.allSettled(
+        batch.map((absPath) =>
+          contentProvider
+            ? contentProvider(absPath)
+            : readFile(absPath)
+        )
+      )
+      for (let fi = 0; fi < batch.length; fi++) {
+        const result = contents[fi]
+        if (result.status === 'rejected') continue
+        const content = result.value
         if (!content) continue
+        const absPath = batch[fi]
 
         const relPath = this.getRelativePath(absPath)
         if (!importMap.has(relPath)) importMap.set(relPath, [])
@@ -215,8 +225,6 @@ export class DependencyScanner {
             npmImportMap.get(pkg)!.push(relPath)
           }
         }
-      } catch {
-        // skip unreadable files
       }
     }
 

@@ -1,9 +1,8 @@
 import { memo, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { RotateCcw, ChevronDown, ChevronRight, Brain, Loader2, Layers, Wrench, FileEdit, Terminal as TerminalIcon, AlertTriangle } from "lucide-react"
+import { RotateCcw, ChevronDown, ChevronRight, Brain, Layers, Wrench, FileEdit, Terminal as TerminalIcon, AlertTriangle } from "lucide-react"
 import { useTimelineStore } from "../timeline-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
-import { useAgentStore } from "@/stores/agent-store"
 import { ResponseStream } from "./response-stream"
 import { ConfidenceBadge } from "@/components/workspace/execution/ConfidenceBadge"
 import { ExecutionConfidenceEngine } from "@/runtime/execution/ExecutionConfidenceEngine"
@@ -11,8 +10,7 @@ import { TerminalBlock } from "./TerminalBlock"
 import { ToolCallCard } from "./ToolCallCard"
 import { MultiFileDiffCard, FileCreatedCard, FileDeletedCard } from "./diff"
 import type { AgentSession } from "../timeline-store"
-import type { AgentStatus } from "@/stores/agent-store"
-import { getAgentLabel, getAgentStateIcon, mapToolToActivity } from "../../agent-visibility/AgentActivityMapper"
+import { mapToolToActivity } from "../../agent-visibility/AgentActivityMapper"
 import { cn } from "@/lib/utils"
 import { getSpringConfig } from "@/lib/motion"
 import { acceptAllDiffReviews, acceptDiffReviewFile, rejectDiffReviewFile } from "@/lib/diff-review"
@@ -106,25 +104,6 @@ function buildExecutionSummary(session: AgentSession): { main: string; details: 
   if (errors.length > 0) details.push(`${errors.length} error${errors.length > 1 ? "s" : ""}`)
 
   return parts.length > 0 ? { main: parts.join(", "), details } : { main: "Completed", details }
-}
-
-const AGENT_PRIORITY = ["manager", "research", "browser", "coder", "qa", "memory"]
-
-function getActiveAgentNarrative(agentStatuses: Record<string, AgentStatus>): { icon: string; label: string; task: string } | null {
-  const active = AGENT_PRIORITY
-    .map((role) => agentStatuses[role])
-    .filter((s): s is AgentStatus => s != null && s.state !== "idle" && s.state !== "complete" && s.state !== "failed")
-
-  if (active.length > 0) {
-    const agent = active[0]
-    return {
-      icon: getAgentStateIcon(agent.state),
-      label: getAgentLabel(agent.role),
-      task: agent.currentTask || "Working",
-    }
-  }
-
-  return null
 }
 
 interface AssistantResponseProps {
@@ -238,7 +217,6 @@ export const AssistantResponse = memo(function AssistantResponse({
   originalInput,
 }: AssistantResponseProps) {
   const session = useTimelineStore((s) => s.agentSessions.get(stepId))
-  const streamingText = useTimelineStore((s) => s.streamingTexts.get(stepId))
   const streamState = session?.streamState ?? "not_started"
   const isRunning = streamState === "streaming" || streamState === "not_started"
 
@@ -249,8 +227,7 @@ export const AssistantResponse = memo(function AssistantResponse({
     return null
   }
 
-  const displayText = streamingText ?? session.streamingText
-  const hasContent = displayText.length > 0
+  const hasContent = (session.streamingText?.length ?? 0) > 0
   const hasEdits = session.fileEdits.length > 0
   const hasFileOps = session.fileOps != null && session.fileOps.length > 0
   const hasTerminals = session.terminalOutputs.length > 0
@@ -259,6 +236,24 @@ export const AssistantResponse = memo(function AssistantResponse({
   const isError = streamState === "failed"
   const isComplete = !isRunning && streamState === "completed"
   const hasThinking = session.phaseHistory != null && session.phaseHistory.length > 0
+
+  const filesForDiff = useMemo(
+    () => session.fileEdits.map((fe) => ({ edit: fe })),
+    [session.fileEdits]
+  )
+
+  const currentActivity = useMemo(
+    () => getActivityLabel(session, hasContent),
+    [session, hasContent]
+  )
+  const executionSummary = useMemo(
+    () => isComplete ? buildExecutionSummary(session) : null,
+    [isComplete, session.toolCalls, session.fileEdits, session.terminalOutputs, session.fileOps, session.streamState, session.completedAt, session.startedAt, session.modelName]
+  )
+  const editSummary = useMemo(
+    () => isComplete ? buildEditSummary(session) : null,
+    [isComplete, session.fileEdits, session.fileOps]
+  )
 
   const handleRevert = useCallback(async (path: string) => {
     const edit = session.fileEdits.find((fe) => fe.path === path)
@@ -289,12 +284,6 @@ export const AssistantResponse = memo(function AssistantResponse({
     await acceptAllDiffReviews()
   }, [])
 
-  const agentStatuses = useAgentStore((s) => s.agentStatuses)
-  const currentActivity = getActivityLabel(session, hasContent)
-  const agentNarrative = isRunning && !hasContent ? getActiveAgentNarrative(agentStatuses) : null
-  const executionSummary = isComplete ? buildExecutionSummary(session) : null
-  const editSummary = isComplete ? buildEditSummary(session) : null
-
   const sessionConfidence = useMemo(() => {
     if (session.confidence) return session.confidence
     if (!isComplete || session.fileEdits.length === 0) return null
@@ -321,19 +310,6 @@ export const AssistantResponse = memo(function AssistantResponse({
       transition={ENTRANCE_SPRING}
       className="w-full space-y-0.5"
     >
-      {/* Agent label */}
-      <div className="flex items-center gap-1.5 px-0.5 py-0.5">
-        <div className="flex items-center justify-center h-4 w-4 rounded-md bg-gradient-to-br from-blue-500/10 to-purple-500/10">
-          <Brain className="h-2.5 w-2.5 text-blue-400/50" />
-        </div>
-        <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">
-          {session.roleName || "Assistant"}
-        </span>
-        {isRunning && (
-          <Loader2 className="h-2.5 w-2.5 animate-spin text-blue-400/40" />
-        )}
-      </div>
-
       {/* Execution summary — spring entrance */}
       <AnimatePresence>
         {executionSummary && (
@@ -372,29 +348,17 @@ export const AssistantResponse = memo(function AssistantResponse({
       </AnimatePresence>
 
       {/* Activity indicator during execution */}
-      {isRunning && !hasContent && (
+      {isRunning && !hasContent && currentActivity && (
         <motion.div
           initial={{ opacity: 0, y: -2 }}
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center gap-2 py-1"
         >
-          {agentNarrative ? (
-            <>
-              <span className="text-[11px] text-white/50">{agentNarrative.icon}</span>
-              <span className="text-xs text-white/40">
-                <span className="text-white/60 font-medium">{agentNarrative.label}</span>
-                <span className="text-white/30"> — {agentNarrative.task}</span>
-              </span>
-            </>
-          ) : currentActivity ? (
-            <>
-              <span className="relative flex h-3 w-3 items-center justify-center">
-                <span className="absolute inset-0 rounded-full bg-blue-400/30 animate-ping" />
-                <span className="h-2 w-2 rounded-full bg-blue-400/80" />
-              </span>
-              <span className="text-sm text-white/50 italic font-medium">{currentActivity}&hellip;</span>
-            </>
-          ) : null}
+          <span className="relative flex h-3 w-3 items-center justify-center">
+            <span className="absolute inset-0 rounded-full bg-blue-400/30 animate-ping" />
+            <span className="h-2 w-2 rounded-full bg-blue-400/80" />
+          </span>
+          <span className="text-sm text-white/50 italic font-medium">{currentActivity}&hellip;</span>
         </motion.div>
       )}
 
@@ -519,7 +483,7 @@ export const AssistantResponse = memo(function AssistantResponse({
               </motion.div>
             )}
             <MultiFileDiffCard
-              files={session.fileEdits.map((fe) => ({ edit: fe }))}
+              files={filesForDiff}
               onRevert={handleRevert}
               onRevertAll={handleRevertAll}
               onAcceptFile={handleAcceptFile}
@@ -557,7 +521,7 @@ export const AssistantResponse = memo(function AssistantResponse({
             transition={SECTION_SPRING}
             className="prose-container py-1"
           >
-            <ResponseStream text={displayText} isStreaming={isRunning} />
+            <ResponseStream text={session.streamingText} stepId={stepId} isStreaming={isRunning} />
           </motion.div>
         )}
       </AnimatePresence>

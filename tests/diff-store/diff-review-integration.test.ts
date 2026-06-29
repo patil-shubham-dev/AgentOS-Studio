@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createMockStorage } from "../e2e/helpers/workspace-test-utils"
 
-const writeFileMock = vi.fn(async () => {})
-const existsMock = vi.fn(async () => true)
-const readFileMock = vi.fn(async (path: string) => "")
+const fileContents = new Map<string, string>()
+const writeFileMock = vi.fn(async (path: string, content: string) => { fileContents.set(path, content) })
+const existsMock = vi.fn(async (path: string) => fileContents.has(path))
+const readFileMock = vi.fn(async (path: string) => fileContents.get(path) ?? "")
 
 vi.mock("@/lib/filesystem", async () => {
   const actual = await vi.importActual<typeof import("@/lib/filesystem")>("@/lib/filesystem")
@@ -29,6 +30,8 @@ describe("diff review integration — partial accept/reject flow", () => {
 
     const { useDiffStore } = await import("@/stores/diff-store")
     const { useWorkspaceStore } = await import("@/stores/workspace-store")
+    const { writtenContent } = await import("@/lib/diff-review")
+    writtenContent.clear()
 
     useDiffStore.getState().clear()
     useWorkspaceStore.setState({
@@ -101,6 +104,9 @@ describe("diff review integration — partial accept/reject flow", () => {
     expect(current.status).toBe("pending")
     expect(current.hunks.every((h) => h.status === "pending")).toBe(true)
 
+    // Set up file on disk to match original content so safety check passes
+    fileContents.set("C:\\workspace\\src\\greetings.ts", original)
+
     // Accept hunk 0
     await acceptDiffReviewHunk("src/greetings.ts", 0)
     current = useDiffStore.getState().files.get("src/greetings.ts")!
@@ -155,6 +161,9 @@ describe("diff review integration — partial accept/reject flow", () => {
     )
     useDiffStore.getState().addFileDiff(entry)
 
+    // Set up file on disk to match original content so safety check passes
+    fileContents.set("C:\\workspace\\src\\test.ts", "line1\nline2\nline3\n")
+
     // Accept first hunk
     await acceptDiffReviewHunk("src/test.ts", 0)
 
@@ -180,6 +189,7 @@ describe("diff review integration — partial accept/reject flow", () => {
       "line1\nline2 modified\nline3\n",
     )
     useDiffStore.getState().addFileDiff(entry)
+    fileContents.set("C:\\workspace\\src\\test.ts", "line1\nline2\nline3\n")
 
     // Accept first hunk
     await acceptDiffReviewHunk("src/test.ts", 0)
@@ -214,6 +224,7 @@ describe("diff review integration — partial accept/reject flow", () => {
     )
     expect(entry.hunks).toHaveLength(1)
     useDiffStore.getState().addFileDiff(entry)
+    fileContents.set("C:\\workspace\\src\\test.ts", "old content\n")
 
     // Accept single hunk
     await acceptDiffReviewHunk("src/test.ts", 0)
@@ -238,12 +249,13 @@ describe("diff review integration — partial accept/reject flow", () => {
 
     const entry = buildDiffFileEntry(
       "src/test.ts",
-      "a\n",
-      "b\n",
+      "line1\nline2\nline3\n",
+      "line1\nline2 modified\nline3\n",
     )
     useDiffStore.getState().addFileDiff(entry)
+    fileContents.set("C:\\workspace\\src\\test.ts", "line1\nline2\nline3\n")
 
-    // Accept
+    // Accept first hunk
     await acceptDiffReviewHunk("src/test.ts", 0)
     expect(useDiffStore.getState().files.get("src/test.ts")!.hunks[0].status).toBe("accepted")
 
@@ -284,7 +296,7 @@ describe("diff review integration — partial accept/reject flow", () => {
     useDiffStore.getState().addFileDiff(entry)
 
     // Accept first hunk only
-    readFileMock.mockResolvedValue(original)
+    fileContents.set("C:\\workspace\\src\\tight.ts", original)
     await acceptDiffReviewHunk("src/tight.ts", 0)
     let current = useDiffStore.getState().files.get("src/tight.ts")!
     expect(current.hunks[0].status).toBe("accepted")
@@ -302,8 +314,7 @@ describe("diff review integration — partial accept/reject flow", () => {
     expect(content).toContain("line-10")
     expect(content).not.toContain("LINE-10 modified")
 
-    // Accept second hunk independently
-    readFileMock.mockResolvedValue(original)
+    // Accept second hunk independently — file was already written by our code, tracked
     await acceptDiffReviewHunk("src/tight.ts", 1)
     current = useDiffStore.getState().files.get("src/tight.ts")!
     expect(current.hunks[0].status).toBe("accepted")
@@ -313,8 +324,7 @@ describe("diff review integration — partial accept/reject flow", () => {
     expect(content).toContain("LINE-02 modified")
     expect(content).toContain("LINE-10 modified")
 
-    // Reject second hunk independently
-    readFileMock.mockResolvedValue(original)
+    // Reject second hunk independently — file was already written by our code, tracked
     await rejectDiffReviewHunk("src/tight.ts", 1)
     current = useDiffStore.getState().files.get("src/tight.ts")!
     expect(current.hunks[0].status).toBe("accepted")
@@ -326,11 +336,11 @@ describe("diff review integration — partial accept/reject flow", () => {
     expect(content).not.toContain("LINE-10 modified")
   })
 
-  it("edge case: file deleted during review logs warning but still writes", async () => {
+  it("edge case: file deleted during review blocks write without force", async () => {
     const { buildDiffFileEntry, acceptDiffReviewHunk } = await import("@/lib/diff-review")
     const { useDiffStore } = await import("@/stores/diff-store")
 
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
     const entry = buildDiffFileEntry(
       "src/test.ts", "old\ncontent\n", "new\ncontent\n",
@@ -340,48 +350,40 @@ describe("diff review integration — partial accept/reject flow", () => {
     // File doesn't exist on disk
     existsMock.mockResolvedValue(false)
 
-    await acceptDiffReviewHunk("src/test.ts", 0)
+    const result = await acceptDiffReviewHunk("src/test.ts", 0)
+    expect(result).toBe(false)
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("no longer exists"),
-    )
-    expect(writeFileMock).toHaveBeenCalled()
-
-    warnSpy.mockRestore()
+    errorSpy.mockRestore()
   })
 
-  it("edge case: external modification during review logs warning but still writes", async () => {
+  it("edge case: external modification during review blocks write without force", async () => {
     const { buildDiffFileEntry, acceptDiffReviewHunk } = await import("@/lib/diff-review")
     const { useDiffStore } = await import("@/stores/diff-store")
 
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
     const entry = buildDiffFileEntry(
       "src/test.ts", "old\ncontent\n", "new\ncontent\n",
     )
     useDiffStore.getState().addFileDiff(entry)
 
-    // Current file content differs from original
-    existsMock.mockResolvedValue(true)
-    readFileMock.mockResolvedValue("different\ncontent\n")
+    // Current file content differs from original and not our last write
+    fileContents.set("C:\\workspace\\src\\test.ts", "different\ncontent\n")
 
-    await acceptDiffReviewHunk("src/test.ts", 0)
+    const result = await acceptDiffReviewHunk("src/test.ts", 0)
+    expect(result).toBe(false)
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("modified externally"),
-    )
-    expect(writeFileMock).toHaveBeenCalled()
-
-    warnSpy.mockRestore()
+    errorSpy.mockRestore()
   })
 
-  it("edge case: dirty buffer during review logs warning but still writes", async () => {
+  it("edge case: dirty buffer during review blocks write without force", async () => {
     const { buildDiffFileEntry, acceptDiffReviewHunk } = await import("@/lib/diff-review")
     const { useDiffStore } = await import("@/stores/diff-store")
     const { useWorkspaceStore } = await import("@/stores/workspace-store")
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
 
+    fileContents.set("C:\\workspace\\src\\dirty-file.ts", "old\n")
     const entry = buildDiffFileEntry(
       "src/dirty-file.ts", "old\n", "new\n",
     )
@@ -392,12 +394,8 @@ describe("diff review integration — partial accept/reject flow", () => {
       openFiles: [{ path: "src/dirty-file.ts", name: "dirty-file.ts", content: "unsaved\n", isDirty: true }],
     })
 
-    await acceptDiffReviewHunk("src/dirty-file.ts", 0)
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("unsaved changes"),
-    )
-    expect(writeFileMock).toHaveBeenCalled()
+    const result = await acceptDiffReviewHunk("src/dirty-file.ts", 0)
+    expect(result).toBe(false)
 
     warnSpy.mockRestore()
   })
@@ -424,6 +422,7 @@ describe("diff review integration — partial accept/reject flow", () => {
     const entry = buildDiffFileEntry("src/test.ts", original, modified)
     useDiffStore.getState().addFileDiff(entry)
     expect(entry.hunks).toHaveLength(2)
+    fileContents.set("C:\\workspace\\src\\test.ts", original)
 
     // Accept hunk 0 partially
     await acceptDiffReviewHunk("src/test.ts", 0)

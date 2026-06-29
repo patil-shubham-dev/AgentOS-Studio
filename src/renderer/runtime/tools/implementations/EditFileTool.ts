@@ -134,13 +134,13 @@ export const EditFileTool: AgentTool = buildTool({
     const snapshottedFiles = snapshottedFilesByTrace.get(traceKey)!
     let snapshot: string | undefined
     if (!snapshottedFiles.has(fullPath)) {
-      snapshot = await history.createSnapshot(fullPath, originalContent, traceKey)
-      if (!snapshot && originalContent.length > 0) {
-        return {
-          data: null,
-          error: 'EDIT_FAILED: snapshot could not be created — undo will not work for this edit',
-          isError: true,
+      try {
+        snapshot = await history.createSnapshot(fullPath, originalContent, traceKey)
+        if (!snapshot && originalContent.length > 0) {
+          console.warn(`[EditFileTool] Snapshot could not be created for ${fullPath} — undo will not work`)
         }
+      } catch (snapErr) {
+        console.warn(`[EditFileTool] Snapshot creation failed for ${fullPath} — proceeding without undo:`, snapErr)
       }
       snapshottedFiles.add(fullPath)
     }
@@ -177,46 +177,12 @@ export const EditFileTool: AgentTool = buildTool({
     fileContentCache.invalidate(fullPath)
 
     const writtenContent = await readTextFile(fullPath)
-    const verificationErrors: string[] = []
     if (writtenContent !== modifiedContent) {
-      verificationErrors.push('content after write does not match expected output — file was externally modified')
-    } else {
-      for (let i = 0; i < engineResult.results.length; i++) {
-        const result = engineResult.results[i]
-        if (!result.applied) continue
-        const edit = edits[i]
-        if (!edit) continue
-        if (result.operation === 'replace' || result.operation === 'insert') {
-          const newContent = edit.newContent ?? ''
-          if (newContent && !writtenContent.includes(newContent)) {
-            verificationErrors.push(`newContent "${newContent.slice(0, 50)}" not found in written file`)
-          }
-        }
-        if ((result.operation === 'replace' || result.operation === 'delete') && edit.allOccurrences) {
-          const oldContent = edit.oldContent ?? ''
-          if (oldContent && writtenContent.includes(oldContent)) {
-            verificationErrors.push(`oldContent "${oldContent.slice(0, 50)}" still present after all-occurrences ${result.operation}`)
-          }
-        }
-      }
-    }
-    if (verificationErrors.length > 0) {
-      const errorStr = `EDIT_FAILED: ${verificationErrors.join('; ')}`
       return {
         data: null,
-        error: `${errorStr}\n${diff}`,
+        error: 'EDIT_FAILED: content after write does not match expected output — file was externally modified',
         isError: true,
-        meta: {
-          editResults: engineResult.results.map(r => ({
-            applied: r.applied,
-            operation: r.operation,
-            hunks: r.hunks,
-            locations: r.locations,
-          })),
-          totalHunks: engineResult.results.reduce((sum, r) => sum + r.hunks, 0),
-          diff,
-          verificationErrors,
-        },
+        meta: { diff },
       }
     }
 

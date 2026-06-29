@@ -833,13 +833,22 @@ export class ASTEnhancedGraph {
     try {
       const { invoke } = await import("@/lib/electron-api")
       const root = (tsProgramManager as any)["rootPath"] ?? ""
-      for (const relPath of files) {
-        if (this.getSourceFile(relPath)) continue
-        try {
-          const absPath = path.join(root, relPath)
-          const content = await invoke<string>("read_text_file", { path: absPath })
-          if (content) this.fileContentCache.set(relPath, content)
-        } catch {}
+      const toFetch = files.filter((relPath) => !this.getSourceFile(relPath))
+      if (toFetch.length === 0) return
+      const BATCH_SIZE = 50
+      for (let i = 0; i < toFetch.length; i += BATCH_SIZE) {
+        const batch = toFetch.slice(i, i + BATCH_SIZE)
+        const results = await Promise.allSettled(
+          batch.map((relPath) =>
+            invoke<string>("read_text_file", { path: path.join(root, relPath) })
+          )
+        )
+        for (let fi = 0; fi < batch.length; fi++) {
+          const result = results[fi]
+          if (result.status === 'fulfilled' && result.value) {
+            this.fileContentCache.set(batch[fi], result.value)
+          }
+        }
       }
     } catch {}
   }

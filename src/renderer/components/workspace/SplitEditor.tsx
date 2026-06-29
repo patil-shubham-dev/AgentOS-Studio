@@ -74,6 +74,9 @@ export function SplitEditor({ activeFile, language, handleEditorMount, handleCon
 
   if (splitMode === "none" || !splitMode) return null
 
+  const primaryOptions = useMemo(() => ({ ...EDITOR_OPTIONS }), [])
+  const splitOptions = useMemo(() => ({ ...EDITOR_OPTIONS, readOnly: !splitFile }), [splitFile])
+
   return (
     <div className={cn(
       "flex-1 relative overflow-hidden min-h-0 flex",
@@ -89,7 +92,7 @@ export function SplitEditor({ activeFile, language, handleEditorMount, handleCon
           language={language}
           onChange={handleContentChange}
           onMount={handleSplitMountA}
-          options={{ ...EDITOR_OPTIONS }}
+          options={primaryOptions}
           theme="agentic-dark"
         />
       </div>
@@ -116,7 +119,7 @@ export function SplitEditor({ activeFile, language, handleEditorMount, handleCon
           value={splitFile?.content ?? ""}
           onChange={handleSplitChangeB}
           onMount={handleSplitMountB}
-          options={{ ...EDITOR_OPTIONS, readOnly: !splitFile }}
+          options={splitOptions}
           theme="agentic-dark"
         />
       </div>

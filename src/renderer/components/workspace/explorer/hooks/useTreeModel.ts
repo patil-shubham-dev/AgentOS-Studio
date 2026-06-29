@@ -171,6 +171,10 @@ export function useTreeModel(
     }
   }, [])
 
+  const unsubRef = useRef<(() => void) | null>(null)
+  const scheduleLoadCheckRef = useRef<() => void>(scheduleLoadCheck)
+  scheduleLoadCheckRef.current = scheduleLoadCheck
+
   if (modelRef.current === null) {
     const treeOptions: FileTreeOptions = {
       paths: fullPaths,
@@ -186,9 +190,10 @@ export function useTreeModel(
       renderRowDecoration: decorationRenderer,
     }
     modelRef.current = new FileTree(treeOptions)
-    modelRef.current.subscribe(() => {
-      scheduleLoadCheck()
+    const unsub = modelRef.current.subscribe(() => {
+      scheduleLoadCheckRef.current?.()
     })
+    unsubRef.current = unsub
   }
 
   useEffect(() => {
@@ -229,6 +234,8 @@ export function useTreeModel(
   useEffect(() => {
     const model = modelRef.current
     return () => {
+      unsubRef.current?.()
+      unsubRef.current = null
       if (model) {
         model.cleanUp()
         modelRef.current = null

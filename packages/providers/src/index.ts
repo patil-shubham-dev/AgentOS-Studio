@@ -5,39 +5,12 @@ export * from "./provider-health"
 export * from "./provider-types"
 export * from "./provider-validation"
 
-// OpenAI-compatible adapter (re-exports with care to avoid conflicts)
-export {
-  PROVIDER_PRESETS,
-  getAdapterConfig,
-  buildCompletionUrl,
-  buildModelsUrl,
-  buildAuthHeaders,
-  buildAuthQueryParams,
-  buildCompletionBody,
-  streamCompletion,
-  chatCompletion as adapterChatCompletion,
-  discoverModels as adapterDiscoverModels,
-  validateConnection as adapterValidateConnection,
-} from "./openai-compatible-adapter"
-export type {
-  OpenAICompatibleConfig,
-  StreamResult,
-  CompletionResult,
-} from "./openai-compatible-adapter"
+// Provider presets (moved from the deprecated openai-compatible-adapter)
+export { PROVIDER_PRESETS, getAdapterConfig } from "./provider-presets"
+export type { OpenAICompatibleConfig } from "./provider-presets"
 
-export { parseStreamChunk } from "./openai-compatible-adapter"
-
-// Re-export with canonical names for consumer convenience
-// Note: this is the sole chatCompletion export — ai-service's chatCompletion is aiChatCompletion to avoid shadowing
-export { providerChatCompletion as chatCompletion } from "./provider-gateway"
-
-// Explicit re-exports from ai-service (avoid naming collisions — chatCompletion is exported as aiChatCompletion)
-export {
-  chatCompletion as aiChatCompletion,
-  streamChatCompletion,
-  tauriStreamChatCompletion,
-  directChatCompletion,
-} from "./ai-service"
+// Chat completion — uses ProviderTransport internally for adapter-based provider routing
+export { chatCompletion, streamChatCompletion, tauriStreamChatCompletion, directChatCompletion } from "./ai-service"
 export type { ChatMessage, ToolCall, ToolDef, ChatRequest, ChatResponse, UsageInfo, StreamCallbacks } from "./ai-service"
 
 // ── Transport Layer Exports ──
@@ -46,7 +19,7 @@ export { ProviderTransport } from "./transport"
 export { SseParser, parseSseLine, parseOpenAiStreamChunk, streamingTransportFetch } from "./streaming-transport"
 export { TransportError, classifyHttpError, classifyNetworkError, isRetryable } from "./transport-errors"
 export { RetryMiddleware, AuthMiddleware, DiagnosticsMiddleware, composeMiddleware } from "./transport-middleware"
-export { OpenAITransportAdapter, NvidiaNimAdapter, OllamaAdapter, AnthropicTransportAdapter, resolveAdapter as resolveTransportAdapter } from "./transport-adapters"
+export { OpenAITransportAdapter, NvidiaNimAdapter, OllamaAdapter, AnthropicTransportAdapter, resolveAdapter, resolveAdapter as resolveTransportAdapter } from "./transport-adapters"
 export { observabilityStore, createDiagnosticsHandler, formatTimelineSummary, formatStreamMetrics } from "./transport-observability"
 export { DEFAULT_TRANSPORT_CONFIG } from "./transport-types"
 
@@ -61,5 +34,40 @@ export type {
   StreamState,
 } from "./transport-types"
 export type { TransportMiddleware } from "./transport-middleware"
-export type { TransportAdapter, TransportAdapterConfig, CompletionRequest, CompletionResponse } from "./transport-adapters"
+export type { TransportAdapter, TransportAdapterConfig, CompletionRequest, CompletionResponse, ProviderCapabilities } from "./transport-adapters"
 export type { StreamCallbacks, SseChunk, ToolCallBuffer } from "./streaming-transport"
+
+// ── Phase C: Provider Selection Engine ──
+
+export { ProviderRegistry } from "./provider-registry-engine"
+export type { RegisteredAdapter, ModelMetadata, RegistryQuery } from "./provider-registry-engine"
+export { ProviderSelector } from "./provider-selector"
+export type { ProviderCatalogEntry } from "./provider-selector"
+export { CapabilityNegotiator } from "./capability-negotiation"
+export type { CapabilityRequest, NegotiationResult, ProviderModelCatalog } from "./capability-negotiation"
+export type {
+  SelectionRequest,
+  SelectionDecision,
+  SelectionScorer,
+  SelectionContext,
+  ScoredDimension,
+  ScoredProvider,
+} from "./provider-selection-types"
+export { createDefaultScorers } from "./provider-selection-scorers"
+export { globalProviderRegistry } from "./provider-registry-instance"
+export {
+  RequiredCapabilitiesScorer,
+  PreferredModelScorer,
+  PreferredProviderScorer,
+  ContextWindowScorer,
+  StreamingCapabilityScorer,
+  ToolCallingScorer,
+  HealthStateScorer,
+  LatencyScorer,
+  ReliabilityScorer,
+  LocalPreferenceScorer,
+  RoleFitScorer,
+  RecencyScorer,
+  CapabilityBreadthScorer,
+  ConsecutiveFailureScorer,
+} from "./provider-selection-scorers"

@@ -162,9 +162,8 @@ export class DiskBackedResultStore {
   }
 
   async clear(): Promise<void> {
-    for (const id of this.store.keys()) {
-      await this.deleteResult(id)
-    }
+    const ids = Array.from(this.store.keys())
+    await Promise.allSettled(ids.map((id) => this.deleteResult(id)))
     this.totalBytes = 0
   }
 

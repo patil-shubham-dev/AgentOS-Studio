@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import {
-  Command, File, Settings, PanelLeft, PanelRight, X, ArrowUp, ArrowDown,
-  Globe, Palette, RefreshCw, Search, Logs, GitBranch, LayoutDashboard,
+  Command, File, Settings, PanelLeft, PanelRight, X,
+  Globe, Palette, RefreshCw, Search, GitBranch, LayoutDashboard,
 } from "lucide-react"
 
 interface CommandItem {
@@ -120,27 +120,11 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
       category: "System",
     },
     {
-      id: "open-control-center",
-      label: "Control Center",
+      id: "open-dashboard",
+      label: "Dashboard",
       description: "Go to the main control center dashboard",
       icon: <LayoutDashboard className="h-3.5 w-3.5" />,
-      action: () => { context.navigate("/control-center"); onClose() },
-      category: "System",
-    },
-    {
-      id: "open-agents",
-      label: "Agent Configuration",
-      description: "Configure agents, roles, and providers",
-      icon: <Command className="h-3.5 w-3.5" />,
-      action: () => { context.navigate("/agents"); onClose() },
-      category: "System",
-    },
-    {
-      id: "view-logs",
-      label: "View Logs",
-      description: "View application and runtime logs",
-      icon: <Logs className="h-3.5 w-3.5" />,
-      action: () => { context.navigate("/logs"); onClose() },
+      action: () => { context.navigate("/dashboard"); onClose() },
       category: "System",
     },
     {
@@ -181,7 +165,8 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
     if (open) {
       setQuery("")
       setSelectedIndex(0)
-      setTimeout(() => inputRef.current?.focus(), 50)
+      const timer = setTimeout(() => inputRef.current?.focus(), 50)
+      return () => clearTimeout(timer)
     }
   }, [open])
 

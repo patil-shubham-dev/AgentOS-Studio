@@ -115,32 +115,39 @@ export const SearchContentTool: AgentTool = buildTool({
     const files = await findFiles(rootPath, includePatterns, excludePatterns)
     const result: GrepResult = { matches: [], files: 0, total: 0, truncated: false }
 
-    for (const file of files) {
-      const content = await readTextFile(file)
-      if (!content) continue
-      const lines = content.split('\n')
-      let fileHasMatch = false
-      for (let i = 0; i < lines.length; i++) {
-        let match: RegExpExecArray | null
-        regex.lastIndex = 0
-        while ((match = regex.exec(lines[i])) !== null) {
-          if (result.matches.length >= maxResults) {
-            result.truncated = true
-            break
+    const BATCH_SIZE = 20
+    for (let batchStart = 0; batchStart < files.length && !result.truncated; batchStart += BATCH_SIZE) {
+      const batch = files.slice(batchStart, batchStart + BATCH_SIZE)
+      const contents = await Promise.all(
+        batch.map(file => readTextFile(file).catch(() => ''))
+      )
+      for (let fi = 0; fi < batch.length && !result.truncated; fi++) {
+        const file = batch[fi]
+        const content = contents[fi]
+        if (!content) continue
+        const lines = content.split('\n')
+        let fileHasMatch = false
+        for (let i = 0; i < lines.length; i++) {
+          let match: RegExpExecArray | null
+          regex.lastIndex = 0
+          while ((match = regex.exec(lines[i])) !== null) {
+            if (result.matches.length >= maxResults) {
+              result.truncated = true
+              break
+            }
+            result.matches.push({
+              file: file.replace(rootPath, '').replace(/^[\\/]/, ''),
+              line: i + 1,
+              column: match.index + 1,
+              content: lines[i].trim().slice(0, 200),
+            })
+            result.total++
+            fileHasMatch = true
           }
-          result.matches.push({
-            file: file.replace(rootPath, '').replace(/^[\\/]/, ''),
-            line: i + 1,
-            column: match.index + 1,
-            content: lines[i].trim().slice(0, 200),
-          })
-          result.total++
-          fileHasMatch = true
+          if (result.truncated) break
         }
-        if (result.truncated) break
+        if (fileHasMatch) result.files++
       }
-      if (fileHasMatch) result.files++
-      if (result.truncated) break
     }
 
     return { data: result }

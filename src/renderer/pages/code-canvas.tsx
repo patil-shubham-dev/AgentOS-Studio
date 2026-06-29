@@ -17,8 +17,6 @@ import { PaneContainer, Pane } from "@/components/workspace/pane-layout/PaneCont
 
 const BrowserWorkspace = lazy(() => import("@/components/workspace/browser/browser-workspace").then(m => ({ default: m.BrowserWorkspace })))
 const DesignWorkspace = lazy(() => import("@/components/workspace/design-workspace").then(m => ({ default: m.DesignWorkspace })))
-const PreviewPane = lazy(() => import("@/components/workspace/preview/PreviewPane").then(m => ({ default: m.PreviewPane })))
-import { AgentActivityPanel } from "@/components/workspace/agent-visibility/AgentActivityPanel"
 import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
 
 import { dirtyBufferManager, type DirtyBuffer } from "@/lib/dirty-buffer-manager"
@@ -29,7 +27,6 @@ import { QuickOpen } from "@/components/workspace/QuickOpen"
 import { ExecutionDock } from "@/components/runtime/ExecutionDock"
 import { ErrorBoundary } from "@/components/runtime/ErrorBoundary"
 import { WorkspaceErrorBoundary } from "@/components/workspace/WorkspaceErrorBoundary"
-import { SessionSidebar } from "@/components/workspace/session-sidebar/SessionSidebar"
 import { ContextUsageIndicator } from "@/components/workspace/context-indicator/ContextUsageIndicator"
 import { SideChat } from "@/components/workspace/side-chat/SideChat"
 import { usePaneStore } from "@/stores/pane-store"
@@ -46,20 +43,17 @@ import {
   XCircle,
   GripVertical,
   FileDiff,
-  Eye,
 } from "lucide-react"
 import {
   CodePanelIcon,
   BrowserPanelIcon,
   DesignPanelIcon,
-  PreviewPanelIcon,
 } from "@/components/ui/PanelIcons"
 
 const WORKSPACE_PANEL_OPTIONS: { id: WorkspacePanel; label: string; icon: typeof CodePanelIcon }[] = [
   { id: "code", label: "Code", icon: CodePanelIcon },
   { id: "browser", label: "Browser", icon: BrowserPanelIcon },
-  { id: "design", label: "Design", icon: DesignPanelIcon },
-  { id: "preview", label: "Preview", icon: PreviewPanelIcon },
+  { id: "design", label: "Design & Preview", icon: DesignPanelIcon },
 ]
 
 const PANEL_STORAGE_KEY_PREFIX = "aos-panel-"
@@ -188,7 +182,7 @@ export function CodeCanvasPage() {
   const unlistenRef = useRef<(() => void) | null>(null)
 
   // ── Panel state (persisted to localStorage) ──
-  const [explorerOpen, setExplorerOpen] = useState(() => loadPanelState("explorerOpen", true))
+  const [explorerOpen, setExplorerOpen] = useState(() => loadPanelState("explorerOpen", false))
   const [explorerWidth, setExplorerWidth] = useState(() => loadPanelState("explorerWidth", 240))
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel>(() => loadPanelState("workspacePanel", "code"))
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(() => loadPanelState("workspacePanelOpen", true))
@@ -197,9 +191,6 @@ export function CodeCanvasPage() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [quickOpenOpen, setQuickOpenOpen] = useState(false)
 
-  const sessionSidebarOpen = usePaneStore((s) => s.sessionSidebarOpen)
-  const sessionSidebarWidth = usePaneStore((s) => s.sessionSidebarWidth)
-  const toggleSessionSidebar = usePaneStore((s) => s.toggleSessionSidebar)
   const panes = usePaneStore((s) => s.panes)
   const setPaneVisibility = usePaneStore((s) => s.setPaneVisibility)
   const dispatchPaneAction = usePanelCoordinator((s) => s.dispatch)
@@ -227,7 +218,6 @@ export function CodeCanvasPage() {
       code: () => <WorkspaceErrorBoundary><CodeWorkspace /></WorkspaceErrorBoundary>,
       browser: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading browser...</div>}><BrowserWorkspace /></Suspense></WorkspaceErrorBoundary>,
       design: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading design...</div>}><DesignWorkspace /></Suspense></WorkspaceErrorBoundary>,
-      preview: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading preview...</div>}><PreviewPane /></Suspense></WorkspaceErrorBoundary>,
     }
     return visiblePanes.map((p) => ({
       id: p.id,
@@ -617,10 +607,6 @@ export function CodeCanvasPage() {
   // ── Keyboard shortcuts ──
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "s") {
-        e.preventDefault()
-        toggleSessionSidebar()
-      }
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault()
         setExplorerOpen((p) => !p)
@@ -708,7 +694,6 @@ export function CodeCanvasPage() {
   }, [])
 
   // ── Pane routing: sync AI actions to pane visibility and URL ──
-  const lastPaneAction = usePanelCoordinator((s) => s.lastAction)
   useEffect(() => {
     if (!lastPaneAction) return
     if (lastPaneAction.type === "focus" || lastPaneAction.type === "open" || lastPaneAction.type === "navigate") {
@@ -724,11 +709,10 @@ export function CodeCanvasPage() {
   // ── Navigate pane to URL when AI dispatches a navigate action ──
   useEffect(() => {
     if (!lastPaneAction || lastPaneAction.type !== "navigate") return
-    const target = lastPaneAction.pane
-    const paneConfig = panes.find((p) => p.type === target)
+    const paneConfig = panes.find((p) => p.type === lastPaneAction.pane)
     if (!paneConfig) return
-    setPaneVisibility(target, true)
-    setWorkspacePanel(target as WorkspacePanel)
+    setPaneVisibility(lastPaneAction.pane, true)
+    setWorkspacePanel(lastPaneAction.pane)
   }, [lastPaneAction, panes])
 
   // ── Resize handlers ──
@@ -838,17 +822,7 @@ export function CodeCanvasPage() {
       <WorkspaceErrorBoundary onOpenFolder={openWorkspace}>
       {rootPath && typeof rootPath === 'string' && rootPath.length > 0 ? (
       <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* PANEL 0: Session Sidebar */}
-        {sessionSidebarOpen && (
-          <div
-            style={{ width: sessionSidebarWidth }}
-            className="flex-shrink-0 overflow-hidden border-r border-white/[0.06]"
-          >
-            <SessionSidebar />
-          </div>
-        )}
-
-        {/* PANEL 1: Explorer (File Tree) */}
+        {/* PANEL 0: Explorer (File Tree) */}
         <div
           style={{ width: explorerOpen ? explorerWidth : 0 }}
           className={cn(
@@ -888,18 +862,11 @@ export function CodeCanvasPage() {
 
         {explorerOpen && <ResizeHandle onMouseDown={handleExplorerResize} />}
 
-      {/* PANEL 2: Assistant Workspace */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0" role="region" aria-label="Assistant chat panel">
-        {/* Assistant header bar — minimal */}
+      {/* PANEL 1: Chat — Session + Conversation */}
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0" role="region" aria-label="Chat panel">
+        {/* Chat header bar — minimal */}
         <div className="flex items-center justify-between px-2 py-1 border-b border-white/[0.06] bg-[#0c0c0d]">
             <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => toggleSessionSidebar()}
-                className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
-                title="Toggle session sidebar (⌘⇧S)"
-              >
-                <PanelRightClose className="h-3.5 w-3.5" />
-              </button>
               <button
                 onClick={() => setExplorerOpen(!explorerOpen)}
                 className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
@@ -907,7 +874,7 @@ export function CodeCanvasPage() {
               >
                 {explorerOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
               </button>
-              <span className="text-[10px] font-medium text-white/25">Assistant</span>
+              <span className="text-[10px] font-medium text-white/25">Chat</span>
               {/* Runtime dot */}
               <span className={cn(
                 "inline-block h-1.5 w-1.5 rounded-full",
@@ -936,21 +903,7 @@ export function CodeCanvasPage() {
                 <FileDiff className="h-3.5 w-3.5" />
               </button>
 
-              {/* Toggle preview pane */}
-              <button
-                onClick={() => setPaneVisibility("preview", !panes.find((p) => p.id === "preview")?.visible)}
-                className={cn(
-                  "rounded p-0.5 transition-all",
-                  panes.find((p) => p.id === "preview")?.visible
-                    ? "text-blue-400 bg-blue-500/10"
-                    : "text-white/30 hover:text-white/60 hover:bg-white/[0.06]"
-                )}
-                title="Toggle preview pane"
-              >
-                <Eye className="h-3.5 w-3.5" />
-              </button>
-
-              {/* Toggle docking area */}
+              {/* Toggle workspace panel */}
               <button
                 onClick={() => {
                   const next = !workspacePanelOpen
@@ -958,16 +911,11 @@ export function CodeCanvasPage() {
                   panelCtrlRef.current?.syncOpenState(next)
                 }}
                 className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
-                title="Toggle docking area (⌘J)"
+                title="Toggle workspace panel (⌘J)"
               >
                 {workspacePanelOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
               </button>
             </div>
-          </div>
-
-          {/* Agent activity strip — visible during execution */}
-          <div className="shrink-0 border-b border-white/[0.04] overflow-hidden">
-            <WorkspaceErrorBoundary><AgentActivityPanel /></WorkspaceErrorBoundary>
           </div>
 
           {/* Assistant content */}
@@ -979,7 +927,7 @@ export function CodeCanvasPage() {
         {/* Resize handle: Assistant | Docking Area */}
         {workspacePanelOpen && <ResizeHandle onMouseDown={handleWorkspaceResize} />}
 
-        {/* PANEL 3: Docking Area — multi-pane grid */}
+        {/* PANEL 2: Docking Area — multi-pane grid (Code/Browser/Design/Preview) */}
         <div
           style={{ width: workspacePanelOpen ? workspacePanelWidth : 0 }}
           className={cn(

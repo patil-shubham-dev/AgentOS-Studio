@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import Editor, { DiffEditor, type OnMount, type OnChange } from "@monaco-editor/react"
+import Editor, { type OnMount, type OnChange } from "@monaco-editor/react"
 import type { editor } from "monaco-editor"
 import { useWorkspaceStore, type EditorMode } from "@/stores/workspace-store"
 import { useDiagnosticsStore, type Diagnostic } from "@/stores/diagnostics-store"
@@ -12,11 +12,12 @@ import { Badge, TooltipSimple as Tooltip } from "@agentic-os/ui"
 import { PremiumEmptyState, getCodeEmptyState } from "./premium-empty-state"
 import { DiagnosticsPanel } from "./diagnostics-panel"
 import { GitPanel } from "./git-panel"
-import { TerminalWorkspace } from "./terminal-workspace"
+
 import { OutputPanel } from "./OutputPanel"
 import { SymbolSearch, type SymbolItem } from "./symbol-search"
 import { BreadcrumbNav } from "./BreadcrumbNav"
 import { SplitEditor } from "./SplitEditor"
+import { DiffViewerPane } from "./diff-viewer/DiffViewerPane"
 import { DebugPanel } from "./debug-panel"
 import { debugService } from "@/lib/debug/debug-service"
 import { useDebugStore } from "@/stores/debug-store"
@@ -36,7 +37,7 @@ import {
   WrapText, Minus, Plus, X, FileCode,
   Sparkles, Brain, Check, Save,
   Columns3, FileDown, Pencil, AlertCircle, AlertTriangle, GitBranch,
-  Bug, FileSearch, PanelRight, PanelRightClose, Terminal, Logs, History,
+  Bug, FileSearch, PanelRight, PanelRightClose, Logs, History,
   Code2, GitCompare, ListTodo, Search, FileText, CheckCheck, XCircle,
   ChevronLeft, ChevronRight, Eye, EyeOff,
 } from "lucide-react"
@@ -44,13 +45,7 @@ import { registerInlineCompletionProvider, unregisterInlineCompletionProvider, s
 import { InlineEditOverlay } from "./inline-edit-overlay"
 import { useStreamingState } from "./use-streaming-state"
 import {
-  acceptAllDiffReviews,
   acceptDiffReviewFile,
-  acceptDiffReviewHunk,
-  rejectAllDiffReviews,
-  rejectDiffReviewFile,
-  rejectDiffReviewHunk,
-  getReviewedContent,
 } from "@/lib/diff-review"
 
 const EXT_LANG_MAP: Record<string, string> = {
@@ -109,393 +104,6 @@ const EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
   "semanticHighlighting.enabled": true,
 }
 
-// ── Diff Mode View ──
-
-const DIFF_EDITOR_OPTIONS: editor.IStandaloneDiffEditorConstructionOptions = {
-  fontSize: 11,
-  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-  lineNumbers: "on",
-  renderSideBySide: true,
-  readOnly: true,
-  minimap: { enabled: false },
-  scrollBeyondLastLine: false,
-  folding: true,
-  automaticLayout: true,
-  wordWrap: "off",
-  lineDecorationsWidth: 4,
-  lineNumbersMinChars: 3,
-  glyphMargin: false,
-  renderWhitespace: "boundary",
-  scrollbar: {
-    verticalScrollbarSize: 6,
-    horizontalScrollbarSize: 6,
-    useShadows: false,
-  },
-  overviewRulerLanes: 0,
-  hideCursorInOverviewRuler: true,
-  overviewRulerBorder: false,
-  bracketPairColorization: { enabled: true },
-  originalEditable: false,
-  enableSplitViewResizing: true,
-  splitViewDefaultRatio: 0.5,
-  diffCodeLens: false,
-  renderIndicators: true,
-  ignoreTrimWhitespace: true,
-  maxComputationTime: 5000,
-}
-
-function DiffModeView({
-  activeFile,
-  diffReviewFile,
-  onSwitchToEditor,
-}: {
-  activeFile: { path: string; name: string; content: string } | undefined
-  diffReviewFile: string | null
-  onSwitchToEditor: () => void
-}) {
-  const diffFiles = useDiffStore((s) => s.files)
-
-  const fileList = useMemo(() => Array.from(diffFiles.values()), [diffFiles])
-  const [showSidebar, setShowSidebar] = useState(true)
-  const [focusedHunk, setFocusedHunk] = useState(0)
-
-  const targetPath = diffReviewFile ?? activeFile?.path
-  const currentDiff = targetPath ? diffFiles.get(targetPath) ?? null : null
-
-  const [selectedPath, setSelectedPath] = useState<string | null>(
-    currentDiff?.path ?? fileList[0]?.path ?? null
-  )
-
-  useEffect(() => {
-    if (currentDiff && currentDiff.path !== selectedPath) {
-      setSelectedPath(currentDiff.path)
-    }
-  }, [currentDiff?.path])
-
-  const selectedFile = selectedPath ? diffFiles.get(selectedPath) ?? null : null
-
-  const totals = useMemo(() => {
-    let additions = 0, deletions = 0, pending = 0
-    for (const f of fileList) {
-      if (f.status === "pending") pending++
-      for (const h of f.hunks) {
-        additions += h.additions
-        deletions += h.deletions
-      }
-    }
-    return { files: fileList.length, additions, deletions, pending }
-  }, [fileList])
-
-  const hunkSummary = selectedFile
-    ? `${selectedFile.hunks.length} hunk${selectedFile.hunks.length !== 1 ? "s" : ""}`
-    : null
-
-  const currentIndex = selectedPath ? fileList.findIndex((f) => f.path === selectedPath) : -1
-
-  function navigatePrev() {
-    if (currentIndex > 0) {
-      const prev = fileList[currentIndex - 1]
-      setSelectedPath(prev.path)
-      useWorkspaceStore.getState().openFileInDiffMode(prev.path)
-    }
-  }
-
-  function navigateNext() {
-    if (currentIndex < fileList.length - 1) {
-      const next = fileList[currentIndex + 1]
-      setSelectedPath(next.path)
-      useWorkspaceStore.getState().openFileInDiffMode(next.path)
-    }
-  }
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* Diff toolbar */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.04] bg-black/10 shrink-0">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onSwitchToEditor}
-            className="rounded px-1.5 py-0.5 text-[9px] text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
-            title="Return to editor"
-          >
-            <ChevronLeft className="h-3 w-3 inline mr-1" />
-            Back
-          </button>
-
-          <span className="text-white/15 text-[8px]">|</span>
-
-          <span className="text-[9px] font-medium text-white/30 uppercase tracking-widest">Changes</span>
-          <span className="text-[9px] text-white/20 bg-white/[0.04] rounded px-1 py-0.5">
-            {totals.files} file{totals.files !== 1 ? "s" : ""}
-          </span>
-          <span className="text-[9px] text-green-400/60 font-mono">+{totals.additions}</span>
-          <span className="text-[9px] text-red-400/60 font-mono">-{totals.deletions}</span>
-          {totals.pending > 0 && (
-            <span className="text-[9px] text-amber-400/60 font-mono">{totals.pending} pending</span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setShowSidebar((v) => !v)}
-            className="rounded px-1.5 py-0.5 text-[9px] text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
-          >
-            {showSidebar ? <EyeOff className="h-2.5 w-2.5 inline" /> : <Eye className="h-2.5 w-2.5 inline" />}
-          </button>
-
-          <div className="w-px h-4 bg-white/[0.06]" />
-
-          <button
-            onClick={() => { void rejectAllDiffReviews() }}
-            disabled={totals.pending === 0}
-            className="rounded px-1.5 py-0.5 text-[9px] text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all disabled:text-white/15 disabled:cursor-not-allowed"
-          >
-            <XCircle className="h-2.5 w-2.5 inline mr-1" />
-            Reject All
-          </button>
-          <button
-            onClick={() => { void acceptAllDiffReviews() }}
-            disabled={totals.pending === 0}
-            className="rounded px-1.5 py-0.5 text-[9px] text-green-400/60 hover:text-green-400 hover:bg-green-500/10 transition-all disabled:text-white/15 disabled:cursor-not-allowed"
-          >
-            <CheckCheck className="h-2.5 w-2.5 inline mr-1" />
-            Accept All
-          </button>
-        </div>
-      </div>
-
-      {/* Main content: sidebar + diff viewer */}
-      <div className="flex flex-1 min-h-0">
-        {/* File sidebar */}
-        <AnimatePresence>
-          {showSidebar && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 200, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.15, ease: "easeInOut" }}
-              className="flex-shrink-0 border-r border-white/[0.06] overflow-hidden"
-            >
-              <div className="flex flex-col h-full">
-                <div className="flex items-center justify-between px-2 py-1.5 border-b border-white/[0.04]">
-                  <span className="text-[9px] font-medium text-white/20 uppercase tracking-wider">Files</span>
-                  <span className="text-[8px] text-white/15">{fileList.length}</span>
-                </div>
-                <div className="flex-1 overflow-y-auto min-h-0 py-1">
-                  {fileList.map((file) => {
-                    const isSelected = selectedPath === file.path
-                    return (
-                      <button
-                        key={file.path}
-                        onClick={() => {
-                          setSelectedPath(file.path)
-                          useWorkspaceStore.getState().openFileInDiffMode(file.path)
-                        }}
-                        className={cn(
-                          "flex items-center gap-2 w-full px-2.5 py-1.5 text-left transition-colors",
-                          isSelected ? "bg-blue-500/8" : "hover:bg-white/[0.03]",
-                        )}
-                      >
-                        <div className={cn(
-                          "h-1.5 w-1.5 rounded-full shrink-0",
-                          file.status === "accepted" ? "bg-green-400" :
-                          file.status === "rejected" ? "bg-red-400" : "bg-amber-400",
-                        )} />
-                        <div className="flex-1 min-w-0">
-                          <span className={cn("text-[10px] font-mono truncate block", isSelected ? "text-white/80" : "text-white/50")}>
-                            {file.path.split("/").pop()}
-                          </span>
-                          <span className="text-[8px] text-white/20 truncate block">{file.path}</span>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-[8px] text-green-400/50 font-mono">
-                            +{file.hunks.reduce((s, h) => s + h.additions, 0)}
-                          </div>
-                          <div className="text-[8px] text-red-400/50 font-mono">
-                            -{file.hunks.reduce((s, h) => s + h.deletions, 0)}
-                          </div>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Diff content */}
-        <div className="flex-1 flex flex-col min-h-0">
-          {selectedFile ? (
-            <>
-              {/* File header with navigation */}
-              <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.04] bg-white/[0.01] shrink-0">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-3.5 w-3.5 text-white/30" />
-                  <span className="text-[11px] font-medium text-white/70">{selectedFile.path.split("/").pop()}</span>
-                  <span className="text-[9px] text-white/30 font-mono">{selectedFile.path}</span>
-                  <span className={cn(
-                    "px-1.5 py-0.5 rounded text-[9px] font-medium border",
-                    selectedFile.status === "accepted" ? "text-green-400 border-green-500/20 bg-green-500/8" :
-                    selectedFile.status === "rejected" ? "text-red-400 border-red-500/20 bg-red-500/8" :
-                    "text-amber-400 border-amber-500/20 bg-amber-500/8",
-                  )}>
-                    {selectedFile.status === "accepted" ? "Accepted" : selectedFile.status === "rejected" ? "Rejected" : "Pending"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  {/* Prev/Next navigation */}
-                  <button
-                    onClick={navigatePrev}
-                    disabled={currentIndex <= 0}
-                    className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all disabled:text-white/10 disabled:cursor-not-allowed"
-                  >
-                    <ChevronLeft className="h-3 w-3" />
-                  </button>
-                  <span className="text-[9px] text-white/30 min-w-[4ch] text-center">
-                    {currentIndex + 1}/{fileList.length}
-                  </span>
-                  <button
-                    onClick={navigateNext}
-                    disabled={currentIndex >= fileList.length - 1}
-                    className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all disabled:text-white/10 disabled:cursor-not-allowed"
-                  >
-                    <ChevronRight className="h-3 w-3" />
-                  </button>
-
-                  {/* Accept/Reject */}
-                  {selectedFile.status === "pending" && (
-                    <>
-                      <div className="w-px h-4 bg-white/[0.06]" />
-                      <button
-                        onClick={() => { void rejectDiffReviewFile(selectedFile.path) }}
-                        className="rounded px-1.5 py-0.5 text-[9px] text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                      >
-                        Reject
-                      </button>
-                      <button
-                        onClick={() => { void acceptDiffReviewFile(selectedFile.path) }}
-                        className="rounded px-1.5 py-0.5 text-[9px] text-green-400/60 hover:text-green-400 hover:bg-green-500/10 transition-all"
-                      >
-                        Accept
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Monaco DiffEditor */}
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <DiffEditor
-                  key={selectedFile.path}
-                  original={selectedFile.originalContent}
-                  modified={getReviewedContent(selectedFile)}
-                  language={selectedFile.path.split(".").pop()?.toLowerCase() ?? "plaintext"}
-                  options={DIFF_EDITOR_OPTIONS}
-                  theme="vs-dark"
-                />
-              </div>
-
-              {/* Hunk list at bottom — keyboard navigable */}
-              {selectedFile.hunks.length > 0 && (
-                <div
-                  className="border-t border-white/[0.06] bg-white/[0.01] max-h-[120px] overflow-y-auto shrink-0"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "ArrowDown") {
-                      e.preventDefault()
-                      const next = (focusedHunk + 1) % selectedFile.hunks.length
-                      setFocusedHunk(next)
-                      return
-                    }
-                    if (e.key === "ArrowUp") {
-                      e.preventDefault()
-                      const prev = (focusedHunk - 1 + selectedFile.hunks.length) % selectedFile.hunks.length
-                      setFocusedHunk(prev)
-                      return
-                    }
-                    if (e.key === "Enter" && focusedHunk >= 0) {
-                      const hunk = selectedFile.hunks[focusedHunk]
-                      if (hunk.status === "pending") {
-                        e.preventDefault()
-                        void acceptDiffReviewHunk(selectedFile.path, hunk.hunkIndex)
-                      }
-                      return
-                    }
-                    if ((e.key === "Delete" || e.key === "Backspace") && focusedHunk >= 0) {
-                      const hunk = selectedFile.hunks[focusedHunk]
-                      if (hunk.status === "pending") {
-                        e.preventDefault()
-                        void rejectDiffReviewHunk(selectedFile.path, hunk.hunkIndex)
-                      }
-                      return
-                    }
-                  }}
-                >
-                  <div className="flex items-center gap-1.5 px-3 py-1 border-b border-white/[0.04]">
-                    <span className="text-[9px] font-medium text-white/20 uppercase tracking-wider">
-                      Changes ({selectedFile.hunks.length})
-                    </span>
-                    <span className="text-[7px] text-white/15 ml-auto">
-                      Focus: ↑↓ Enter=accept Delete=reject
-                    </span>
-                  </div>
-                  <div className="divide-y divide-white/[0.03]">
-                    {selectedFile.hunks.map((hunk, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => setFocusedHunk(idx)}
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-1 cursor-pointer transition-colors",
-                          focusedHunk === idx
-                            ? "bg-blue-500/10 ring-1 ring-blue-500/30"
-                            : hunk.status === "accepted" ? "bg-green-500/5" :
-                            hunk.status === "rejected" ? "bg-red-500/5" : "hover:bg-white/[0.02]",
-                        )}
-                      >
-                        <span className={cn(
-                          "h-1.5 w-1.5 rounded-full shrink-0",
-                          hunk.status === "accepted" ? "bg-green-400" :
-                          hunk.status === "rejected" ? "bg-red-400" : "bg-amber-400/60",
-                        )} />
-                        <code className="text-[9px] font-mono text-white/40 flex-1 truncate">{hunk.header}</code>
-                        <span className="text-[8px] text-green-400/50 font-mono">+{hunk.additions}</span>
-                        <span className="text-[8px] text-red-400/50 font-mono">-{hunk.deletions}</span>
-                        {hunk.status === "pending" && (
-                          <div className="flex items-center gap-0.5">
-                            <button
-                              onClick={(ev) => { ev.stopPropagation(); void rejectDiffReviewHunk(selectedFile.path, hunk.hunkIndex) }}
-                              className="rounded p-0.5 text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                            >
-                              <X className="h-2.5 w-2.5" />
-                            </button>
-                            <button
-                              onClick={(ev) => { ev.stopPropagation(); void acceptDiffReviewHunk(selectedFile.path, hunk.hunkIndex) }}
-                              className="rounded p-0.5 text-white/20 hover:text-green-400 hover:bg-green-500/10 transition-all"
-                            >
-                              <Check className="h-2.5 w-2.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center justify-center h-full text-[11px] text-white/20">
-              {fileList.length === 0
-                ? "No pending changes to review"
-                : "Select a file from the sidebar to view its diff"}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Main Component ──
 
 export function CodeWorkspace() {
@@ -524,7 +132,6 @@ export function CodeWorkspace() {
   const [showProblems, setShowProblems] = useState(false)
   const [showDebugPanel, setShowDebugPanel] = useState(false)
   const [showGitPanel, setShowGitPanel] = useState(false)
-  const [showTerminal, setShowTerminal] = useState(false)
   const [showOutput, setShowOutput] = useState(false)
   const [symbolSearchOpen, setSymbolSearchOpen] = useState(false)
   const historyOpen = useHistoryStore((s) => s.open)
@@ -1102,6 +709,14 @@ export function CodeWorkspace() {
 
   const language = activeFile ? getMonacoLang(activeFile.name) : "plaintext"
 
+  const editorOptions = useMemo(() => ({
+    ...EDITOR_OPTIONS,
+    wordWrap: wordWrap ? "on" : "off",
+    fontSize,
+    minimap: { enabled: showMinimap },
+    readOnly: false,
+  }), [wordWrap, fontSize, showMinimap])
+
   // ── Empty state ──
   if (!activeFile) {
     if (openFiles.length > 0) {
@@ -1483,17 +1098,6 @@ export function CodeWorkspace() {
 
           <span className="text-white/10 text-[8px]">|</span>
 
-          <Tooltip content={showTerminal ? "Hide terminal" : "Show terminal"}>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => { pulse("click"); setShowTerminal((p) => !p) }}
-              className={cn("rounded p-1 transition-colors", showTerminal ? "text-blue-400 bg-blue-500/10" : "text-white/20 hover:text-white/40")}
-            >
-              <Terminal className="h-3 w-3" />
-            </motion.button>
-          </Tooltip>
-
           <Tooltip content={showOutput ? "Hide output" : "Show output"}>
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -1562,10 +1166,9 @@ export function CodeWorkspace() {
       {/* Editor — switched based on mode */}
       <div className="flex-1 relative overflow-hidden min-h-0">
         {editorMode === "diff" ? (
-          <DiffModeView
-            activeFile={activeFile}
-            diffReviewFile={diffReviewFile}
+          <DiffViewerPane
             onSwitchToEditor={() => setEditorMode("editor")}
+            diffReviewFile={diffReviewFile}
           />
         ) : splitMode === "none" ? (
           <Editor
@@ -1574,13 +1177,7 @@ export function CodeWorkspace() {
             language={language}
             onChange={handleContentChange}
             onMount={handleEditorMount}
-            options={{
-              ...EDITOR_OPTIONS,
-              wordWrap: wordWrap ? "on" : "off",
-              fontSize,
-              minimap: { enabled: showMinimap },
-              readOnly: false,
-            }}
+            options={editorOptions}
             theme="agentic-dark"
             loading={
               <motion.div
@@ -1744,35 +1341,6 @@ export function CodeWorkspace() {
               activeFilePath={activeFilePath}
               onClose={() => useHistoryStore.getState().setOpen(false)}
             />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Terminal panel at bottom */}
-      <AnimatePresence>
-        {showTerminal && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 200, opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="border-t border-white/[0.06] overflow-hidden shrink-0"
-          >
-            <div className="flex items-center justify-between px-2 py-1 bg-black/20 border-b border-white/[0.04]">
-              <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider flex items-center gap-1">
-                <Terminal className="h-2.5 w-2.5" />
-                Terminal
-              </span>
-              <button
-                onClick={() => setShowTerminal(false)}
-                className="rounded p-0.5 text-white/30 hover:text-white/60 transition-colors"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-            <div className="h-full">
-              <TerminalWorkspace />
-            </div>
           </motion.div>
         )}
       </AnimatePresence>

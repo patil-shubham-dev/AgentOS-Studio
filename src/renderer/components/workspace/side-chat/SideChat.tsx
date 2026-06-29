@@ -12,7 +12,8 @@ interface SideChatMessage {
 }
 
 export function SideChat() {
-  const { sideChatOpen, setSideChatOpen } = usePaneStore()
+  const sideChatOpen = usePaneStore((s) => s.sideChatOpen)
+  const setSideChatOpen = usePaneStore((s) => s.setSideChatOpen)
   const [messages, setMessages] = useState<SideChatMessage[]>([])
   const [input, setInput] = useState("")
   const [isThinking, setIsThinking] = useState(false)
@@ -21,7 +22,8 @@ export function SideChat() {
 
   useEffect(() => {
     if (sideChatOpen) {
-      setTimeout(() => inputRef.current?.focus(), 100)
+      const timer = setTimeout(() => inputRef.current?.focus(), 100)
+      return () => clearTimeout(timer)
     }
   }, [sideChatOpen])
 

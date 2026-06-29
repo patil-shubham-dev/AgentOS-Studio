@@ -7,7 +7,7 @@ import { resolve } from 'path'
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({
-      exclude: ['electron-updater', 'electron-updater/out/main']
+      exclude: ['electron-updater', 'electron-updater/out/main', 'js-yaml']
     })],
     build: {
       rollupOptions: {

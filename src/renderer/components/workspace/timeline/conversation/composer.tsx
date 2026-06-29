@@ -84,10 +84,13 @@ export function Composer({
 
   useEffect(() => {
     const el = textareaRef.current
-    if (el) {
+    if (!el) return
+    const raf = requestAnimationFrame(() => {
       el.style.height = "auto"
-      el.style.height = Math.min(el.scrollHeight, 200) + "px"
-    }
+      const newHeight = Math.min(el.scrollHeight, 200)
+      el.style.height = `${newHeight}px`
+    })
+    return () => cancelAnimationFrame(raf)
   }, [input, textareaRef])
 
   useEffect(() => {

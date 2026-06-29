@@ -64,8 +64,13 @@ class AuditLog {
   private static instance: AuditLog
   private events: AuditEvent[] = []
   private listeners = new Set<() => void>()
+  private saveTimer: ReturnType<typeof setTimeout> | null = null
+  private dirty = false
   private constructor() {
     this.loadFromStorage()
+    try {
+      window?.addEventListener?.('beforeunload', () => this.flush())
+    } catch { /* not in browser */ }
   }
 
   static getInstance(): AuditLog {
@@ -90,7 +95,18 @@ class AuditLog {
     }
   }
 
-  private saveToStorage(): void {
+  private scheduleSave(): void {
+    this.dirty = true
+    if (this.saveTimer) return
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null
+      this.flush()
+    }, 500)
+  }
+
+  private flush(): void {
+    if (!this.dirty) return
+    this.dirty = false
     try {
       const state: AuditLogState = {
         events: this.events,
@@ -99,7 +115,6 @@ class AuditLog {
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
     } catch {
-      // localStorage might be full — prune more aggressively
       this.events = this.events.slice(-(MAX_EVENTS / 2))
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ events: this.events, totalCount: this.events.length, lastCleared: Date.now() }))
@@ -124,12 +139,11 @@ class AuditLog {
 
     this.events.push(fullEvent)
 
-    // Prune if over limit
     if (this.events.length > MAX_EVENTS) {
       this.events = this.events.slice(-MAX_EVENTS)
     }
 
-    this.saveToStorage()
+    this.scheduleSave()
     this.notify()
 
     return fullEvent
@@ -307,19 +321,21 @@ class AuditLog {
    */
   clear(): void {
     this.events = []
-    this.saveToStorage()
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer)
+      this.saveTimer = null
+    }
+    this.dirty = false
+    this.flush()
     this.notify()
   }
 
-  /**
-   * Remove events older than the given timestamp.
-   */
   pruneOlderThan(timestamp: number): number {
     const before = this.events.length
     this.events = this.events.filter((e) => e.timestamp >= timestamp)
     const pruned = before - this.events.length
     if (pruned > 0) {
-      this.saveToStorage()
+      this.scheduleSave()
       this.notify()
     }
     return pruned

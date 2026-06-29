@@ -101,6 +101,26 @@ function SystemPromptEditor({
 }) {
   const [mode, setMode] = useState<"edit" | "preview">("edit")
 
+  const editorOptions = useMemo(() => ({
+    minimap: { enabled: false },
+    lineNumbers: "on",
+    scrollBeyondLastLine: false,
+    wordWrap: "on",
+    wrappingStrategy: "advanced",
+    fontSize: 11,
+    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+    lineHeight: 18,
+    padding: { top: 8 },
+    renderWhitespace: "selection",
+    tabSize: 2,
+    automaticLayout: true,
+    suggestOnTriggerCharacters: false,
+    quickSuggestions: false,
+    folding: true,
+    foldingHighlight: true,
+    bracketPairColorization: { enabled: true },
+  }), [])
+
   const handleEditorMount: OnMount = (editor, monaco) => {
     // Define a dark theme for the editor
     monaco.editor.defineTheme("agentic-os-dark", {
@@ -188,25 +208,7 @@ function SystemPromptEditor({
               value={value}
               onChange={(v) => onChange(v ?? "")}
               onMount={handleEditorMount}
-              options={{
-                minimap: { enabled: false },
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-                wordWrap: "on",
-                wrappingStrategy: "advanced",
-                fontSize: 11,
-                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                lineHeight: 18,
-                padding: { top: 8 },
-                renderWhitespace: "selection",
-                tabSize: 2,
-                automaticLayout: true,
-                suggestOnTriggerCharacters: false,
-                quickSuggestions: false,
-                folding: true,
-                foldingHighlight: true,
-                bracketPairColorization: { enabled: true },
-              }}
+              options={editorOptions}
             />
           </motion.div>
         ) : (

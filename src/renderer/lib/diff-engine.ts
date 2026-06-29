@@ -316,11 +316,24 @@ function normalizeEdit(edit: DiffEdit): DiffEdit {
   }
 }
 
+const MAX_DIFF_INPUT_SIZE = 10 * 1024 * 1024
+const MAX_DIFF_LINES = 50000
+const MAX_EDIT_SCRIPT_LENGTH = 100000
+
 export function applyEdits(
   content: string,
   edits: DiffEdit[],
   options?: DiffEngineOptions
 ): DiffEngineResult {
+  if (content.length > MAX_DIFF_INPUT_SIZE) {
+    return {
+      results: [],
+      content,
+      allApplied: false,
+      error: `File too large (${(content.length / 1024 / 1024).toFixed(1)}MB) for diff engine — max is ${MAX_DIFF_INPUT_SIZE / 1024 / 1024}MB`,
+    }
+  }
+
   const opts: DiffEngineOptions = { failFast: true, ...options }
   let currentContent = normalizeContent(content)
   const results: DiffResult[] = []
@@ -374,42 +387,6 @@ export function applyPatch(
   return applyEdits(content, edits, options)
 }
 
-function lcsLength(a: string[], b: string[]): number[][] {
-  const m = a.length
-  const n = b.length
-  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
-      }
-    }
-  }
-  return dp
-}
-
-function buildEditScript(a: string[], b: string[], dp: number[][]): Array<{ type: 'equal' | 'delete' | 'insert'; line: string }> {
-  const script: Array<{ type: 'equal' | 'delete' | 'insert'; line: string }> = []
-  let i = a.length
-  let j = b.length
-  while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
-      script.unshift({ type: 'equal', line: a[i - 1] })
-      i--
-      j--
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      script.unshift({ type: 'insert', line: b[j - 1] })
-      j--
-    } else {
-      script.unshift({ type: 'delete', line: a[i - 1] })
-      i--
-    }
-  }
-  return script
-}
-
 export interface UnifiedDiffHunk {
   oldStart: number
   oldLines: number
@@ -418,14 +395,129 @@ export interface UnifiedDiffHunk {
   lines: string[]
 }
 
+function myersDiff(a: string[], b: string[]): Array<{ type: 'equal' | 'delete' | 'insert'; line: string }> {
+  const N = a.length
+  const M = b.length
+
+  if (N === 0 && M === 0) return []
+  if (N === 0) return b.map(line => ({ type: 'insert' as const, line }))
+  if (M === 0) return a.map(line => ({ type: 'delete' as const, line }))
+
+  const maxD = N + M
+  const offset = maxD
+  const V: number[] = new Array(2 * maxD + 1).fill(0)
+  V[offset + 1] = 0
+
+  const traces: number[][] = []
+
+  for (let d = 0; d <= maxD; d++) {
+    traces.push(V.slice())
+
+    for (let k = -d; k <= d; k += 2) {
+      const idx = offset + k
+      let x: number
+      if (k === -d || (k !== d && V[idx - 1] < V[idx + 1])) {
+        x = V[idx + 1]
+      } else {
+        x = V[idx - 1] + 1
+      }
+      let y = x - k
+      while (x < N && y < M && a[x] === b[y]) {
+        x++
+        y++
+      }
+      V[idx] = x
+      if (x >= N && y >= M) {
+        return myersBacktrack(a, b, traces, d, k, offset)
+      }
+    }
+  }
+
+  return buildSimpleScript(a, b)
+}
+
+function myersBacktrack(
+  a: string[],
+  b: string[],
+  traces: number[][],
+  d: number,
+  k: number,
+  offset: number
+): Array<{ type: 'equal' | 'delete' | 'insert'; line: string }> {
+  const script: Array<{ type: 'equal' | 'delete' | 'insert'; line: string }> = []
+  let x = a.length
+  let y = b.length
+
+  for (let d2 = d; d2 > 0; d2--) {
+    const Vcurr = traces[d2]
+    const Vprev = traces[d2 - 1]
+
+    while (x > 0 && y > 0 && a[x - 1] === b[y - 1]) {
+      script.push({ type: 'equal', line: a[x - 1] })
+      x--
+      y--
+    }
+
+    const idx = offset + k
+    if (k === -d2 || (k !== d2 && Vprev[idx - 1] < Vprev[idx + 1])) {
+      script.push({ type: 'insert', line: b[y - 1] })
+      y--
+      k++
+    } else {
+      script.push({ type: 'delete', line: a[x - 1] })
+      x--
+      k--
+    }
+  }
+
+  while (x > 0 && y > 0 && a[x - 1] === b[y - 1]) {
+    script.push({ type: 'equal', line: a[x - 1] })
+    x--
+    y--
+  }
+
+  script.reverse()
+  return script
+}
+
+function buildSimpleScript(
+  a: string[],
+  b: string[]
+): Array<{ type: 'equal' | 'delete' | 'insert'; line: string }> {
+  const script: Array<{ type: 'equal' | 'delete' | 'insert'; line: string }> = []
+  let i = 0
+  let j = 0
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      script.push({ type: 'equal', line: a[i] })
+      i++
+      j++
+    } else if (j < b.length && (i >= a.length || b[j] !== a[i])) {
+      script.push({ type: 'insert', line: b[j] })
+      j++
+    } else if (i < a.length) {
+      script.push({ type: 'delete', line: a[i] })
+      i++
+    }
+  }
+  return script
+}
+
 export function computeDiff(
   original: string,
   modified: string
 ): UnifiedDiffHunk[] {
+  if (original === modified) return []
+
   const a = original.split('\n')
   const b = modified.split('\n')
-  const dp = lcsLength(a, b)
-  const script = buildEditScript(a, b, dp)
+
+  let script: Array<{ type: 'equal' | 'delete' | 'insert'; line: string }>
+  if (a.length > MAX_DIFF_LINES || b.length > MAX_DIFF_LINES || a.length + b.length > MAX_EDIT_SCRIPT_LENGTH) {
+    script = buildSimpleScript(a, b)
+  } else {
+    script = myersDiff(a, b)
+  }
 
   const hunks: UnifiedDiffHunk[] = []
   const CONTEXT_LINES = 3
@@ -501,6 +593,9 @@ export function generateUnifiedDiff(
   filePath?: string
 ): string {
   if (original === modified) return ''
+  if (original.length > MAX_DIFF_INPUT_SIZE || modified.length > MAX_DIFF_INPUT_SIZE) {
+    return `--- a/${filePath ?? 'original'}\n+++ b/${filePath ?? 'modified'}\n@@ -1 +1 @@\n-File too large to generate diff\n+File too large to generate diff\n`
+  }
 
   const hunks = computeDiff(original, modified)
   if (hunks.length === 0) return ''

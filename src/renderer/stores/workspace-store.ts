@@ -98,7 +98,14 @@ interface WorkspaceStore {
   setEditorMode: (mode: EditorMode) => void
   openFileInDiffMode: (filePath: string) => void
 
+  // Pinned files
+  pinnedFiles: string[]
+  recentlyOpened: { path: string; timestamp: number }[]
+
   // State persistence (open files, cursor, scroll)
+  pinFile: (path: string) => void
+  unpinFile: (path: string) => void
+  togglePinFile: (path: string) => void
   persistWorkspaceState: () => void
   restoreWorkspaceState: () => void
 }
@@ -106,6 +113,8 @@ interface WorkspaceStore {
 // ── Tree rendering limits (prevent context-window blowout) ──
 const MAX_TREE_DEPTH = 5
 const MAX_TREE_ENTRIES = 150
+const MAX_CHANGED_FILES = 1000
+const MAX_PINNED_FILES = 100
 
 /** Format a byte count into a human-readable string (e.g. 1234 → "1.2KB") */
 function formatSize(bytes: number): string {
@@ -288,6 +297,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   runtimeConfig: { ...DEFAULT_RUNTIME_CONFIG },
   workspaceLoaded: false,
 
+  pinnedFiles: [],
+  recentlyOpened: [],
+
   setRootPath: async (path) => {
     set({
       rootPath: path,
@@ -296,6 +308,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       activeFilePath: null,
       aiContextFiles: [],
       suggestedFiles: [],
+      recentlyOpened: [],
       workspaceLoaded: false,
     })
     if (path) {
@@ -402,6 +415,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   openFile: (file) =>
     set((store) => {
       const exists = store.openFiles.find((f) => f.path === file.path)
+      const now = Date.now()
+      const updatedRecent = [
+        { path: file.path, timestamp: now },
+        ...store.recentlyOpened.filter((r) => r.path !== file.path),
+      ].slice(0, 50)
       if (exists) {
         if (store.activeFilePath !== file.path) {
           requestRefresh("workspace_change")
@@ -411,12 +429,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           openFiles: store.openFiles.map((f) =>
             f.path === file.path ? { ...f, content: file.content, isDirty: file.isDirty } : f
           ),
+          recentlyOpened: updatedRecent,
         }
       }
       requestRefresh("workspace_change")
       const openFiles = [...store.openFiles, file]
       if (openFiles.length > 30) openFiles.splice(0, openFiles.length - 30)
-      return { openFiles, activeFilePath: file.path }
+      return { openFiles, activeFilePath: file.path, recentlyOpened: updatedRecent }
     }),
 
   closeFile: (path) =>
@@ -434,6 +453,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       }
       removeFromCaches(path)
       return { openFiles: filtered, activeFilePath: newActive }
+    }),
+
+  pinFile: (path) =>
+    set((store) => {
+      if (store.pinnedFiles.includes(path)) return store
+      if (store.pinnedFiles.length >= MAX_PINNED_FILES) return store
+      return { pinnedFiles: [...store.pinnedFiles, path] }
+    }),
+
+  unpinFile: (path) =>
+    set((store) => ({
+      pinnedFiles: store.pinnedFiles.filter((p) => p !== path),
+    })),
+
+  togglePinFile: (path) =>
+    set((store) => {
+      if (store.pinnedFiles.includes(path)) {
+        return { pinnedFiles: store.pinnedFiles.filter((p) => p !== path) }
+      }
+      return { pinnedFiles: [...store.pinnedFiles, path] }
     }),
 
   setActiveFile: (path) =>
@@ -465,6 +504,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (event.kind === "removed") {
       newChanged.delete(relativePath)
     } else {
+      if (newChanged.size >= MAX_CHANGED_FILES) {
+        const earliest = newChanged.values().next().value
+        if (earliest) newChanged.delete(earliest)
+      }
       newChanged.add(relativePath)
     }
 
@@ -659,7 +702,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   recordFileEdit: (path) => set({ lastEditedFile: path }),
 
   persistWorkspaceState: () => {
-    const { openFiles, activeFilePath, cursorLine, cursorColumn, visibleRangeStart, visibleRangeEnd, splitMode, splitFilePath, editorMode, diffReviewFile } = get()
+    const { openFiles, activeFilePath, cursorLine, cursorColumn, visibleRangeStart, visibleRangeEnd, splitMode, splitFilePath, editorMode, diffReviewFile, pinnedFiles } = get()
     const persistData = {
       openFiles: openFiles.map(f => ({ path: f.path, name: f.name })),
       activeFilePath,
@@ -671,6 +714,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       splitFilePath,
       editorMode,
       diffReviewFile,
+      pinnedFiles,
     }
     try {
       localStorage.setItem('agentic-workspace-state', JSON.stringify(persistData))
@@ -692,6 +736,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         splitFilePath?: string | null
         editorMode?: 'editor' | 'diff'
         diffReviewFile?: string | null
+        pinnedFiles?: string[]
       }
       // Only restore if the root path matches (per-workspace)
       const storedRoot = localStorage.getItem('agentic-workspace-root')
@@ -714,6 +759,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         editorMode: isValidReview ? "diff" : (data.editorMode ?? "editor"),
         diffReviewFile: isValidReview ? reviewFile : null,
         openFiles: reconstructedOpenFiles,
+        pinnedFiles: data.pinnedFiles ?? [],
       })
     } catch { /* ignore corrupt data */ }
   },

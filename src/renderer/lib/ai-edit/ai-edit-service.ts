@@ -3,6 +3,7 @@ import { chatCompletion } from "@agentic-os/providers"
 import type { RuntimeRole } from "@/types"
 import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
+import { generateUnifiedDiff } from "@/lib/diff-engine"
 
 // ── Types ──
 
@@ -60,52 +61,6 @@ Return only the edited version of the selected code, with no explanation or form
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt },
   ]
-}
-
-// ── Diff Generation ──
-
-function generateUnifiedDiff(original: string, edited: string): string {
-  if (original === edited) return ""
-
-  const origLines = original.split("\n")
-  const editLines = edited.split("\n")
-  const lines: string[] = []
-
-  // Simple diff: find changed region
-  let startOld = 0
-  let startNew = 0
-  let endOld = origLines.length
-  let endNew = editLines.length
-
-  // Find common prefix
-  while (startOld < origLines.length && startNew < editLines.length &&
-         origLines[startOld] === editLines[startNew]) {
-    startOld++
-    startNew++
-  }
-
-  // Find common suffix
-  while (endOld > startOld && endNew > startNew &&
-         origLines[endOld - 1] === editLines[endNew - 1]) {
-    endOld--
-    endNew--
-  }
-
-  const oldCount = endOld - startOld
-  const newCount = endNew - startNew
-
-  if (oldCount === 0 && newCount === 0) return ""
-
-  lines.push(`@@ -${startOld + 1},${oldCount} +${startNew + 1},${newCount} @@`)
-
-  for (let i = startOld; i < endOld; i++) {
-    lines.push(`-${origLines[i]}`)
-  }
-  for (let i = startNew; i < endNew; i++) {
-    lines.push(`+${editLines[i]}`)
-  }
-
-  return lines.join("\n")
 }
 
 // ── Provider Resolution ──

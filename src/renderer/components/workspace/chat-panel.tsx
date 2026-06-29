@@ -1,3 +1,4 @@
+import { useShallow } from "zustand/shallow"
 import { useState, useRef, useEffect, useCallback, useMemo, startTransition } from "react"
 import { motion } from "framer-motion"
 import { useNavigate } from "react-router-dom"
@@ -41,7 +42,7 @@ function SetupRequired() {
   const checks = [
     { label: "Add an AI Provider", done: providers.length > 0, action: () => navigate("/settings"), icon: Plus },
     { label: "Set API Key", done: providers.some((p) => p.apiKey.length > 0), action: () => navigate("/settings"), icon: Settings2 },
-    { label: "Configure Manager Role", done: roleConfigs.some((r) => r.name.toLowerCase() === "manager" && r.providerId && r.model), action: () => navigate("/agents"), icon: Settings2 },
+    { label: "Configure Manager Role", done: roleConfigs.some((r) => r.name.toLowerCase() === "manager" && r.providerId && r.model), action: () => navigate("/settings"), icon: Settings2 },
   ]
 
   const allDone = checks.every((c) => c.done)
@@ -151,8 +152,8 @@ export function ChatPanel() {
     })
   }, [])
 
-  const sendMessage = useCallback(async () => {
-    const currentInput = inputStateRef.current
+  const sendMessage = useCallback(async (prompt?: string) => {
+    const currentInput = prompt ?? inputStateRef.current
     if (!currentInput.trim() || sendingRef.current || useAgentStore.getState().isProcessing || !canSend) return
 
     sendingRef.current = true
@@ -189,7 +190,7 @@ export function ChatPanel() {
         currentTask: "Thinking through this",
         lastAction: "Processing your request",
       })
-      setInput("")
+      if (!prompt) setInput("")
       useAgentStore.getState().setProcessing(true)
     })
 
@@ -264,27 +265,28 @@ export function ChatPanel() {
   }, [activeRole, addMessage, canSend])
 
   // ── Pipeline diagnostics — derives current execution stage from timeline agent sessions ──
-  const timelineAgentSessions = useTimelineStore((s) => s.agentSessions)
-  const pipelineStage = useMemo(() => {
-    let maxStage: { label: string; icon: typeof Loader2 | typeof CheckCircle | typeof XCircle; color: string } | null = null
-    let maxStartedAt = 0
-    for (const [, session] of timelineAgentSessions) {
-      if (session.status !== "running") continue
-      if (!session.startedAt) continue
-      if (session.startedAt <= maxStartedAt) continue
-      maxStartedAt = session.startedAt
-      const stageMap: Record<StreamState, { label: string; icon: typeof Loader2 | typeof CheckCircle | typeof XCircle; color: string }> = {
-        not_started: { label: "Waiting...", icon: Loader2, color: "text-yellow-400" },
-        streaming: { label: "Streaming...", icon: Loader2, color: "text-green-400" },
-        completed: { label: "Complete", icon: CheckCircle, color: "text-green-400" },
-        failed: { label: "Failed", icon: XCircle, color: "text-red-400" },
-        fallback: { label: "Fallback", icon: AlertTriangle, color: "text-amber-400" },
-        cancelled: { label: "Cancelled", icon: XCircle, color: "text-yellow-400" },
+  const pipelineStage = useTimelineStore(
+    useShallow((s) => {
+      let maxStage: { label: string; icon: typeof Loader2 | typeof CheckCircle | typeof XCircle; color: string } | null = null
+      let maxStartedAt = 0
+      for (const [, session] of s.agentSessions) {
+        if (session.status !== "running") continue
+        if (!session.startedAt) continue
+        if (session.startedAt <= maxStartedAt) continue
+        maxStartedAt = session.startedAt
+        const stageMap: Record<StreamState, { label: string; icon: typeof Loader2 | typeof CheckCircle | typeof XCircle; color: string }> = {
+          not_started: { label: "Waiting...", icon: Loader2, color: "text-yellow-400" },
+          streaming: { label: "Streaming...", icon: Loader2, color: "text-green-400" },
+          completed: { label: "Complete", icon: CheckCircle, color: "text-green-400" },
+          failed: { label: "Failed", icon: XCircle, color: "text-red-400" },
+          fallback: { label: "Fallback", icon: AlertTriangle, color: "text-amber-400" },
+          cancelled: { label: "Cancelled", icon: XCircle, color: "text-yellow-400" },
+        }
+        maxStage = { ...stageMap[session.streamState || "not_started"], label: session.currentPhase || stageMap[session.streamState || "not_started"].label }
       }
-      maxStage = { ...stageMap[session.streamState || "not_started"], label: session.currentPhase || stageMap[session.streamState || "not_started"].label }
-    }
-    return maxStage
-  }, [timelineAgentSessions])
+      return maxStage
+    })
+  )
 
   const handleCancel = useCallback(() => {
     setIsCancelling(true)

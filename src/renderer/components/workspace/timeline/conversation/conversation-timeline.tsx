@@ -1,4 +1,5 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react"
+import { useShallow } from "zustand/shallow"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronDown, Terminal } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -8,7 +9,6 @@ import { UserPill } from "./UserPill"
 import { TerminalPane } from "./TerminalPane"
 import { ReferenceChipRow } from "@/components/workspace/context-refs/ReferenceChip"
 import type { UserMessageEvent } from "../types"
-import type { AgentSession } from "../timeline-store"
 import { QuickActions } from "../QuickActions"
 import { PremiumEmptyState, getTimelineEmptyState } from "@/components/workspace/premium-empty-state"
 import { getSpringConfig } from "@/lib/motion"
@@ -20,27 +20,32 @@ interface ConversationTimelineProps {
 
 interface ConversationTurn {
   userEvent: UserMessageEvent | null
-  sessions: AgentSession[]
+  sessionIds: string[]
 }
 
 export function ConversationTimeline({ onSendMessage }: ConversationTimelineProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const events = useTimelineStore((s) => s.events)
-  const agentSessions = useTimelineStore((s) => s.agentSessions)
-  const streamingTexts = useTimelineStore((s) => s.streamingTexts)
+  const sessionOrder = useTimelineStore((s) => s.sessionOrder)
+  const streamingTextsSize = useTimelineStore((s) => s.streamingTexts.size)
   const messageReferences = useTimelineStore((s) => s.messageReferences)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [terminalPaneOpen, setTerminalPaneOpen] = useState(false)
   const reduced = useReducedMotion()
 
-  const latestSessionWithTerminals = useMemo(() => {
-    for (const [stepId, session] of agentSessions) {
-      if (session.terminalOutputs.length > 0) return { stepId, session }
-    }
-    return null
-  }, [agentSessions])
+  const latestTerminalInfo = useTimelineStore(
+    useShallow((s) => {
+      for (const stepId of s.sessionOrder) {
+        const session = s.agentSessions.get(stepId)
+        if (session && session.terminalOutputs.length > 0) {
+          return { stepId, terminalCount: session.terminalOutputs.length }
+        }
+      }
+      return null
+    })
+  )
 
   // Smart scroll anchoring: auto-scroll to bottom when new content arrives,
   // but only if user is already at or near the bottom.
@@ -51,13 +56,13 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
       el.scrollTop = el.scrollHeight
     })
     return () => cancelAnimationFrame(raf)
-  })
+  }, [isAtBottom, events.length, streamingTextsSize])
 
   // Scroll to bottom smoothly on new event or text
   useEffect(() => {
     if (!isAtBottom || !bottomRef.current) return
     bottomRef.current.scrollIntoView({ behavior: reduced ? "auto" : "smooth" })
-  }, [events.length, streamingTexts.size, isAtBottom, reduced])
+  }, [events.length, streamingTextsSize, isAtBottom, reduced])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -79,13 +84,20 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
     })
   }, [reduced])
 
-  const hasItems = events.length > 0 || agentSessions.size > 0
+  const hasItems = events.length > 0 || sessionOrder.length > 0
+
+  const emptyStateConfig = useMemo(
+    () => getTimelineEmptyState(onSendMessage ? (text) => onSendMessage(text) : undefined),
+    [onSendMessage]
+  )
 
   const conversationTurns: ConversationTurn[] = useMemo(() => {
+    const sessions = useTimelineStore.getState().agentSessions
     const turns: ConversationTurn[] = []
     const correlationMap = new Map<string, string[]>()
-    for (const [stepId, session] of agentSessions) {
-      if (session.correlationId) {
+    for (const stepId of sessionOrder) {
+      const session = sessions.get(stepId)
+      if (session?.correlationId) {
         const arr = correlationMap.get(session.correlationId) ?? []
         arr.push(stepId)
         correlationMap.set(session.correlationId, arr)
@@ -97,13 +109,12 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
         const userEvent = event as UserMessageEvent
         const correlationKey = userEvent.correlationId ?? userEvent.id
         const sessionIds = correlationMap.get(correlationKey) ?? []
-        const sessions = sessionIds.map((sid) => agentSessions.get(sid)).filter(Boolean) as AgentSession[]
-        turns.push({ userEvent, sessions })
+        turns.push({ userEvent, sessionIds })
       }
     }
 
     return turns
-  }, [events, agentSessions])
+  }, [events, sessionOrder])
 
   return (
     <div className="relative h-full">
@@ -120,7 +131,7 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
         <div className="mx-auto max-w-[min(100%,44rem)]">
           {!hasItems ? (
             <PremiumEmptyState
-              config={getTimelineEmptyState(onSendMessage ? (text) => onSendMessage(text) : undefined)}
+              config={emptyStateConfig}
               className="py-20"
             />
           ) : (
@@ -146,11 +157,11 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
                         />
                       </>
                     )}
-                    {turn.sessions.map((session, sIdx) => (
+                    {turn.sessionIds.map((sid, sIdx) => (
                       <AssistantResponse
-                        key={session.stepId}
-                        stepId={session.stepId}
-                        isLatest={sIdx === turn.sessions.length - 1 && isLatestTurn}
+                        key={sid}
+                        stepId={sid}
+                        isLatest={sIdx === turn.sessionIds.length - 1 && isLatestTurn}
                         onRetry={onSendMessage}
                         originalInput={turn.userEvent?.content}
                       />
@@ -175,7 +186,7 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
       </div>
 
       {/* Terminal pane toggle */}
-      {latestSessionWithTerminals && (
+      {latestTerminalInfo && (
         <div className="border-t border-white/[0.04]">
           <button
             onClick={() => setTerminalPaneOpen((v) => !v)}
@@ -183,16 +194,16 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
           >
             <Terminal className="h-3 w-3" />
             <span>Terminal</span>
-            <span className="text-[10px] text-white/20 font-mono">{latestSessionWithTerminals.session.terminalOutputs.length} commands</span>
+            <span className="text-[10px] text-white/20 font-mono">{latestTerminalInfo.terminalCount} commands</span>
             <span className="ml-auto text-[10px] text-white/20">{terminalPaneOpen ? "Hide" : "Show"}</span>
           </button>
         </div>
       )}
 
       {/* Terminal pane */}
-      {latestSessionWithTerminals && (
+      {latestTerminalInfo && (
         <TerminalPane
-          stepId={latestSessionWithTerminals.stepId}
+          stepId={latestTerminalInfo.stepId}
           expanded={terminalPaneOpen}
           onClose={() => setTerminalPaneOpen(false)}
         />

@@ -98,7 +98,7 @@ export interface ResolvedAdapter {
   isLocal: boolean
 }
 
-export function resolveAdapter(baseUrl: string): ResolvedAdapter {
+export function resolveProviderManagerAdapter(baseUrl: string): ResolvedAdapter {
   log("Resolving adapter for:", baseUrl)
   const registry = resolveByBaseUrl(baseUrl)
   if (registry) {
@@ -147,7 +147,7 @@ export async function safeDetectRuntime(baseUrl: string): Promise<RuntimeInfo | 
 export async function safeValidateProvider(baseUrl: string, apiKey: string): Promise<ValidationResult> {
   log("Validating provider:", baseUrl)
 
-  const adapter = resolveAdapter(baseUrl)
+  const adapter = resolveProviderManagerAdapter(baseUrl)
 
   if (!adapter) {
     error_("No adapter found for:", baseUrl)
@@ -180,7 +180,7 @@ export async function safeValidateProvider(baseUrl: string, apiKey: string): Pro
 export async function safeDiscoverModels(baseUrl: string, apiKey: string): Promise<DiscoveryResult> {
   log("Discovering models for:", baseUrl)
 
-  const adapter = resolveAdapter(baseUrl)
+  const adapter = resolveProviderManagerAdapter(baseUrl)
   log("Adapter for discovery:", adapter.id, "- runtime:", adapter.runtimeKey)
 
   try {
@@ -286,7 +286,7 @@ async function attemptFallbackDiscovery(
 export async function safeValidateAndDiscover(baseUrl: string, apiKey: string): Promise<ValidatedProvider> {
   log("Starting validation and discovery pipeline")
 
-  const adapter = resolveAdapter(baseUrl)
+  const adapter = resolveProviderManagerAdapter(baseUrl)
 
   if (!adapter) {
     const result: ValidatedProvider = {

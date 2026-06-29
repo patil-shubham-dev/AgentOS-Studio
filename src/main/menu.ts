@@ -1,4 +1,4 @@
-import { Menu, BrowserWindow, app, shell, dialog } from 'electron'
+import { Menu, BrowserWindow, app, shell } from 'electron'
 import type { WindowManager } from './window-manager'
 import { sendToWindow } from './ipc/safe-send'
 import { getWorkspaceManager } from './ipc/workspace'
@@ -187,12 +187,8 @@ export function createAppMenu(windowManager: WindowManager, _mainWindow: Browser
         {
           label: 'About AgenticOS',
           click: () => {
-            dialog.showMessageBox({
-              type: 'info',
-              title: 'About AgenticOS',
-              message: 'AgenticOS',
-              detail: `Version ${app.getVersion()}\n\nYour AI operating system for development`
-            })
+            const win = windowManager.getMainWindow()
+            sendToWindow(win, 'show-about')
           }
         },
         {

@@ -145,7 +145,7 @@ export class PlanGenerator {
       const providerRuntime = new ProviderRuntime(provider.baseUrl, provider.apiKey)
       providerRuntime.setDefaultModel(managerAgent?.model ?? provider.models[0]?.id ?? "")
 
-      const result = await providerRuntime.complete({
+      const result = await providerRuntime.chat({
         messages,
         maxTokens: 4096,
         temperature: 0.3,

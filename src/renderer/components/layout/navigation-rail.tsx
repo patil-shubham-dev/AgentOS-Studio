@@ -6,23 +6,15 @@ import { TooltipSimple as Tooltip } from "@agentic-os/ui"
 import {
   LayoutDashboard,
   Code2,
-  Users,
   Settings,
-  ScrollText,
   GitBranch,
-  ArrowUpCircle,
   Bell,
   User,
   Pin,
   PinOff,
-  Brain,
-  Activity,
-  Palette,
-  BarChart3,
-  Puzzle,
-  Shield,
-  Layers,
 } from "lucide-react"
+import logoSvg from "@/assets/branding/logo.svg"
+import wordmarkSvg from "@/assets/branding/wordmark.svg"
 
 interface NavItem {
   id: string
@@ -31,27 +23,11 @@ interface NavItem {
   route: string
 }
 
-const TOP_NAV_ITEMS: NavItem[] = [
-  { id: "control-center", label: "Dashboard", icon: <LayoutDashboard className="h-5 w-5" />, route: "/" },
-  { id: "code-canvas", label: "Workspace", icon: <Code2 className="h-5 w-5" />, route: "/code-canvas" },
-  { id: "agents", label: "Agents", icon: <Users className="h-5 w-5" />, route: "/agents" },
-]
-
-const MONITOR_NAV_ITEMS: NavItem[] = [
-  { id: "memory", label: "Memory", icon: <Brain className="h-5 w-5" />, route: "/memory" },
-  { id: "context", label: "Context", icon: <Activity className="h-5 w-5" />, route: "/context" },
-  { id: "orchestration", label: "Orchestration", icon: <Layers className="h-5 w-5" />, route: "/orchestration" },
-  { id: "personas", label: "Personas", icon: <Palette className="h-5 w-5" />, route: "/personas" },
-  { id: "performance", label: "Performance", icon: <BarChart3 className="h-5 w-5" />, route: "/performance" },
-  { id: "plugins", label: "Plugins", icon: <Puzzle className="h-5 w-5" />, route: "/plugins" },
-]
-
-const BOTTOM_NAV_ITEMS: NavItem[] = [
-  { id: "logs", label: "Logs", icon: <ScrollText className="h-5 w-5" />, route: "/logs" },
+const NAV_ITEMS: NavItem[] = [
+  { id: "workspace", label: "Workspace", icon: <Code2 className="h-5 w-5" />, route: "/" },
+  { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-5 w-5" />, route: "/dashboard" },
   { id: "git", label: "Git", icon: <GitBranch className="h-5 w-5" />, route: "/git" },
-  { id: "audit", label: "Audit", icon: <Shield className="h-5 w-5" />, route: "/audit" },
   { id: "settings", label: "Settings", icon: <Settings className="h-5 w-5" />, route: "/settings" },
-  { id: "updates", label: "Updates", icon: <ArrowUpCircle className="h-5 w-5" />, route: "/settings/update" },
 ]
 
 const COLLAPSED_WIDTH = 52
@@ -145,7 +121,10 @@ export function NavigationRail() {
 
   function isActive(item: NavItem): boolean {
     if (item.route === "/") {
-      return location.pathname === "/" || location.pathname === "/control-center"
+      return location.pathname === "/" || location.pathname === "/code-canvas"
+    }
+    if (item.route === "/dashboard") {
+      return location.pathname === "/dashboard" || location.pathname === "/control-center"
     }
     return location.pathname.startsWith(item.route)
   }
@@ -161,25 +140,41 @@ export function NavigationRail() {
         "flex flex-col border-r border-white/[0.06] bg-[#0c0c0d] overflow-hidden shrink-0 h-full",
       )}
     >
-      {/* Top section: main navigation */}
-      <div className="flex flex-col gap-0.5 px-2 pt-3 pb-2 flex-1">
-        {TOP_NAV_ITEMS.map((item) => (
-          <NavItemButton
-            key={item.id}
-            item={item}
-            expanded={expanded}
-            isActive={isActive(item)}
-            onNavigate={navigate}
-          />
-        ))}
+      {/* Branding */}
+      <div className="flex items-center justify-center px-3 pt-4 pb-3">
+        <AnimatePresence mode="wait">
+          {expanded ? (
+            <motion.img
+              key="wordmark"
+              src={wordmarkSvg}
+              alt="AgenticOS"
+              height={28}
+              className="h-7 w-auto"
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={{ duration: 0.12 }}
+            />
+          ) : (
+            <motion.img
+              key="logo"
+              src={logoSvg}
+              alt="AgenticOS"
+              width={28}
+              height={28}
+              className="shrink-0"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.12 }}
+            />
+          )}
+        </AnimatePresence>
+      </div>
 
-        {/* Monitor section label */}
-        {expanded && (
-          <div className="px-3 pt-4 pb-1">
-            <span className="text-[9px] text-white/20 uppercase tracking-wider font-medium">Monitor</span>
-          </div>
-        )}
-        {MONITOR_NAV_ITEMS.map((item) => (
+      {/* Navigation items */}
+      <div className="flex flex-col gap-0.5 px-2 pt-1 pb-2 flex-1">
+        {NAV_ITEMS.map((item) => (
           <NavItemButton
             key={item.id}
             item={item}
@@ -210,17 +205,6 @@ export function NavigationRail() {
             {isPinned ? "Unpin sidebar" : "Pin sidebar"}
           </motion.button>
         )}
-
-        {/* Bottom navigation items */}
-        {BOTTOM_NAV_ITEMS.map((item) => (
-          <NavItemButton
-            key={item.id}
-            item={item}
-            expanded={expanded}
-            isActive={isActive(item)}
-            onNavigate={navigate}
-          />
-        ))}
       </div>
 
       {/* Bottom section: user */}

@@ -44,8 +44,10 @@ export const colors = {
 } as const
 
 export const font = {
-  sans: "'Outfit', 'Inter', system-ui, -apple-system, sans-serif",
-  mono: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', ui-monospace, monospace",
+  sans: "'Inter Variable', system-ui, -apple-system, sans-serif",
+  serif: "'Source Serif 4 Variable', Georgia, 'Times New Roman', serif",
+  display: "'Cormorant Garamond Variable', Georgia, 'Times New Roman', serif",
+  mono: "'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace",
 } as const
 
 export const radius = '0.5rem' as const
@@ -66,6 +68,8 @@ export function cssVars(scheme: ColorScheme = 'light'): Record<string, string> {
   const vars: Record<string, string> = {
     '--radius': radius,
     '--font-sans': font.sans,
+    '--font-serif': font.serif,
+    '--font-display': font.display,
     '--font-mono': font.mono,
   }
   for (const [key, value] of Object.entries(colors[scheme])) {

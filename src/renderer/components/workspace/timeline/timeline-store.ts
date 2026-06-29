@@ -31,16 +31,65 @@ const MAX_AGENT_SESSIONS = 100
 const MAX_SESSION_ORDER = 200
 const MAX_MESSAGE_REFS = 200
 const MAX_COLLAPSED_SECTIONS = 500
+const MAX_TOOL_CALLS_PER_SESSION = 200
+const MAX_FILE_EDITS_PER_SESSION = 200
+const MAX_FILE_OPS_PER_SESSION = 200
+const MAX_TERMINAL_OUTPUTS_PER_SESSION = 200
+const MAX_PHASE_HISTORY_PER_SESSION = 100
 
 /**
  * Timeline state is persisted to localStorage so conversations survive restarts.
  * On launch, the app restores the last chat session automatically.
  * Explicit "New Chat" clears all persisted state.
  */
+const STORAGE_KEY = "agentic-timeline-state"
+
+function persistStorage(state: TimelineState): void {
+  try {
+    const payload = {
+      events: state.events,
+      agentSessions: Array.from(state.agentSessions.entries()),
+      streamingTexts: Array.from(state.streamingTexts.entries()),
+      pendingStreamTexts: Array.from(state.pendingStreamTexts.entries()),
+      sessionOrder: state.sessionOrder,
+      sessionCreatedAtEventCount: state.sessionCreatedAtEventCount,
+      collapsedSections: Array.from(state.collapsedSections),
+      messageReferences: Array.from(state.messageReferences.entries()),
+      streamingMetrics: state.streamingMetrics,
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  } catch (err) {
+    console.warn("[timeline-store] Failed to persist state:", err)
+  }
+}
+
+function loadPersistedState(): Partial<TimelineState> | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return {
+      events: parsed.events ?? [],
+      agentSessions: new Map(parsed.agentSessions ?? []),
+      streamingTexts: new Map(parsed.streamingTexts ?? []),
+      pendingStreamTexts: new Map(parsed.pendingStreamTexts ?? []),
+      sessionOrder: parsed.sessionOrder ?? [],
+      sessionCreatedAtEventCount: parsed.sessionCreatedAtEventCount ?? [],
+      collapsedSections: new Set(parsed.collapsedSections ?? []),
+      messageReferences: new Map(parsed.messageReferences ?? []),
+      streamingMetrics: parsed.streamingMetrics ?? {
+        tokensReceived: 0, tokensPerSecond: 0, lastTokenTimestamp: 0, firstTokenLatency: 0, totalLatency: 0,
+      },
+    }
+  } catch (err) {
+    console.warn("[timeline-store] Failed to load persisted state:", err)
+    return null
+  }
+}
+
 function clearStorage(): void {
   try {
-    localStorage.removeItem("agentic-timeline-state")
-    localStorage.removeItem("agentic-chat-state")
+    localStorage.removeItem(STORAGE_KEY)
   } catch (err) {
     console.warn("[timeline-store] Failed to clear storage:", err)
   }
@@ -166,16 +215,18 @@ function generateId(): string {
  * NOTE: Timeline state IS persisted to localStorage and survives app restarts.
  * Conversations are restored on launch. Use `clear()` for a fresh start.
  */
+const persisted = loadPersistedState()
+
 export const useTimelineStore = create<TimelineState>((set, get) => ({
-  events: [],
-  agentSessions: new Map(),
-  streamingTexts: new Map(),
-  pendingStreamTexts: new Map(),
-  sessionOrder: [],
-  sessionCreatedAtEventCount: [],
-  collapsedSections: new Set(),
-  messageReferences: new Map(),
-  streamingMetrics: {
+  events: persisted?.events ?? [],
+  agentSessions: persisted?.agentSessions ?? new Map(),
+  streamingTexts: persisted?.streamingTexts ?? new Map(),
+  pendingStreamTexts: persisted?.pendingStreamTexts ?? new Map(),
+  sessionOrder: persisted?.sessionOrder ?? [],
+  sessionCreatedAtEventCount: persisted?.sessionCreatedAtEventCount ?? [],
+  collapsedSections: persisted?.collapsedSections ?? new Set(),
+  messageReferences: persisted?.messageReferences ?? new Map(),
+  streamingMetrics: persisted?.streamingMetrics ?? {
     tokensReceived: 0,
     tokensPerSecond: 0,
     lastTokenTimestamp: 0,
@@ -251,10 +302,14 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const next = new Map(s.agentSessions)
       const existing = next.get(stepId)
       if (existing) {
+        const nextPhaseHistory = [...(existing.phaseHistory ?? []), { label: phase, timestamp: Date.now() }]
+        if (nextPhaseHistory.length > MAX_PHASE_HISTORY_PER_SESSION) {
+          nextPhaseHistory.splice(0, nextPhaseHistory.length - MAX_PHASE_HISTORY_PER_SESSION)
+        }
         next.set(stepId, {
           ...existing,
           currentPhase: phase,
-          phaseHistory: [...(existing.phaseHistory ?? []), { label: phase, timestamp: Date.now() }],
+          phaseHistory: nextPhaseHistory,
         })
       }
       return { agentSessions: next }
@@ -464,31 +519,27 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   appendStreamingText: (stepId, text) => {
     set((s) => {
       if (!text) return s
-      const next = new Map(s.streamingTexts)
-      const existing = next.get(stepId) ?? ""
-      // Dedup guard: if text is already fully contained at the end, skip
+      const existing = s.streamingTexts.get(stepId) ?? ""
       if (existing.endsWith(text)) return s
+      const next = new Map(s.streamingTexts)
       next.set(stepId, existing + text)
-      // Cap streamingTexts at 200 entries to prevent unbounded growth
       if (next.size > 200) {
         const keys = [...next.keys()]
         const toRemove = keys.slice(0, keys.length - 200)
         for (const k of toRemove) next.delete(k)
       }
       const now = performance.now()
-      const metrics = { ...s.streamingMetrics }
-      const windowTokens = metrics.tokensReceived
-      // Initialize window start on first token
-      if (windowTokens === 0) {
+      const metrics = s.streamingMetrics
+      metrics.tokensReceived += 1
+      metrics.lastTokenTimestamp = now
+      if (metrics.firstTokenLatency === 0) {
+        metrics.firstTokenLatency = now - (metrics.totalLatency || now)
+      }
+      if (metrics.totalLatency === 0) {
         metrics.totalLatency = now
       }
-      metrics.tokensReceived++
-      if (metrics.tokensReceived === 1) {
-        metrics.firstTokenLatency = now - metrics.totalLatency
-      }
-      metrics.lastTokenTimestamp = now
       if (now - metrics.totalLatency >= 1000) {
-        metrics.tokensPerSecond = windowTokens + 1
+        metrics.tokensPerSecond = metrics.tokensReceived
         metrics.totalLatency = now
         metrics.tokensReceived = 0
       }
@@ -542,13 +593,22 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
         else if (name.includes("plan") || name.includes("delegate") || name.includes("route")) phase = "Planning"
         else phase = "Processing"
 
+        const nextToolCalls = [...existing.toolCalls, tc]
+        if (nextToolCalls.length > MAX_TOOL_CALLS_PER_SESSION) {
+          nextToolCalls.splice(0, nextToolCalls.length - MAX_TOOL_CALLS_PER_SESSION)
+        }
+        let nextPhaseHistory = existing.phaseHistory
+        if (existing.currentPhase !== phase) {
+          nextPhaseHistory = [...(existing.phaseHistory ?? []), { label: phase, timestamp: Date.now() }]
+          if (nextPhaseHistory.length > MAX_PHASE_HISTORY_PER_SESSION) {
+            nextPhaseHistory.splice(0, nextPhaseHistory.length - MAX_PHASE_HISTORY_PER_SESSION)
+          }
+        }
         next.set(stepId, {
           ...existing,
-          toolCalls: [...existing.toolCalls, tc],
+          toolCalls: nextToolCalls,
           currentPhase: phase,
-          phaseHistory: existing.currentPhase !== phase
-            ? [...(existing.phaseHistory ?? []), { label: phase, timestamp: Date.now() }]
-            : existing.phaseHistory,
+          phaseHistory: nextPhaseHistory,
         })
       }
       return { agentSessions: next }
@@ -580,9 +640,13 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const next = new Map(s.agentSessions)
       const existing = next.get(stepId)
       if (existing) {
+        const nextArr = [...existing.fileEdits, fileEdit]
+        if (nextArr.length > MAX_FILE_EDITS_PER_SESSION) {
+          nextArr.splice(0, nextArr.length - MAX_FILE_EDITS_PER_SESSION)
+        }
         next.set(stepId, {
           ...existing,
-          fileEdits: [...existing.fileEdits, fileEdit],
+          fileEdits: nextArr,
         })
       }
       return { agentSessions: next }
@@ -594,9 +658,13 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const next = new Map(s.agentSessions)
       const existing = next.get(stepId)
       if (existing) {
+        const nextArr = [...existing.fileOps, fileOp]
+        if (nextArr.length > MAX_FILE_OPS_PER_SESSION) {
+          nextArr.splice(0, nextArr.length - MAX_FILE_OPS_PER_SESSION)
+        }
         next.set(stepId, {
           ...existing,
-          fileOps: [...existing.fileOps, fileOp],
+          fileOps: nextArr,
         })
       }
       return { agentSessions: next }
@@ -608,9 +676,13 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const next = new Map(s.agentSessions)
       const existing = next.get(stepId)
       if (existing) {
+        const nextArr = [...existing.terminalOutputs, terminal]
+        if (nextArr.length > MAX_TERMINAL_OUTPUTS_PER_SESSION) {
+          nextArr.splice(0, nextArr.length - MAX_TERMINAL_OUTPUTS_PER_SESSION)
+        }
         next.set(stepId, {
           ...existing,
-          terminalOutputs: [...existing.terminalOutputs, terminal],
+          terminalOutputs: nextArr,
         })
       }
       return { agentSessions: next }
@@ -654,6 +726,42 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 
   generateId,
 }))
+
+const PERSIST_DEBOUNCE_MS = 300
+const PERSIST_STREAMING_DEBOUNCE_MS = 3000
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+let _pendingPersist = false
+
+function schedulePersist(): void {
+  try {
+    const state = useTimelineStore.getState()
+    const hasStreaming = state.streamingTexts.size > 0 ||
+      [...state.agentSessions.values()].some(s => s.streamState === 'streaming')
+    if (hasStreaming) {
+      _pendingPersist = true
+      return
+    }
+  } catch {}
+
+  if (_pendingPersist) {
+    _pendingPersist = false
+  }
+
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    persistTimer = null
+    try {
+      const state = useTimelineStore.getState()
+      persistStorage(state)
+    } catch { /* storage may be full */ }
+  }, PERSIST_DEBOUNCE_MS)
+}
+
+const originalSet = useTimelineStore.setState
+useTimelineStore.setState = ((partial, replace) => {
+  originalSet(partial, replace)
+  schedulePersist()
+}) as typeof useTimelineStore.setState
 
 export { generateId }
 export type {

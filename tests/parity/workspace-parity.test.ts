@@ -516,13 +516,13 @@ describe("Pane Persistence (PC-21 to PC-30)", () => {
   it("PC-22: pane-store togglePane works correctly", async () => {
     const { usePaneStore } = await import("@/stores/pane-store")
 
-    const previewBefore = usePaneStore.getState().panes.find((p) => p.id === "preview")
-    expect(previewBefore?.visible).toBe(false)
+    const designBefore = usePaneStore.getState().panes.find((p) => p.id === "design")
+    expect(designBefore?.visible).toBe(false)
 
-    usePaneStore.getState().togglePane("preview")
+    usePaneStore.getState().togglePane("design")
 
-    const previewAfter = usePaneStore.getState().panes.find((p) => p.id === "preview")
-    expect(previewAfter?.visible).toBe(true)
+    const designAfter = usePaneStore.getState().panes.find((p) => p.id === "design")
+    expect(designAfter?.visible).toBe(true)
   })
 
   it("PC-23: pane-store setPaneSize clamps to min/max", async () => {

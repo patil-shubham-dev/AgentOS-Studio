@@ -5,6 +5,7 @@ import type { ChatMessage } from "@agentic-os/providers"
 const MAX_MESSAGES_PER_ROLE = 200
 const MAX_ORCHESTRATION_STEPS = 100
 const MAX_AGENT_ASSIGNMENTS = 50
+const MAX_FILE_ACTIVITIES = 500
 
 export interface AgentAssignment {
   role: RuntimeRole
@@ -211,7 +212,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         updated[existing] = entry
         return { fileActivities: updated }
       }
-      return { fileActivities: [...s.fileActivities, entry] }
+      const next = s.fileActivities.length >= MAX_FILE_ACTIVITIES
+        ? [...s.fileActivities.slice(-(MAX_FILE_ACTIVITIES - 1)), entry]
+        : [...s.fileActivities, entry]
+      return { fileActivities: next }
     }),
 
   clearFileActivity: (path) =>

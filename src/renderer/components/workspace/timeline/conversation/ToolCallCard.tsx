@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { CheckCircle2, XCircle, Loader2, Clock, ExternalLink, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -222,13 +222,18 @@ export const ToolCallCard = memo(function ToolCallCard({ toolCall, index = 0 }: 
     setExpanded((e) => !e)
   }, [])
 
+  const cardTransition = useMemo(() => ({
+    ...SPRING,
+    delay: index * 0.04,
+  }), [index])
+
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: -6, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, height: 0, marginBottom: 0, scale: 0.96 }}
-      transition={{ ...SPRING, delay: index * 0.04 }}
+      transition={cardTransition}
       className="py-0.5"
     >
       <motion.button

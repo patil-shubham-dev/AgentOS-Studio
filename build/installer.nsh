@@ -1,189 +1,455 @@
-; AgenticOS — Windows Installer (White Theme, Windows 11 Native)
 ; ============================================================================
-; Clean white theme inspired by Claude Desktop, Cursor, Notion, Linear.
-; Pure white backgrounds, light gray surfaces, subtle borders.
+; AgenticOS — Windows Installer NSIS Script
 ; ============================================================================
+;
+; Architecture:  4 installer pages (custom nsDialogs + styled instfiles)
+;                2 uninstaller pages (custom nsDialogs, no instfiles)
+; Theme:         Dark (#0D0D0D bg, #2563EB accent, #FFFFFF text)
+; Dependencies:  nsDialogs, NSD_*, MUI2
+; Builder:       electron-builder via !include
+;
+; Sections are ordered for clarity. Each section's purpose is documented.
+; ============================================================================
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 1. INCLUDES
+; ═════════════════════════════════════════════════════════════════════════════
 
 !include "LogicLib.nsh"
 !include "WinVer.nsh"
 !include "FileFunc.nsh"
-!include "MUI2.nsh"
 !include "WordFunc.nsh"
 !include "StrFunc.nsh"
+!include "MUI2.nsh"
+!include "nsDialogs.nsh"
 
-; ── Brand Constants ─────────────────────────────────────────────────────────
+; ═════════════════════════════════════════════════════════════════════════════
+; 2. GLOBAL CONSTANTS — all magic numbers are defined here
+; ═════════════════════════════════════════════════════════════════════════════
+
+; Window
+!define INSTALLER_WIDTH      540
+!define INSTALLER_HEIGHT     420
+!define INSTALLER_DIALOG_ID  1018
+
+; Layout
+!define CONTENT_MARGIN       20
+!define SECTION_GAP          10
+!define CONTROL_SPACING      8
+!define BUTTON_WIDTH         140
+!define BUTTON_HEIGHT        26
+!define SMALL_BUTTON_WIDTH   60
+!define SMALL_BUTTON_HEIGHT  16
+!define CHECKBOX_WIDTH       420
+!define CHECKBOX_HEIGHT      14
+!define LABEL_WIDTH_FULL     "100%"
+!define DIVIDER_HEIGHT       1
+!define DIVIDER_WIDTH        460
+!define HEADER_IMAGE_WIDTH   150
+!define HEADER_IMAGE_HEIGHT  57
+
+; Font sizes (points)
+!define FONT_SIZE_SMALL      7
+!define FONT_SIZE_BODY       9
+!define FONT_SIZE_TITLE      22
+!define FONT_SIZE_HEADING    14
+!define FONT_SIZE_MONO       8
+!define FONT_SIZE_CHECKMARK  28
+!define FONT_SIZE_WARN       8
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 3. BRAND COLORS — NSIS uses BGR (0xBBGGRR) format, not RGB
+; ═════════════════════════════════════════════════════════════════════════════
+
+; #0D0D0D = background       → BGR: 0x0D0D0D
+; #FFFFFF = primary text      → BGR: 0xFFFFFF
+; #A0A0A0 = secondary text   → BGR: 0xA0A0A0
+; #2563EB = accent blue       → BGR: 0xEB6325
+; #1E1E1E = surface/card bg  → BGR: 0x1E1E1E
+; #FF4444 = destructive red  → BGR: 0x4444FF
+; #2A2A2A = input/field bg   → BGR: 0x2A2A2A
+; #3A3A3A = border/divider   → BGR: 0x3A3A3A
+; #FFAA00 = warning amber    → BGR: 0x00AAFF
+; #1A1A00 = warning bg       → BGR: 0x001A1A
+
+!define CLR_BG         0x0D0D0D
+!define CLR_SURFACE    0x1E1E1E
+!define CLR_TEXT       0xFFFFFF
+!define CLR_TEXT_MUTED 0xA0A0A0
+!define CLR_ACCENT     0xEB6325
+!define CLR_DANGER     0x4444FF
+!define CLR_INPUT_BG   0x2A2A2A
+!define CLR_BORDER     0x3A3A3A
+!define CLR_WARN_TEXT  0x00AAFF
+!define CLR_WARN_BG    0x001A1A
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 4. PRODUCT METADATA
+; ═════════════════════════════════════════════════════════════════════════════
+
 !ifndef PRODUCT_NAME
   !define PRODUCT_NAME "AgenticOS"
 !endif
-!define PRODUCT_VERSION "3.0.0"
-!define PRODUCT_TAGLINE "Autonomous AI workspace for coding, research, automation, and execution."
-!define PRODUCT_RELEASE_URL "https://agenticos.ai/releases"
-!define PRODUCT_SUPPORT_URL "https://agenticos.ai/support"
-!define PRODUCT_DOCS_URL "https://agenticos.ai/docs"
-!define PRODUCT_COMMUNITY_URL "https://agenticos.ai/community"
+!define PRODUCT_TAGLINE "Autonomous AI workspace for coding, research, and execution."
 
-; ── White Theme Configuration ───────────────────────────────────────────────
-; Colors: white bg, light gray surfaces, subtle borders, black text
-!define MUI_BGCOLOR "FFFFFF"
-!define MUI_HEADERBGCOLOR "FAFAFA"
-!define MUI_HEADERTEXTCOLOR "111827"
-!define MUI_TEXTCOLOR "111827"
-!define MUI_INSTFILESPAGE_COLORS "111827 FFFFFF"
+; VERSION is defined by electron-builder via /DVERSION="x.y.z" in the NSIS config
+; Do not set a fallback here — electron-builder always provides it.
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 5. MUI2 CONFIGURATION & OVERRIDES
+; ═════════════════════════════════════════════════════════════════════════════
+
+; Header image and sidebar are set by electron-builder via installerHeader and
+; installerSidebar config options. We do not define them here.
+; We use a dark sidebar bitmap (build/assets/sidebar.bmp) so MUI welcome/finish
+; pages blend into the background if they appear.
+
+; Unified dialog background
+!define MUI_BGCOLOR "0D0D0D"
+
+; Progress bar styling
 !define MUI_INSTFILESPAGE_PROGRESSBAR "colored"
-!define MUI_UI "${NSISDIR}\Contrib\UIs\modern.exe"
 
-; ── Page Flow ───────────────────────────────────────────────────────────────
-; Installer: Welcome → Options → Directory → Install → Complete
-Page custom CustomWelcomePage
-Page custom CustomOptionsPage
-!insertmacro MUI_PAGE_DIRECTORY
-!insertmacro MUI_PAGE_INSTFILES
-Page custom CustomCompletePage
+; Abort warning
+!define MUI_ABORTWARNING
+!define MUI_ABORTWARNING_TEXT "Cancel the ${PRODUCT_NAME} installation?"
+!define MUI_ABORTWARNING_CANCEL_DEFAULT
 
-; Uninstaller: Confirm → Uninstall → Complete
-UninstPage custom un.CustomUninstallPage
-!insertmacro MUI_UNPAGE_INSTFILES
-UninstPage custom un.CustomUninstallCompletePage
+; GUI init hook — used for window sizing and centering
+!ifndef BUILD_UNINSTALLER
+  !define MUI_CUSTOMFUNCTION_GUIINIT myGUIInit
 
-; MUI_LANGUAGE is included by electron-builder's template — do not add it here
+  ; InstFiles page customization hooks
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE   InstFilesPage_Pre
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW  InstFilesPage_Show
 
-; ── Variables ───────────────────────────────────────────────────────────────
+  ; Remove MUI header text defaults — we handle headers ourselves on custom pages
+  !define MUI_PAGE_HEADER_TEXT ""
+  !define MUI_PAGE_HEADER_SUBTEXT ""
+!endif
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 6. VARIABLES
+; ═════════════════════════════════════════════════════════════════════════════
+
+; ── Font handles ──────────────────────────────────────────────────────────
+Var FontTitle
+Var FontBody
+Var FontSmall
+Var FontLabel
+Var FontMono
+Var FontCheck
+Var FontDone
+Var FontHeading
+Var FontWarn
+
+; ── Installer UI controls ─────────────────────────────────────────────────
+; Welcome page
+Var LabelTitle
+Var LabelTagline
+Var LabelVersion
+Var BtnNext
+Var LinkCancel
+
+; Preferences page
+Var DirInput
+Var BtnBrowse
+Var LabelSpace
+Var LabelLocSection
+Var LabelOptSection
+Var ChkDesktop
+Var ChkLaunch
+Var ChkAutoUpdate
+Var Divider1
+Var Divider2
+Var LabelStep
+Var BtnBack
+Var BtnInstall
+
+; Complete page
+Var LabelCheck
+Var LabelDone
+Var LabelPath
+Var BtnLaunch
+Var LinkClose
+Var DividerFinal
+
+; ── Installer state ───────────────────────────────────────────────────────
+Var CreateDesktopShortcut
+Var LaunchAfterInstall
+Var EnableAutoUpdate
 Var HAS_PREVIOUS_VERSION
 Var PREVIOUS_VERSION
 Var PREVIOUS_INSTALL_PATH
 
-; Options state
-Var OPT_CREATE_DESKTOP
-Var OPT_CREATE_STARTMENU
-Var OPT_LAUNCH_AFTER
-Var OPT_CONTEXT_MENU
-Var OPT_REGISTER_TYPES
-Var OPT_AUTO_UPDATES
-; Uninstall state
-Var REMOVE_SETTINGS
-Var REMOVE_CACHE
-Var REMOVE_MODELS
-Var REMOVE_WORKSPACE
+; ── Uninstaller UI controls ───────────────────────────────────────────────
+Var UnLabelTitle
+Var UnLabelVer
+Var UnLabelPath
+Var UnLabelSection
+Var UnChkSettings
+Var UnChkCache
+Var UnChkUserData
+Var UnWarnBg
+Var UnWarnText
+Var UnBtnCloseApp
+Var UnBtnCancel
+Var UnBtnUninstall
+Var UnLabelCheck
+Var UnLabelDone
+Var UnLabelSpace
+Var UnBtnClose
+Var UnDiv1
+Var UnDiv2
+Var UnBottomOffset
+Var AppRunning
 
-; Data sizes
+; ── Uninstaller state ─────────────────────────────────────────────────────
+Var RemoveSettings
+Var RemoveCache
+Var RemoveUserData
+Var SettingsLabel
+Var CacheLabel
 Var DATA_SETTINGS_SIZE
 Var DATA_CACHE_SIZE
-Var DATA_MODELS_SIZE
-Var DATA_WORKSPACE_SIZE
-Var DATA_TOTAL_SIZE
+Var DATA_USERDATA_SIZE
 Var DATA_TOTAL_RECOVERABLE
+Var DATA_TOTAL_SIZE_STR
 
-; Font handles
-Var FontH1
-Var FontH2
-Var FontH3
-Var FontBody
-Var FontBodyBold
-Var FontSmall
-Var FontMono
+; ═════════════════════════════════════════════════════════════════════════════
+; 7. SHARED UI MACROS
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; These macros provide reusable UI patterns across installer and uninstaller.
+; They require font handles ($FontLabel, $FontBody, etc.) to be initialized
+; before use (see InitFonts / un.InitFonts).
+;
+; Macros clobber $0 and $R0 — caller should save registers if needed.
+; ═════════════════════════════════════════════════════════════════════════════
 
-; ── Installer Sections ─────────────────────────────────────────────────────
+; ── Section title label ─────────────────────────────────────────────────────
+!macro CreateSectionTitle x y width text
+  ${NSD_CreateLabel} ${x}u ${y}u ${width}u 10u "${text}"
+  Pop $0
+  SetCtlColors $0 ${CLR_TEXT_MUTED} ${CLR_BG}
+  SendMessage $0 ${WM_SETFONT} $FontLabel 0
+!macroend
 
-Section "-Core Application" SEC_CORE
-  SectionIn RO
-  SetOutPath "$INSTDIR"
-  DetailPrint "Installing core application files..."
-SectionEnd
+; ── Muted body label ────────────────────────────────────────────────────────
+!macro CreateMutedLabel x y width height text
+  ${NSD_CreateLabel} ${x}u ${y}u ${width}u ${height}u "${text}"
+  Pop $0
+  SetCtlColors $0 ${CLR_TEXT_MUTED} ${CLR_BG}
+  SendMessage $0 ${WM_SETFONT} $FontBody 0
+!macroend
 
-Section "Desktop Shortcut" SEC_DESKTOP
-  CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe"
-  DetailPrint "Desktop shortcut created"
-SectionEnd
+; ── White body label ────────────────────────────────────────────────────────
+!macro CreateBodyLabel x y width height text
+  ${NSD_CreateLabel} ${x}u ${y}u ${width}u ${height}u "${text}"
+  Pop $0
+  SetCtlColors $0 ${CLR_TEXT} ${CLR_BG}
+  SendMessage $0 ${WM_SETFONT} $FontBody 0
+!macroend
 
-Section "Start Menu Shortcut" SEC_STARTMENU
-  CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
-  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe"
-  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall ${PRODUCT_NAME}.lnk" "$INSTDIR\Uninstall ${PRODUCT_NAME}.exe"
-  DetailPrint "Start Menu shortcuts created"
-SectionEnd
+; ── White heading label ─────────────────────────────────────────────────────
+!macro CreateHeading x y width height text
+  ${NSD_CreateLabel} ${x}u ${y}u ${width}u ${height}u "${text}"
+  Pop $0
+  SetCtlColors $0 ${CLR_TEXT} ${CLR_BG}
+  SendMessage $0 ${WM_SETFONT} $FontHeading 0
+!macroend
 
-Section "Context Menu Integration" SEC_CONTEXT
-  WriteRegStr HKCR "Directory\shell\AgenticOS" "" "Open Folder in &${PRODUCT_NAME}"
-  WriteRegStr HKCR "Directory\shell\AgenticOS" "Icon" "$INSTDIR\${PRODUCT_NAME}.exe,0"
-  WriteRegStr HKCR "Directory\shell\AgenticOS\command" "" '"$INSTDIR\${PRODUCT_NAME}.exe" "%V"'
-  WriteRegStr HKCR "*\shell\AgenticOS" "" "Open in &${PRODUCT_NAME}"
-  WriteRegStr HKCR "*\shell\AgenticOS" "Icon" "$INSTDIR\${PRODUCT_NAME}.exe,0"
-  WriteRegStr HKCR "*\shell\AgenticOS\command" "" '"$INSTDIR\${PRODUCT_NAME}.exe" "%V"'
-  WriteRegStr HKCR "Directory\Background\shell\AgenticOS" "" "Open &${PRODUCT_NAME} Here"
-  WriteRegStr HKCR "Directory\Background\shell\AgenticOS" "Icon" "$INSTDIR\${PRODUCT_NAME}.exe,0"
-  WriteRegStr HKCR "Directory\Background\shell\AgenticOS\command" "" '"$INSTDIR\${PRODUCT_NAME}.exe" "%V"'
-  System::Call 'shell32.dll::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
-  DetailPrint "Context menu integration registered"
-SectionEnd
+; ── Horizontal divider ──────────────────────────────────────────────────────
+; Draws a 1px line using a colored label control.
+!macro CreateDivider x y width
+  ${NSD_CreateLabel} ${x}u ${y}u ${width}u ${DIVIDER_HEIGHT}u ""
+  Pop $0
+  SetCtlColors $0 ${CLR_BORDER} ${CLR_BORDER}
+!macroend
 
-Section /o "Registered Project Types" SEC_ASSOCIATIONS
-  WriteRegStr HKCR ".agenticos" "" "AgenticOS.Project"
-  WriteRegStr HKCR "AgenticOS.Project" "" "${PRODUCT_NAME} Project"
-  WriteRegStr HKCR "AgenticOS.Project\DefaultIcon" "" "$INSTDIR\${PRODUCT_NAME}.exe,0"
-  WriteRegStr HKCR "AgenticOS.Project\shell\open\command" "" '"$INSTDIR\${PRODUCT_NAME}.exe" "%1"'
-  DetailPrint "File associations registered (.agenticos)"
-SectionEnd
+; ── Checkbox with dark theme colors ─────────────────────────────────────────
+!macro CreateThemedCheckbox x y width height text
+  ${NSD_CreateCheckBox} ${x}u ${y}u ${width}u ${height}u "${text}"
+  Pop $0
+  SetCtlColors $0 ${CLR_TEXT} ${CLR_BG}
+!macroend
 
-Section /o "Deep Link Protocol (agenticos://)" SEC_PROTOCOL
-  WriteRegStr HKCR "agenticos" "" "URL:${PRODUCT_NAME} Protocol"
-  WriteRegStr HKCR "agenticos" "URL Protocol" ""
-  WriteRegStr HKCR "agenticos\DefaultIcon" "" "$INSTDIR\${PRODUCT_NAME}.exe,0"
-  WriteRegStr HKCR "agenticos\shell\open\command" "" '"$INSTDIR\${PRODUCT_NAME}.exe" "%1"'
-  DetailPrint "agenticos:// protocol handler registered"
-SectionEnd
+; ── Primary action button ───────────────────────────────────────────────────
+; Note: SetCtlColors cannot style button backgrounds on themed Windows.
+; This is a known NSIS limitation — buttons will use the system theme.
+!macro CreatePrimaryButton x y width height text
+  ${NSD_CreateButton} ${x}u ${y}u ${width}u ${height}u "${text}"
+  Pop $0
+!macroend
 
-Section /o "Auto Updates" SEC_UPDATES
-  WriteRegStr HKCU "Software\${PRODUCT_NAME}\Settings" "AutoUpdate" "true"
-  DetailPrint "Auto-updates enabled"
-SectionEnd
+; ── Secondary/back button ───────────────────────────────────────────────────
+!macro CreateSecondaryButton x y width height text
+  ${NSD_CreateButton} ${x}u ${y}u ${width}u ${height}u "${text}"
+  Pop $0
+!macroend
 
-Section /o "Telemetry (Anonymous)" SEC_TELEMETRY
-  WriteRegStr HKCU "Software\${PRODUCT_NAME}\Settings" "Telemetry" "true"
-  DetailPrint "Anonymous telemetry enabled"
-SectionEnd
+; ── Link-style button ───────────────────────────────────────────────────────
+!macro CreateLinkButton x y width height text
+  ${NSD_CreateLink} ${x}u ${y}u ${width}u ${height}u "${text}"
+  Pop $0
+  SetCtlColors $0 ${CLR_TEXT_MUTED} ${CLR_BG}
+!macroend
 
-; ── Section Descriptions ──────────────────────────────────────────────────
+; ── Step indicator ──────────────────────────────────────────────────────────
+!macro CreateStepIndicator x y text
+  ${NSD_CreateLabel} ${x}u ${y}u 100u 12u "${text}"
+  Pop $0
+  SetCtlColors $0 ${CLR_TEXT_MUTED} ${CLR_BG}
+  SendMessage $0 ${WM_SETFONT} $FontSmall 0
+!macroend
 
-LangString DESC_SEC_CORE ${LANG_ENGLISH} "Core ${PRODUCT_NAME} application files."
-LangString DESC_SEC_DESKTOP ${LANG_ENGLISH} "Add a shortcut to ${PRODUCT_NAME} on your desktop."
-LangString DESC_SEC_STARTMENU ${LANG_ENGLISH} "Add ${PRODUCT_NAME} to the Start Menu."
-LangString DESC_SEC_CONTEXT ${LANG_ENGLISH} "Add 'Open with ${PRODUCT_NAME}' to the right-click context menu."
-LangString DESC_SEC_ASSOCIATIONS ${LANG_ENGLISH} "Associate .agenticos project files with ${PRODUCT_NAME}."
-LangString DESC_SEC_PROTOCOL ${LANG_ENGLISH} "Register the agenticos:// protocol for deep linking."
-LangString DESC_SEC_UPDATES ${LANG_ENGLISH} "Enable automatic background updates."
-LangString DESC_SEC_TELEMETRY ${LANG_ENGLISH} "Send anonymous usage data to help improve ${PRODUCT_NAME}."
+; ═════════════════════════════════════════════════════════════════════════════
+; 8. LOGGING
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Structured logging via DetailPrint for diagnostic traceability.
+; Log format: [AgenticOS] <event>: <message>
+; ═════════════════════════════════════════════════════════════════════════════
 
-!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_CORE} $(DESC_SEC_CORE)
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_DESKTOP} $(DESC_SEC_DESKTOP)
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_STARTMENU} $(DESC_SEC_STARTMENU)
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_CONTEXT} $(DESC_SEC_CONTEXT)
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_ASSOCIATIONS} $(DESC_SEC_ASSOCIATIONS)
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_PROTOCOL} $(DESC_SEC_PROTOCOL)
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_UPDATES} $(DESC_SEC_UPDATES)
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_TELEMETRY} $(DESC_SEC_TELEMETRY)
-!insertmacro MUI_FUNCTION_DESCRIPTION_END
+!macro Log event message
+  Push $R0
+  DetailPrint "[${PRODUCT_NAME}] ${event}: ${message}"
+  Pop $R0
+!macroend
 
-!define MUI_CUSTOMFUNCTION_GUIINIT onGuiInit
+Function Log
+  Pop $R1
+  Pop $R0
+  DetailPrint "[${PRODUCT_NAME}] $R0: $R1"
+FunctionEnd
 
-; ── Init ─────────────────────────────────────────────────────────────────
+; ═════════════════════════════════════════════════════════════════════════════
+; 9. FONT MANAGEMENT
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Fonts are created once per context (installer/uninstaller) and reused.
+; CreateFont parameters: face, point_size, weight
+; ═════════════════════════════════════════════════════════════════════════════
 
-!define MUI_PAGE_HEADER_TEXT ""
-!define MUI_PAGE_HEADER_SUBTEXT ""
+Function InitFonts
+  CreateFont $FontTitle    "Segoe UI" ${FONT_SIZE_TITLE}  700
+  CreateFont $FontHeading  "Segoe UI" ${FONT_SIZE_HEADING} 700
+  CreateFont $FontBody     "Segoe UI" ${FONT_SIZE_BODY}   400
+  CreateFont $FontSmall    "Segoe UI" ${FONT_SIZE_SMALL}  400
+  CreateFont $FontLabel    "Segoe UI" ${FONT_SIZE_SMALL}  700
+  CreateFont $FontMono     "Consolas" ${FONT_SIZE_MONO}   400
+  CreateFont $FontCheck    "Segoe UI Symbol" ${FONT_SIZE_CHECKMARK} 700
+  CreateFont $FontDone     "Segoe UI" ${FONT_SIZE_HEADING} 700
+  CreateFont $FontWarn     "Segoe UI" ${FONT_SIZE_WARN}   400
+FunctionEnd
 
-!macro customInit
-  StrCpy $HAS_PREVIOUS_VERSION "0"
-  StrCpy $PREVIOUS_VERSION ""
-  StrCpy $PREVIOUS_INSTALL_PATH ""
+Function un.InitFonts
+  CreateFont $FontTitle    "Segoe UI" ${FONT_SIZE_TITLE}  700
+  CreateFont $FontHeading  "Segoe UI" ${FONT_SIZE_HEADING} 700
+  CreateFont $FontBody     "Segoe UI" ${FONT_SIZE_BODY}   400
+  CreateFont $FontSmall    "Segoe UI" ${FONT_SIZE_SMALL}  400
+  CreateFont $FontLabel    "Segoe UI" ${FONT_SIZE_SMALL}  700
+  CreateFont $FontMono     "Consolas" ${FONT_SIZE_MONO}   400
+  CreateFont $FontCheck    "Segoe UI Symbol" ${FONT_SIZE_CHECKMARK} 700
+  CreateFont $FontDone     "Segoe UI" ${FONT_SIZE_HEADING} 700
+  CreateFont $FontWarn     "Segoe UI" ${FONT_SIZE_WARN}   400
+FunctionEnd
 
-  ; Detect previous installation
+; ═════════════════════════════════════════════════════════════════════════════
+; 10. WINDOW MANAGEMENT
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Resizes and centers the installer window on screen.
+; Called via MUI_CUSTOMFUNCTION_GUIINIT.
+; ═════════════════════════════════════════════════════════════════════════════
+
+!ifndef BUILD_UNINSTALLER
+Function myGUIInit
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+
+  ; Resize to fixed dimensions
+  System::Call 'user32::SetWindowPos(i $HWNDPARENT, i 0, i 0, i 0, i ${INSTALLER_WIDTH}, i ${INSTALLER_HEIGHT}, i 0x16)'
+
+  ; Center on screen
+  System::Call 'user32::GetSystemMetrics(i 0) i .r1'
+  System::Call 'user32::GetSystemMetrics(i 1) i .r2'
+  IntOp $3 $1 - ${INSTALLER_WIDTH}
+  IntOp $3 $3 / 2
+  IntOp $4 $2 - ${INSTALLER_HEIGHT}
+  IntOp $4 $4 / 2
+  System::Call 'user32::SetWindowPos(i $HWNDPARENT, i 0, i $3, i $4, i 0, i 0, i 0x15)'
+
+  !insertmacro Log "GUI" "Window initialized: ${INSTALLER_WIDTH}x${INSTALLER_HEIGHT} centered"
+
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+!endif
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 11. PROCESS MANAGEMENT
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Handles running application detection and graceful termination.
+; Protocol: graceful request → wait → force terminate (fallback)
+; Uses taskkill (built into Windows) via NSIS ExecWait.
+; No external NSIS plugins required.
+; ═════════════════════════════════════════════════════════════════════════════
+
+!macro CloseRunningApp
+  !insertmacro Log "PROCESS" "Attempting to close ${PRODUCT_NAME}.exe gracefully..."
+  ExecWait 'taskkill /IM "${PRODUCT_NAME}.exe"'
+  Sleep 1500
+  !insertmacro Log "PROCESS" "Verifying ${PRODUCT_NAME}.exe closed..."
+  ExecWait 'taskkill /IM "${PRODUCT_NAME}.exe" /F'
+  Sleep 1000
+  !insertmacro Log "PROCESS" "${PRODUCT_NAME}.exe close sequence completed"
+!macroend
+
+Function CloseRunningApp
+  !insertmacro CloseRunningApp
+FunctionEnd
+
+Function un.CloseRunningApp
+  !insertmacro Log "PROCESS" "Uninstaller: closing ${PRODUCT_NAME}.exe gracefully..."
+  ExecWait 'taskkill /IM "${PRODUCT_NAME}.exe"'
+  Sleep 1500
+  !insertmacro Log "PROCESS" "Uninstaller: force closing if still running..."
+  ExecWait 'taskkill /IM "${PRODUCT_NAME}.exe" /F'
+  Sleep 1000
+  !insertmacro Log "PROCESS" "Uninstaller: close sequence completed"
+FunctionEnd
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 12. DISK SPACE HELPERS
+; ═════════════════════════════════════════════════════════════════════════════
+
+Function GetDiskSpace
+  Pop $R0
+  ${DriveSpace} $R0 "/D=F /S=M" $R1
+  Push $R1
+FunctionEnd
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 13. ERROR RECOVERY HELPERS
+; ═════════════════════════════════════════════════════════════════════════════
+
+; Checks whether the install directory exists and contains a previous install.
+; This is used to detect upgrades vs fresh installs.
+Function CheckExistingInstall
+  Push $0
   ReadRegStr $PREVIOUS_VERSION HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion"
   ${If} $PREVIOUS_VERSION == ""
     ReadRegStr $PREVIOUS_VERSION HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion"
   ${EndIf}
-  ${If} $PREVIOUS_VERSION == ""
-    ReadRegStr $PREVIOUS_VERSION HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\com.agenticos.studio" "DisplayVersion"
-  ${EndIf}
+
   ${If} $PREVIOUS_VERSION != ""
     StrCpy $HAS_PREVIOUS_VERSION "1"
     ReadRegStr $PREVIOUS_INSTALL_PATH HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "InstallLocation"
@@ -193,638 +459,719 @@ LangString DESC_SEC_TELEMETRY ${LANG_ENGLISH} "Send anonymous usage data to help
     ${If} $PREVIOUS_INSTALL_PATH != ""
       StrCpy $INSTDIR $PREVIOUS_INSTALL_PATH
     ${EndIf}
+    !insertmacro Log "UPGRADE" "Previous installation detected: v$PREVIOUS_VERSION at $INSTDIR"
+  ${Else}
+    StrCpy $HAS_PREVIOUS_VERSION "0"
+    !insertmacro Log "INSTALL" "Fresh installation — no previous version found"
   ${EndIf}
 
-  ; Default selections
-  StrCpy $OPT_CREATE_DESKTOP "1"
-  StrCpy $OPT_CREATE_STARTMENU "1"
-  StrCpy $OPT_LAUNCH_AFTER "1"
-  StrCpy $OPT_CONTEXT_MENU "1"
-  StrCpy $OPT_REGISTER_TYPES "0"
-  StrCpy $OPT_AUTO_UPDATES "1"
-!macroend
-
-Function onGuiInit
-  ; White theme: black text on white background
-  SetCtlColors $HWNDPARENT "111827" "FFFFFF"
+  Pop $0
 FunctionEnd
 
-; ── Font Initialization ───────────────────────────────────────────────────
+; ═════════════════════════════════════════════════════════════════════════════
+; 14. PAGE DECLARATIONS
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Page flow:
+;   Installer:  Welcome → Preferences → Installing → Complete
+;   Uninstaller: Confirm → Complete (uninstall execution happens in Confirm_Leave)
+;
+; Note: MUI_PAGE_INSTFILES is supplied by electron-builder's template.
+; We customize it via MUI_PAGE_CUSTOMFUNCTION_PRE and _SHOW (defined above).
+; ═════════════════════════════════════════════════════════════════════════════
 
-Function InitFonts
-  System::Call "user32::CreateFont(48, 0, 0, 0, 600, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontH1
-  System::Call "user32::CreateFont(24, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontH2
-  System::Call "user32::CreateFont(18, 0, 0, 0, 600, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontH3
-  System::Call "user32::CreateFont(16, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontBody
-  System::Call "user32::CreateFont(16, 0, 0, 0, 600, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontBodyBold
-  System::Call "user32::CreateFont(13, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontSmall
-  System::Call "user32::CreateFont(14, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, t'Cascadia Mono') i.s"
-  Pop $FontMono
-FunctionEnd
+!ifndef BUILD_UNINSTALLER
+  ; Installer pages
+  Page custom InstallerPage_Welcome    InstallerPage_Welcome_Leave
+  Page custom InstallerPage_Prefs      InstallerPage_Prefs_Leave
+  !insertmacro MUI_PAGE_INSTFILES
+  Page custom InstallerPage_Complete   ""
+!endif
 
-; ═══════════════════════════════════════════════════════════════════════════
-; WELCOME PAGE
-; ═══════════════════════════════════════════════════════════════════════════
+!ifdef BUILD_UNINSTALLER
+  ; Uninstaller pages
+  UninstPage custom un.Page_Confirm   un.Page_Confirm_Leave
+  UninstPage custom un.Page_Complete  ""
+!endif
 
-Function CustomWelcomePage
-  !insertmacro MUI_HEADER_TEXT "${PRODUCT_NAME}" ""
+; MUI_LANGUAGE is included by electron-builder's template — do not add it here.
 
-  nsDialogs::Create 1018
+; ═════════════════════════════════════════════════════════════════════════════
+; 15. INSTALLER — WELCOME PAGE
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Layout:
+;   AgenticOS (centered, bold, 22pt)
+;   Tagline (centered, muted, 9pt)
+;   Version (centered, muted, 7pt)
+;   [Get Started] (accent button, centered)
+;   Cancel (link, centered, muted)
+; ═════════════════════════════════════════════════════════════════════════════
+
+Function InstallerPage_Welcome
+  nsDialogs::Create ${INSTALLER_DIALOG_ID}
   Pop $0
   ${If} $0 == error
     Abort
   ${EndIf}
+
+  SetCtlColors $0 "" "${CLR_BG}"
 
   Call InitFonts
 
-  ; Logo area — accent brand bar at top
-  ${NSD_CreateLabel} 0u 0u 100% 6u ""
-  Pop $0
-  SetCtlColors $0 "2563EB" "2563EB"
+  ; ── Product name ──────────────────────────────────────────────────────────
+  ${NSD_CreateLabel} 0 80u ${LABEL_WIDTH_FULL} 30u "${PRODUCT_NAME}"
+  Pop $LabelTitle
+  SetCtlColors $LabelTitle ${CLR_TEXT} ${CLR_BG}
+  SendMessage $LabelTitle ${WM_SETFONT} $FontTitle 0
+  ${NSD_AddStyle} $LabelTitle ${SS_CENTER}
 
-  ; Product name
-  ${NSD_CreateLabel} 32u 28u 100% 28u "${PRODUCT_NAME}"
-  Pop $1
-  SendMessage $1 ${WM_SETFONT} $FontH1 1
-  SetCtlColors $1 "111827" "FFFFFF"
+  ; ── Tagline ───────────────────────────────────────────────────────────────
+  ${NSD_CreateLabel} ${CONTENT_MARGIN}u 118u 460u 18u "${PRODUCT_TAGLINE}"
+  Pop $LabelTagline
+  SetCtlColors $LabelTagline ${CLR_TEXT_MUTED} ${CLR_BG}
+  SendMessage $LabelTagline ${WM_SETFONT} $FontBody 0
+  ${NSD_AddStyle} $LabelTagline ${SS_CENTER}
 
-  ; Version
-  ${NSD_CreateLabel} 32u 56u 100% 14u "Version ${PRODUCT_VERSION}"
-  Pop $2
-  SendMessage $2 ${WM_SETFONT} $FontSmall 1
-  SetCtlColors $2 "6B7280" "FFFFFF"
+  ; ── Version ───────────────────────────────────────────────────────────────
+  ${NSD_CreateLabel} 0 140u ${LABEL_WIDTH_FULL} 12u "v${VERSION}"
+  Pop $LabelVersion
+  SetCtlColors $LabelVersion ${CLR_TEXT_MUTED} ${CLR_BG}
+  SendMessage $LabelVersion ${WM_SETFONT} $FontSmall 0
+  ${NSD_AddStyle} $LabelVersion ${SS_CENTER}
 
-  ; Tagline
-  ${NSD_CreateLabel} 32u 80u 280u 32u "${PRODUCT_TAGLINE}"
-  Pop $3
-  SendMessage $3 ${WM_SETFONT} $FontBody 1
-  SetCtlColors $3 "6B7280" "FFFFFF"
+  ; ── Get Started button ────────────────────────────────────────────────────
+  ; Centered: (540 - 140) / 2 = 200
+  ${NSD_CreateButton} 200u 178u ${BUTTON_WIDTH}u ${BUTTON_HEIGHT}u "Get Started"
+  Pop $BtnNext
+  ${NSD_OnClick} $BtnNext InstallerPage_Welcome_Next
 
-  ; Separator
-  ${NSD_CreateLabel} 32u 118u 280u 1u ""
-  Pop $4
-  SetCtlColors $4 "E5E7EB" "E5E7EB"
+  ; ── Cancel link ──────────────────────────────────────────────────────────
+  ${NSD_CreateLink} 230u 212u 80u 12u "Cancel"
+  Pop $LinkCancel
+  SetCtlColors $LinkCancel ${CLR_TEXT_MUTED} ${CLR_BG}
+  ${NSD_OnClick} $LinkCancel InstallerPage_Welcome_Cancel
 
-  ; Feature highlights
-  ${NSD_CreateLabel} 32u 132u 280u 16u "✦  Multi-agent AI workspace with role-based collaboration"
-  Pop $5
-  SendMessage $5 ${WM_SETFONT} $FontBody 1
-  SetCtlColors $5 "374151" "FFFFFF"
-
-  ${NSD_CreateLabel} 32u 152u 280u 16u "✦  Autonomous execution & task orchestration"
-  Pop $6
-  SendMessage $6 ${WM_SETFONT} $FontBody 1
-  SetCtlColors $6 "374151" "FFFFFF"
-
-  ${NSD_CreateLabel} 32u 172u 280u 16u "✦  Built-in browser automation & web research"
-  Pop $7
-  SendMessage $7 ${WM_SETFONT} $FontBody 1
-  SetCtlColors $7 "374151" "FFFFFF"
-
-  ${NSD_CreateLabel} 32u 192u 280u 16u "✦  Visual canvas, code editor & Git integration"
-  Pop $8
-  SendMessage $8 ${WM_SETFONT} $FontBody 1
-  SetCtlColors $8 "374151" "FFFFFF"
-
-  ${NSD_CreateLabel} 32u 212u 280u 16u "✦  Local-first architecture with privacy focus"
-  Pop $9
-  SendMessage $9 ${WM_SETFONT} $FontBody 1
-  SetCtlColors $9 "374151" "FFFFFF"
-
-  ; Upgrade notification
-  ${If} $HAS_PREVIOUS_VERSION == "1"
-    ${NSD_CreateLabel} 32u 242u 280u 14u "Upgrading from v$PREVIOUS_VERSION — settings will be preserved."
-    Pop $R0
-    SendMessage $R0 ${WM_SETFONT} $FontSmall 1
-    SetCtlColors $R0 "2563EB" "FFFFFF"
-  ${EndIf}
+  !insertmacro Log "PAGE" "Welcome page displayed (v${VERSION})"
 
   nsDialogs::Show
 FunctionEnd
 
-; ═══════════════════════════════════════════════════════════════════════════
-; OPTIONS PAGE
-; ═══════════════════════════════════════════════════════════════════════════
+Function InstallerPage_Welcome_Next
+  SendMessage $HWNDPARENT 0x408 1 0
+FunctionEnd
 
-Function CustomOptionsPage
-  !insertmacro MUI_HEADER_TEXT "${PRODUCT_NAME}" "Choose your installation preferences"
+Function InstallerPage_Welcome_Cancel
+  MessageBox MB_YESNO|MB_ICONQUESTION "Cancel the ${PRODUCT_NAME} installation?" IDYES abort IDNO done
+  abort:
+    !insertmacro Log "INSTALL" "User cancelled installation from Welcome page"
+    Quit
+  done:
+FunctionEnd
 
-  nsDialogs::Create 1018
+Function InstallerPage_Welcome_Leave
+FunctionEnd
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 16. INSTALLER — PREFERENCES PAGE
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Layout:
+;   INSTALL LOCATION (section label)
+;   [dir input field                  ] [Browse]
+;   604 MB required · 26.7 GB available (muted)
+;   ───────────────────────────────── (divider)
+;   OPTIONS (section label)
+;   ☐ Create desktop shortcut
+;   ☐ Launch AgenticOS after install
+;   ☐ Enable automatic updates
+;   ───────────────────────────────── (divider)
+;   2 of 3 (step indicator)    [Back] [Install]
+; ═════════════════════════════════════════════════════════════════════════════
+
+Function InstallerPage_Prefs
+  nsDialogs::Create ${INSTALLER_DIALOG_ID}
   Pop $0
   ${If} $0 == error
     Abort
   ${EndIf}
 
-  ; Title
-  ${NSD_CreateLabel} 24u 10u 100% 20u "Installation Options"
-  Pop $1
-  SendMessage $1 ${WM_SETFONT} $FontH3 1
-  SetCtlColors $1 "111827" "FFFFFF"
+  SetCtlColors $0 "" "${CLR_BG}"
 
-  ; Card background — options
-  ${NSD_CreateCheckBox} 24u 38u 280u 14u "Create Desktop Shortcut"
-  Pop $R0
-  ${NSD_SetState} $R0 ${BST_CHECKED}
+  ; ── Section: Install Location ────────────────────────────────────────────
+  !insertmacro CreateSectionTitle ${CONTENT_MARGIN}u 14u 200u "INSTALL LOCATION"
 
-  ${NSD_CreateCheckBox} 24u 56u 280u 14u "Create Start Menu Shortcut"
-  Pop $R1
-  ${NSD_SetState} $R1 ${BST_CHECKED}
+  ; Path input field
+  ${NSD_CreateText} ${CONTENT_MARGIN}u 28u 360u 16u $INSTDIR
+  Pop $DirInput
+  SetCtlColors $DirInput ${CLR_TEXT} ${CLR_INPUT_BG}
 
-  ${NSD_CreateCheckBox} 24u 74u 280u 14u "Launch AgenticOS After Install"
-  Pop $R2
-  ${NSD_SetState} $R2 ${BST_CHECKED}
-
-  ${NSD_CreateCheckBox} 24u 92u 280u 14u "Add 'Open with AgenticOS' Context Menu"
-  Pop $R3
-  ${NSD_SetState} $R3 ${BST_CHECKED}
-
-  ${NSD_CreateCheckBox} 24u 110u 280u 14u "Register Supported Project Types"
-  Pop $R4
-  ${NSD_SetState} $R4 ${UNCHECKED}
-
-  ${NSD_CreateCheckBox} 24u 128u 280u 14u "Enable Automatic Updates"
-  Pop $R5
-  ${NSD_SetState} $R5 ${BST_CHECKED}
-
-  ; Separator
-  ${NSD_CreateLabel} 24u 150u 280u 1u ""
-  Pop $R6
-  SetCtlColors $R6 "E5E7EB" "E5E7EB"
-
-  ; Location info
-  ${NSD_CreateLabel} 24u 160u 120u 14u "Install location:"
-  Pop $R7
-  SendMessage $R7 ${WM_SETFONT} $FontSmall 1
-  SetCtlColors $R7 "6B7280" "FFFFFF"
-
-  ${NSD_CreateLabel} 24u 176u 280u 14u "$INSTDIR"
-  Pop $R8
-  SendMessage $R8 ${WM_SETFONT} $FontMono 1
-  SetCtlColors $R8 "374151" "FFFFFF"
+  ; Browse button
+  !insertmacro CreateSecondaryButton 388u 28u 60u 16u "Browse..."
+  Pop $BtnBrowse
+  ${NSD_OnClick} $BtnBrowse InstallerPage_Prefs_Browse
 
   ; Disk space info
-  ${GetRoot} "$INSTDIR" $R9
-  ${DriveSpace} $R9 "/D=F /S=M" $R9
+  ${GetRoot} "$INSTDIR" $R0
+  ${DriveSpace} $R0 "/D=F /S=M" $R1
+  ${NSD_CreateLabel} ${CONTENT_MARGIN}u 48u 400u 10u "Checking disk space..."
+  Pop $LabelSpace
+  SetCtlColors $LabelSpace ${CLR_TEXT_MUTED} ${CLR_BG}
+  SendMessage $LabelSpace ${WM_SETFONT} $FontSmall 0
 
-  ${NSD_CreateLabel} 24u 200u 200u 14u "Required: ~450 MB     Available: $R9 MB"
-  Pop $R0
-  SendMessage $R0 ${WM_SETFONT} $FontSmall 1
-  SetCtlColors $R0 "6B7280" "FFFFFF"
+  ; ── Divider ──────────────────────────────────────────────────────────────
+  !insertmacro CreateDivider ${CONTENT_MARGIN}u 66u ${DIVIDER_WIDTH}u
+  Pop $Divider1
+
+  ; ── Section: Options ─────────────────────────────────────────────────────
+  !insertmacro CreateSectionTitle ${CONTENT_MARGIN}u 74u 200u "OPTIONS"
+  Pop $LabelOptSection
+
+  ; Checkbox: Desktop shortcut
+  !insertmacro CreateThemedCheckbox ${CONTENT_MARGIN}u 90u ${CHECKBOX_WIDTH}u ${CHECKBOX_HEIGHT}u "Create desktop shortcut"
+  Pop $ChkDesktop
+  ${NSD_SetState} $ChkDesktop ${BST_CHECKED}
+
+  ; Checkbox: Launch after install
+  !insertmacro CreateThemedCheckbox ${CONTENT_MARGIN}u 108u ${CHECKBOX_WIDTH}u ${CHECKBOX_HEIGHT}u "Launch ${PRODUCT_NAME} after install"
+  Pop $ChkLaunch
+  ${NSD_SetState} $ChkLaunch ${BST_CHECKED}
+
+  ; Checkbox: Auto updates
+  !insertmacro CreateThemedCheckbox ${CONTENT_MARGIN}u 126u ${CHECKBOX_WIDTH}u ${CHECKBOX_HEIGHT}u "Enable automatic updates"
+  Pop $ChkAutoUpdate
+  ${NSD_SetState} $ChkAutoUpdate ${BST_CHECKED}
+
+  ; ── Divider ──────────────────────────────────────────────────────────────
+  !insertmacro CreateDivider ${CONTENT_MARGIN}u 150u ${DIVIDER_WIDTH}u
+  Pop $Divider2
+
+  ; ── Step indicator ───────────────────────────────────────────────────────
+  !insertmacro CreateStepIndicator ${CONTENT_MARGIN}u 155u "2 of 3"
+
+  ; ── Navigation buttons ───────────────────────────────────────────────────
+  !insertmacro CreateSecondaryButton 340u 158u 60u 16u "Back"
+  Pop $BtnBack
+  ${NSD_OnClick} $BtnBack InstallerPage_Prefs_Back
+
+  !insertmacro CreatePrimaryButton 408u 156u 60u 16u "Install"
+  Pop $BtnInstall
+  ${NSD_OnClick} $BtnInstall InstallerPage_Prefs_Install
+
+  ; ── Update disk space dynamically ────────────────────────────────────────
+  ${GetRoot} "$INSTDIR" $R0
+  ${DriveSpace} $R0 "/D=F /S=M" $R1
+  StrCpy $R2 "Required: calculating...  Available: $R1 MB"
+  ${NSD_SetText} $LabelSpace $R2
+
+  !insertmacro Log "PAGE" "Preferences page displayed — install dir: $INSTDIR"
 
   nsDialogs::Show
 
-  ; Save selections
-  ${NSD_GetState} $R0 $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $OPT_CREATE_DESKTOP "1"
-    SectionSetFlags ${SEC_DESKTOP} 1
-  ${Else}
-    StrCpy $OPT_CREATE_DESKTOP "0"
-    SectionSetFlags ${SEC_DESKTOP} 0
-  ${EndIf}
+  ; ── Save selections on leave ─────────────────────────────────────────────
+  ; (This code runs after Show returns)
+  !insertmacro Log "PREFERENCES" "Desktop shortcut: $CreateDesktopShortcut, Launch: $LaunchAfterInstall, AutoUpdate: $EnableAutoUpdate"
+FunctionEnd
 
-  ${NSD_GetState} $R1 $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $OPT_CREATE_STARTMENU "1"
-    SectionSetFlags ${SEC_STARTMENU} 1
-  ${Else}
-    StrCpy $OPT_CREATE_STARTMENU "0"
-    SectionSetFlags ${SEC_STARTMENU} 0
-  ${EndIf}
+Function InstallerPage_Prefs_Browse
+  nsDialogs::SelectFolderDialog "Select install location" $INSTDIR
+  Pop $0
+  ${If} $0 != error
+    StrCpy $INSTDIR $0
+    ${NSD_SetText} $DirInput $INSTDIR
 
-  ${NSD_GetState} $R2 $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $OPT_LAUNCH_AFTER "1"
-  ${Else}
-    StrCpy $OPT_LAUNCH_AFTER "0"
-  ${EndIf}
+    ; Update disk space info
+    ${GetRoot} "$INSTDIR" $R0
+    ${DriveSpace} $R0 "/D=F /S=M" $R1
+    StrCpy $R2 "Required: calculating...  Available: $R1 MB"
+    ${NSD_SetText} $LabelSpace $R2
 
-  ${NSD_GetState} $R3 $0
-  ${If} $0 == ${BST_CHECKED}
-    SectionSetFlags ${SEC_CONTEXT} 1
-  ${Else}
-    SectionSetFlags ${SEC_CONTEXT} 0
-  ${EndIf}
-
-  ${NSD_GetState} $R4 $0
-  ${If} $0 == ${BST_CHECKED}
-    SectionSetFlags ${SEC_ASSOCIATIONS} 1
-  ${Else}
-    SectionSetFlags ${SEC_ASSOCIATIONS} 0
-  ${EndIf}
-
-  ${NSD_GetState} $R5 $0
-  ${If} $0 == ${BST_CHECKED}
-    SectionSetFlags ${SEC_UPDATES} 1
-  ${Else}
-    SectionSetFlags ${SEC_UPDATES} 0
+    !insertmacro Log "PREFERENCES" "Install directory changed to: $INSTDIR"
   ${EndIf}
 FunctionEnd
 
-; ═══════════════════════════════════════════════════════════════════════════
-; INSTALL HOOKS
-; ═══════════════════════════════════════════════════════════════════════════
+Function InstallerPage_Prefs_Back
+  SendMessage $HWNDPARENT 0x408 -1 0
+FunctionEnd
 
-!macro customInstall
-  DetailPrint "━━━ ${PRODUCT_NAME} Installation ━━━"
-  DetailPrint ""
-  DetailPrint "●  Preparing installation environment..."
-  Sleep 300
+Function InstallerPage_Prefs_Install
+  ${NSD_GetText} $DirInput $INSTDIR
+  ${NSD_GetState} $ChkDesktop $CreateDesktopShortcut
+  ${NSD_GetState} $ChkLaunch $LaunchAfterInstall
+  ${NSD_GetState} $ChkAutoUpdate $EnableAutoUpdate
 
-  ${If} $HAS_PREVIOUS_VERSION == "1"
-    DetailPrint "●  Previous installation detected: v$PREVIOUS_VERSION"
-    DetailPrint "●  Settings will be preserved during upgrade"
-    ${If} ${FileExists} "$APPDATA\${PRODUCT_NAME}\config.json"
-      CopyFiles /SILENT "$APPDATA\${PRODUCT_NAME}\config.json" "$TEMP\agenticos-config-backup.json"
-      DetailPrint "●  Configuration backed up"
-    ${EndIf}
+  !insertmacro Log "PREFERENCES" "Install confirmed — path: $INSTDIR, desktop: $CreateDesktopShortcut, launch: $LaunchAfterInstall, updates: $EnableAutoUpdate"
+  SendMessage $HWNDPARENT 0x408 1 0
+FunctionEnd
+
+Function InstallerPage_Prefs_Leave
+  ${NSD_GetText} $DirInput $INSTDIR
+FunctionEnd
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 17. INSTALLER — INSTFILES PAGE
+!ifndef BUILD_UNINSTALLER
+Function InstFilesPage_Pre
+  !insertmacro Log "INSTALL" "Starting installation..."
+FunctionEnd
+
+Function InstFilesPage_Show
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+
+  ; Style the progress bar
+  FindWindow $0 "#32770" "" $HWNDPARENT
+  GetDlgItem $1 $0 1004
+  SendMessage $1 0x409 0 ${CLR_ACCENT}
+  SendMessage $1 0x408 0 ${CLR_SURFACE}
+
+  ; Style the detail text
+  GetDlgItem $2 $0 1006
+  SetCtlColors $2 ${CLR_TEXT_MUTED} ${CLR_BG}
+
+  ; Hide the Cancel button during installation
+  GetDlgItem $3 $HWNDPARENT 2
+  EnableWindow $3 0
+  ShowWindow $3 0
+
+  !insertmacro Log "INSTALL" "Installation page styled and locked"
+
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+!endif
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 18. INSTALLER — COMPLETE PAGE
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Layout:
+;   ✓ (large checkmark, accent)
+;   AgenticOS is ready. (white, 14pt bold)
+;   Installed to C:\... (truncated path, muted, 8pt)
+;   ───────────────── (divider)
+;   [Launch AgenticOS] (accent button)
+;   Close (link, muted)
+; ═════════════════════════════════════════════════════════════════════════════
+
+Function InstallerPage_Complete
+  nsDialogs::Create ${INSTALLER_DIALOG_ID}
+  Pop $0
+  ${If} $0 == error
+    Abort
   ${EndIf}
 
-  DetailPrint ""
-  DetailPrint "●  Installing dependencies..."
-  Sleep 200
+  SetCtlColors $0 "" "${CLR_BG}"
+
+  ; ── Checkmark ────────────────────────────────────────────────────────────
+  ${NSD_CreateLabel} 0 50u ${LABEL_WIDTH_FULL} 36u "✓"
+  Pop $LabelCheck
+  SetCtlColors $LabelCheck ${CLR_ACCENT} ${CLR_BG}
+  SendMessage $LabelCheck ${WM_SETFONT} $FontCheck 0
+  ${NSD_AddStyle} $LabelCheck ${SS_CENTER}
+
+  ; ── Ready message ────────────────────────────────────────────────────────
+  ${NSD_CreateLabel} 0 96u ${LABEL_WIDTH_FULL} 20u "${PRODUCT_NAME} is ready."
+  Pop $LabelDone
+  SetCtlColors $LabelDone ${CLR_TEXT} ${CLR_BG}
+  SendMessage $LabelDone ${WM_SETFONT} $FontDone 0
+  ${NSD_AddStyle} $LabelDone ${SS_CENTER}
+
+  ; ── Install path (truncated) ─────────────────────────────────────────────
+  StrLen $R0 $INSTDIR
+  ${If} $R0 > 50
+    StrCpy $R1 $INSTDIR 50 -50
+    StrCpy $R1 "...$R1"
+  ${Else}
+    StrCpy $R1 $INSTDIR
+  ${EndIf}
+  ${NSD_CreateLabel} ${CONTENT_MARGIN}u 122u 460u 12u "Installed to $R1"
+  Pop $LabelPath
+  SetCtlColors $LabelPath ${CLR_TEXT_MUTED} ${CLR_BG}
+  SendMessage $LabelPath ${WM_SETFONT} $FontSmall 0
+  ${NSD_AddStyle} $LabelPath ${SS_CENTER}
+
+  ; ── Divider ──────────────────────────────────────────────────────────────
+  !insertmacro CreateDivider 80u 144u 300u
+  Pop $DividerFinal
+
+  ; ── Launch button ────────────────────────────────────────────────────────
+  ${NSD_CreateButton} 200u 154u 140u 24u "Launch ${PRODUCT_NAME}"
+  Pop $BtnLaunch
+  ${NSD_OnClick} $BtnLaunch InstallerPage_Complete_Launch
+
+  ; ── Close link ──────────────────────────────────────────────────────────
+  !insertmacro CreateLinkButton 230u 184u 80u 12u "Close"
+  Pop $LinkClose
+  ${NSD_OnClick} $LinkClose InstallerPage_Complete_Close
+
+  !insertmacro Log "PAGE" "Complete page displayed — install path: $INSTDIR"
+
+  nsDialogs::Show
+FunctionEnd
+
+Function InstallerPage_Complete_Launch
+  !insertmacro Log "COMPLETE" "User requested launch"
+  Exec '"$INSTDIR\${PRODUCT_NAME}.exe"'
+  Quit
+FunctionEnd
+
+Function InstallerPage_Complete_Close
+  !insertmacro Log "COMPLETE" "User closed installer"
+  Quit
+FunctionEnd
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 19. INSTALL HOOKS
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; These macros are called by electron-builder at specific points in the
+; installation lifecycle. They handle detection, logging, and post-install.
+; ═════════════════════════════════════════════════════════════════════════════
+
+!macro customInit
+  !insertmacro Log "INIT" "Initializing installer"
+
+  StrCpy $HAS_PREVIOUS_VERSION "0"
+  StrCpy $PREVIOUS_VERSION ""
+  StrCpy $PREVIOUS_INSTALL_PATH ""
+  StrCpy $CreateDesktopShortcut "1"
+  StrCpy $LaunchAfterInstall "1"
+  StrCpy $EnableAutoUpdate "1"
+
+  Call CheckExistingInstall
+!macroend
+
+!macro customInstall
+  !insertmacro Log "INSTALL" "Installing to: $INSTDIR"
+  DetailPrint "━━━ ${PRODUCT_NAME} Installation ━━━"
+
+  ${If} $HAS_PREVIOUS_VERSION == "1"
+    !insertmacro Log "UPGRADE" "Upgrading from v$PREVIOUS_VERSION"
+    DetailPrint "●  Upgrading from v$PREVIOUS_VERSION — preserving settings"
+  ${EndIf}
+
+  DetailPrint "●  Installing core application files..."
 !macroend
 
 !macro customInstallFinished
   DetailPrint ""
   DetailPrint "●  Configuring system..."
-  Sleep 200
 
-  ; Write registry info
+  ; Registry — uninstall info
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName" "${PRODUCT_NAME}"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion" "${PRODUCT_VERSION}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "Publisher" "${PRODUCT_NAME}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayIcon" "$INSTDIR\${PRODUCT_NAME}.exe,0"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "URLInfoAbout" "${PRODUCT_SUPPORT_URL}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "URLInfoAbout" "https://agenticos.ai/support"
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "NoRepair" 0
+  !insertmacro Log "REGISTRY" "Uninstall registry keys written"
+
+  ; Desktop shortcut (handled here, not by electron-builder)
+  ${If} $CreateDesktopShortcut == ${BST_CHECKED}
+    CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe"
+    !insertmacro Log "SHORTCUT" "Desktop shortcut created"
+  ${EndIf}
+
+  ; Auto-update setting
+  ${If} $EnableAutoUpdate == ${BST_CHECKED}
+    WriteRegStr HKCU "Software\${PRODUCT_NAME}\Settings" "AutoUpdate" "true"
+    !insertmacro Log "SETTINGS" "Auto-updates enabled"
+  ${EndIf}
+
+  ; Launch after install (handled from Complete page, not here)
+  ; This is stored so the Complete page can use it
 
   System::Call 'shell32.dll::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
 
-  DetailPrint ""
-  DetailPrint "●  Creating shortcuts..."
-  Sleep 100
-
-  DetailPrint ""
   DetailPrint "●  Finalizing installation..."
-  Sleep 200
-
-  ; Restore config
-  ${If} ${FileExists} "$TEMP\agenticos-config-backup.json"
-    CopyFiles /SILENT "$TEMP\agenticos-config-backup.json" "$APPDATA\${PRODUCT_NAME}\config.json"
-    Delete "$TEMP\agenticos-config-backup.json"
-  ${EndIf}
-
-  ; Launch
-  ${If} $OPT_LAUNCH_AFTER == "1"
-    ExecShell "open" "$INSTDIR\${PRODUCT_NAME}.exe"
-  ${EndIf}
+  !insertmacro Log "INSTALL" "Installation completed successfully"
 !macroend
 
-; ── Non-component install (for electron-builder compat) ───────────────────
-!macro customRemoveFiles
-  DetailPrint "Cleaning up remaining files..."
-!macroend
+; customRemoveFiles intentionally NOT defined — let the template handle
+; residual file deletion after customUnInstall runs.
 
-Section "Uninstall"
-  ; Handled by electron-builder + customUnInstall hooks
-SectionEnd
+; ═════════════════════════════════════════════════════════════════════════════
+; 20. UNINSTALLER — CONFIRM PAGE
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Layout:
+;   Uninstall AgenticOS (white, 13pt bold)
+;   v3.0.0 (muted, 8pt)
+;   C:\... (monospace, truncated)
+;   ───────────────── (divider)
+;   WHAT TO REMOVE (section label)
+;   ☐ Settings and configuration (6 KB)
+;   ☐ Cache (Not found)
+;   ☐ User data and workspaces (unchecked)
+;   ───────────────── (divider)
+;   [⚠ AgenticOS is running. Close it.] (inline warning, conditional)
+;                           [Cancel] [Uninstall]
+; ═════════════════════════════════════════════════════════════════════════════
 
-; ═══════════════════════════════════════════════════════════════════════════
-; COMPLETE PAGE
-; ═══════════════════════════════════════════════════════════════════════════
-
-Function CustomCompletePage
-  !insertmacro MUI_HEADER_TEXT "${PRODUCT_NAME}" "Installation completed successfully"
-
-  nsDialogs::Create 1018
+Function un.Page_Confirm
+  nsDialogs::Create ${INSTALLER_DIALOG_ID}
   Pop $0
   ${If} $0 == error
     Abort
   ${EndIf}
 
-  ${NSD_CreateLabel} 0u 0u 100% 6u ""
-  Pop $0
-  SetCtlColors $0 "2563EB" "2563EB"
-
-  ; Success indicator
-  ${NSD_CreateLabel} 32u 30u 40u 40u "✓"
-  Pop $1
-  SendMessage $1 ${WM_SETFONT} $FontH1 1
-  SetCtlColors $1 "2563EB" "FFFFFF"
-
-  ; Title
-  ${NSD_CreateLabel} 80u 32u 200u 28u "Installation Complete"
-  Pop $2
-  SendMessage $2 ${WM_SETFONT} $FontH1 1
-  SetCtlColors $2 "111827" "FFFFFF"
-
-  ; Subtitle
-  ${NSD_CreateLabel} 32u 78u 280u 14u "${PRODUCT_NAME} ${PRODUCT_VERSION} is ready to use."
-  Pop $3
-  SendMessage $3 ${WM_SETFONT} $FontBody 1
-  SetCtlColors $3 "6B7280" "FFFFFF"
-
-  ; Separator
-  ${NSD_CreateLabel} 32u 100u 280u 1u ""
-  Pop $4
-  SetCtlColors $4 "E5E7EB" "E5E7EB"
-
-  ; Info
-  ${NSD_CreateLabel} 32u 112u 280u 14u "Install path:"
-  Pop $5
-  SendMessage $5 ${WM_SETFONT} $FontSmall 1
-  SetCtlColors $5 "6B7280" "FFFFFF"
-
-  ${NSD_CreateLabel} 32u 128u 280u 14u "$INSTDIR"
-  Pop $6
-  SendMessage $6 ${WM_SETFONT} $FontMono 1
-  SetCtlColors $6 "374151" "FFFFFF"
-
-  ${If} $HAS_PREVIOUS_VERSION == "1"
-    ${NSD_CreateLabel} 32u 154u 280u 14u "Settings from v$PREVIOUS_VERSION have been preserved."
-    Pop $7
-    SendMessage $7 ${WM_SETFONT} $FontSmall 1
-    SetCtlColors $7 "2563EB" "FFFFFF"
-  ${EndIf}
-
-  nsDialogs::Show
-FunctionEnd
-
-; ═══════════════════════════════════════════════════════════════════════════
-; UNINSTALLER
-; ═══════════════════════════════════════════════════════════════════════════
-
-!macro customUnInit
-  StrCpy $REMOVE_SETTINGS "0"
-  StrCpy $REMOVE_CACHE "0"
-  StrCpy $REMOVE_MODELS "0"
-  StrCpy $REMOVE_WORKSPACE "0"
-  Call un.DetectData
-!macroend
-
-Function un.DetectData
-  StrCpy $DATA_SETTINGS_SIZE "calculating..."
-  StrCpy $DATA_CACHE_SIZE "calculating..."
-  StrCpy $DATA_MODELS_SIZE "calculating..."
-  StrCpy $DATA_WORKSPACE_SIZE "calculating..."
-  StrCpy $DATA_TOTAL_SIZE "calculating..."
-  StrCpy $DATA_TOTAL_RECOVERABLE "0"
-
-  ${If} ${FileExists} "$APPDATA\${PRODUCT_NAME}\*.*"
-    ${GetSize} "$APPDATA\${PRODUCT_NAME}" "/S=OK" $0 $1 $2
-    ${If} $0 > 1048576
-      IntFmt $DATA_SETTINGS_SIZE "%.1f MB" $0
-    ${ElseIf} $0 > 1024
-      IntFmt $DATA_SETTINGS_SIZE "%.0f KB" $0
-    ${Else}
-      StrCpy $DATA_SETTINGS_SIZE "$0 bytes"
-    ${EndIf}
-    IntOp $DATA_TOTAL_RECOVERABLE $DATA_TOTAL_RECOVERABLE + $0
-  ${Else}
-    StrCpy $DATA_SETTINGS_SIZE "Not found"
-  ${EndIf}
-
-  ${If} ${FileExists} "$LOCALAPPDATA\${PRODUCT_NAME}\cache\*.*"
-    ${GetSize} "$LOCALAPPDATA\${PRODUCT_NAME}\cache" "/S=OK" $0 $1 $2
-    ${If} $0 > 1048576
-      IntFmt $DATA_CACHE_SIZE "%.1f MB" $0
-    ${ElseIf} $0 > 1024
-      IntFmt $DATA_CACHE_SIZE "%.0f KB" $0
-    ${Else}
-      StrCpy $DATA_CACHE_SIZE "$0 bytes"
-    ${EndIf}
-    IntOp $DATA_TOTAL_RECOVERABLE $DATA_TOTAL_RECOVERABLE + $0
-  ${Else}
-    StrCpy $DATA_CACHE_SIZE "Not found"
-  ${EndIf}
-
-  ${If} ${FileExists} "$LOCALAPPDATA\${PRODUCT_NAME}\models\*.*"
-    ${GetSize} "$LOCALAPPDATA\${PRODUCT_NAME}\models" "/S=OK" $0 $1 $2
-    ${If} $0 > 1048576
-      IntFmt $DATA_MODELS_SIZE "%.1f MB" $0
-    ${ElseIf} $0 > 1024
-      IntFmt $DATA_MODELS_SIZE "%.0f KB" $0
-    ${Else}
-      StrCpy $DATA_MODELS_SIZE "$0 bytes"
-    ${EndIf}
-    IntOp $DATA_TOTAL_RECOVERABLE $DATA_TOTAL_RECOVERABLE + $0
-  ${Else}
-    StrCpy $DATA_MODELS_SIZE "Not found"
-  ${EndIf}
-
-  ${If} $DATA_TOTAL_RECOVERABLE > 1048576
-    IntFmt $DATA_TOTAL_SIZE "%.1f MB" $DATA_TOTAL_RECOVERABLE
-  ${ElseIf} $DATA_TOTAL_RECOVERABLE > 1024
-    IntFmt $DATA_TOTAL_SIZE "%.0f KB" $DATA_TOTAL_RECOVERABLE
-  ${Else}
-    StrCpy $DATA_TOTAL_SIZE "$DATA_TOTAL_RECOVERABLE bytes"
-  ${EndIf}
-FunctionEnd
-
-; ── Uninstall Confirm Page ────────────────────────────────────────────────
-
-Function un.CustomUninstallPage
-  !insertmacro MUI_HEADER_TEXT "${PRODUCT_NAME}" "Uninstall AgenticOS"
-
-  nsDialogs::Create 1018
-  Pop $0
-  ${If} $0 == error
-    Abort
-  ${EndIf}
-
+  SetCtlColors $0 "" "${CLR_BG}"
   Call un.InitFonts
 
-  ; Accent bar
-  ${NSD_CreateLabel} 0u 0u 100% 6u ""
-  Pop $0
-  SetCtlColors $0 "2563EB" "2563EB"
+  ; ── Title ─────────────────────────────────────────────────────────────────
+  ${NSD_CreateLabel} ${CONTENT_MARGIN}u 16u 460u 18u "Uninstall ${PRODUCT_NAME}"
+  Pop $UnLabelTitle
+  SetCtlColors $UnLabelTitle ${CLR_TEXT} ${CLR_BG}
+  SendMessage $UnLabelTitle ${WM_SETFONT} $FontHeading 0
 
-  ; Title
-  ${NSD_CreateLabel} 32u 20u 100% 24u "Uninstall ${PRODUCT_NAME}"
-  Pop $1
-  SendMessage $1 ${WM_SETFONT} $FontH1 1
-  SetCtlColors $1 "111827" "FFFFFF"
+  ; ── Version ───────────────────────────────────────────────────────────────
+  ${NSD_CreateLabel} ${CONTENT_MARGIN}u 36u 460u 12u "v${VERSION}"
+  Pop $UnLabelVer
+  SetCtlColors $UnLabelVer ${CLR_TEXT_MUTED} ${CLR_BG}
+  SendMessage $UnLabelVer ${WM_SETFONT} $FontBody 0
 
-  ; Version and location
-  ${NSD_CreateLabel} 32u 48u 280u 14u "Version ${PRODUCT_VERSION}  |  $INSTDIR"
-  Pop $2
-  SendMessage $2 ${WM_SETFONT} $FontSmall 1
-  SetCtlColors $2 "6B7280" "FFFFFF"
+  ; ── Install path (truncated, monospace) ──────────────────────────────────
+  StrLen $R0 $INSTDIR
+  ${If} $R0 > 60
+    StrCpy $R1 $INSTDIR 57 -57
+    StrCpy $R1 "...$R1"
+  ${Else}
+    StrCpy $R1 $INSTDIR
+  ${EndIf}
+  ${NSD_CreateLabel} ${CONTENT_MARGIN}u 50u 460u 12u "$R1"
+  Pop $UnLabelPath
+  SetCtlColors $UnLabelPath ${CLR_TEXT_MUTED} ${CLR_BG}
+  SendMessage $UnLabelPath ${WM_SETFONT} $FontMono 0
 
-  ; Separator
-  ${NSD_CreateLabel} 32u 66u 280u 1u ""
-  Pop $3
-  SetCtlColors $3 "E5E7EB" "E5E7EB"
+  ; ── Divider ──────────────────────────────────────────────────────────────
+  !insertmacro CreateDivider ${CONTENT_MARGIN}u 68u ${DIVIDER_WIDTH}u
+  Pop $UnDiv1
 
-  ; Instruction
-  ${NSD_CreateLabel} 32u 76u 280u 14u "Select data to remove:"
-  Pop $4
-  SendMessage $4 ${WM_SETFONT} $FontBody 1
-  SetCtlColors $4 "111827" "FFFFFF"
+  ; ── Section: What to remove ──────────────────────────────────────────────
+  !insertmacro CreateSectionTitle ${CONTENT_MARGIN}u 76u 200u "WHAT TO REMOVE"
 
-  ; Checkboxes
-  ${NSD_CreateCheckBox} 32u 96u 280u 14u "Remove settings & configuration ($DATA_SETTINGS_SIZE)"
-  Pop $R0
-  ${NSD_SetState} $R0 ${BST_CHECKED}
+  ; Check if settings dir exists
+  ${If} ${FileExists} "$APPDATA\${PRODUCT_NAME}\*.*"
+    StrCpy $SettingsLabel "Settings and configuration"
+  ${Else}
+    StrCpy $SettingsLabel "Settings and configuration   (Not found)"
+  ${EndIf}
 
-  ${NSD_CreateCheckBox} 32u 114u 280u 14u "Remove cache ($DATA_CACHE_SIZE)"
-  Pop $R1
-  ${NSD_SetState} $R1 ${BST_CHECKED}
+  !insertmacro CreateThemedCheckbox ${CONTENT_MARGIN}u 90u ${CHECKBOX_WIDTH}u ${CHECKBOX_HEIGHT}u "$SettingsLabel"
+  Pop $UnChkSettings
+  ${NSD_SetState} $UnChkSettings ${BST_CHECKED}
 
-  ${NSD_CreateCheckBox} 32u 132u 280u 14u "Remove downloaded AI models ($DATA_MODELS_SIZE)"
-  Pop $R2
+  ; Cache check
+  ${If} ${FileExists} "$LOCALAPPDATA\${PRODUCT_NAME}\cache\*.*"
+    StrCpy $CacheLabel "Cache"
+  ${Else}
+    StrCpy $CacheLabel "Cache   (Not found)"
+  ${EndIf}
 
-  ${NSD_CreateCheckBox} 32u 150u 280u 14u "Remove user workspace data"
-  Pop $R3
+  !insertmacro CreateThemedCheckbox ${CONTENT_MARGIN}u 108u ${CHECKBOX_WIDTH}u ${CHECKBOX_HEIGHT}u "$CacheLabel"
+  Pop $UnChkCache
+  ${NSD_SetState} $UnChkCache ${BST_CHECKED}
 
-  ; Note
-  ${NSD_CreateLabel} 32u 178u 280u 14u "Your project files, source code, and Git repositories will NOT be affected."
-  Pop $R4
-  SendMessage $R4 ${WM_SETFONT} $FontSmall 1
-  SetCtlColors $R4 "6B7280" "FFFFFF"
+  ; User data — unchecked by default (safety)
+  !insertmacro CreateThemedCheckbox ${CONTENT_MARGIN}u 126u ${CHECKBOX_WIDTH}u ${CHECKBOX_HEIGHT}u "User data and workspaces"
+  Pop $UnChkUserData
+  ${NSD_SetState} $UnChkUserData ${BST_UNCHECKED}
+
+  ; ── Divider ──────────────────────────────────────────────────────────────
+  !insertmacro CreateDivider ${CONTENT_MARGIN}u 146u ${DIVIDER_WIDTH}u
+  Pop $UnDiv2
+
+  ; ── Running process warning (always shown) ──────────────────────────────
+  ; Always displayed as a precaution. Close App button attempts graceful
+  ; shutdown via taskkill. Harmless when app is not running.
+  StrCpy $UnBottomOffset 190
+
+  ; Warning background
+  ${NSD_CreateLabel} ${CONTENT_MARGIN}u 152u 460u 30u ""
+  Pop $UnWarnBg
+  SetCtlColors $UnWarnBg "" "${CLR_WARN_BG}"
+
+  ; Warning text
+  ${NSD_CreateLabel} 28u 156u 340u 22u "${PRODUCT_NAME} is running. Close it before uninstalling."
+  Pop $UnWarnText
+  SetCtlColors $UnWarnText ${CLR_WARN_TEXT} ${CLR_WARN_BG}
+  SendMessage $UnWarnText ${WM_SETFONT} $FontWarn 0
+
+  ; Close App button
+  !insertmacro CreateSecondaryButton 390u 156u 80u 16u "Close App"
+  Pop $UnBtnCloseApp
+  ${NSD_OnClick} $UnBtnCloseApp un.CloseRunningApp
+
+  ; ── Navigation buttons ───────────────────────────────────────────────────
+  !insertmacro CreateSecondaryButton 340u $UnBottomOffset 60u 16u "Cancel"
+  Pop $UnBtnCancel
+  ${NSD_OnClick} $UnBtnCancel un.Page_Confirm_Cancel
+
+  !insertmacro CreatePrimaryButton 408u $UnBottomOffset 60u 16u "Uninstall"
+  Pop $UnBtnUninstall
+  ${NSD_OnClick} $UnBtnUninstall un.Page_Confirm_DoUninstall
+
+  !insertmacro Log "PAGE" "Uninstall confirm page displayed"
+  !insertmacro Log "UNINSTALL" "App running: $AppRunning, path: $INSTDIR"
 
   nsDialogs::Show
-
-  ; Save selections
-  ${NSD_GetState} $R0 $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $REMOVE_SETTINGS "1"
-  ${EndIf}
-  ${NSD_GetState} $R1 $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $REMOVE_CACHE "1"
-  ${EndIf}
-  ${NSD_GetState} $R2 $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $REMOVE_MODELS "1"
-  ${EndIf}
-  ${NSD_GetState} $R3 $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $REMOVE_WORKSPACE "1"
-  ${EndIf}
 FunctionEnd
 
-; ── Uninstall Complete Page ───────────────────────────────────────────────
+Function un.Page_Confirm_Cancel
+  !insertmacro Log "UNINSTALL" "User cancelled uninstall"
+  Quit
+FunctionEnd
 
-Function un.CustomUninstallCompletePage
-  !insertmacro MUI_HEADER_TEXT "${PRODUCT_NAME}" "Uninstallation completed"
+Function un.Page_Confirm_DoUninstall
+  ${NSD_GetState} $UnChkSettings $RemoveSettings
+  ${NSD_GetState} $UnChkCache $RemoveCache
+  ${NSD_GetState} $UnChkUserData $RemoveUserData
 
-  nsDialogs::Create 1018
+  !insertmacro Log "UNINSTALL" "Uninstall confirmed — settings: $RemoveSettings, cache: $RemoveCache, userdata: $RemoveUserData"
+  SendMessage $HWNDPARENT 0x408 1 0
+FunctionEnd
+
+Function un.Page_Confirm_Leave
+  ; File removal is handled by !macro customUnInstall (runs after this).
+  ; This leave function advances from the confirm page to the complete page.
+  !insertmacro Log "UNINSTALL" "Proceeding to uninstall..."
+FunctionEnd
+
+; ═════════════════════════════════════════════════════════════════════════════
+; 21. UNINSTALLER — COMPLETE PAGE
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Layout:
+;   ✓ (large checkmark, accent)
+;   AgenticOS has been removed. (white, 13pt bold)
+;   Your files have been cleaned up. (muted, 8pt)
+;   [Close] (button)
+; ═════════════════════════════════════════════════════════════════════════════
+;
+; Design rules:
+;   - No "Thank you for trying AgenticOS."
+;   - No "We're sorry to see you go."
+;   - Clean, neutral, respectful tone.
+; ═════════════════════════════════════════════════════════════════════════════
+
+Function un.Page_Complete
+  nsDialogs::Create ${INSTALLER_DIALOG_ID}
   Pop $0
   ${If} $0 == error
     Abort
   ${EndIf}
 
-  ; Accent bar
-  ${NSD_CreateLabel} 0u 0u 100% 6u ""
-  Pop $0
-  SetCtlColors $0 "2563EB" "2563EB"
+  SetCtlColors $0 "" "${CLR_BG}"
 
-  ; Success indicator
-  ${NSD_CreateLabel} 32u 24u 40u 40u "✓"
-  Pop $1
-  SendMessage $1 ${WM_SETFONT} $FontH1 1
-  SetCtlColors $1 "2563EB" "FFFFFF"
+  ; ── Checkmark ────────────────────────────────────────────────────────────
+  ${NSD_CreateLabel} 0 50u ${LABEL_WIDTH_FULL} 36u "✓"
+  Pop $UnLabelCheck
+  SetCtlColors $UnLabelCheck ${CLR_ACCENT} ${CLR_BG}
+  SendMessage $UnLabelCheck ${WM_SETFONT} $FontCheck 0
+  ${NSD_AddStyle} $UnLabelCheck ${SS_CENTER}
 
-  ; Title
-  ${NSD_CreateLabel} 80u 26u 200u 28u "Uninstall Complete"
-  Pop $2
-  SendMessage $2 ${WM_SETFONT} $FontH1 1
-  SetCtlColors $2 "111827" "FFFFFF"
+  ; ── Confirmation message ─────────────────────────────────────────────────
+  ${NSD_CreateLabel} 0 96u ${LABEL_WIDTH_FULL} 18u "${PRODUCT_NAME} has been removed."
+  Pop $UnLabelDone
+  SetCtlColors $UnLabelDone ${CLR_TEXT} ${CLR_BG}
+  SendMessage $UnLabelDone ${WM_SETFONT} $FontDone 0
+  ${NSD_AddStyle} $UnLabelDone ${SS_CENTER}
 
-  ; Message
-  ${NSD_CreateLabel} 32u 72u 280u 14u "${PRODUCT_NAME} ${PRODUCT_VERSION} has been removed successfully."
-  Pop $3
-  SendMessage $3 ${WM_SETFONT} $FontBody 1
-  SetCtlColors $3 "6B7280" "FFFFFF"
+  ; ── Cleanup message ──────────────────────────────────────────────────────
+  ${NSD_CreateLabel} 0 118u ${LABEL_WIDTH_FULL} 12u "Your files have been cleaned up."
+  Pop $UnLabelSpace
+  SetCtlColors $UnLabelSpace ${CLR_TEXT_MUTED} ${CLR_BG}
+  SendMessage $UnLabelSpace ${WM_SETFONT} $FontSmall 0
+  ${NSD_AddStyle} $UnLabelSpace ${SS_CENTER}
 
-  ; Separator
-  ${NSD_CreateLabel} 32u 94u 280u 1u ""
-  Pop $4
-  SetCtlColors $4 "E5E7EB" "E5E7EB"
+  ; ── Close button ─────────────────────────────────────────────────────────
+  ${NSD_CreateButton} 220u 150u 100u 22u "Close"
+  Pop $UnBtnClose
+  ${NSD_OnClick} $UnBtnClose un.Page_Complete_Close
 
-  ; Disk space recovered
-  ${NSD_CreateLabel} 32u 104u 280u 14u "Disk space recovered: $DATA_TOTAL_SIZE"
-  Pop $5
-  SendMessage $5 ${WM_SETFONT} $FontBodyBold 1
-  SetCtlColors $5 "374151" "FFFFFF"
-
-  ; Thanks
-  ${NSD_CreateLabel} 32u 126u 280u 14u "Thank you for trying ${PRODUCT_NAME}."
-  Pop $6
-  SendMessage $6 ${WM_SETFONT} $FontBody 1
-  SetCtlColors $6 "6B7280" "FFFFFF"
-
+  !insertmacro Log "PAGE" "Uninstall complete page displayed"
   nsDialogs::Show
 FunctionEnd
 
-; ── Uninstall Font Init ──────────────────────────────────────────────────
-
-Function un.InitFonts
-  System::Call "user32::CreateFont(48, 0, 0, 0, 600, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontH1
-  System::Call "user32::CreateFont(24, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontH2
-  System::Call "user32::CreateFont(18, 0, 0, 0, 600, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontH3
-  System::Call "user32::CreateFont(16, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontBody
-  System::Call "user32::CreateFont(16, 0, 0, 0, 600, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontBodyBold
-  System::Call "user32::CreateFont(13, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, t'Segoe UI') i.s"
-  Pop $FontSmall
-  System::Call "user32::CreateFont(14, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, t'Cascadia Mono') i.s"
-  Pop $FontMono
+Function un.Page_Complete_Close
+  !insertmacro Log "UNINSTALL" "User closed uninstaller"
+  Quit
 FunctionEnd
 
-; ── Uninstall Hooks ──────────────────────────────────────────────────────
+; ═════════════════════════════════════════════════════════════════════════════
+; 22. UNINSTALL HOOKS
+; ═════════════════════════════════════════════════════════════════════════════
+
+!macro customUnInit
+  !insertmacro Log "UNINSTALL" "Initializing uninstaller"
+
+  ; Default: remove settings & cache, preserve user data
+  StrCpy $RemoveSettings "1"
+  StrCpy $RemoveCache "1"
+  StrCpy $RemoveUserData "0"
+  StrCpy $DATA_SETTINGS_SIZE "0"
+  StrCpy $DATA_CACHE_SIZE "0"
+  StrCpy $DATA_USERDATA_SIZE "0"
+  StrCpy $DATA_TOTAL_RECOVERABLE "0"
+!macroend
 
 !macro customUnInstall
+  !insertmacro Log "UNINSTALL" "Executing uninstall hooks"
   DetailPrint "━━━ ${PRODUCT_NAME} Uninstallation ━━━"
-  DetailPrint ""
+  DetailPrint "●  Closing running instances..."
+  Call un.CloseRunningApp
 
   DetailPrint "●  Removing system integrations..."
-  DeleteRegKey HKCR "Directory\shell\AgenticOS"
-  DeleteRegKey HKCR "*\shell\AgenticOS"
-  DeleteRegKey HKCR "Directory\Background\shell\AgenticOS"
-  DeleteRegKey HKCR "AgenticOS.Project"
-  DeleteRegValue HKCR ".agenticos" ""
+  DeleteRegKey HKCR "Directory\shell\${PRODUCT_NAME}"
+  DeleteRegKey HKCR "*\shell\${PRODUCT_NAME}"
+  DeleteRegKey HKCR "Directory\Background\shell\${PRODUCT_NAME}"
+  DeleteRegKey HKCR "${PRODUCT_NAME}.Project"
   DeleteRegKey HKCR "agenticos"
-  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCT_NAME}"
-  DeleteRegKey HKCU "Software\${PRODUCT_NAME}\Settings"
-  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
-
-  DetailPrint "●  Removing shortcuts..."
-  RMDir /r "$SMPROGRAMS\${PRODUCT_NAME}"
-  Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
 
   DetailPrint "●  Removing application files..."
+  SetOutPath $TEMP
+  RMDir /r "$INSTDIR"
+  !insertmacro Log "UNINSTALL" "RMDir /r $INSTDIR done"
 
-  ; User data removal
-  ${If} $REMOVE_SETTINGS == "1"
+  DetailPrint "●  Removing shortcuts..."
+  Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
+  RMDir /r "$SMPROGRAMS\${PRODUCT_NAME}"
+
+  ; Data removal (checkbox values from confirm page, or defaults in silent mode)
+  ${If} $RemoveSettings == ${BST_CHECKED}
+  ${AndIf} ${FileExists} "$APPDATA\${PRODUCT_NAME}\*.*"
+    DetailPrint "●  Removing settings..."
     RMDir /r "$APPDATA\${PRODUCT_NAME}"
-    DeleteRegKey HKCU "Software\${PRODUCT_NAME}"
+    !insertmacro Log "UNINSTALL" "Removed settings: $APPDATA\${PRODUCT_NAME}"
   ${EndIf}
 
-  ${If} $REMOVE_CACHE == "1"
+  ${If} $RemoveCache == ${BST_CHECKED}
+  ${AndIf} ${FileExists} "$LOCALAPPDATA\${PRODUCT_NAME}\cache\*.*"
+    DetailPrint "●  Removing cache..."
     RMDir /r "$LOCALAPPDATA\${PRODUCT_NAME}\cache"
+    !insertmacro Log "UNINSTALL" "Removed cache: $LOCALAPPDATA\${PRODUCT_NAME}\cache"
   ${EndIf}
 
-  ${If} $REMOVE_MODELS == "1"
-    RMDir /r "$LOCALAPPDATA\${PRODUCT_NAME}\models"
-    RMDir /r "$APPDATA\${PRODUCT_NAME}\models"
+  ${If} $RemoveUserData == ${BST_CHECKED}
+  ${AndIf} ${FileExists} "$DOCUMENTS\${PRODUCT_NAME}\*.*"
+    DetailPrint "●  Removing user data..."
+    RMDir /r "$DOCUMENTS\${PRODUCT_NAME}"
+    !insertmacro Log "UNINSTALL" "Removed user data: $DOCUMENTS\${PRODUCT_NAME}"
   ${EndIf}
+
+  DetailPrint "●  Cleaning registry..."
+  DeleteRegKey HKCU "Software\${PRODUCT_NAME}"
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 
   System::Call 'shell32.dll::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
 
-  DetailPrint ""
-  DetailPrint "✓  ${PRODUCT_NAME} has been removed"
+  DetailPrint "●  Uninstall completed"
+  !insertmacro Log "UNINSTALL" "Uninstall completed"
 !macroend
