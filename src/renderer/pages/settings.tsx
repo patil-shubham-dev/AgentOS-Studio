@@ -28,17 +28,36 @@ interface NavItem {
   description: string
 }
 
-const navItems: NavItem[] = [
+interface NavSection {
+  label: string
+  items: NavItem[]
+}
+
+const coreNavItems: NavItem[] = [
   { id: "providers", label: "Providers", icon: Cpu, shortcut: "1", description: "AI providers, API keys & endpoints" },
   { id: "models", label: "Models", icon: Box, shortcut: "2", description: "Model selection, config & benchmarks" },
   { id: "tools", label: "MCP Servers", icon: Wrench, shortcut: "3", description: "MCP server connections & tools" },
   { id: "runtime", label: "Runtime", icon: Terminal, shortcut: "4", description: "Execution environment & sandbox config" },
+]
+
+const advancedNavItems: NavItem[] = [
   { id: "agents", label: "Agents", icon: Users, shortcut: "5", description: "Agent role management & capabilities" },
   { id: "memory", label: "Memory", icon: Brain, shortcut: "6", description: "Memory system management & inspection" },
   { id: "context", label: "Context", icon: Activity, shortcut: "7", description: "Context budget monitoring & usage" },
   { id: "personas", label: "Personas", icon: Palette, shortcut: "8", description: "Persona management & creation" },
   { id: "plugins", label: "Plugins", icon: Puzzle, shortcut: "9", description: "Plugin management & configuration" },
+]
+
+const logNavItems: NavItem[] = [
   { id: "logs", label: "Logs", icon: ScrollText, shortcut: "0", description: "System logs & debugging" },
+]
+
+const allNavItems = [...coreNavItems, ...advancedNavItems, ...logNavItems]
+
+const navSections: NavSection[] = [
+  { label: "Core", items: coreNavItems },
+  { label: "Advanced", items: advancedNavItems },
+  { label: "Monitoring", items: logNavItems },
 ]
 
 export function SettingsPage() {
@@ -47,6 +66,27 @@ export function SettingsPage() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(() => {
+    try {
+      const stored = localStorage.getItem('agenticOS.settings.showAdvanced')
+      return stored !== null ? JSON.parse(stored) : false
+    } catch {}
+    return false
+  })
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem('agenticOS.settings.collapsedSections')
+      if (stored) return JSON.parse(stored)
+    } catch {}
+    return { Advanced: true }
+  })
+
+  useEffect(() => {
+    localStorage.setItem('agenticOS.settings.collapsedSections', JSON.stringify(collapsedSections))
+  }, [collapsedSections])
+  useEffect(() => {
+    localStorage.setItem('agenticOS.settings.showAdvanced', JSON.stringify(showAdvanced))
+  }, [showAdvanced])
   const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -58,11 +98,11 @@ export function SettingsPage() {
       }
       const num = parseInt(e.key)
       if (num >= 1 && num <= 9 && !(e.metaKey || e.ctrlKey)) {
-        const item = navItems[num - 1]
+        const item = allNavItems[num - 1]
         if (item) setActiveTab(item.id)
       }
       if (e.key === "0" && !(e.metaKey || e.ctrlKey)) {
-        const item = navItems[9]
+        const item = allNavItems[9]
         if (item) setActiveTab(item.id)
       }
     }
@@ -74,7 +114,7 @@ export function SettingsPage() {
     setActiveTab(item.id)
   }
 
-  const filteredNav = navItems.filter((item) => {
+  const filteredNav = allNavItems.filter((item) => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
     return item.label.toLowerCase().includes(q) || item.description.toLowerCase().includes(q)
@@ -186,46 +226,99 @@ export function SettingsPage() {
           <kbd className="rounded border border-white/10 bg-white/5 px-1 py-0.5 text-[9px]">⌘K</kbd>
         </button>
 
-        <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActive = activeTab === item.id
+        <nav className="flex-1 overflow-y-auto p-2 space-y-1">
+          {navSections.filter((s) => showAdvanced || s.label !== "Advanced").map((section) => {
+            const isCollapsed = collapsedSections[section.label]
             return (
-              <button
-                key={item.id}
-                onClick={() => handleTabClick(item)}
-                className={cn(
-                  "group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-all",
-                  isActive
-                    ? "bg-gradient-to-r from-blue-500/15 to-purple-500/10 text-white shadow-sm"
-                    : "text-white/40 hover:bg-white/5 hover:text-white/70"
-                )}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute inset-0 rounded-xl border border-white/10"
-                    transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                  />
-                )}
-                <Icon className="relative z-10 h-4 w-4" />
-                <motion.span
-                  animate={{
-                    opacity: sidebarCollapsed ? 0 : 1,
-                    width: sidebarCollapsed ? 0 : "auto",
-                  }}
-                  className="relative z-10 flex-1 truncate font-medium"
+              <div key={section.label}>
+                <button
+                  onClick={() => setCollapsedSections((prev) => ({ ...prev, [section.label]: !prev[section.label] }))}
+                  className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/20 hover:text-white/40 transition-colors"
                 >
-                  {item.label}
-                </motion.span>
-                {!sidebarCollapsed && (
-                  <kbd className="relative z-10 rounded-md border border-white/5 bg-white/5 px-1.5 py-0.5 text-[9px] text-white/20 font-mono">
-                    {item.shortcut}
-                  </kbd>
-                )}
-              </button>
+                  <motion.span
+                    animate={{ rotate: isCollapsed ? -90 : 0 }}
+                    className="text-[8px]"
+                  >
+                    ▼
+                  </motion.span>
+                  <motion.span
+                    animate={{ opacity: sidebarCollapsed ? 0 : 1, height: sidebarCollapsed ? 0 : "auto" }}
+                  >
+                    {section.label}
+                  </motion.span>
+                </button>
+                <AnimatePresence initial={false}>
+                  {!isCollapsed && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.15, ease: "easeInOut" }}
+                      className="space-y-0.5 overflow-hidden"
+                    >
+                      {section.items.map((item) => {
+                        const Icon = item.icon
+                        const isActive = activeTab === item.id
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => handleTabClick(item)}
+                            className={cn(
+                              "group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-all",
+                              isActive
+                                ? "bg-gradient-to-r from-blue-500/15 to-purple-500/10 text-white shadow-sm"
+                                : "text-white/40 hover:bg-white/5 hover:text-white/70"
+                            )}
+                          >
+                            {isActive && (
+                              <motion.div
+                                layoutId="activeTab"
+                                className="absolute inset-0 rounded-xl border border-white/10"
+                                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                              />
+                            )}
+                            <Icon className="relative z-10 h-4 w-4" />
+                            <motion.span
+                              animate={{
+                                opacity: sidebarCollapsed ? 0 : 1,
+                                width: sidebarCollapsed ? 0 : "auto",
+                              }}
+                              className="relative z-10 flex-1 truncate font-medium"
+                            >
+                              {item.label}
+                            </motion.span>
+                            {!sidebarCollapsed && (
+                              <kbd className="relative z-10 rounded-md border border-white/5 bg-white/5 px-1.5 py-0.5 text-[9px] text-white/20 font-mono">
+                                {item.shortcut}
+                              </kbd>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             )
           })}
+          <div className="border-t border-white/[0.04] pt-1 mt-1">
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs text-white/25 hover:text-white/60 hover:bg-white/[0.03] transition-all"
+            >
+              <div className={cn(
+                "h-3.5 w-3.5 rounded border transition-colors duration-150 flex items-center justify-center",
+                showAdvanced ? "bg-blue-500/40 border-blue-500/50" : "border-white/10"
+              )}>
+                {showAdvanced && (
+                  <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M2.5 6L5 8.5L9.5 3.5" />
+                  </svg>
+                )}
+              </div>
+              <span>Show advanced</span>
+            </button>
+          </div>
         </nav>
       </motion.aside>
 
@@ -239,11 +332,11 @@ export function SettingsPage() {
               animate={{ opacity: 1, y: 0 }}
               className="text-sm font-semibold text-white"
             >
-              {navItems.find((n) => n.id === activeTab)?.label || "Settings"}
+              {allNavItems.find((n) => n.id === activeTab)?.label || "Settings"}
             </motion.h1>
             <span className="text-xs text-white/20">/</span>
             <span className="text-xs text-white/30 font-mono">
-              {navItems.find((n) => n.id === activeTab)?.description}
+              {allNavItems.find((n) => n.id === activeTab)?.description}
             </span>
             {activeTab === "providers" || activeTab === "runtime" ? (
               <div className="ml-4 pl-4 border-l border-white/10">

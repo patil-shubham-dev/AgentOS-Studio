@@ -125,6 +125,7 @@ declare global {
       runCommand: (opts: { workingDir: string; command: string; args: string[] }) => Promise<string>
       runCommandStream: (opts: { command: string; cwd: string | null; streamId: string }) => Promise<number>
       killCommand: (streamId: string) => Promise<void>
+      sandboxExec: (opts: { command: string; args: string[]; cwd: string; policy: { readPaths: string[]; writePaths: string[]; network: boolean; execPaths: string[]; maxMemory?: number; maxProcesses?: number; timeout?: number }; env?: string[] }) => Promise<{ pid: number; error?: string }>
       on: (channel: string, cb: (...args: unknown[]) => void) => (() => void) | undefined
       getPathForFile: (file: File) => string | null
       replayInit: () => Promise<{ sessionCount: number; orphanedCount: number }>
@@ -151,134 +152,169 @@ export function invoke<T = unknown>(cmd: string, args?: Record<string, unknown>)
   }
   const eapi = window.electronAPI
 
-  switch (cmd) {
-    case 'get_install_info': return eapi.getInstallInfo()
-    case 'get_app_info': return eapi.getAppInfo()
-    case 'app_exit': return eapi.exit()
-    case 'app_restart': return eapi.restart()
-    case 'get_app_paths': return eapi.getAppPaths()
-    case 'save_layout': return eapi.saveLayout(args?.layout as string)
-    case 'load_layout': return eapi.loadLayout()
-    case 'read_text_file': return eapi.readTextFile(args?.path as string)
-    case 'write_text_file': return eapi.writeTextFile(args?.path as string, args?.content as string)
-    case 'file_exists': return eapi.fileExists(args?.path as string)
-    case 'create_directory': return eapi.createDirectory(args?.path as string)
-    case 'delete_file': return eapi.deleteFile(args?.path as string)
-    case 'rename_file': return eapi.renameFile(args?.oldPath as string, args?.newPath as string)
-    case 'get_file_stats': return eapi.getFileStats(args?.path as string)
-    case 'read_directory': return eapi.readDirectory(args?.path as string)
-    case 'list_directory': return eapi.listDirectory(args?.path as string)
-    case 'start_file_watcher': return eapi.startFileWatcher(args?.path as string)
-    case 'stop_file_watcher': return eapi.stopFileWatcher(args?.path as string)
-    case 'workspace_list_files': return eapi.workspaceListFiles(args?.path as string)
-    case 'git_status': return eapi.gitStatus(args?.path as string)
-    case 'git_log': return eapi.gitLog(args?.path as string, args?.maxCount as number)
-    case 'git_diff': return eapi.gitDiff(args?.path as string, args?.file as string)
-    case 'git_commit': return eapi.gitCommit(args?.path as string, args?.message as string)
-    case 'git_restore': return eapi.gitRestore(args?.path as string, args?.file as string)
-    case 'git_init': return eapi.gitInit(args?.path as string)
-    case 'git_push': return eapi.gitPush(args?.path as string)
-    case 'git_pull': return eapi.gitPull(args?.path as string)
-    case 'git_branch_list': return eapi.gitBranchList(args?.path as string)
-    case 'git_checkout': return eapi.gitCheckout(args?.path as string, args?.branch as string)
-    case 'git_add': return eapi.gitAdd(args?.path as string, args?.file as string)
-    case 'dialog_open': return eapi.dialogOpen(args?.options)
-    case 'dialog_save': return eapi.dialogSave(args?.options)
-    case 'dialog_message': return eapi.dialogMessage(args?.options)
-    case 'clipboard_read_text': return eapi.clipboardReadText()
-    case 'clipboard_write_text': return eapi.clipboardWriteText(args?.text as string)
-    case 'notification_show': return eapi.notificationShow(args as unknown as { title: string; body: string })
-    case 'notification_is_supported': return eapi.notificationIsSupported()
-    case 'open_external': return eapi.openExternal(args?.url as string)
-    case 'browser_launch': return eapi.browserLaunch(args)
-    case 'browser_close': return eapi.browserClose(args?.sessionId as string)
-    case 'browser_navigate': return eapi.browserNavigate(args?.sessionId as string, args?.url as string)
-    case 'browser_new_tab': return eapi.browserNewTab(args?.sessionId as string, args?.url as string)
-    case 'browser_close_tab': return eapi.browserCloseTab(args?.sessionId as string, args?.tabId as string)
-    case 'browser_list_tabs': return eapi.browserListTabs(args?.sessionId as string)
-    case 'browser_click': return eapi.browserClick(args?.sessionId as string, args?.selector as string)
-    case 'browser_type': return eapi.browserType(args?.sessionId as string, args?.selector as string, args?.text as string)
-    case 'browser_screenshot': return eapi.browserScreenshot(args?.sessionId as string)
-    case 'browser_get_text': return eapi.browserGetText(args?.sessionId as string)
-    case 'browser_get_url': return eapi.browserGetUrl(args?.sessionId as string)
-    case 'browser_get_title': return eapi.browserGetTitle(args?.sessionId as string)
-    case 'browser_get_content': return eapi.browserGetContent(args?.sessionId as string)
-    case 'browser_execute_js': return eapi.browserExecuteJs(args?.sessionId as string, args?.js as string)
-    case 'browser_detect_browsers': return eapi.browserDetect()
-    case 'browser_extension_list': return eapi.extensionList()
-    case 'browser_extension_load': return eapi.extensionLoad(args?.extPath as string)
-    case 'browser_extension_unload': return eapi.extensionUnload(args?.extId as string)
-    case 'plugin_browser_navigate': return eapi.pluginBrowserNavigate(args?.provider as string, args?.url as string)
-    case 'plugin_browser_click': return eapi.pluginBrowserClick(args?.provider as string, args?.selector as string)
-    case 'plugin_browser_type': return eapi.pluginBrowserType(args?.provider as string, args?.selector as string, args?.text as string)
-    case 'plugin_browser_screenshot': return eapi.pluginBrowserScreenshot(args?.provider as string)
-    case 'plugin_browser_execute_js': return eapi.pluginBrowserExecuteJs(args?.provider as string, args?.code as string)
-    case 'plugin_browser_get_dom': return eapi.pluginBrowserGetDom(args?.provider as string)
-    case 'plugin_browser_get_text': return eapi.pluginBrowserGetText(args?.provider as string)
-    case 'plugin_browser_get_url': return eapi.pluginBrowserGetUrl(args?.provider as string)
-    case 'plugin_browser_get_title': return eapi.pluginBrowserGetTitle(args?.provider as string)
-    case 'browser_fill': return eapi.browserType(args?.sessionId as string, args?.selector as string, args?.value as string)
-    case 'browser_reload': return eapi.browserReload(args?.sessionId as string)
-    case 'browser_double_click': return eapi.browserDoubleClick(args?.sessionId as string, args?.selector as string)
-    case 'browser_hover': return eapi.browserHover(args?.sessionId as string, args?.selector as string)
-    case 'browser_press_key': return eapi.browserPressKey(args?.sessionId as string, args?.key as string)
-    case 'browser_wait': return eapi.browserWaitElement(args?.sessionId as string, args?.selector as string, args?.timeout as number)
-    case 'browser_get_console_logs': return eapi.browserGetConsoleLogs(args?.sessionId as string)
-    case 'browser_save_state': return eapi.browserSaveState(args?.path as string)
-    case 'browser_load_state': return eapi.browserLoadState(args?.path as string)
-    case 'viewport_create': return eapi.viewportCreate(args?.bounds as unknown as { x: number; y: number; width: number; height: number })
-    case 'viewport_resize': return eapi.viewportResize(args?.bounds as unknown as { x: number; y: number; width: number; height: number })
-    case 'viewport_destroy': return eapi.viewportDestroy()
-    case 'viewport_navigate': return eapi.viewportNavigate(args?.url as string)
-    case 'viewport_reload': return eapi.viewportReload()
-    case 'viewport_go_back': return eapi.viewportGoBack()
-    case 'viewport_go_forward': return eapi.viewportGoForward()
-    case 'viewport_click': return eapi.viewportClick(args?.selector as string)
-    case 'viewport_type': return eapi.viewportType(args?.selector as string, args?.text as string)
-    case 'viewport_press_key': return eapi.viewportPressKey(args?.key as string)
-    case 'viewport_screenshot': return eapi.viewportScreenshot()
-    case 'viewport_execute_js': return eapi.viewportExecuteJs(args?.js as string)
-    case 'viewport_get_console_logs': return eapi.viewportGetConsoleLogs()
-    case 'viewport_inject_annotations': return eapi.viewportInjectAnnotations()
-    case 'viewport_get_annotations': return eapi.viewportGetAnnotations()
-    case 'viewport_get_state': return eapi.viewportGetState()
-    case 'terminal_create': return eapi.terminalCreate(args)
-    case 'terminal_write': return eapi.terminalWrite(args?.id as string, args?.data as string)
-    case 'terminal_resize': return eapi.terminalResize(args?.id as string, args?.cols as number, args?.rows as number)
-    case 'terminal_kill': return eapi.terminalKill(args?.id as string)
-    case 'terminal_list': return eapi.terminalList()
-    case 'run_command': return eapi.runCommand(args as unknown as { workingDir: string; command: string; args: string[] })
-    case 'run_command_stream': return eapi.runCommandStream(args as unknown as { command: string; cwd: string | null; streamId: string })
-    case 'kill_command': return eapi.killCommand(args?.streamId as string) || eapi.terminalKill(args?.id as string)
-    case 'secure_get': return localStorage.getItem(`secure:${args?.key}`)
-    case 'secure_set': localStorage.setItem(`secure:${args?.key}`, args?.value as string); return
-    case 'secure_remove': localStorage.removeItem(`secure:${args?.key}`); return
-    case 'get_history': throw new Error('file snapshots require Tauri — not available in Electron')
-    case 'rollback_to': throw new Error('file snapshots require Tauri — not available in Electron')
-    case 'compute_diff': throw new Error('file snapshots require Tauri — not available in Electron')
-    case 'debug_launch': throw new Error('debugger requires Tauri — not available in Electron')
-    case 'debug_stop': throw new Error('debugger requires Tauri — not available in Electron')
-    case 'save_snapshot': throw new Error('save_snapshot not available in Electron')
-    case 'watch_directory': throw new Error('watch_directory not available in Electron')
-    case 'is_context_menu_registered': return false
-    case 'register_context_menu': console.warn('[Electron API] register_context_menu not available'); return
-    case 'unregister_context_menu': console.warn('[Electron API] unregister_context_menu not available'); return
-    case 'get_system_info': return {
-      os: navigator.platform || 'unknown',
-      cpu: navigator.hardwareConcurrency || 0,
-      memory_gb: (navigator as unknown as { deviceMemory?: number }).deviceMemory || 0,
-      hostname: 'electron-host',
+  const result = (() => {
+    switch (cmd) {
+      case 'get_install_info': return eapi.getInstallInfo()
+      case 'get_app_info': return eapi.getAppInfo()
+      case 'app_exit': return eapi.exit()
+      case 'app_restart': return eapi.restart()
+      case 'get_app_paths': return eapi.getAppPaths()
+      case 'save_layout': return eapi.saveLayout(args?.layout as string)
+      case 'load_layout': return eapi.loadLayout()
+      case 'read_text_file': return eapi.readTextFile(args?.path as string)
+      case 'write_text_file': return eapi.writeTextFile(args?.path as string, args?.content as string)
+      case 'file_exists': return eapi.fileExists(args?.path as string)
+      case 'create_directory': return eapi.createDirectory(args?.path as string)
+      case 'delete_file': return eapi.deleteFile(args?.path as string)
+      case 'rename_file': return eapi.renameFile(args?.oldPath as string, args?.newPath as string)
+      case 'get_file_stats': return eapi.getFileStats(args?.path as string)
+      case 'read_directory': return eapi.readDirectory(args?.path as string)
+      case 'list_directory': return eapi.listDirectory(args?.path as string)
+      case 'start_file_watcher': return eapi.startFileWatcher(args?.path as string)
+      case 'stop_file_watcher': return eapi.stopFileWatcher(args?.path as string)
+      case 'workspace_list_files': return eapi.workspaceListFiles(args?.path as string)
+      case 'git_status': return eapi.gitStatus(args?.path as string)
+      case 'git_log': return eapi.gitLog(args?.path as string, args?.maxCount as number)
+      case 'git_diff': return eapi.gitDiff(args?.path as string, args?.file as string)
+      case 'git_commit': return eapi.gitCommit(args?.path as string, args?.message as string)
+      case 'git_restore': return eapi.gitRestore(args?.path as string, args?.file as string)
+      case 'git_init': return eapi.gitInit(args?.path as string)
+      case 'git_push': return eapi.gitPush(args?.path as string)
+      case 'git_pull': return eapi.gitPull(args?.path as string)
+      case 'git_branch_list': return eapi.gitBranchList(args?.path as string)
+      case 'git_checkout': return eapi.gitCheckout(args?.path as string, args?.branch as string)
+      case 'git_add': return eapi.gitAdd(args?.path as string, args?.file as string)
+      case 'dialog_open': return eapi.dialogOpen(args?.options as unknown as ElectronAPIDialogOptions)
+      case 'dialog_save': return eapi.dialogSave(args?.options as unknown as ElectronAPIDialogOptions)
+      case 'dialog_message': return eapi.dialogMessage(args?.options as unknown as ElectronAPIDialogOptions)
+      case 'clipboard_read_text': return eapi.clipboardReadText()
+      case 'clipboard_write_text': return eapi.clipboardWriteText(args?.text as string)
+      case 'notification_show': return eapi.notificationShow(args as unknown as { title: string; body: string })
+      case 'notification_is_supported': return eapi.notificationIsSupported()
+      case 'open_external': return eapi.openExternal(args?.url as string)
+      case 'browser_launch': return eapi.browserLaunch(args)
+      case 'browser_close': return eapi.browserClose(args?.sessionId as string)
+      case 'browser_navigate': return eapi.browserNavigate(args?.sessionId as string, args?.url as string)
+      case 'browser_new_tab': return eapi.browserNewTab(args?.sessionId as string, args?.url as string)
+      case 'browser_close_tab': return eapi.browserCloseTab(args?.sessionId as string, args?.tabId as string)
+      case 'browser_list_tabs': return eapi.browserListTabs(args?.sessionId as string)
+      case 'browser_click': return eapi.browserClick(args?.sessionId as string, args?.selector as string)
+      case 'browser_type': return eapi.browserType(args?.sessionId as string, args?.selector as string, args?.text as string)
+      case 'browser_screenshot': return eapi.browserScreenshot(args?.sessionId as string)
+      case 'browser_get_text': return eapi.browserGetText(args?.sessionId as string)
+      case 'browser_get_url': return eapi.browserGetUrl(args?.sessionId as string)
+      case 'browser_get_title': return eapi.browserGetTitle(args?.sessionId as string)
+      case 'browser_get_content': return eapi.browserGetContent(args?.sessionId as string)
+      case 'browser_execute_js': return eapi.browserExecuteJs(args?.sessionId as string, args?.js as string)
+      case 'browser_detect_browsers': return eapi.browserDetect()
+      case 'browser_extension_list': return eapi.extensionList()
+      case 'browser_extension_load': return eapi.extensionLoad(args?.extPath as string)
+      case 'browser_extension_unload': return eapi.extensionUnload(args?.extId as string)
+      case 'plugin_browser_navigate': return eapi.pluginBrowserNavigate(args?.provider as string, args?.url as string)
+      case 'plugin_browser_click': return eapi.pluginBrowserClick(args?.provider as string, args?.selector as string)
+      case 'plugin_browser_type': return eapi.pluginBrowserType(args?.provider as string, args?.selector as string, args?.text as string)
+      case 'plugin_browser_screenshot': return eapi.pluginBrowserScreenshot(args?.provider as string)
+      case 'plugin_browser_execute_js': return eapi.pluginBrowserExecuteJs(args?.provider as string, args?.code as string)
+      case 'plugin_browser_get_dom': return eapi.pluginBrowserGetDom(args?.provider as string)
+      case 'plugin_browser_get_text': return eapi.pluginBrowserGetText(args?.provider as string)
+      case 'plugin_browser_get_url': return eapi.pluginBrowserGetUrl(args?.provider as string)
+      case 'plugin_browser_get_title': return eapi.pluginBrowserGetTitle(args?.provider as string)
+      case 'browser_fill': return eapi.browserType(args?.sessionId as string, args?.selector as string, args?.value as string)
+      case 'browser_reload': return eapi.browserReload(args?.sessionId as string)
+      case 'browser_double_click': return eapi.browserDoubleClick(args?.sessionId as string, args?.selector as string)
+      case 'browser_hover': return eapi.browserHover(args?.sessionId as string, args?.selector as string)
+      case 'browser_press_key': return eapi.browserPressKey(args?.sessionId as string, args?.key as string)
+      case 'browser_wait': return eapi.browserWaitElement(args?.sessionId as string, args?.selector as string, args?.timeout as number)
+      case 'browser_get_console_logs': return eapi.browserGetConsoleLogs(args?.sessionId as string)
+      case 'browser_save_state': return eapi.browserSaveState(args?.path as string)
+      case 'browser_load_state': return eapi.browserLoadState(args?.path as string)
+      case 'viewport_create': return eapi.viewportCreate(args?.bounds as unknown as { x: number; y: number; width: number; height: number })
+      case 'viewport_resize': return eapi.viewportResize(args?.bounds as unknown as { x: number; y: number; width: number; height: number })
+      case 'viewport_destroy': return eapi.viewportDestroy()
+      case 'viewport_navigate': return eapi.viewportNavigate(args?.url as string)
+      case 'viewport_reload': return eapi.viewportReload()
+      case 'viewport_go_back': return eapi.viewportGoBack()
+      case 'viewport_go_forward': return eapi.viewportGoForward()
+      case 'viewport_click': return eapi.viewportClick(args?.selector as string)
+      case 'viewport_type': return eapi.viewportType(args?.selector as string, args?.text as string)
+      case 'viewport_press_key': return eapi.viewportPressKey(args?.key as string)
+      case 'viewport_screenshot': return eapi.viewportScreenshot()
+      case 'viewport_execute_js': return eapi.viewportExecuteJs(args?.js as string)
+      case 'viewport_get_console_logs': return eapi.viewportGetConsoleLogs()
+      case 'viewport_inject_annotations': return eapi.viewportInjectAnnotations()
+      case 'viewport_get_annotations': return eapi.viewportGetAnnotations()
+      case 'viewport_get_state': return eapi.viewportGetState()
+      case 'terminal_create': return eapi.terminalCreate(args)
+      case 'terminal_write': return eapi.terminalWrite(args?.id as string, args?.data as string)
+      case 'terminal_resize': return eapi.terminalResize(args?.id as string, args?.cols as number, args?.rows as number)
+      case 'terminal_kill': return eapi.terminalKill(args?.id as string)
+      case 'terminal_list': return eapi.terminalList()
+      case 'run_command': return eapi.runCommand(args as unknown as { workingDir: string; command: string; args: string[] })
+      case 'run_command_stream': return eapi.runCommandStream(args as unknown as { command: string; cwd: string | null; streamId: string })
+      case 'kill_command': return eapi.killCommand(args?.streamId as string) || eapi.terminalKill(args?.id as string)
+      case 'sandbox_exec': return eapi.sandboxExec(args as unknown as { command: string; args: string[]; cwd: string; policy: Record<string, unknown>; env?: string[] })
+      case 'secure_get': return localStorage.getItem(`secure:${args?.key}`)
+      case 'secure_set': localStorage.setItem(`secure:${args?.key}`, args?.value as string); return
+      case 'secure_remove': localStorage.removeItem(`secure:${args?.key}`); return
+      case 'get_history': throw new Error('file snapshots require Tauri — not available in Electron')
+      case 'rollback_to': throw new Error('file snapshots require Tauri — not available in Electron')
+      case 'compute_diff': throw new Error('file snapshots require Tauri — not available in Electron')
+      case 'debug_launch': throw new Error('debugger requires Tauri — not available in Electron')
+      case 'debug_stop': throw new Error('debugger requires Tauri — not available in Electron')
+      case 'save_snapshot': throw new Error('save_snapshot not available in Electron')
+      case 'watch_directory': throw new Error('watch_directory not available in Electron')
+      case 'is_context_menu_registered': return false
+      case 'register_context_menu': throw new Error('register_context_menu requires main process IPC — not available in renderer')
+      case 'unregister_context_menu': throw new Error('unregister_context_menu requires main process IPC — not available in renderer')
+      case 'get_system_info': return {
+        os: navigator.platform || 'unknown',
+        cpu: navigator.hardwareConcurrency || 0,
+        memory_gb: (navigator as unknown as { deviceMemory?: number }).deviceMemory || 0,
+        hostname: 'electron-host',
+      }
+      case 'open_install_location':
+        if (args?.path && typeof args.path === 'string') {
+          window.open(args.path, '_blank')
+          return
+        }
+        throw new Error('open_install_location requires a path argument')
+      case 'clear_cache':
+        try { sessionStorage.clear() } catch { /* ignore */ }
+        if (typeof caches !== 'undefined') {
+          caches.keys().then(names => names.forEach(n => caches.delete(n).catch(() => {}))).catch(() => {})
+        }
+        return 'clear_cache: Ok'
+      case 'clear_workspace_memory': {
+        const wsKeys: string[] = []
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key?.startsWith('agentic-')) wsKeys.push(key)
+        }
+        wsKeys.forEach(k => localStorage.removeItem(k))
+        return 'clear_workspace_memory: Ok'
+      }
+      case 'clear_model_cache':
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key?.includes('model') || key?.includes('cache')) localStorage.removeItem(key)
+        }
+        return 'clear_model_cache: Ok'
+      case 'reset_settings':
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key && !key.startsWith('agentic-workspace-root')) localStorage.removeItem(key)
+        }
+        return 'reset_settings: Ok'
+      case 'uninstall_app_data':
+        localStorage.clear()
+        try { sessionStorage.clear() } catch { /* ignore */ }
+        return 'uninstall_app_data: Ok'
+      default:
+        console.warn(`[Electron API] Unknown command: ${cmd}`, args)
+        throw new Error(`Unknown command: ${cmd}`)
     }
-    case 'open_install_location': console.warn('[Electron API] open_install_location not available'); return
-    case 'clear_cache': return 'clear_cache: Ok'
-    case 'clear_workspace_memory': return 'clear_workspace_memory: Ok'
-    case 'clear_model_cache': return 'clear_model_cache: Ok'
-    case 'reset_settings': return 'reset_settings: Ok'
-    case 'uninstall_app_data': return 'uninstall_app_data: Ok'
-    default:
-      console.warn(`[Electron API] Unknown command: ${cmd}`, args)
-      throw new Error(`Unknown command: ${cmd}`)
-  }
+  })()
+  return result as Promise<T>
 }
 
 export function convertFileSrc(path: string): string {
@@ -387,22 +423,20 @@ export async function dialogMessage(message: string, options?: any): Promise<voi
 }
 
 export async function dialogAsk(message: string, options?: any): Promise<boolean> {
-  const result = await invoke('dialog_message', { options: { ...options, message, buttons: ['Yes', 'No'] } })
+  const result = await invoke<{ response: number }>('dialog_message', { options: { ...options, message, buttons: ['Yes', 'No'] } })
   return result?.response === 0
 }
 
 export async function dialogConfirm(message: string, options?: any): Promise<boolean> {
-  const result = await invoke('dialog_message', { options: { ...options, message, buttons: ['OK', 'Cancel'] } })
+  const result = await invoke<{ response: number }>('dialog_message', { options: { ...options, message, buttons: ['OK', 'Cancel'] } })
   return result?.response === 0
 }
 
 export class ShellCommand {
   private program: string
-  private args: string[]
 
-  constructor(program: string, args: string[] = []) {
+  constructor(program: string, _args: string[] = []) {
     this.program = program
-    this.args = args
   }
 
   static create(program: string, args: string[] = []): ShellCommand {
@@ -416,14 +450,12 @@ export class ShellCommand {
 }
 
 export class Command {
-  private program: string
-  private args: string[]
+  stdout: { on: (event: string, cb: any) => void }
+  stderr: { on: (event: string, cb: any) => void }
 
-  constructor(program: string, args: string[] = []) {
-    this.program = program
-    this.args = args
-    this.stdout = { on: () => {} } as any
-    this.stderr = { on: () => {} } as any
+  constructor(_program: string, _args: string[] = []) {
+    this.stdout = { on: () => {} }
+    this.stderr = { on: () => {} }
   }
 
   static create(program: string, args: string[] = [], _options?: any): Command {
@@ -432,9 +464,6 @@ export class Command {
     cmd.stderr = { on: (_event: string, _cb: any) => {} } as any
     return cmd
   }
-
-  stdout: { on: (event: string, cb: (data: any) => void) => void }
-  stderr: { on: (event: string, cb: (data: any) => void) => void }
 
   async spawn(): Promise<{ write: (data: string) => void; kill: () => void }> {
     return {

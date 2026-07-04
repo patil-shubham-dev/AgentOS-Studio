@@ -18,6 +18,7 @@ import { HealthMonitor } from "@/core/services/HealthMonitor"
 import { ReadinessGate } from "@/core/services/ReadinessGate"
 import { detectStartupMode, generateStartupReport, formatReport } from "@/core/services/StartupReport"
 import { recordBootSample, detectRegressions } from "@/lib/startup-regression"
+import { isFeatureEnabled } from "@/app/feature-flags"
 import type { MCPClientConfig } from "@/runtime/mcp/MCPClient"
 import type { BootReport, ServiceStatus, KernelService } from "./types"
 
@@ -209,6 +210,16 @@ export async function bootRuntime(): Promise<BootReport> {
   // Generate and print startup report
   const startupReport = generateStartupReport()
   console.log(formatReport(startupReport))
+
+  // Startup diagnostic: show disabled future islands
+  const disabledIslands: string[] = []
+  if (!isFeatureEnabled('browserIsland')) disabledIslands.push('Browser')
+  if (!isFeatureEnabled('designIsland')) disabledIslands.push('Design')
+  if (!isFeatureEnabled('deviceControlIsland')) disabledIslands.push('Device Control')
+  if (disabledIslands.length > 0) {
+    console.log(`[Startup] Future Islands (disabled): ${disabledIslands.join(', ')}`)
+    console.log(`[Startup] Coding-only mode — ${disabledIslands.length} island(s) isolated from runtime`)
+  }
 
   // Record for regression tracking
   recordBootSample()

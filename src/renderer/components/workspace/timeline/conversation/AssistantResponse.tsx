@@ -1,20 +1,22 @@
-import { memo, useCallback, useMemo } from "react"
+import { memo, useCallback, useMemo, useState, useEffect } from "react"
+import { FeatureFlagManager } from "@/runtime/feature-flags/FeatureFlagManager"
 import { motion, AnimatePresence } from "framer-motion"
-import { RotateCcw, ChevronDown, ChevronRight, Brain, Layers, Wrench, FileEdit, Terminal as TerminalIcon, AlertTriangle } from "lucide-react"
+import { ChevronDown, ChevronRight, Brain, Wrench, FileEdit, AlertTriangle, Clock, Loader2, XCircle } from "lucide-react"
+import { ProviderErrorCard } from "./ProviderErrorCard"
 import { useTimelineStore } from "../timeline-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { ResponseStream } from "./response-stream"
 import { ConfidenceBadge } from "@/components/workspace/execution/ConfidenceBadge"
 import { ExecutionConfidenceEngine } from "@/runtime/execution/ExecutionConfidenceEngine"
-import { TerminalBlock } from "./TerminalBlock"
-import { ToolCallCard } from "./ToolCallCard"
-import { MultiFileDiffCard, FileCreatedCard, FileDeletedCard } from "./diff"
+import { SessionCard } from "./SessionCard"
 import type { AgentSession } from "../timeline-store"
+import type { ToolCallRecord } from "../types"
 import { mapToolToActivity } from "../../agent-visibility/AgentActivityMapper"
 import { cn } from "@/lib/utils"
 import { getSpringConfig } from "@/lib/motion"
-import { acceptAllDiffReviews, acceptDiffReviewFile, rejectDiffReviewFile } from "@/lib/diff-review"
-import { writeFile } from "@/lib/filesystem"
+import { ExecutionSessionManager } from "@/runtime/sessions/ExecutionSessionManager"
+import { ChangeSetManager } from "@/runtime/changeset/ChangeSetManager"
+import { useChangeSetStore } from "@/runtime/changeset/ChangeSetStore"
 
 const ACTIVITY_LABELS: Record<string, string> = {
   routing: "Looking through the project",
@@ -38,19 +40,6 @@ function getActivityLabel(session: AgentSession, hasContent: boolean): string | 
   if (phase && ACTIVITY_LABELS[phase.toLowerCase()]) return ACTIVITY_LABELS[phase.toLowerCase()]
   if (hasContent) return "Just a moment"
   return "Thinking through this"
-}
-
-function SectionDivider({ icon: Icon, label, count }: { icon: React.ComponentType<{ className?: string }>; label: string; count?: number }) {
-  return (
-    <div className="flex items-center gap-1.5 px-0.5 py-0.5 mt-1 mb-0.5 select-none">
-      <Icon className="h-3 w-3 text-white/20 shrink-0" />
-      <span className="text-[9px] font-semibold text-white/25 uppercase tracking-[0.08em]">{label}</span>
-      {count !== undefined && count > 0 && (
-        <span className="text-[8px] font-mono text-white/15 ml-1">{count}</span>
-      )}
-      <div className="flex-1 h-px bg-gradient-to-r from-white/[0.04] to-transparent ml-1" />
-    </div>
-  )
 }
 
 function buildEditSummary(session: AgentSession): string | null {
@@ -103,6 +92,9 @@ function buildExecutionSummary(session: AgentSession): { main: string; details: 
   const errors = session.toolCalls.filter(tc => tc.status === "error")
   if (errors.length > 0) details.push(`${errors.length} error${errors.length > 1 ? "s" : ""}`)
 
+  const fileList = session.fileEdits.map(e => e.path.split("/").pop() || e.path)
+  if (fileList.length > 0) details.push(fileList.join(", "))
+
   return parts.length > 0 ? { main: parts.join(", "), details } : { main: "Completed", details }
 }
 
@@ -113,20 +105,11 @@ interface AssistantResponseProps {
   originalInput?: string
 }
 
-const ENTRANCE_SPRING = getSpringConfig("default")
 const SECTION_SPRING = getSpringConfig("gentle")
 
-const sectionVariants = {
-  initial: { opacity: 0, y: -3 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, height: 0, marginBottom: 0, overflow: "hidden" as const },
+function sortPhaseHistory(phases: { label: string; timestamp: number }[]) {
+  return [...phases].sort((a, b) => a.timestamp - b.timestamp)
 }
-
-const stagger = (i: number) => ({
-  initial: { opacity: 0, x: -4 },
-  animate: { opacity: 1, x: 0, transition: { delay: i * 0.03 } },
-  exit: { opacity: 0, x: -4, height: 0, overflow: "hidden" as const },
-})
 
 function ThinkingBlock({ session }: { session: AgentSession }) {
   const isCollapsed = useTimelineStore((s) => s.collapsedSections.has(`thinking-${session.stepId}`))
@@ -134,6 +117,8 @@ function ThinkingBlock({ session }: { session: AgentSession }) {
   const expanded = isCollapsed
 
   if (!session.phaseHistory || session.phaseHistory.length === 0) return null
+
+  const sorted = sortPhaseHistory(session.phaseHistory)
 
   return (
     <div className="py-1">
@@ -143,7 +128,7 @@ function ThinkingBlock({ session }: { session: AgentSession }) {
       >
         {expanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
         <Brain className="h-2.5 w-2.5" />
-        <span>Thinking process ({session.phaseHistory.length} steps)</span>
+        <span>{expanded ? "Hide thinking" : "Show thinking"}</span>
       </button>
       <AnimatePresence>
         {expanded && (
@@ -154,7 +139,7 @@ function ThinkingBlock({ session }: { session: AgentSession }) {
             transition={getSpringConfig("fast")}
             className="mt-1 ml-4 space-y-0.5 overflow-hidden"
           >
-            {session.phaseHistory.map((phase, i) => (
+            {sorted.map((phase, i) => (
               <div key={i} className="flex items-center gap-1.5 text-[10px] text-white/25">
                 <span className="h-1 w-1 rounded-full bg-white/20 shrink-0" />
                 <span>{phase.label}</span>
@@ -162,6 +147,135 @@ function ThinkingBlock({ session }: { session: AgentSession }) {
                   {new Date(phase.timestamp).toLocaleTimeString([], { minute: "2-digit", second: "2-digit" })}
                 </span>
               </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function getToolCallDetail(tc: ToolCallRecord): string | null {
+  try {
+    const args = JSON.parse(tc.args) as Record<string, unknown>
+    return (args.path as string) || (args.file as string) || (args.url as string) || (args.pattern as string) || null
+  } catch {
+    return null
+  }
+}
+
+function formatMs(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`
+}
+
+function ToolCallLineStatus({ status }: { status: ToolCallRecord["status"] }) {
+  switch (status) {
+    case "pending":
+      return <Clock className="h-2.5 w-2.5 text-white/30 shrink-0" />
+    case "running":
+      return <Loader2 className="h-2.5 w-2.5 text-amber-400/70 shrink-0 animate-spin" />
+    case "complete":
+      return (
+        <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 text-emerald-400/70 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2.5 6L5 8.5L9.5 3" />
+        </svg>
+      )
+    case "error":
+      return <XCircle className="h-2.5 w-2.5 text-red-400/70 shrink-0" />
+  }
+}
+
+function ToolCallLine({ tc }: { tc: ToolCallRecord }) {
+  const [showResult, setShowResult] = useState(false)
+  const activity = mapToolToActivity(tc.name)
+  const detail = getToolCallDetail(tc)
+  const duration = tc.durationMs ? formatMs(tc.durationMs) : null
+  const hasResult = tc.status === "complete" || tc.status === "error"
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -4 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={getSpringConfig("gentle")}
+    >
+      <button
+        onClick={() => setShowResult(!showResult)}
+        className={cn(
+          "flex items-center gap-1.5 w-full text-left py-0.5 px-1 rounded",
+          "text-[10px] transition-colors",
+          "hover:bg-white/[0.02]",
+          tc.status === "complete" && "text-white/40 hover:text-white/60",
+          tc.status === "running" && "text-amber-400/60",
+          tc.status === "error" && "text-red-400/60",
+          tc.status === "pending" && "text-white/25",
+        )}
+      >
+        <ToolCallLineStatus status={tc.status} />
+        <span className="font-medium">{activity.label}</span>
+        {detail && <span className="font-mono text-white/30 truncate max-w-[180px]">{detail}</span>}
+        {duration && <span className="text-[8px] font-mono text-white/20 ml-auto">{duration}</span>}
+      </button>
+      <AnimatePresence>
+        {showResult && hasResult && tc.result && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={getSpringConfig("fast")}
+            className="overflow-hidden ml-4"
+          >
+            <pre className="text-[9px] font-mono text-white/25 whitespace-pre-wrap break-all leading-relaxed max-h-[100px] overflow-y-auto p-1.5 rounded bg-black/20 border border-white/[0.03] mt-0.5 scrollbar-thin scrollbar-thumb-white/[0.03] scrollbar-track-transparent">
+              {tc.result}
+            </pre>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
+function ToolCallAccumulator({ session, isRunning }: { session: AgentSession; isRunning: boolean }) {
+  const [expanded, setExpanded] = useState(false)
+  const count = session.toolCalls.length
+  const hasError = session.toolCalls.some(tc => tc.status === "error")
+
+  if (count === 0) return null
+
+  const label = `${count} tool call${count !== 1 ? "s" : ""}`
+
+  return (
+    <div className="py-0.5">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-[10px] text-white/30 hover:text-white/50 transition-colors"
+      >
+        {expanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+        {isRunning ? (
+          <span className="relative flex h-2.5 w-2.5 items-center justify-center">
+            <span className="absolute inset-0 rounded-full bg-blue-400/30 animate-ping" />
+            <span className="h-1.5 w-1.5 rounded-full bg-blue-400/80" />
+          </span>
+        ) : (
+          <Wrench className="h-2.5 w-2.5" />
+        )}
+        <span>{label}</span>
+        {!isRunning && hasError && (
+          <span className="text-red-400/50 ml-1">({session.toolCalls.filter(tc => tc.status === "error").length} failed)</span>
+        )}
+      </button>
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={getSpringConfig("fast")}
+            className="ml-3 mt-0.5 space-y-0.5 overflow-hidden"
+          >
+            {session.toolCalls.map(tc => (
+              <ToolCallLine key={tc.id} tc={tc} />
             ))}
           </motion.div>
         )}
@@ -178,8 +292,9 @@ function ToolErrorDisplay({ toolCalls }: { toolCalls: Array<{ name: string; stat
       {errors.map((tc, i) => (
         <motion.div
           key={i}
-          {...stagger(i)}
-          transition={getSpringConfig("gentle")}
+          initial={{ opacity: 0, x: -4 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ ...getSpringConfig("gentle"), delay: i * 0.03 }}
           className="rounded-lg border border-red-500/12 bg-red-500/[0.03] px-3 py-1.5"
         >
           <div className="flex items-center gap-1.5 mb-0.5">
@@ -210,6 +325,58 @@ function ExecutionMetrics({ session }: { session: AgentSession }) {
   )
 }
 
+function CodeChanges({
+  session,
+  onOpenInEditor,
+}: {
+  session: AgentSession
+  onOpenInEditor: (path: string) => void
+}) {
+  const editSummary = useMemo(() => buildEditSummary(session), [session.fileEdits, session.fileOps])
+  const hasEdits = session.fileEdits.length > 0
+  const hasOps = session.fileOps != null && session.fileOps.length > 0
+
+  if (!editSummary && !hasEdits && !hasOps) return null
+
+  return (
+    <div className="py-0.5 space-y-0.5">
+      <div className="flex items-center gap-1.5 text-[10px] text-white/25 select-none">
+        <FileEdit className="h-2.5 w-2.5 shrink-0" />
+        <span className="text-[9px] font-semibold text-white/25 uppercase tracking-[0.08em]">Changes</span>
+        <div className="flex-1 h-px bg-gradient-to-r from-white/[0.04] to-transparent ml-1" />
+      </div>
+      {editSummary && (
+        <p className="text-[10px] text-white/40 leading-relaxed">{editSummary}</p>
+      )}
+      {hasEdits && (
+        <div className="flex flex-wrap gap-1">
+          {session.fileEdits.map(edit => (
+            <button
+              key={edit.path}
+              onClick={() => onOpenInEditor(edit.path)}
+              className="text-[9px] text-blue-400/50 hover:text-blue-400/80 transition-colors px-1.5 py-0.5 rounded bg-blue-500/5 hover:bg-blue-500/10"
+            >
+              View changes: {edit.path.split("/").pop()}
+            </button>
+          ))}
+        </div>
+      )}
+      {hasOps && (
+        <div className="flex flex-wrap gap-1">
+          {session.fileOps.map(op => (
+            <span
+              key={op.path}
+              className="text-[9px] text-white/25 px-1.5 py-0.5"
+            >
+              {op.operation === "create" ? "Created" : "Deleted"} {op.path.split("/").pop()}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export const AssistantResponse = memo(function AssistantResponse({
   stepId,
   isLatest,
@@ -236,53 +403,47 @@ export const AssistantResponse = memo(function AssistantResponse({
   const isError = streamState === "failed"
   const isComplete = !isRunning && streamState === "completed"
   const hasThinking = session.phaseHistory != null && session.phaseHistory.length > 0
+  // Toolless turn (fast mode) → render a plain streaming bubble without chrome
+  const isToolless = !hasToolCalls && !hasEdits && !hasTerminals && !hasFileOps
 
-  const filesForDiff = useMemo(
-    () => session.fileEdits.map((fe) => ({ edit: fe })),
-    [session.fileEdits]
-  )
-
+  const showAgentLabels = FeatureFlagManager.getInstance().isEnabled("showInternalAgentLabels")
   const currentActivity = useMemo(
-    () => getActivityLabel(session, hasContent),
-    [session, hasContent]
+    () => showAgentLabels ? getActivityLabel(session, hasContent) : null,
+    [session, hasContent, showAgentLabels]
   )
   const executionSummary = useMemo(
     () => isComplete ? buildExecutionSummary(session) : null,
     [isComplete, session.toolCalls, session.fileEdits, session.terminalOutputs, session.fileOps, session.streamState, session.completedAt, session.startedAt, session.modelName]
   )
-  const editSummary = useMemo(
-    () => isComplete ? buildEditSummary(session) : null,
-    [isComplete, session.fileEdits, session.fileOps]
+
+  const changeSetId: string | undefined = useMemo(
+    () => useChangeSetStore.getState().getChangeSetsBySession(stepId)[0]?.id,
+    [stepId, session.fileEdits.length],
   )
 
-  const handleRevert = useCallback(async (path: string) => {
-    const edit = session.fileEdits.find((fe) => fe.path === path)
-    if (!edit?.oldContent) return
-    try {
-      const revertedFromReview = await rejectDiffReviewFile(path)
-      if (revertedFromReview) {
-        return
-      }
-      const rootPath = useWorkspaceStore.getState().rootPath
-      const fullPath = rootPath ? `${rootPath}\\${path.replace(/\//g, "\\")}` : path
-      await writeFile(fullPath, edit.oldContent)
-      useWorkspaceStore.getState().notifyFileEdited(path, edit.oldContent)
-    } catch { console.warn("[AssistantResponse] Failed to revert file edit") }
-  }, [session.fileEdits])
+  const [conflicts, setConflicts] = useState<{ file: string; hasConflict: boolean }[]>([])
+  useEffect(() => {
+    if (!changeSetId || !isComplete) return
+    const root = useWorkspaceStore.getState().rootPath
+    if (!root) return
+    ChangeSetManager.getInstance().detectConflicts(changeSetId, root).then((results) => {
+      setConflicts(results.filter((r) => r.hasConflict).map((r) => ({ file: r.file, hasConflict: true })))
+    }).catch(() => {})
+  }, [changeSetId, isComplete])
 
-  const handleRevertAll = useCallback(async () => {
-    for (const edit of session.fileEdits) {
-      if (edit.oldContent) await handleRevert(edit.path)
+  const handleOpenInEditor = useCallback((path: string) => {
+    useWorkspaceStore.getState().openFileInDiffMode(path)
+  }, [])
+
+  const handleCancelCommand = useCallback(() => {
+    ExecutionSessionManager.getInstance().cancel(stepId)
+  }, [stepId])
+
+  const handleRerunCommand = useCallback(() => {
+    if (onRetry && originalInput) {
+      onRetry(originalInput)
     }
-  }, [session.fileEdits, handleRevert])
-
-  const handleAcceptFile = useCallback(async (path: string) => {
-    await acceptDiffReviewFile(path)
-  }, [])
-
-  const handleAcceptAll = useCallback(async () => {
-    await acceptAllDiffReviews()
-  }, [])
+  }, [onRetry, originalInput])
 
   const sessionConfidence = useMemo(() => {
     if (session.confidence) return session.confidence
@@ -303,13 +464,53 @@ export const AssistantResponse = memo(function AssistantResponse({
     }
   }, [isComplete, session.confidence, session.fileEdits])
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={ENTRANCE_SPRING}
-      className="w-full space-y-0.5"
-    >
+  // ── Toolless turn (fast/conversation mode): plain streaming bubble, no chrome ──
+  if (isToolless && (isRunning || isComplete)) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={getSpringConfig("default")}
+      >
+        {isRunning && !hasContent && (
+          <motion.div
+            initial={{ opacity: 0, y: -2 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-2 py-2"
+          >
+            <span className="relative flex h-3 w-3 items-center justify-center">
+              <span className="absolute inset-0 rounded-full bg-blue-400/30 animate-ping" />
+              <span className="h-2 w-2 rounded-full bg-blue-400/80" />
+            </span>
+            <span className="text-sm text-white/50 italic font-medium">Thinking&hellip;</span>
+          </motion.div>
+        )}
+        {hasContent && (
+          <motion.div
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={SECTION_SPRING}
+            className="prose-container py-1"
+          >
+            <ResponseStream text={session.streamingText} stepId={stepId} isStreaming={isRunning} />
+          </motion.div>
+        )}
+        {isError && (
+          <div className="py-2">
+            <span className="text-xs text-red-400/60">{session.error ?? "An error occurred"}</span>
+          </div>
+        )}
+      </motion.div>
+    )
+  }
+
+  // ── Standard turn (with tools, edits, etc.) ──
+  // Multi-agent orchestration turns get the SessionCard chrome (role badges, status, duration).
+  // Everything else gets a minimal container with no borders, badges, or headers.
+  const isMultiAgent = session.executionStrategy === "multi-agent"
+
+  const innerContent = (
+    <>
       {/* Execution summary — spring entrance */}
       <AnimatePresence>
         {executionSummary && (
@@ -362,149 +563,40 @@ export const AssistantResponse = memo(function AssistantResponse({
         </motion.div>
       )}
 
-      {/* Thinking process visualization */}
+      {/* Thinking process — collapsed */}
       {hasThinking && !isRunning && (
         <ThinkingBlock session={session} />
       )}
 
-      {/* Tool calls — grouped by parallel execution, compact animated cards */}
-      <AnimatePresence mode="popLayout">
-        {hasToolCalls && (
-          <motion.div
-            key="tool-calls"
-            layout
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            variants={sectionVariants}
-            transition={SECTION_SPRING}
-            className="py-0.5 space-y-1"
-          >
-            <SectionDivider icon={Wrench} label="Tools" count={session.toolCalls.length} />
-            {(() => {
-              // Group tool calls by parallelGroup — tools with the same group index ran in parallel
-              const groups: { parallelGroup?: number; tools: typeof session.toolCalls }[] = []
-              let currentGroup: { parallelGroup?: number; tools: typeof session.toolCalls } | null = null
+      {/* Tool calls — accumulator */}
+      {hasToolCalls && (
+        <ToolCallAccumulator session={session} isRunning={isRunning} />
+      )}
 
-              for (const tc of session.toolCalls) {
-                if (currentGroup && currentGroup.parallelGroup === tc.parallelGroup) {
-                  currentGroup.tools.push(tc)
-                } else {
-                  currentGroup = { parallelGroup: tc.parallelGroup, tools: [tc] }
-                  groups.push(currentGroup)
-                }
-              }
+      {/* Code changes — summary + View changes */}
+      {(hasEdits || hasFileOps) && (
+        <CodeChanges session={session} onOpenInEditor={handleOpenInEditor} />
+      )}
 
-              return groups.map((group, gi) => {
-                const isParallel = group.parallelGroup !== undefined && group.tools.length > 1
-                return (
-                  <div key={`group-${gi}`} className="space-y-0.5">
-                    {isParallel && (
-                      <div className="flex items-center gap-1.5 px-1 py-0.5">
-                        <Layers className="h-2.5 w-2.5 text-cyan-400/50" />
-                        <span className="text-[9px] font-medium text-cyan-400/40 uppercase tracking-wider">
-                          {group.tools.length} in parallel
-                        </span>
-                      </div>
-                    )}
-                    {group.tools.map((tc, ti) => (
-                      <ToolCallCard key={tc.id} toolCall={tc} index={ti} />
-                    ))}
-                    {isParallel && (
-                      <div className="ml-2 h-px bg-gradient-to-r from-cyan-500/10 via-transparent to-transparent" />
-                    )}
-                  </div>
-                )
-              })
-            })()}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* File creates/deletes */}
-      <AnimatePresence>
-        {hasFileOps && (
-          <motion.div
-            key="file-ops"
-            initial={{ opacity: 0, y: -3 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={SECTION_SPRING}
-            className="py-0.5 space-y-1"
-          >
-            <SectionDivider icon={FileEdit} label="Files" count={session.fileOps.length} />
-            {session.fileOps.map((op, i) => {
-              if (op.operation === "create") return <FileCreatedCard key={`op-${i}`} op={op} />
-              if (op.operation === "delete") return <FileDeletedCard key={`op-${i}`} op={op} />
-              return null
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Terminal outputs */}
-      <AnimatePresence>
-        {hasTerminals && (
-          <motion.div
-            key="terminals"
-            initial={{ opacity: 0, y: -3 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={SECTION_SPRING}
-            className="py-0.5 space-y-1"
-          >
-            <SectionDivider icon={TerminalIcon} label="Commands" count={session.terminalOutputs.length} />
-            {session.terminalOutputs.map((term, i) => (
-              <TerminalBlock key={`term-${i}`} terminal={term} />
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* File edits — grouped diff view */}
-      <AnimatePresence>
-        {hasEdits && (
-          <motion.div
-            key="file-edits"
-            initial={{ opacity: 0, y: -3 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={SECTION_SPRING}
-            className="py-0.5"
-          >
-            <SectionDivider icon={FileEdit} label="Changes" count={session.fileEdits.length} />
-            {editSummary && (
-              <motion.div
-                initial={{ opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="px-0.5 py-0.5"
-              >
-                <p className="text-[10px] text-white/40 leading-relaxed">{editSummary}</p>
-              </motion.div>
-            )}
-            <MultiFileDiffCard
-              files={filesForDiff}
-              onRevert={handleRevert}
-              onRevertAll={handleRevertAll}
-              onAcceptFile={handleAcceptFile}
-              onAcceptAll={handleAcceptAll}
-              onOpenInEditor={(path) => useWorkspaceStore.getState().openFileInDiffMode(path)}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Conflict warnings */}
+      {conflicts.length > 0 && (
+        <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/15 bg-amber-500/[0.04] px-2.5 py-1.5 mt-1">
+          <AlertTriangle className="h-3 w-3 text-amber-400 shrink-0" />
+          <span className="text-[10px] text-amber-400/70">
+            {conflicts.length} file{conflicts.length > 1 ? "s" : ""} modified externally — review carefully
+          </span>
+        </div>
+      )}
 
       {/* Tool errors */}
       <AnimatePresence>
         {hasToolErrors && (
           <motion.div
-            key="tool-errors"
             initial={{ opacity: 0, y: -3 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, height: 0 }}
             transition={SECTION_SPRING}
           >
-            <SectionDivider icon={AlertTriangle} label="Issues" count={session.toolCalls.filter(tc => tc.status === "error").length} />
             <ToolErrorDisplay toolCalls={session.toolCalls} />
           </motion.div>
         )}
@@ -552,32 +644,29 @@ export const AssistantResponse = memo(function AssistantResponse({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, height: 0 }}
             transition={SECTION_SPRING}
-            className="py-2 space-y-2"
+            className="py-2"
           >
-            {session.error && (
-              <div className="rounded-lg border border-red-500/15 bg-red-500/[0.03] px-3 py-2">
-                <p className="text-xs text-red-400/80">{session.error}</p>
-              </div>
-            )}
-            {onRetry && originalInput && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.15 }}
-                className="flex gap-2"
-              >
-                <button
-                  onClick={() => onRetry(originalInput)}
-                  className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-xs text-foreground/60 hover:text-foreground/80 hover:bg-white/[0.04] transition-all"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  Retry
-                </button>
-              </motion.div>
-            )}
+            <ProviderErrorCard
+              error={session.error ?? "Unknown error"}
+              onRetry={onRetry && originalInput ? () => onRetry(originalInput!) : undefined}
+            />
           </motion.div>
         )}
       </AnimatePresence>
+    </>
+  )
+
+  if (isMultiAgent) {
+    return <SessionCard session={session}>{innerContent}</SessionCard>
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={getSpringConfig("default")}
+    >
+      {innerContent}
     </motion.div>
   )
 })

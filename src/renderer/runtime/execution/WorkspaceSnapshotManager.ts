@@ -1,4 +1,5 @@
 import { RepositoryKnowledgeGraph } from "@/runtime/intelligence/RepositoryKnowledgeGraph"
+import { CheckpointStore, type CheckpointMetadata } from "./CheckpointStore"
 
 export interface WorkspaceSnapshot {
   id: string
@@ -12,6 +13,8 @@ export class WorkspaceSnapshotManager {
   private static instance: WorkspaceSnapshotManager
   private snapshots = new Map<string, WorkspaceSnapshot>()
   private snapshotCounter = 0
+  private checkpointStore = new CheckpointStore()
+  private checkpointEnabled = true
 
   static getInstance(): WorkspaceSnapshotManager {
     if (!WorkspaceSnapshotManager.instance) {
@@ -20,7 +23,17 @@ export class WorkspaceSnapshotManager {
     return WorkspaceSnapshotManager.instance
   }
 
-  async create(label: string): Promise<string> {
+  setCheckpointEnabled(enabled: boolean): void {
+    this.checkpointEnabled = enabled
+  }
+
+  async init(): Promise<void> {
+    if (this.checkpointEnabled) {
+      await this.checkpointStore.init()
+    }
+  }
+
+  async create(label: string, sessionId?: string): Promise<string> {
     const id = `snap_${Date.now()}_${++this.snapshotCounter}`
     const files = new Map<string, string>()
 
@@ -48,6 +61,16 @@ export class WorkspaceSnapshotManager {
 
     const snapshot: WorkspaceSnapshot = { id, label, timestamp: Date.now(), files, active: true }
     this.snapshots.set(id, snapshot)
+
+    if (this.checkpointEnabled) {
+      const fileSnapshots = Array.from(files.entries()).map(([path, content]) => ({
+        path, content, existed: true,
+      }))
+      await this.checkpointStore.save(
+        id, sessionId ?? "default", label, "snapshot", { label }, fileSnapshots,
+      )
+    }
+
     return id
   }
 
@@ -60,7 +83,10 @@ export class WorkspaceSnapshotManager {
 
   async restore(id: string): Promise<boolean> {
     const snapshot = this.snapshots.get(id)
-    if (!snapshot || !snapshot.active) return false
+    if (!snapshot || !snapshot.active) {
+      const result = await this.checkpointStore.restore(id)
+      return result.success
+    }
 
     try {
       const fs = await import("fs")
@@ -97,6 +123,15 @@ export class WorkspaceSnapshotManager {
 
   listActive(): WorkspaceSnapshot[] {
     return [...this.snapshots.values()].filter(s => s.active)
+  }
+
+  async listCheckpoints(): Promise<CheckpointMetadata[]> {
+    if (!this.checkpointEnabled) return []
+    return this.checkpointStore.listMetadata()
+  }
+
+  async restoreCheckpoint(id: string): Promise<{ success: boolean; error?: string }> {
+    return this.checkpointStore.restore(id)
   }
 
   clear(): void {

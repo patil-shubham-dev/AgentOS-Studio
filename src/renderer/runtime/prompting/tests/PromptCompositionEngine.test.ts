@@ -31,23 +31,24 @@ describe("PromptCompositionEngine", () => {
       expect(result.promptText.length).toBeGreaterThan(100)
       expect(result.ast.nodes?.length ?? Infinity).toBeGreaterThan(0)
       // Core identity should appear first
-      expect(result.promptText).toContain("Coding Agent")
+      expect(result.promptText).toContain("AgenticOS")
     })
 
     it("includes role-specific identity for each role", async () => {
-      const roleNames: Record<string, string> = {
-        coder: "Coding Agent",
-        manager: "Manager Agent",
-        research: "Research Agent",
-        qa: "QA Engineer",
-        runtime: "Runtime Engineer",
+      const roleDescriptions: Record<string, RegExp> = {
+        coder: /senior software engineer/,
+        manager: /orchestrate complex tasks/,
+        research: /explore codebases/,
+        qa: /write tests/,
+        runtime: /command execution/,
       }
-      for (const [role, expectedName] of Object.entries(roleNames)) {
+      for (const [role, expectedPattern] of Object.entries(roleDescriptions)) {
         registry.invalidateCache()
         const ctx = defaultContext({ role })
         const plan = registry.plan(ctx)
         const result = await engine.compose(plan, ctx)
-        expect(result.promptText).toContain(expectedName)
+        expect(result.promptText).toContain("AgenticOS")
+        expect(result.promptText).toMatch(expectedPattern)
       }
     })
 

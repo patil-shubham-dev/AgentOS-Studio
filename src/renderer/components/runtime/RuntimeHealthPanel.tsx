@@ -3,9 +3,9 @@ import { EventBus } from "@/runtime/EventBus"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
 import { ExecutionSessionManager } from "@/runtime/sessions/ExecutionSessionManager"
-import { getRenderCounts, getMutationTrace, resetDiagnostics } from "@/runtime/runtime-diagnostics"
-import { getLifetimeStats, getActiveComponentCount, getTotalMounts, getTotalUnmounts, assertStableLifetime, resetLifetimeTracking } from "@/performance/leak-detector"
-import { getSubscriptionCount, getTimerCount, getSubscriptionRegistry, getTimerRegistry, resetAssertions } from "@/performance/runtime-assertions"
+import { getRenderCounts, resetDiagnostics } from "@/runtime/runtime-diagnostics"
+import { getActiveComponentCount, resetLifetimeTracking } from "@/performance/leak-detector"
+import { getSubscriptionCount, resetAssertions } from "@/performance/runtime-assertions"
 import { getKernel } from "@/core/kernel/startup"
 
 import { useAppStore } from "@/stores/app-store"
@@ -14,7 +14,7 @@ type Tab = "overview" | "task-graph" | "sessions" | "providers" | "tools" | "ren
 
 export function RuntimeHealthPanel() {
   const [tab, setTab] = useState<Tab>("overview")
-  const [refresh, setRefresh] = useState(0)
+  const [_refresh, setRefresh] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -25,12 +25,6 @@ export function RuntimeHealthPanel() {
   }, [])
 
   const renderCounts = [...(getRenderCounts?.() ?? new Map()).entries()].sort((a, b) => b[1] - a[1])
-  const mutationTrace = getMutationTrace?.() ?? []
-  const recentMutations = mutationTrace.slice(-20)
-  const lifetimeStats = getLifetimeStats?.() ?? new Map()
-  const lifetimeEntries = [...lifetimeStats.entries()].sort((a, b) => b[1].active - a[1].active)
-  const subRegistry = getSubscriptionRegistry?.() ?? new Map()
-  const timerRegistry = getTimerRegistry?.() ?? new Map()
   const bus = EventBus.getInstance()
   const eventCount = (bus as any).eventCount ?? 0
   const listenerCount = (bus as any).listeners?.size ?? 0
@@ -44,7 +38,7 @@ export function RuntimeHealthPanel() {
   const allToolCalls = Array.from(timeline.agentSessions.values()).reduce((sum, s) => sum + s.toolCalls.length, 0)
   const allErrors = Array.from(timeline.agentSessions.values()).filter((s) => s.streamState === "failed").length
   const engineDiagnostics = {
-    state: (ws.status === "running" || ws.status === "ready" ? "RUNNING" : "ERROR") as "RUNNING" | "ERROR",
+    state: (ws.status === "ready" ? "RUNNING" : "ERROR") as "RUNNING" | "ERROR",
     totalToolCalls: allToolCalls,
     totalErrors: allErrors,
     avgExecutionMs: 0,
@@ -56,11 +50,7 @@ export function RuntimeHealthPanel() {
   }
 
   const activeSubs = getSubscriptionCount?.() ?? 0
-  const activeTimers = getTimerCount?.() ?? 0
   const activeComponents = getActiveComponentCount?.() ?? 0
-  const totalMounts = getTotalMounts?.() ?? 0
-  const totalUnmounts = getTotalUnmounts?.() ?? 0
-  const stableIssues = assertStableLifetime?.() ?? []
 
   const tabs: Tab[] = ["overview", "task-graph", "sessions", "providers", "tools", "events", "render", "kernel"]
 

@@ -8,7 +8,7 @@ export const executionPolicySection: SectionDefinition = {
   importance: Importance.HIGH,
   priority: 35,
   cache: 'session',
-  compute: async (ctx: ResolutionContext) => {
+  compute: async (_ctx: ResolutionContext) => {
     const lines: string[] = [
       '## How you work',
       '',

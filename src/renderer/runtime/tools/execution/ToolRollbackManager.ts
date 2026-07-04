@@ -1,4 +1,5 @@
 import { normalizeError } from "@/lib/normalize-error"
+import { CheckpointStore } from "@/runtime/execution/CheckpointStore"
 
 export interface RollbackPoint {
   id: string
@@ -14,12 +15,24 @@ export class ToolRollbackManager {
   private static instance: ToolRollbackManager
   private points = new Map<string, RollbackPoint>()
   private maxPoints = 500
+  private checkpointStore = new CheckpointStore()
+  private diskPersistenceEnabled = true
 
   static getInstance(): ToolRollbackManager {
     if (!ToolRollbackManager.instance) {
       ToolRollbackManager.instance = new ToolRollbackManager()
     }
     return ToolRollbackManager.instance
+  }
+
+  setDiskPersistenceEnabled(enabled: boolean): void {
+    this.diskPersistenceEnabled = enabled
+  }
+
+  async init(): Promise<void> {
+    if (this.diskPersistenceEnabled) {
+      await this.checkpointStore.init()
+    }
   }
 
   async createPoint(executionId: string, toolName: string, args: Record<string, unknown>): Promise<RollbackPoint> {
@@ -36,6 +49,17 @@ export class ToolRollbackManager {
     }
 
     this.points.set(point.id, point)
+
+    if (this.diskPersistenceEnabled && fileSnapshots.length > 0) {
+      await this.checkpointStore.save(
+        point.id,
+        executionId,
+        `Tool: ${toolName}`,
+        toolName,
+        args,
+        fileSnapshots,
+      )
+    }
 
     if (this.points.size > this.maxPoints) {
       const entries = Array.from(this.points.entries())
@@ -57,28 +81,34 @@ export class ToolRollbackManager {
 
   async rollback(pointId: string): Promise<{ success: boolean; error?: string }> {
     const point = this.points.get(pointId)
-    if (!point) return { success: false, error: "Rollback point not found" }
 
-    try {
-      for (const snapshot of point.fileSnapshots) {
-        if (snapshot.existed && snapshot.content !== undefined) {
-          const { writeFile } = await import("@/lib/filesystem")
-          await writeFile(snapshot.path, snapshot.content)
-        } else if (!snapshot.existed) {
-          const { deleteFile } = await import("@/lib/filesystem")
-          try {
-            await deleteFile(snapshot.path)
-          } catch {
-            // File may not exist — that's fine
+    if (point) {
+      try {
+        for (const snapshot of point.fileSnapshots) {
+          if (snapshot.existed && snapshot.content !== undefined) {
+            const { writeFile } = await import("@/lib/filesystem")
+            await writeFile(snapshot.path, snapshot.content)
+          } else if (!snapshot.existed) {
+            const { deleteEntry } = await import("@/lib/filesystem")
+            try {
+              await deleteEntry(snapshot.path)
+            } catch {
+            }
           }
         }
+        point.status = "rolled_back"
+        return { success: true }
+      } catch (err) {
+        return { success: false, error: normalizeError(err).message }
       }
-
-      point.status = "rolled_back"
-      return { success: true }
-    } catch (err) {
-      return { success: false, error: normalizeError(err).message }
     }
+
+    if (this.diskPersistenceEnabled) {
+      const result = await this.checkpointStore.restore(pointId)
+      if (result.success) return result
+    }
+
+    return { success: false, error: "Rollback point not found" }
   }
 
   async rollbackTo(executionId: string): Promise<{ rolledBack: number; errors: string[] }> {
@@ -108,6 +138,11 @@ export class ToolRollbackManager {
     return Array.from(this.points.values())
   }
 
+  async getPersistedPoints(): Promise<import("@/runtime/execution/CheckpointStore").CheckpointMetadata[]> {
+    if (!this.diskPersistenceEnabled) return []
+    return this.checkpointStore.listMetadata()
+  }
+
   private async captureFileSnapshots(
     toolName: string,
     args: Record<string, unknown>
@@ -128,7 +163,6 @@ export class ToolRollbackManager {
     }
 
     if (toolName === "bash" || toolName === "run_command") {
-      // Bash rollback is best-effort — record what files might be affected
       const command = (args.command ?? args.cmd ?? "") as string
       if (command.includes(">") || command.includes(">>")) {
         const match = command.match(/[>]+\s*(\S+)/)
@@ -150,6 +184,10 @@ export class ToolRollbackManager {
 
   clear(): void {
     this.points.clear()
+  }
+
+  async clearDisk(): Promise<void> {
+    await this.checkpointStore.clear()
   }
 
   get stats() {

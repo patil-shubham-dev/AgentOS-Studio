@@ -1,6 +1,6 @@
 import { ipcMain, app } from 'electron'
-import { join, dirname, basename } from 'path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync, renameSync } from 'fs'
+import { join } from 'path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync } from 'fs'
 
 const REPLAY_DIR = join(app.getPath('userData'), 'replay')
 const SESSIONS_DIR = join(REPLAY_DIR, 'sessions')

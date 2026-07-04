@@ -11,7 +11,7 @@ import { useWorkspaceStore } from "@/stores/workspace-store"
 import { usePlanStore } from "@/stores/plan-store"
 import { useSandboxStore } from "@/stores/sandbox-store"
 import { useToastStore } from "@/stores/toast-store"
-import { ProviderRuntime } from "@/runtime/providers/ProviderRuntime"
+import { providerGateway } from "@/runtime/providers/ProviderGateway"
 import { StreamManager } from "@/runtime/streaming/StreamManager"
 import { PlanGenerator } from "@/runtime/planning/PlanGenerator"
 import { ComplexityAnalyzer } from "@/runtime/planning/ComplexityAnalyzer"
@@ -30,19 +30,17 @@ import { normalizeRole } from "@/lib/role-identity"
 import { compressConversationHistory } from "@/runtime/context/HistoryCompressor"
 import { summarizeMessages, getMemoryPressure } from "@/runtime/memory-manager"
 import { RUNTIME_TOKEN_LIMITS } from "@/runtime/runtime-token-config"
-import { FAST_CHAT_PROMPT } from "@/runtime/runtime-role-registry"
 import { startTrace, trace, endTrace } from "@/lib/execution-trace"
-import { emitTelemetry } from "@/lib/telemetry"
 import { recordAgentExecution, recordToolExecution } from "@/lib/domain-telemetry"
 import { recordExecutionStage, recordProviderCall, recordToolCallTelemetry } from "@/runtime/RuntimeTelemetry"
 import { safeCapitalize } from "@/lib/safeCapitalize"
 import { WorktreeSandboxManager } from "@/lib/git/WorktreeSandbox"
-import { ContextBudgetManager } from "@/runtime/execution/ContextBudgetManager"
 import { ExecutionProfiler } from "@/runtime/execution/ExecutionProfiler"
 import { ExecutionReliabilitySuite } from "@/runtime/execution/ExecutionReliabilitySuite"
 import { AutonomousExecutionPath } from "@/runtime/execution/AutonomousExecutionPath"
 import { VerificationRecoveryLoop } from "@/runtime/execution/VerificationRecoveryLoop"
 import { matchErrorToCode, getStructuredError } from "@/lib/error-schema"
+import { MultiAgentOrchestrator } from "@/runtime/multi-agent"
 
 const WORKSPACE_CAPABILITIES = {
   requiresTerminal: new Set(["run_command", "bash", "terminal"]),
@@ -74,9 +72,6 @@ export interface ExecuteOptions {
 const FIRST_EVENT_TIMEOUT_MS = 45_000
 const PROVIDER_TIMEOUT_MS = 30_000
 const AGENT_TIMEOUT_MS = 120_000
-/** How long to wait for a single provider stream before attempting a fallback */
-const FAST_PATH_ATTEMPT_TIMEOUT_MS = 60_000
-
 export class UnifiedExecutor {
   private static instance: UnifiedExecutor
   private queue = new ExecutionQueue()
@@ -124,15 +119,18 @@ export class UnifiedExecutor {
     const ctrl = new AbortController()
     const orchTag = "[UnifiedExecutor]"
 
+    const onSigAbort = () => ctrl.abort()
+    const onSdAbort = () => ctrl.abort()
+
     if (sig && !sig.aborted) {
-      sig.addEventListener("abort", () => ctrl.abort(), { once: true })
+      sig.addEventListener("abort", onSigAbort, { once: true })
     } else if (sig?.aborted) {
       ctrl.abort()
     }
 
     const sdSignal = RuntimeCleanupManager.getInstance().signal
     if (!sdSignal.aborted) {
-      sdSignal.addEventListener("abort", () => ctrl.abort(), { once: true })
+      sdSignal.addEventListener("abort", onSdAbort, { once: true })
     }
 
     const cleanupId = `ue_exec_${Date.now()}`
@@ -180,6 +178,17 @@ export class UnifiedExecutor {
       yield { type: "EXECUTION_CREATED", executionId, input, timestamp: Date.now() }
       recordExecutionStage("execution_started", executionId)
 
+      // Mock mode: bypass real execution pipeline for testing/dev
+      if (useAppStore.getState().mockMode) {
+        yield* this.mockExecutionPath(input, executionId, activeRole, correlationId, t0)
+        const durationMs = Math.round(performance.now() - t0)
+        profileStage("total", stageStart)
+        profiler.finishProfile(profile)
+        endTrace(traceId)
+        console.log(`${orchTag} ✓ mock execute complete (${durationMs}ms)`)
+        return
+      }
+
       const runtimeState = useWorkspaceRuntime.getState()
       const providers = useAppStore.getState().providers ?? []
 
@@ -216,7 +225,7 @@ export class UnifiedExecutor {
         if (needsWorkspace) {
           yield { type: "THINKING_STARTED", executionId, label: "No workspace open", timestamp: Date.now() }
           const noWsMsg = "I can't inspect files or run commands because no workspace is currently open."
-          yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: "assistant", roleName: "Assistant", modelName: "", providerName: "", stepId: `${executionId}_step`, timestamp: Date.now() }
+          yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: "assistant", roleName: "Assistant", modelName: "", providerName: "", stepId: `${executionId}_step`, executionStrategy: "single-agent", timestamp: Date.now() }
           StreamManager.getInstance().append(`${executionId}_step`, noWsMsg)
           StreamManager.getInstance().complete(`${executionId}_step`)
           yield { type: "MESSAGE_COMPLETE", executionId, stepId: `${executionId}_step`, content: noWsMsg, finishReason: "stop", timestamp: Date.now() }
@@ -238,14 +247,17 @@ export class UnifiedExecutor {
       })
 
       try {
-        if (this.shouldGeneratePlan(input)) {
+        // ── Fast mode: skip plan phase entirely ──
+        const isFastMode = reqMode === "fast" || decision.mode === "fast" || activeRole === "fast-inference"
+        if (!isFastMode && this.shouldGeneratePlan(input)) {
           yield* this.runPlanPhase(input, executionId, ctrl, t0)
         }
         profileStage("impact-preview", stageStart)
         stageStart = performance.now()
-        if (reqMode === "fast" || activeRole === "fast-inference") {
+        console.log("[FLOW:2] UnifiedExecutor.execute: entering path (mode=" + (reqMode ?? "full") + ", activeRole=" + activeRole + ")")
+        if (isFastMode) {
           yield* this.fastPath(input, activeRole, ctrl, executionId, correlationId, t0)
-        } else if (reqMode === "autonomous" || goalId) {
+        } else if (reqMode === "autonomous") {
           yield* this.autonomousPath.execute(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId, goalId, goalObjective)
         } else {
           yield* this.fullPath(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId)
@@ -282,6 +294,8 @@ export class UnifiedExecutor {
         durationMs: Math.round(performance.now() - t0), timestamp: Date.now(),
       }
     } finally {
+      if (sig && !sig.aborted) sig.removeEventListener("abort", onSigAbort)
+      if (!sdSignal.aborted) sdSignal.removeEventListener("abort", onSdAbort)
       if (queueSlotAcquired) {
         this.queue.completeExecution(executionId)
       }
@@ -299,149 +313,67 @@ export class UnifiedExecutor {
     correlationId?: string,
     t0?: number,
   ): AsyncGenerator<ExecutionEvent> {
-    const runtimeState = useWorkspaceRuntime.getState()
-    const wiredAgents = runtimeState.wiredAgents
-    const primaryAgent = wiredAgents.find((a) => a.runtimeRole === "manager") ?? wiredAgents[0]
-    if (!primaryAgent) {
-      yield { type: "EXECUTION_FAILED", executionId, error: "No agent available", durationMs: 0, timestamp: Date.now() }
-      return
-    }
-
-    const providers = useAppStore.getState().providers ?? []
-
-    // Build ordered attempt list: primary first, then any fallback agents
-    const attempts: Array<{ agent: typeof primaryAgent; provider: (typeof providers)[0] }> = []
-    const seenProviderIds = new Set<string>()
-    for (const agent of [primaryAgent, ...wiredAgents.filter((a) => a.providerId !== primaryAgent.providerId)]) {
-      const p = providers.find((pp) => pp.id === agent.providerId)
-      if (p && !seenProviderIds.has(p.id)) {
-        seenProviderIds.add(p.id)
-        attempts.push({ agent, provider: p })
-      }
-      if (attempts.length >= 2) break
-    }
-
     const stepId = `${executionId}_step`
-    const fcT0 = performance.now()
-    let lastError: string | null = null
-    let firstAttempt = true
 
-    for (const { agent, provider } of attempts) {
+    // Emit AGENT_ASSIGNED so the timeline creates a session
+    yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: "assistant", roleName: "Assistant", modelName: "", providerName: "", stepId, executionStrategy: "single-agent", timestamp: Date.now() }
+
+    yield { type: "THINKING_STARTED", executionId, label: "Thinking", timestamp: Date.now() }
+    yield { type: "PROVIDER_CONNECTING", executionId, model: activeRole, provider: activeRole, temperature: 0.7, timestamp: Date.now() }
+
+    // Use outer executionId so agent events (TOKEN, etc.) map correctly in the session manager
+    const executor = new AgentExecutor({
+      executionId,
+      mode: "FAST",
+      role: activeRole,
+      input,
+      history: this.getProcessedHistory(activeRole),
+      signal: ctrl.signal,
+    })
+
+    let content = ""
+    for await (const event of executor.execute()) {
       if (ctrl.signal.aborted) break
-      if (!firstAttempt) {
-        const retryLabel = `Retrying with ${provider.name}...`
-        yield { type: "THINKING_UPDATE", executionId, label: retryLabel, timestamp: Date.now() }
-        yield { type: "PROVIDER_CONNECTING", executionId, model: agent.model, provider: provider.name, temperature: agent.temperature, timestamp: Date.now() }
-        console.log(`[UnifiedExecutor] fastPath fallback: trying ${provider.name}/${agent.model}`)
-      } else {
-        yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: agent.runtimeRole, roleName: safeCapitalize(agent.runtimeRole, ""), modelName: agent.model, providerName: provider.name, stepId, timestamp: Date.now() }
-        yield { type: "THINKING_STARTED", executionId, label: "Thinking", timestamp: Date.now() }
-        yield { type: "PROVIDER_CONNECTING", executionId, model: agent.model, provider: provider.name, temperature: agent.temperature, timestamp: Date.now() }
-        firstAttempt = false
-      }
+      if (event.type === "MESSAGE_COMPLETE") { content = event.content; continue }
+      yield event
+    }
+    if (ctrl.signal.aborted) return
 
-      // Emit a progress heartbeat every 10s while waiting for the first token
-      let heartbeatInterval: ReturnType<typeof setInterval> | null = null
-      if (!ctrl.signal.aborted) {
-        heartbeatInterval = setInterval(() => {
-          if (!ctrl.signal.aborted) {
-            const elapsed = Math.round((performance.now() - fcT0) / 1000)
-            console.log(`[UnifiedExecutor] fastPath waiting... (${elapsed}s)`)
-          }
-        }, 10_000)
-      }
+    StreamManager.getInstance().complete(stepId)
+    if (content) {
+      yield { type: "MESSAGE_COMPLETE", executionId, stepId, content, finishReason: "stop", timestamp: Date.now() }
+      yield { type: "EXECUTION_COMPLETE", executionId, content, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: Math.round(performance.now() - (t0 ?? performance.now())), timestamp: Date.now() }
+    }
+  }
 
-      const streamManager = StreamManager.getInstance()
-      let streamedContent = ""
-      let streamTokenCount = 0
-      const attemptStart = performance.now()
-      const timeoutSignal = AbortSignal.timeout(FAST_PATH_ATTEMPT_TIMEOUT_MS)
-      const combinedSignal = new AbortController()
-      const onAbort = () => { combinedSignal.abort(); heartbeatInterval && clearInterval(heartbeatInterval) }
-      const onTimeout = () => {
-        if (!ctrl.signal.aborted) {
-          combinedSignal.abort(new DOMException(`Provider ${provider.name} timed out after ${FAST_PATH_ATTEMPT_TIMEOUT_MS}ms`, "TimeoutError"))
-          heartbeatInterval && clearInterval(heartbeatInterval)
-        }
-      }
-      ctrl.signal.addEventListener("abort", onAbort, { once: true })
-      timeoutSignal.addEventListener("abort", onTimeout, { once: true })
+  private async *mockExecutionPath(
+    input: string,
+    executionId: string,
+    activeRole: RuntimeRole,
+    correlationId?: string,
+    t0?: number,
+  ): AsyncGenerator<ExecutionEvent> {
+    const { generateMockResponse } = await import('@/runtime/providers/MockProviderRuntime')
+    const stepId = `${executionId}_step`
 
-      try {
-        const history = this.getProcessedHistory(activeRole)
+    yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: "assistant", roleName: "Assistant", modelName: "mock-model", providerName: "Mock Provider", stepId, executionStrategy: "single-agent", timestamp: Date.now() }
+    yield { type: "THINKING_STARTED", executionId, label: "Mock processing", timestamp: Date.now() }
+    yield { type: "PROVIDER_CONNECTING", executionId, model: "mock-model", provider: "mock", temperature: 0.7, timestamp: Date.now() }
 
-        const budgetMgr = ContextBudgetManager.getInstance()
-        const budgetConfig = budgetMgr.createConfig()
-        const budgetUsage = budgetMgr.checkBudget(budgetConfig, history)
-        if (budgetUsage.shouldCompress) {
-          const strategy = budgetMgr.applyCompressionStrategy(budgetUsage, budgetConfig)
-          console.log(`[ContextBudget] ${strategy}`)
-        }
-
-        const providerRuntime = new ProviderRuntime(provider.baseUrl, provider.apiKey)
-        providerRuntime.setDefaultModel(agent.model)
-
-        let finalContent = ""
-        const stream = providerRuntime.stream({
-          systemPrompt: FAST_CHAT_PROMPT,
-          messages: [
-            ...history.map(m => ({ role: m.role as 'user' | 'assistant' | 'system', content: m.content })),
-            { role: 'user' as const, content: input },
-          ],
-          maxTokens: 4096,
-          signal: combinedSignal.signal,
-        })
-
-        for await (const chunk of stream) {
-          if (chunk.type === 'token') {
-            streamedContent += chunk.text
-            streamTokenCount++
-            streamManager.append(stepId, chunk.text, streamTokenCount <= 5)
-          } else if (chunk.type === 'done') {
-            finalContent = chunk.fullText
-          } else if (chunk.type === 'error') {
-            throw new Error(chunk.error)
-          }
-        }
-
-        const attemptDuration = Math.round(performance.now() - attemptStart)
-        recordProviderCall(provider.name, agent.model, attemptDuration, true, executionId)
-        yield { type: "PROVIDER_CONNECTED", executionId, model: agent.model, provider: provider.name, temperature: agent.temperature, timestamp: Date.now() }
-
-        if (streamTokenCount === 0 && finalContent.length > 0) {
-          streamManager.append(stepId, finalContent)
-          streamManager.flushImmediate()
-          streamedContent = finalContent
-        }
-        streamManager.complete(stepId)
-
-        if (!streamedContent) {
-          lastError = "Empty response"
-          continue
-        }
-
-        const totalDuration = t0 ? Math.round(performance.now() - t0) : attemptDuration
-        recordAgentExecution(attemptDuration, 0, 0)
-        yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: streamedContent, finishReason: "stop", timestamp: Date.now() }
-        yield { type: "EXECUTION_COMPLETE", executionId, content: streamedContent, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: totalDuration, timestamp: Date.now() }
-        return
-      } catch (err) {
-        streamManager.complete(stepId)
-        const errMsg = err instanceof Error ? err.message : String(err)
-        const elapsed = Math.round(performance.now() - attemptStart)
-        recordProviderCall(provider.name, agent.model, elapsed, false, executionId)
-        emitTelemetry({ type: "provider_failure", timestamp: Date.now(), error: errMsg, metadata: { executionId, attempt: attempts.length > 1 ? "fallback" : "primary" } })
-        lastError = errMsg
-        console.log(`[UnifiedExecutor] fastPath attempt failed (${elapsed}ms): ${errMsg}`)
-      } finally {
-        ctrl.signal.removeEventListener("abort", onAbort)
-        timeoutSignal.removeEventListener("abort", onTimeout)
-        if (heartbeatInterval) clearInterval(heartbeatInterval)
-      }
+    const fullText = generateMockResponse(input)
+    const words = fullText.split(/(\s+)/)
+    for (const word of words) {
+      yield { type: "TOKEN", executionId, token: word, stepId, timestamp: Date.now() }
+      await new Promise(r => setTimeout(r, 3))
     }
 
-    // All attempts failed
-    yield { type: "EXECUTION_FAILED", executionId, error: lastError ?? "All providers failed", durationMs: Math.round(performance.now() - fcT0), timestamp: Date.now() }
+    yield { type: "PROVIDER_CONNECTED", executionId, model: "mock-model", provider: "mock", temperature: 0.7, timestamp: Date.now() }
+    StreamManager.getInstance().append(stepId, fullText)
+    StreamManager.getInstance().complete(stepId)
+    yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: fullText, finishReason: "stop", timestamp: Date.now() }
+
+    const durationMs = Math.round(performance.now() - (t0 ?? performance.now()))
+    yield { type: "EXECUTION_COMPLETE", executionId, content: fullText, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now() }
   }
 
   private async *fullPath(
@@ -470,7 +402,29 @@ export class UnifiedExecutor {
       }
     }
 
+    // ── Multi-agent: only entered via explicit task-graph pre-check or skill invocation ──
+    // This is NOT entered from intent classification (Patch 1 removed that path).
+    // Instead, a lightweight structural check on file references upgrades when the task
+    // genuinely spans 3+ independent files.
+    const useMultiAgent = await this.checkMultiAgentEligibility(input)
+    if (useMultiAgent) {
+      yield { type: "THINKING_STARTED", executionId, label: "Multi-agent orchestration", timestamp: Date.now() }
+      const orchestrator = new MultiAgentOrchestrator()
+      yield* orchestrator.execute(executionId, input, correlationId, ctrl.signal)
+      const finalContent = orchestrator.getMessages().map((m) => m.summary).join("\n")
+      results.push({ role: "multi-agent", content: finalContent })
+      previousOutput = finalContent
+      // ── FIX: always yield MESSAGE_COMPLETE and EXECUTION_COMPLETE before returning ──
+      const stepId = `${executionId}_multi`
+      StreamManager.getInstance().complete(stepId)
+      yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: finalContent, finishReason: "stop", timestamp: Date.now() }
+      const durMs = Math.round(performance.now() - t0)
+      yield { type: "EXECUTION_COMPLETE", executionId, content: finalContent, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: durMs, timestamp: Date.now() }
+      return
+    }
+
     for (const role of orderedRoles) {
+      console.log("[FLOW:3] UnifiedExecutor.fullPath: role=" + role + " (index " + orderedRoles.indexOf(role) + "/" + orderedRoles.length + ")")
       if (ctrl.signal.aborted) break
       const runtimeRole = normalizeRole(role) ?? role
       if (!runtimeRole) continue
@@ -479,7 +433,7 @@ export class UnifiedExecutor {
       const wired = runtimeState.wiredAgents.find((a) => a.runtimeRole === runtimeRole || a.roleId === runtimeRole)
       const stepId = `${executionId}_${runtimeRole}`
 
-      yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: runtimeRole, roleName: safeCapitalize(runtimeRole), modelName: wired?.model, providerName: wired?.providerName, stepId, timestamp: Date.now() }
+      yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: runtimeRole, roleName: safeCapitalize(runtimeRole), modelName: wired?.model, providerName: wired?.providerName, stepId, executionStrategy: decision.executionStrategy, timestamp: Date.now() }
 
       if (runtimeRole === "verification") {
         yield* this.runVerificationAgent(results, ctrl, executionId, stepId)
@@ -507,6 +461,7 @@ export class UnifiedExecutor {
         yield event
       }
 
+      console.log("[FLOW:12] UnifiedExecutor.fullPath: agent for-await complete for role=" + role)
       StreamManager.getInstance().complete(stepId)
       if (!ctrl.signal.aborted) {
         yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: content || "", finishReason: "stop", timestamp: Date.now() }
@@ -556,6 +511,7 @@ export class UnifiedExecutor {
     }
 
     const durationMs = Math.round(performance.now() - t0)
+    console.log("[FLOW:13] UnifiedExecutor.fullPath: yielding EXECUTION_COMPLETE")
     yield { type: "EXECUTION_COMPLETE", executionId, content: results.map((r) => r.content).join("\n"), filesEdited: uniqueFiles.length, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now() }
   }
 
@@ -624,12 +580,13 @@ export class UnifiedExecutor {
     const fastProvider = providers.find((p: any) => p.id === "fast-inference" || p.id === "manager")
     const llmClassifier = fastProvider ? async (text: string) => {
       try {
-        const { ProviderRuntime } = await import("@/runtime/providers/ProviderRuntime")
-        const runtime = new ProviderRuntime(fastProvider.baseUrl, fastProvider.apiKey)
-        runtime.setDefaultModel(fastProvider.model)
-        const result = await runtime.chat({ messages: [{ role: 'user', content: `Classify the following user request into exactly one category: conversation, coding, research, execution, planning, browser-task, ui-analysis, multi-agent. Reply with only the category name and confidence (0-1), nothing else.\n\nRequest: ${text.slice(0, 500)}` }] })
-        const categoryMatch = result.content.match(/(conversation|coding|research|execution|planning|browser-task|ui-analysis|multi-agent)/i)
-        const confidenceMatch = result.content.match(/(\d\.\d+)/)
+        const result = await providerGateway.chat({
+          messages: [{ role: 'user', content: `Classify the following user request into exactly one category: conversation, coding, research, execution, planning, browser-task, ui-analysis, multi-agent. Reply with only the category name and confidence (0-1), nothing else.\n\nRequest: ${text.slice(0, 500)}` }],
+          providerId: fastProvider.id,
+          model: fastProvider.model,
+        })
+        const categoryMatch = result.content?.match(/(conversation|coding|research|execution|planning|browser-task|ui-analysis|multi-agent)/i)
+        const confidenceMatch = result.content?.match(/(\d\.\d+)/)
         return {
           category: (categoryMatch?.[1]?.toLowerCase() ?? "conversation") as any,
           confidence: confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.6,
@@ -659,8 +616,8 @@ export class UnifiedExecutor {
   private resolveMode(decision: RoutingDecision, requestedMode?: ExecutionMode): AgentMode {
     if (requestedMode === "fast") return "FAST"
     if (requestedMode === "full" || requestedMode === "autonomous") return "FULL"
-    if (!decision.requiresDelegation) return "FAST"
-    if (decision.executionStrategy === "multi-agent") return "FULL"
+    // Use decision.mode as the primary signal (set by routing engine based on intent)
+    if (decision.mode === "fast") return "FAST"
     return "FULL"
   }
 
@@ -699,7 +656,7 @@ export class UnifiedExecutor {
     try {
       const os = RuntimeOS.getInstance()
       for (const role of decision.selectedRoles) {
-        for (const tool of os.toolRegistry.getByMode(role)) {
+        for (const tool of os.toolPoolAssembler.assembleForRole(role)) {
           for (const [, tools] of Object.entries(WORKSPACE_CAPABILITIES)) {
             if (tools.has(tool.name)) return true
           }
@@ -735,6 +692,40 @@ export class UnifiedExecutor {
       }
     }
     return files
+  }
+
+  /**
+   * Multi-agent eligibility check. For v1 this is triggerable ONLY by explicit
+   * skill invocation (/plan, /batch-parallel). The structural check (whether the
+   * task genuinely spans 3+ independent files) is deferred: it should run post-hoc
+   * after the agent's first tool-call batch reveals the real file set, not guessed
+   * from raw input text. That upgrade is left as a follow-up.
+   *
+   * @param _filesTouched  reserved for post-hoc structural check (not used in v1)
+   */
+  private async checkMultiAgentEligibility(input: string, _filesTouched?: string[]): Promise<boolean> {
+    const multiAgentEnabled = FeatureFlagManager.getInstance().isEnabled("multiAgent")
+    if (!multiAgentEnabled) return false
+
+    // ── v1: explicit multi-agent skill invocation only ──
+    const multiAgentSkills = ["batch-parallel", "plan"]
+    const lower = input.toLowerCase()
+    for (const skill of multiAgentSkills) {
+      if (lower.includes(`/${skill}`) || lower.includes(`run ${skill}`) || lower.includes(`use ${skill}`)) {
+        return true
+      }
+    }
+
+    // ── Post-hoc structural check placeholder (not yet wired) ──
+    // Future: after the agent's first tool-call batch, pass the real file set
+    // via _filesTouched and check if >= 3 independent files are involved.
+    // This avoids false positives from raw-input regex and false negatives
+    // from prose descriptions without literal paths.
+    if (_filesTouched && _filesTouched.length >= 3) {
+      return true
+    }
+
+    return false
   }
 
   private getWorkspaceSnapshot(): Record<string, string> {

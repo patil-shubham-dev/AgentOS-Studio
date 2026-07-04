@@ -44,11 +44,11 @@ describe("Manager Routing — Intent Classification", () => {
 })
 
 describe("Manager Routing — Route Decision", () => {
-  it("delegates conversation to manager when fast-inference is unavailable", () => {
+  it("responds directly for high-confidence conversation (no delegation)", () => {
     const decision = route("hello, how are you?", ["manager"])
-    expect(decision.executionStrategy).toBe("single-agent")
-    expect(decision.requiresDelegation).toBe(true)
-    expect(decision.selectedRoles).toEqual(["manager"])
+    expect(decision.executionStrategy).toBe("direct")
+    expect(decision.requiresDelegation).toBe(false)
+    expect(decision.selectedRoles).toEqual([])
   })
 
   it("delegates coding to coder role", () => {

@@ -123,17 +123,18 @@ export async function tauriFetchStreaming(
     const pending: Array<{ type: 'chunk'; data: number[] } | { type: 'end' } | { type: 'error'; error: string }> = []
 
     function onChunk(...args: any[]) {
-      const payload = args[0]
-      if (!payload?.data) return
+      const _payload = args[0]
+      console.log("[FLOW:18] tauriFetchStreaming: onChunk called (streamController=" + !!streamController + ", dataLen=" + (_payload?.data?.length ?? 0) + ")")
+      if (!_payload?.data) return
       if (streamController) {
-        streamController.enqueue(new Uint8Array(payload.data))
+        streamController.enqueue(new Uint8Array(_payload.data))
       } else {
-        pending.push({ type: 'chunk', data: payload.data })
+        pending.push({ type: 'chunk', data: _payload.data })
       }
     }
 
-    function onEnd(...args: any[]) {
-      const payload = args[0]
+    function onEnd(..._args: any[]) {
+      console.log("[FLOW:19] tauriFetchStreaming: onEnd called (streamController=" + !!streamController + ")")
       if (streamController) {
         streamController.close()
       }
@@ -141,6 +142,7 @@ export async function tauriFetchStreaming(
     }
 
     function onError(...args: any[]) {
+      console.log("[FLOW:20] tauriFetchStreaming: onError called (streamController=" + !!streamController + ")")
       const payload = args[0]
       const errMsg = payload?.error || 'Stream error'
       if (streamController) {
@@ -204,6 +206,7 @@ export async function tauriFetchStreaming(
     // ── Create ReadableStream — replays any buffered events ──
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
+        console.log("[FLOW:17] tauriFetchStreaming: ReadableStream start() called (pending=" + pending.length + ")")
         streamController = controller
 
         // Replay events that arrived between subscribe and start()

@@ -4,84 +4,62 @@
  * Caches static prompt prefixes (system prompt + tool definitions + project config)
  * by a hash-based key so that unchanged portions are not recomposed on every turn.
  *
- * Two-tier caching:
- *   L1 (memory) — in-process Map with TTL, survives a single session
- *   L2 (planned) — disk-backed for cross-session persistence
+ * Delegates storage to ContextCache (L1 in-memory with planned L2 IndexedDB),
+ * avoiding duplicated caching infrastructure.
  *
  * Integration points:
  *   - ContextManager.assembleSystemPrompt() → cache the composed prompt per (role, model, configHash)
  *   - AgentExecutor.executeFull() → tag static message prefix for provider-side caching
- *   - ExecutionOrchestrator.handleDirectResponse() → cache system prompt for fast chat
  */
 
+import { ContextCache } from '../context/ContextCache'
+import { TokenEstimator } from '../context/TokenEstimator'
+
 export interface PromptCacheKey {
-  /** The model identifier, e.g. "claude-sonnet-4-20250514" */
   model: string
-  /** The agent role, e.g. "coder", "manager" */
   role: string
-  /** Hash of the composed system prompt text */
   systemPromptHash: string
-  /** Hash of the active tool definitions (when applicable) */
   toolDefinitionsHash: string
-  /** Hash of AGENTIC.md / project config content */
   projectConfigHash: string
-  /** Hash of injected memory summary (when applicable) */
   memorySummaryHash: string
 }
 
 export interface PromptCacheEntry {
   key: PromptCacheKey
   keyString: string
-  /** The cached prompt text */
   prompt: string
-  /** When this entry was cached */
   cachedAt: number
-  /** Number of cache hits */
   hits: number
-  /** Estimated tokens saved (sum of prompt lengths / 4) */
   estimatedTokensSaved: number
 }
 
 export interface PromptCacheStats {
   hits: number
   misses: number
-  /** Total estimated tokens saved across all cache hits */
   totalTokensSaved: number
-  /** Number of entries currently in the cache */
   entries: number
-  /** Current memory estimate in bytes */
   memoryEstimateBytes: number
-  /** Hit rate as a percentage (0-100) */
   hitRate: number
 }
 
-const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
-const MAX_CACHE_ENTRIES = 100
 const MAX_ENTRY_TOKENS = 200_000
 
 export class PromptCacheManager {
   private static instance: PromptCacheManager
-  private cache = new Map<string, PromptCacheEntry>()
   private stats = { hits: 0, misses: 0, totalTokensSaved: 0 }
-  private ttlMs: number
+  private contextCache: ContextCache
 
-  static getInstance(ttlMs?: number): PromptCacheManager {
+  static getInstance(): PromptCacheManager {
     if (!PromptCacheManager.instance) {
-      PromptCacheManager.instance = new PromptCacheManager(ttlMs)
+      PromptCacheManager.instance = new PromptCacheManager()
     }
     return PromptCacheManager.instance
   }
 
-  private constructor(ttlMs?: number) {
-    this.ttlMs = ttlMs ?? DEFAULT_CACHE_TTL_MS
+  private constructor() {
+    this.contextCache = ContextCache.getInstance()
   }
 
-  // ── Public API ──
-
-  /**
-   * Compose a cache key string from the structured key fields.
-   * The key is deterministic: same inputs → same key.
-   */
   makeKey(fields: Partial<PromptCacheKey>): PromptCacheKey {
     return {
       model: fields.model ?? "unknown",
@@ -93,83 +71,51 @@ export class PromptCacheManager {
     }
   }
 
-  /**
-   * Serialize a PromptCacheKey to a string for Map lookup.
-   */
   serializeKey(key: PromptCacheKey): string {
-    return `${key.model}|${key.role}|${key.systemPromptHash}|${key.toolDefinitionsHash}|${key.projectConfigHash}|${key.memorySummaryHash}`
+    return `prompt|${key.model}|${key.role}|${key.systemPromptHash}|${key.toolDefinitionsHash}|${key.projectConfigHash}|${key.memorySummaryHash}`
   }
 
-  /**
-   * Check if a valid cache entry exists for the given key.
-   * Returns the cached prompt string on hit, null on miss.
-   */
-  get(key: PromptCacheKey): string | null {
+  async get(key: PromptCacheKey): Promise<string | null> {
     const keyStr = this.serializeKey(key)
-    const entry = this.cache.get(keyStr)
-
+    const entry = await this.contextCache.get<PromptCacheEntry>(keyStr)
     if (!entry) {
       this.stats.misses++
       return null
     }
-
-    // TTL check
-    if (Date.now() - entry.cachedAt > this.ttlMs) {
-      this.cache.delete(keyStr)
-      this.stats.misses++
-      return null
-    }
-
-    // Hit!
-    entry.hits++
     this.stats.hits++
-    this.stats.totalTokensSaved += Math.round(entry.prompt.length / 4)
-    return entry.prompt
+    this.stats.totalTokensSaved += TokenEstimator.rough(entry.value.prompt)
+    entry.value.hits++
+    return entry.value.prompt
   }
 
-  /**
-   * Store a prompt in the cache. If the cache is full, evict the
-   * least-recently-used entry (LRU approximated by lowest hit count).
-   */
-  set(key: PromptCacheKey, prompt: string): void {
+  async set(key: PromptCacheKey, prompt: string): Promise<void> {
     const keyStr = this.serializeKey(key)
+    if (TokenEstimator.rough(prompt) > MAX_ENTRY_TOKENS) return
 
-    // Token limit guard — don't cache enormous prompts
-    if (prompt.length / 4 > MAX_ENTRY_TOKENS) return
-
-    // Evict if at capacity
-    if (this.cache.size >= MAX_CACHE_ENTRIES && !this.cache.has(keyStr)) {
-      this.evictOne()
-    }
-
-    this.cache.set(keyStr, {
+    const entry: PromptCacheEntry = {
       key,
       keyString: keyStr,
       prompt,
       cachedAt: Date.now(),
       hits: 0,
       estimatedTokensSaved: 0,
+    }
+    await this.contextCache.set(keyStr, entry, {
+      sizeTokens: TokenEstimator.rough(prompt),
+      tags: ["prompt_cache", `role_${key.role}`, `model_${key.model}`],
     })
   }
 
-  /**
-   * Compute a hash for a string input. Used to reduce key sizes.
-   * Simple djb2-style hash — not cryptographic, but collision-resistant
-   * enough for cache keys.
-   */
   hash(input: string): string {
     if (!input) return ""
     let hash = 5381
     for (let i = 0; i < input.length; i++) {
       hash = ((hash << 5) + hash) + input.charCodeAt(i)
-      hash = hash & hash // Convert to 32-bit integer
+      hash = hash & hash
     }
     return Math.abs(hash).toString(36)
   }
 
-  /**
-   * Compute a cache key from raw text inputs (convenience method).
-   */
   computeKey(
     model: string,
     role: string,
@@ -188,88 +134,29 @@ export class PromptCacheManager {
     })
   }
 
-  /**
-   * Invalidate cache entries matching certain change types.
-   */
-  invalidate(change: "model" | "tools" | "config" | "memory" | "all"): void {
-    if (change === "all") {
-      this.cache.clear()
-      return
-    }
-
-    const fieldMap: Record<string, keyof PromptCacheKey> = {
-      model: "model",
-      tools: "toolDefinitionsHash",
-      config: "projectConfigHash",
-      memory: "memorySummaryHash",
-    }
-
-    const targetField = fieldMap[change]
-    if (!targetField) return
-
-    // Find all entries where the target field suggests staleness
-    // (During invalidation we clear everything — a future optimization
-    //  could selectively remove only impacted entries.)
-    this.cache.clear()
+  async invalidate(change: "model" | "tools" | "config" | "memory" | "all"): Promise<void> {
+    await this.contextCache.invalidateByTag("prompt_cache")
   }
 
-  /**
-   * Get current cache statistics for UI display and debugging.
-   */
   getStats(): PromptCacheStats {
     const total = this.stats.hits + this.stats.misses
+    const contextStats = this.contextCache.getStats()
     return {
       hits: this.stats.hits,
       misses: this.stats.misses,
       totalTokensSaved: this.stats.totalTokensSaved,
-      entries: this.cache.size,
-      memoryEstimateBytes: Array.from(this.cache.values()).reduce(
-        (sum, e) => sum + e.prompt.length * 2, // rough UTF-16 estimate
-        0,
-      ),
+      entries: contextStats.l1.entries,
+      memoryEstimateBytes: contextStats.l1.sizeTokens,
       hitRate: total > 0 ? Math.round((this.stats.hits / total) * 100) : 0,
     }
   }
 
-  /**
-   * Reset all stats and clear the cache.
-   */
-  reset(): void {
-    this.cache.clear()
+  async reset(): Promise<void> {
+    await this.contextCache.invalidateByTag("prompt_cache")
     this.stats = { hits: 0, misses: 0, totalTokensSaved: 0 }
   }
 
-  /**
-   * Expose raw stats for telemetry.
-   */
   getRawStats(): { hits: number; misses: number; totalTokensSaved: number } {
     return { ...this.stats }
-  }
-
-  // ── Private Helpers ──
-
-  /**
-   * Evict the entry with the lowest hit count (approximate LRU).
-   * Falls back to oldest entry if all have equal hit counts.
-   */
-  private evictOne(): void {
-    let lowestHits = Infinity
-    let oldestKey: string | null = null
-    let oldestTime = Infinity
-
-    for (const [key, entry] of this.cache) {
-      if (entry.hits < lowestHits) {
-        lowestHits = entry.hits
-        oldestKey = key
-        oldestTime = entry.cachedAt
-      } else if (entry.hits === lowestHits && entry.cachedAt < oldestTime) {
-        oldestKey = key
-        oldestTime = entry.cachedAt
-      }
-    }
-
-    if (oldestKey) {
-      this.cache.delete(oldestKey)
-    }
   }
 }

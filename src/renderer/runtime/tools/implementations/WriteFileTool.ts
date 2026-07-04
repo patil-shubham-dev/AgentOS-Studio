@@ -3,19 +3,39 @@ import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
 import { useWorkspaceStore } from '@/stores/workspace-store'
-import { FileHistoryManager } from '@/lib/file-history'
+import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
+import { fileContentCache } from '@/lib/FileContentCache'
 
-async function writeTextFile(path: string, content: string): Promise<void> {
-  if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      const { writeTextFile: shimWrite } = await import('@/lib/electron-api')
-        return shimWrite(path, content)
+const changesetByTrace = new Map<string, string>()
+
+function recordWriteChangeSetEntry(
+  ctx: ToolContext,
+  relativePath: string,
+  beforeContent: string | null,
+  afterContent: string,
+): void {
+  const traceId = ctx.traceId ?? 'unknown'
+  let changeSetId = changesetByTrace.get(traceId)
+
+  if (!changeSetId) {
+    const cs = ChangeSetManager.getInstance().createChangeSet({
+      sessionId: traceId,
+      correlationId: traceId,
+      title: `Write ${relativePath}`,
+      reason: ctx.role ? `AI write by ${ctx.role}` : 'AI write',
+      sourceToolCallIds: [traceId],
+    })
+    changeSetId = cs.id
+    changesetByTrace.set(traceId, changeSetId)
   }
-  try {
-    const fs = await import('@/lib/electron-api')
-    return await fs.writeTextFile(path, content)
-  } catch {
-    throw new Error('File system not available in this environment')
-  }
+
+  ChangeSetManager.getInstance().addFileToChangeSet({
+    changeSetId,
+    path: relativePath,
+    changeType: beforeContent !== null ? 'modify' : 'create',
+    beforeContent: beforeContent ?? undefined,
+    afterContent,
+  })
 }
 
 async function readTextFile(path: string): Promise<string | null> {
@@ -65,23 +85,20 @@ export const WriteFileTool: AgentTool = buildTool({
     const fullPath = resolvePath(rootPath, path)
 
     const existingContent = await readTextFile(fullPath)
-    if (existingContent !== null) {
-      const history = FileHistoryManager.getInstance()
-      await history.createSnapshot(fullPath, existingContent, ctx.traceId ?? 'unknown')
-    }
 
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      const electronApi = (window as any).electronAPI
-      try {
-        await electronApi.writeTextFile(fullPath, content)
-      } catch {
-        await writeTextFile(fullPath, content)
-      }
-    } else {
-      await writeTextFile(fullPath, content)
-    }
+    // Update in-memory cache so subsequent reads see proposed content
+    fileContentCache.set(fullPath, content)
 
-    useWorkspaceStore.getState().notifyFileEdited(fullPath, content)
-    return { data: 'File written successfully' }
+    const relativePath = path.replace(/^[/\\]/, '')
+    recordWriteChangeSetEntry(ctx, relativePath, existingContent, content)
+
+    return {
+      data: `Change proposed: ${relativePath} has been staged for review. Awaiting user acceptance in the diff panel.`,
+      meta: {
+        path: relativePath,
+        status: 'pending_review',
+        changeType: existingContent !== null ? 'modify' : 'create',
+      },
+    }
   },
 })

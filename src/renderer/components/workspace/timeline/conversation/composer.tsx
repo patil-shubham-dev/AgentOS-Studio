@@ -5,8 +5,9 @@ import {
   Send, Square, Slash, AtSign, Code2, Palette,
   Globe, Bug, Search, RefreshCw, FileText,
   Terminal, Paperclip, Loader2, Sparkles,
-  FolderOpen, GitBranch, AlertTriangle, Braces, Link,
+  FolderOpen, GitBranch, AlertTriangle, Braces, Link, X,
 } from "lucide-react"
+import { useWorkspaceStore } from "@/stores/workspace-store"
 import {
   ReferenceAutocomplete,
   getAutocompleteState,
@@ -79,6 +80,8 @@ export function Composer({
   const [contextRefFilter, setContextRefFilter] = useState("")
   const [isFocused, setIsFocused] = useState(false)
   const [autocompleteState, setAutocompleteState] = useState<{ isOpen: boolean; filter: string; mode: "context" | "agent" | "all" }>({ isOpen: false, filter: "", mode: "all" })
+  const pinnedFiles = useWorkspaceStore((s) => s.pinnedFiles)
+  const togglePinFile = useWorkspaceStore((s) => s.togglePinFile)
   const [autocompleteIndex, setAutocompleteIndex] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -386,7 +389,7 @@ export function Composer({
             ? "0 0 20px -8px rgba(59, 130, 246, 0.08)"
             : "0 0 0 0 transparent",
         }}
-        className="relative rounded-2xl border transition-colors duration-200 bg-[#0c0c0d]"
+        className="relative rounded-2xl border transition-colors duration-200 bg-chat-bg/80 backdrop-blur-xl"
       >
         <div className={cn(
           "absolute inset-0 rounded-2xl transition-opacity duration-500 pointer-events-none",
@@ -395,10 +398,10 @@ export function Composer({
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500 via-purple-500 to-cyan-500" />
         </div>
 
-        <div className="relative px-3.5 pt-2.5 pb-1.5">
+        <div className="relative px-3 pt-2 pb-1">
           {/* Processing indicator - subtle inline, no blocking overlay */}
           {isProcessing && (
-            <div className="absolute top-2.5 right-3.5">
+            <div className="absolute top-2 right-3">
               <div className="thinking-dots"><span /><span /><span /></div>
             </div>
           )}
@@ -417,7 +420,7 @@ export function Composer({
             className={cn(
               "w-full resize-none bg-transparent outline-none transition-colors",
               "text-[13.5px] text-foreground/85 placeholder:text-foreground/10",
-              "font-normal leading-relaxed",
+              "font-normal leading-snug",
               "scrollbar-thin scrollbar-thumb-foreground/10 scrollbar-track-transparent",
               "min-h-[22px]",
               isProcessing ? "text-foreground/40" : "",
@@ -426,6 +429,31 @@ export function Composer({
           />
         </div>
 
+        {/* Context chips */}
+        {pinnedFiles.length > 0 && !isProcessing && (
+          <div className="flex flex-wrap items-center gap-1 px-3 pb-1">
+            {pinnedFiles.map((filePath) => {
+              const fileName = filePath.split(/[\\/]/).pop() ?? ""
+              return (
+                <span
+                  key={filePath}
+                  className="inline-flex items-center gap-1 rounded-lg bg-white/[0.04] border border-white/[0.06] px-1.5 py-0.5 text-[10px] text-white/40 font-medium"
+                >
+                  <FileText className="h-2.5 w-2.5 text-white/20 shrink-0" />
+                  <span className="truncate max-w-[120px]">{fileName}</span>
+                  <button
+                    onClick={() => togglePinFile(filePath)}
+                    className="ml-0.5 rounded p-0.5 text-white/15 hover:text-white/50 hover:bg-white/[0.06] transition-colors"
+                    aria-label={`Unpin ${fileName}`}
+                  >
+                    <X className="h-2 w-2" />
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+        )}
+
         {/* Bottom bar */}
         <div className="flex items-center justify-between px-3 pb-1.5">
           <div className="flex items-center gap-1">
@@ -433,11 +461,11 @@ export function Composer({
               <>
                 <span className="inline-flex items-center gap-1 rounded bg-white/[0.02] border border-white/[0.03] px-1 py-0.5">
                   <Slash className="h-2 w-2 text-white/12" />
-                  <span className="text-[7px] text-white/12 font-medium">commands</span>
+                  <span className="text-[8px] text-white/12 font-medium">commands</span>
                 </span>
                 <span className="inline-flex items-center gap-1 rounded bg-white/[0.02] border border-white/[0.03] px-1 py-0.5">
                   <AtSign className="h-2 w-2 text-white/12" />
-                  <span className="text-[7px] text-white/12 font-medium">refs + agents</span>
+                  <span className="text-[8px] text-white/12 font-medium">refs + agents</span>
                 </span>
               </>
             )}
@@ -462,11 +490,11 @@ export function Composer({
             )}
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {input.length > 0 && (
-              <span className="flex items-center gap-1 text-[7px] text-white/12 font-mono" aria-hidden="true">
-                <kbd className="h-3.5 min-w-[14px] px-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-white/20 flex items-center justify-center text-[6px]">\u2318</kbd>
-                <kbd className="h-3.5 min-w-[14px] px-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-white/20 flex items-center justify-center text-[6px]">\u21B5</kbd>
+              <span className="flex items-center gap-1 text-[8px] text-white/12 font-mono" aria-hidden="true">
+                <kbd className="h-4 min-w-[16px] px-1 rounded bg-white/[0.06] border border-white/[0.08] text-white/20 flex items-center justify-center text-[7px]">\u2318</kbd>
+                <kbd className="h-4 min-w-[16px] px-1 rounded bg-white/[0.06] border border-white/[0.08] text-white/20 flex items-center justify-center text-[7px]">\u21B5</kbd>
                 <span className="text-white/8">send</span>
               </span>
             )}
@@ -481,7 +509,7 @@ export function Composer({
                 disabled={!isProcessing && !isCancelling && !input.trim()}
                 aria-label={isCancelling ? "Cancelling" : isProcessing ? "Cancel" : "Send"}
                 className={cn(
-                  "flex items-center justify-center h-7 w-7 rounded-xl transition-all duration-200",
+                  "flex items-center justify-center h-6 w-6 rounded-lg transition-all duration-200",
                   isProcessing || isCancelling
                     ? "bg-red-500/10 text-red-400/70 hover:bg-red-500/20 border border-red-500/12 cursor-wait"
                     : input.trim()

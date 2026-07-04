@@ -4,6 +4,7 @@ import { generateStableProviderId } from "@/lib/migration"
 import { normalizeRole } from "@/lib/role-identity"
 import { ALL_ROLES, type RoleDefinition } from "@/runtime/runtime-role-registry"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
+import { setApiKey, removeApiKey } from "@/lib/secure-storage"
 
 const LOG_PREFIX = "[AppStore]"
 const PLAN_MODE_KEY = 'agentic-plan-mode'
@@ -86,6 +87,8 @@ interface AppStore {
   setPlanMode: (mode: "auto" | "always" | "never") => void
   sandboxMode: "on" | "off"
   setSandboxMode: (mode: "on" | "off") => void
+  mockMode: boolean
+  setMockMode: (enabled: boolean) => void
   setAppState: (state: AppState) => void
   updateAgent: (agentId: string, updates: Partial<Agent>) => void
   addProvider: (provider: GatewayProvider) => void
@@ -137,16 +140,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
     persistSandboxMode(mode)
     set({ sandboxMode: mode })
   },
+  mockMode: false,
+  setMockMode: (enabled) => set({ mockMode: enabled }),
   setAppState: (state) => set({ appState: state }),
   updateAgent: (agentId, updates) =>
     set((store) => ({
       agents: store.agents.map((a) => (a.id === agentId ? { ...a, ...updates } : a)),
     })),
-  addProvider: (provider) =>
-    set((store) => {
-      const existingIds = store.providers.map((p) => p.id)
-      const stableId = generateStableProviderId(provider, existingIds)
+  addProvider: (provider) => {
+    const existingIds = get().providers.map((p) => p.id)
+    const stableId = generateStableProviderId(provider, existingIds)
 
+    set((store) => {
       if (existingIds.includes(stableId)) {
         warn(`addProvider: duplicate slug "${stableId}" for provider "${provider.name}" — generating unique id`)
       }
@@ -168,8 +173,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }
       })
       return { providers, roleConfigs }
-    }),
-  updateProvider: (providerId, updates) =>
+    })
+
+    if (provider.apiKey) {
+      setApiKey(stableId, provider.apiKey).catch(() => {})
+    }
+  },
+  updateProvider: (providerId, updates) => {
     set((store) => {
       if (!store.providers.some((p) => p.id === providerId)) {
         warn(`updateProvider: provider "${providerId}" not found`)
@@ -177,8 +187,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
       log(`updateProvider: "${providerId}"`)
       return { providers: store.providers.map((p) => (p.id === providerId ? { ...p, ...updates } : p)) }
-    }),
-  removeProvider: (providerId) =>
+    })
+    if ("apiKey" in updates && updates.apiKey) {
+      setApiKey(providerId, updates.apiKey as string).catch(() => {})
+    }
+  },
+  removeProvider: (providerId) => {
     set((store) => {
       const dependentRoles = findDependentRoles(store.roleConfigs, providerId)
       if (dependentRoles.length > 0) {
@@ -193,7 +207,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
       log(`removeProvider: "${providerId}" removed (no dependents)`)
       return { providers: store.providers.filter((p) => p.id !== providerId) }
-    }),
+    })
+    removeApiKey(providerId).catch(() => {})
+  },
   upsertRoleConfig: (config) =>
     set((store) => ({
       roleConfigs: store.roleConfigs.some((r) => r.id === config.id)

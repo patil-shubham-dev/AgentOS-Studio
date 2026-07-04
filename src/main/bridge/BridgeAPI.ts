@@ -1,5 +1,3 @@
-import type { BridgeToken } from './BridgeAuth'
-
 export interface BridgeRequest {
   id: string
   method: string

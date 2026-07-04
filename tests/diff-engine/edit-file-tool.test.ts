@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest"
+import { fileContentCache } from "@/lib/FileContentCache"
 
 // In-memory filesystem for testing — normalizes path separators
 const memfs = new Map<string, string>()
@@ -52,6 +53,7 @@ function nextTrace(): string {
 describe("EditFileTool", () => {
   beforeEach(async () => {
     memfs.clear()
+    fileContentCache.clear()
     mockNotifyFileEdited.mockClear()
     mockCreateSnapshot.mockClear()
 
@@ -97,8 +99,8 @@ describe("EditFileTool", () => {
         }
       )
       expect(result.isError).toBeFalsy()
-      expect(result.data).toContain("File edited successfully")
-      const content = memfsGet("/test/workspace/src/auth/middleware.ts")
+      expect(result.data).toContain("Change proposed")
+      const content = fileContentCache.get("/test/workspace/src/auth/middleware.ts")
       expect(content).toContain("Authentication required")
       expect(content).not.toContain("Unauthorized")
     })
@@ -116,10 +118,9 @@ describe("EditFileTool", () => {
         }
       )
       expect(result.isError).toBeFalsy()
-      const content = memfsGet("/test/workspace/src/auth/middleware.ts")
+      const content = fileContentCache.get("/test/workspace/src/auth/middleware.ts")
       expect(content).toContain("NextFunction")
       expect(content).toContain("next: NextFunction")
-      expect(mockCreateSnapshot).toHaveBeenCalledTimes(1)
     })
 
     it("reports EDIT_FAILED for missing old_content", async () => {
@@ -167,7 +168,7 @@ describe("EditFileTool", () => {
         }
       )
       expect(result.isError).toBeFalsy()
-      const content = memfsGet("/test/workspace/test-file.ts")
+      const content = fileContentCache.get("/test/workspace/test-file.ts")
       expect(content).toBe("bar\nbar\nbar")
     })
 
@@ -183,7 +184,7 @@ describe("EditFileTool", () => {
         }
       )
       expect(result.isError).toBeFalsy()
-      const content = memfsGet("/test/workspace/src/auth/middleware.ts")
+      const content = fileContentCache.get("/test/workspace/src/auth/middleware.ts")
       expect(content).toContain("// Auth middleware — rate limited")
       expect(content).toContain("export function authMiddleware")
     })
@@ -200,7 +201,7 @@ describe("EditFileTool", () => {
         }
       )
       expect(result.isError).toBeFalsy()
-      const content = memfsGet("/test/workspace/src/auth/middleware.ts")
+      const content = fileContentCache.get("/test/workspace/src/auth/middleware.ts")
       expect(content).toContain("// Token validated")
     })
 
@@ -224,8 +225,8 @@ describe("EditFileTool", () => {
         }
       )
       expect(result.isError).toBeFalsy()
-      expect(result.data).toContain("File edited successfully")
-      const content = memfsGet("/test/workspace/src/auth/middleware.ts")
+      expect(result.data).toContain("Change proposed")
+      const content = fileContentCache.get("/test/workspace/src/auth/middleware.ts")
       expect(content).not.toContain("requireAdmin")
     })
   })
@@ -242,8 +243,8 @@ describe("EditFileTool", () => {
         }
       )
       expect(result.isError).toBeFalsy()
-      expect(result.data).toContain("File edited successfully")
-      const content = memfsGet("/test/workspace/src/auth/middleware.ts")
+      expect(result.data).toContain("Change proposed")
+      const content = fileContentCache.get("/test/workspace/src/auth/middleware.ts")
       expect(content).toContain("export async function authMiddleware")
     })
 
@@ -305,63 +306,64 @@ describe("EditFileTool", () => {
     })
   })
 
-  describe("snapshot deduplication", () => {
-    it("creates snapshot only once per file per session", async () => {
+  describe("change tracking deduplication", () => {
+    it("applies multiple edits to the same file within a session", async () => {
       const traceId = nextTrace()
       const { EditFileTool } = await import("@/runtime/tools/implementations/EditFileTool")
-      await EditFileTool.execute(
+      const r1 = await EditFileTool.execute(
         { role: "coder", traceId },
         {
           path: "src/auth/middleware.ts",
           edits: [{ old_content: "return authenticate(token)", new_content: "return await authenticate(token)" }],
         }
       )
-      await EditFileTool.execute(
+      expect(r1.isError).toBeFalsy()
+
+      const r2 = await EditFileTool.execute(
         { role: "coder", traceId },
         {
           path: "src/auth/middleware.ts",
           edits: [{ old_content: "return res.status(401)", new_content: "return res.status(403)" }],
         }
       )
-      expect(mockCreateSnapshot).toHaveBeenCalledTimes(1)
+      expect(r2.isError).toBeFalsy()
+
+      // Both edits should be applied
+      const content = fileContentCache.get("/test/workspace/src/auth/middleware.ts")
+      expect(content).toContain("return await authenticate(token)")
+      expect(content).toContain("return res.status(403)")
     })
 
-    it("creates snapshots for different files independently", async () => {
+    it("applies edits to different files independently", async () => {
       const traceId = nextTrace()
       memfsSet("/test/workspace/other.ts", "const y = 2\n")
       const { EditFileTool } = await import("@/runtime/tools/implementations/EditFileTool")
-      await EditFileTool.execute(
+      const r1 = await EditFileTool.execute(
         { role: "coder", traceId },
         {
           path: "src/auth/middleware.ts",
           edits: [{ old_content: "return authenticate(token)", new_content: "return await authenticate(token)" }],
         }
       )
-      await EditFileTool.execute(
+      expect(r1.isError).toBeFalsy()
+
+      const r2 = await EditFileTool.execute(
         { role: "coder", traceId },
         {
           path: "other.ts",
           edits: [{ old_content: "const y = 2", new_content: "const y = 42" }],
         }
       )
-      expect(mockCreateSnapshot).toHaveBeenCalledTimes(2)
+      expect(r2.isError).toBeFalsy()
+
+      // Both files should be updated in cache
+      expect(fileContentCache.get("/test/workspace/src/auth/middleware.ts")).toContain("return await authenticate(token)")
+      expect(fileContentCache.get("/test/workspace/other.ts")).toBe("const y = 42\n")
     })
   })
 
   describe("post-edit verification", () => {
-    it("detects external file modification after write", async () => {
-      let readCount = 0
-      const originalContent = memfsGet("/test/workspace/src/auth/middleware.ts")
-
-      const electronApi = await import("@/lib/electron-api")
-      vi.mocked(electronApi.readTextFile).mockImplementation(async (_path: string) => {
-        readCount++
-        if (readCount === 1) {
-          return originalContent
-        }
-        return originalContent + "\n// externally modified"
-      })
-
+    it("proposes edits without writing to disk", async () => {
       const { EditFileTool } = await import("@/runtime/tools/implementations/EditFileTool")
       const result = await EditFileTool.execute(
         { role: "coder", traceId: nextTrace() },
@@ -372,9 +374,12 @@ describe("EditFileTool", () => {
           ],
         }
       )
-      expect(result.isError).toBe(true)
-      expect(result.error).toContain("EDIT_FAILED")
-      expect(result.error).toContain("content after write")
+      expect(result.isError).toBeFalsy()
+      expect(result.meta?.status).toBe("pending_review")
+      // Content is in cache only; disk still has original
+      expect(memfsGet("/test/workspace/src/auth/middleware.ts")).not.toContain("return await authenticate")
+      expect(memfsGet("/test/workspace/src/auth/middleware.ts")).toContain("return authenticate(token)")
+      expect(fileContentCache.get("/test/workspace/src/auth/middleware.ts")).toContain("return await authenticate(token)")
     })
   })
 })

@@ -1,7 +1,8 @@
-import type { AgentTool } from '../core/AgentTool'
+import type { AgentTool, ToolNamespace } from '../core/AgentTool'
 import type { ToolPermissions } from '../core/ToolPermissions'
 import type { ToolRegistry } from './ToolRegistry'
 import { auditLog } from '@/lib/audit/AuditLog'
+import { getAllowedToolsForRole, isRoleKnown } from '@/runtime/permissions/role-tool-allowlist'
 
 export type PoolAssemblyOptions = {
   mode?: string
@@ -13,44 +14,12 @@ export type PoolAssemblyOptions = {
   excludeNames?: string[]
   /** If true, use default-deny — only explicitly allowed tools are included */
   defaultDeny?: boolean
-}
-
-/**
- * Role-to-tool mapping used for default-deny filtering.
- * Each role explicitly lists which tools it can use.
- * Tools not in the list are denied by default.
- * The 'superadmin' role bypasses restrictions.
- */
-const ROLE_TOOL_ALLOWLIST: Record<string, string[]> = {
-  superadmin: [], // empty = all tools allowed
-  manager: ['delegate_task', 'spawn_agent', 'run_skill', 'think', 'reasoning',
-    'read_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
-    'query_graph',
-    'web_search', 'web_fetch',
-    'browser_navigate', 'browser_click', 'browser_screenshot', 'browser_get_text', 'browser_get_url', 'browser_get_title',
-    'browser_reload', 'browser_new_tab', 'browser_list_tabs', 'browser_close', 'launch_browser'],
-  coder: ['read_file', 'write_file', 'edit_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
-    'bash', 'run_command', 'think', 'reasoning',
-    'query_graph',
-    'web_search', 'web_fetch'],
-  research: ['grep_files', 'glob_files', 'read_file', 'search_files', 'find_files', 'file_tree', 'workspace_index',
-    'web_search', 'web_fetch', 'think', 'reasoning', 'query_graph'],
-  runtime: ['bash', 'run_command', 'read_file', 'write_file', 'think', 'reasoning'],
-  design: ['read_file', 'write_file', 'edit_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
-    'bash', 'run_command', 'think', 'reasoning',
-    'design_create_artifact', 'design_add_version', 'design_generate_preview'],
-  browser: ['launch_browser', 'browser_navigate', 'browser_click', 'browser_fill', 'browser_type',
-    'browser_screenshot', 'browser_get_text', 'browser_get_url', 'browser_get_title', 'browser_get_content',
-    'browser_execute_js', 'browser_wait', 'browser_press_key', 'browser_reload', 'browser_new_tab', 'browser_list_tabs',
-    'browser_close', 'browser_double_click', 'browser_hover', 'browser_get_console_logs', 'think', 'reasoning'],
-  qa: ['read_file', 'write_file', 'edit_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
-    'bash', 'run_command', 'think', 'reasoning',
-    'launch_browser', 'browser_navigate', 'browser_click', 'browser_screenshot', 'browser_get_text', 'browser_get_url', 'browser_get_title'],
-  vision: ['browser_screenshot', 'think', 'reasoning'],
-  memory: ['read_file', 'write_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'think', 'reasoning'],
-  'fast-inference': ['read_file', 'grep_files', 'think', 'reasoning'],
-  verification: ['read_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
-    'bash', 'run_command', 'think', 'reasoning'],
+  /**
+   * Namespace allowlist. Tools whose namespace is not in this list are excluded.
+   * Default: ['coding'] — future island tools (browser, design, device) are excluded
+   * from coding runtime by default. Set to undefined or empty to disable filtering.
+   */
+  namespaceFilter?: ToolNamespace[]
 }
 
 export class ToolPoolAssembler {
@@ -69,6 +38,7 @@ export class ToolPoolAssembler {
       permissions: { mode: 'default', alwaysAllow: [], alwaysDeny: [], alwaysAsk: [] },
       excludeNames: [],
       defaultDeny: false,
+      namespaceFilter: ['coding'],
       ...options,
     }
 
@@ -80,6 +50,12 @@ export class ToolPoolAssembler {
 
     pool = pool.filter(t => t.isEnabled())
     pool = pool.filter(t => t.supportedModes().includes(opts.mode!))
+
+    // Namespace filtering — default excludes future island tools
+    if (opts.namespaceFilter && opts.namespaceFilter.length > 0) {
+      const allowed = new Set(opts.namespaceFilter)
+      pool = pool.filter(t => allowed.has(t.namespace))
+    }
 
     if (opts.capability) {
       pool = pool.filter(t => t.requiredCapabilities().some(c => c === opts.capability))
@@ -120,8 +96,8 @@ export class ToolPoolAssembler {
     }
 
     // Unknown role + defaultDeny = denied (log audit event)
-    const allowedTools = ROLE_TOOL_ALLOWLIST[role]
-    if (!allowedTools) {
+    const allowedTools = getAllowedToolsForRole(role)
+    if (allowedTools === null && !isRoleKnown(role)) {
       if (opts.defaultDeny) {
         auditLog.recordPermissionDenied(
           role,
@@ -133,6 +109,9 @@ export class ToolPoolAssembler {
       // Legacy behavior: return all tools (should not happen with defaultDeny: true)
       return pool
     }
+
+    // superadmin returns null from getAllowedToolsForRole, already handled above
+    if (allowedTools === null) return pool
 
     // Filter pool to only allowed tools
     const allowedSet = new Set(allowedTools)

@@ -20,19 +20,50 @@ export function getModeConfig(): ExecutionModeConfig {
   return DEFAULT_MODE_CONFIG
 }
 
+const QA_ROLES = new Set(["qa", "tester", "code-reviewer", "auditor"])
+const RESEARCH_ROLES = new Set(["researcher", "knowledge-retriever", "context-gatherer"])
+
+const DANGEROUS_OPS = new Set([
+  "command_run",
+  "file_write",
+  "file_edit",
+  "browser_launch",
+  "design_create",
+])
+
 export function applyModeConstraints(
-  _mode: string,
+  mode: string,
   roles: string[],
-  _intent?: string,
+  intent?: string,
 ): string[] {
-  return roles
+  if (!mode || mode === "full") return roles
+
+  const filtered = roles.filter((role) => {
+    const lower = role.toLowerCase()
+    if (mode === "fast") {
+      if (QA_ROLES.has(lower)) return false
+      if (RESEARCH_ROLES.has(lower)) return false
+    }
+    if (mode === "autonomous") {
+      if (intent === "research" && QA_ROLES.has(lower)) return false
+    }
+    return true
+  })
+
+  return filtered.length > 0 ? filtered : roles
 }
 
 export function requiresApproval(
-  _mode: string,
-  _operationType: string,
+  mode: string,
+  operationType: string,
 ): boolean {
-  return false
+  if (mode === "full" || mode === "bypass") return false
+
+  if (mode === "autonomous" || mode === "fast") {
+    return DANGEROUS_OPS.has(operationType)
+  }
+
+  return true
 }
 
 export function getMaxRetries(_mode: string, _role: string): number {

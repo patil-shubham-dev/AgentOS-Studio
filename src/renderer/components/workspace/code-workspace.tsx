@@ -30,6 +30,8 @@ import { gitStatus } from "@/lib/git"
 import type { GitStatus } from "@/lib/git"
 import { useHistoryStore } from "@/stores/history-store"
 import { HistoryPanel } from "@/components/workspace/file-history/HistoryPanel"
+import { CheckpointPanel } from "@/components/workspace/checkpoint-panel"
+import { useCheckpointStore } from "@/stores/checkpoint-store"
 
 import { requestRefresh } from "@/runtime/runtime-coordinator"
 import { useHaptic } from "@/lib/haptics"
@@ -37,7 +39,7 @@ import {
   WrapText, Minus, Plus, X, FileCode,
   Sparkles, Brain, Check, Save,
   Columns3, FileDown, Pencil, AlertCircle, AlertTriangle, GitBranch,
-  Bug, FileSearch, PanelRight, PanelRightClose, Logs, History,
+  Bug, FileSearch, PanelRight, PanelRightClose, Logs, History, RotateCcw,
   Code2, GitCompare, ListTodo, Search, FileText, CheckCheck, XCircle,
   ChevronLeft, ChevronRight, Eye, EyeOff,
 } from "lucide-react"
@@ -136,6 +138,8 @@ export function CodeWorkspace() {
   const [symbolSearchOpen, setSymbolSearchOpen] = useState(false)
   const historyOpen = useHistoryStore((s) => s.open)
   const toggleHistory = useHistoryStore((s) => s.toggleOpen)
+  const checkpointOpen = useCheckpointStore((s) => s.isOpen)
+  const toggleCheckpoint = useCheckpointStore((s) => s.togglePanel)
   const [currentFileSymbols, setCurrentFileSymbols] = useState<SymbolItem[]>([])
   const [aiChanges, setAiChanges] = useState<AIChange[]>([])
   const [showAiOverlay, setShowAiOverlay] = useState(false)
@@ -169,7 +173,7 @@ export function CodeWorkspace() {
     streaming: boolean
     tokenCount: number
     error: string | null
-    viewMode: "edit" | "diff"
+    viewMode: "edit" | "diff" | "explain" | "optimize"
   }>({
     active: false,
     selectedRange: null,
@@ -294,6 +298,41 @@ export function CodeWorkspace() {
     // ── Enable inline suggestions in editor options ──
     editor.updateOptions({ inlineSuggest: { enabled: true } })
 
+    // ── Register code action provider for AI-powered fixes ──
+    const codeActionDisposable = monaco.languages.registerCodeActionProvider("*", {
+      provideCodeActions: (model, range) => {
+        const diagnostics = monaco.editor.getModelMarkers({ resource: model.uri })
+        const lineDiags = diagnostics.filter((d) =>
+          range.startLineNumber <= d.startLineNumber && d.startLineNumber <= range.endLineNumber
+        )
+        const actions: import("monaco-editor").languages.CodeAction[] = []
+        for (const diag of lineDiags.slice(0, 3)) {
+          actions.push({
+            title: `Fix: ${diag.message.slice(0, 60)}`,
+            kind: "quickfix",
+            diagnostics: [diag],
+          })
+        }
+        if (range.startLineNumber === range.endLineNumber) {
+          actions.push({
+            title: "Explain this line",
+            kind: "refactor.extract",
+          })
+        } else {
+          actions.push({
+            title: "Explain selected code",
+            kind: "refactor.extract",
+          })
+          actions.push({
+            title: "Optimize selected code",
+            kind: "refactor.rewrite",
+          })
+        }
+        return { actions, dispose: () => {} }
+      },
+    })
+    editor.onDidDispose(() => codeActionDisposable.dispose())
+
     // Keyboard shortcuts
     editor.addAction({
       id: "save-file",
@@ -402,6 +441,73 @@ export function CodeWorkspace() {
       label: "Rename Symbol",
       keybindings: [monaco.KeyCode.F2],
       run: (ed) => { ed.getAction("editor.action.rename")?.run() },
+    })
+
+    // ── AI Explain (Ctrl+Shift+E) ──
+    editor.addAction({
+      id: "ai-explain",
+      label: "AI: Explain Selection",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE],
+      contextMenuGroupId: "navigation",
+      run: (ed) => {
+        const selection = ed.getSelection()
+        if (!selection) return
+        const model = ed.getModel()
+        if (!model) return
+        const selected = model.getValueInRange(selection)
+        if (!selected.trim()) return
+        setInlineEdit({
+          active: true,
+          selectedRange: {
+            startLine: selection.startLineNumber,
+            startCol: selection.startColumn,
+            endLine: selection.endLineNumber,
+            endCol: selection.endColumn,
+          },
+          selectedText: selected,
+          instruction: "Explain this code in detail, covering what it does and how it works.",
+          generatedPatch: null,
+          editedCode: null,
+          loading: true,
+          streaming: false,
+          tokenCount: 0,
+          error: null,
+          viewMode: "explain",
+        })
+      },
+    })
+
+    // ── AI Optimize (Ctrl+Shift+O) — note: reuses the same keybind as symbol search, we'll use a different one
+    editor.addAction({
+      id: "ai-optimize",
+      label: "AI: Optimize Selection",
+      contextMenuGroupId: "navigation",
+      run: (ed) => {
+        const selection = ed.getSelection()
+        if (!selection) return
+        const model = ed.getModel()
+        if (!model) return
+        const selected = model.getValueInRange(selection)
+        if (!selected.trim()) return
+        setInlineEdit({
+          active: true,
+          selectedRange: {
+            startLine: selection.startLineNumber,
+            startCol: selection.startColumn,
+            endLine: selection.endLineNumber,
+            endCol: selection.endColumn,
+          },
+          selectedText: selected,
+          instruction: "Optimize this code for better performance and readability.",
+          generatedPatch: null,
+          editedCode: null,
+          loading: true,
+          streaming: false,
+          tokenCount: 0,
+          error: null,
+          viewMode: "optimize",
+        })
+      },
     })
 
     // ── Debug gutter: click to add/remove breakpoints ──
@@ -709,13 +815,33 @@ export function CodeWorkspace() {
 
   const language = activeFile ? getMonacoLang(activeFile.name) : "plaintext"
 
-  const editorOptions = useMemo(() => ({
-    ...EDITOR_OPTIONS,
-    wordWrap: wordWrap ? "on" : "off",
-    fontSize,
-    minimap: { enabled: showMinimap },
-    readOnly: false,
-  }), [wordWrap, fontSize, showMinimap])
+  const isLarge = activeFile ? isLargeFile(activeFile.content) : false
+  const editorOptions = useMemo(() => {
+    if (isLarge) {
+      return {
+        ...EDITOR_OPTIONS,
+        wordWrap: "off",
+        fontSize,
+        minimap: { enabled: false },
+        readOnly: false,
+        renderWhitespace: "boundary" as const,
+        bracketPairColorization: { enabled: false },
+        codeLens: false,
+        stickyScroll: { enabled: false },
+        smoothScrolling: false,
+        cursorSmoothCaretAnimation: "off" as const,
+        folding: false,
+        foldingHighlight: false,
+      }
+    }
+    return {
+      ...EDITOR_OPTIONS,
+      wordWrap: wordWrap ? "on" : "off",
+      fontSize,
+      minimap: { enabled: showMinimap },
+      readOnly: false,
+    }
+  }, [wordWrap, fontSize, showMinimap, isLarge])
 
   // ── Empty state ──
   if (!activeFile) {
@@ -768,17 +894,12 @@ export function CodeWorkspace() {
 
       {/* Large file warning */}
       {largeFileWarning && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-          padding: '6px 12px', background: 'rgba(245,158,11,0.1)',
-          borderBottom: '1px solid rgba(245,158,11,0.2)',
-          fontSize: '11px', color: '#f59e0b',
-        }}>
-          <AlertTriangle size={12} />
-          <span>Large file — editing may be slow. Saving will write to disk normally.</span>
+        <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-amber-400 bg-amber-400/10 border-b border-amber-400/20">
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          <span className="flex-1">Large file — minimap, folding, and other visual features disabled for performance.</span>
           <button
             onClick={() => setLargeFileWarning(null)}
-            style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '12px' }}
+            className="text-white/40 hover:text-white/70 text-xs leading-none"
           >
             ✕
           </button>
@@ -1055,6 +1176,21 @@ export function CodeWorkspace() {
             </motion.button>
           </Tooltip>
 
+          {/* Checkpoint panel toggle */}
+          <Tooltip content="Checkpoints — restore previous tool states">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => toggleCheckpoint()}
+              className={cn(
+                "rounded p-1 transition-colors",
+                checkpointOpen ? "text-blue-400 bg-blue-500/10" : "text-white/25 hover:text-white/60",
+              )}
+            >
+              <RotateCcw className="h-3 w-3" />
+            </motion.button>
+          </Tooltip>
+
           <span className="text-white/10 text-[8px]">|</span>
 
           <Tooltip content="Debug (⌘⇧D)">
@@ -1130,7 +1266,7 @@ export function CodeWorkspace() {
                   setShowProblems((p) => !p)
                 } else if (opt.id === "search") {
                   setEditorMode("search")
-                  setSymbolSearchOpen(true)
+                  useWorkspaceStore.getState().setSearchOpen(true)
                 } else {
                   setEditorMode(opt.id)
                 }
@@ -1373,6 +1509,9 @@ export function CodeWorkspace() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Checkpoint overlay panel */}
+      <CheckpointPanel />
 
       {/* Symbol search overlay */}
       <SymbolSearch

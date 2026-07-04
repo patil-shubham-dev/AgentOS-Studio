@@ -4,7 +4,7 @@ import { validateBridgeRequest, type BridgeRequest, type BridgeResponse, type Br
 
 interface BridgeClient {
   id: string
-  ws: import('net').Socket
+  ws: import('ws').WebSocket
   token: string
   authenticated: boolean
   role: string
@@ -34,7 +34,7 @@ export class BridgeServer {
       if (client.authenticated) {
         try {
           const data = JSON.stringify(event)
-          client.ws.write(`data: ${data}\n\n`)
+          client.ws.send(`data: ${data}\n\n`)
         } catch {
           // Client disconnected
         }
@@ -50,7 +50,7 @@ export class BridgeServer {
     this.httpServer = createServer()
     this.wsServer = new WebSocketServer({ server: this.httpServer })
 
-    this.wsServer.on('connection', (ws: any, req: any) => {
+    this.wsServer.on('connection', (ws: any, _req: any) => {
       const clientId = `client_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
       const client: BridgeClient = {
@@ -107,7 +107,7 @@ export class BridgeServer {
   stop(): void {
     this.running = false
     for (const client of this.clients.values()) {
-      try { client.ws.end() } catch { /* ignore */ }
+      try { client.ws.close() } catch { /* ignore */ }
     }
     this.clients.clear()
     this.wsServer?.close()

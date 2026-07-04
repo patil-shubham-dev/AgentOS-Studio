@@ -1,9 +1,12 @@
-import type { ExecuteOptions } from "@/runtime/execution/ExecutionOrchestrator"
-import { ExecutionOrchestrator } from "@/runtime/execution/ExecutionOrchestrator"
+import { UnifiedExecutionGateway } from "@/runtime/execution/UnifiedExecutionGateway"
+import type { ExecutionMode } from "@/runtime/execution/UnifiedExecutor"
 import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
+import type { RuntimeRole } from "@/types"
 import { useAgentStore } from "@/stores/agent-store"
 import { useLedgerStore } from "@/stores/ledger-store"
 import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
+import { adaptEvent } from "@/runtime/execution/canonical-adapter"
+import { useCommandLogStore } from "@/stores/command-log-store"
 import { StreamManager } from "@/runtime/streaming/StreamManager"
 import type { ToolCallRecord, FileEditRecord, TerminalRecord } from "@/components/workspace/timeline/step-card"
 import { normalizeError } from "@/lib/normalize-error"
@@ -20,6 +23,31 @@ import { useToolFilterStore } from "@/stores/tool-filter-store"
 import { pluginRegistry } from "@/runtime/plugins/PluginRegistry"
 import { useDiffStore } from "@/stores/diff-store"
 import { buildDiffFileEntry } from "@/lib/diff-review"
+import { ChangeSetManager } from "@/runtime/changeset/ChangeSetManager"
+import { useChangeSetStore } from "@/runtime/changeset/ChangeSetStore"
+
+export interface ExecuteOptions {
+  input: string
+  activeRole: RuntimeRole
+  correlationId?: string
+  goalId?: string
+  mode?: ExecutionMode
+  signal?: AbortSignal
+  onPreview?: (files: string[]) => Promise<boolean>
+}
+
+function extractEditedFiles(input: string): string[] {
+  const files: string[] = []
+  const pattern = /(?:file|path|edit|update|change|modify)\s+(?:`([^`]+)`|([^\s,.]+))/gi
+  let match
+  while ((match = pattern.exec(input)) !== null) {
+    const path = (match[1] ?? match[2]).trim()
+    if (path && path.match(/\.(ts|tsx|js|jsx|json|css|html|md)$/)) {
+      files.push(path)
+    }
+  }
+  return files
+}
 
 export interface ExecutionSession {
   id: string
@@ -39,7 +67,7 @@ function generateId(): string {
 export class ExecutionSessionManager {
   private static instance: ExecutionSessionManager
   private sessions: Map<string, ExecutionSession> = new Map()
-  private orchestrator = ExecutionOrchestrator.getInstance()
+  private gateway = UnifiedExecutionGateway.getInstance()
   private stepByExecId = new Map<string, string>()
   private initStepIds = new Map<string, string>()
   private sessionToExecId = new Map<string, string>()
@@ -55,6 +83,10 @@ export class ExecutionSessionManager {
   private toolRecorder = new DeterministicToolRecorder()
   /** Maps toolId → TOOL_START args for matching with COMPLETE/ERROR */
   private pendingToolArgs = new Map<string, { toolName: string; args: string; executionId: string }>()
+  /** Maps executionId → commandLogId for full log storage */
+  private commandLogIds = new Map<string, string>()
+  /** Maps sessionId → changeSetId for routing file edits through ChangeSetManager */
+  private sessionChangeSets = new Map<string, string>()
 
   // ── Runtime telemetry ──
   private runtimeTelemetry = {
@@ -71,8 +103,6 @@ export class ExecutionSessionManager {
     recoveries: 0,
   }
 
-  /** Max time to wait for first event before auto-cancelling */
-  private static readonly FIRST_EVENT_TIMEOUT_MS = 45_000
   /** Max total session duration before force-cancel */
   private static readonly SESSION_MAX_DURATION_MS = 300_000
   /** Max events to buffer per session for memory extraction */
@@ -139,11 +169,9 @@ export class ExecutionSessionManager {
     }
     StreamManager.getInstance().resetCancelled()
     const id = generateId()
-    const goalId = `goal_${options.correlationId ?? id}`
     this.activeSessionId = id
     const session: ExecutionSession = {
       id,
-      goalId,
       traceId: `msg_${Date.now()}`,
       startedAt: sessionStartTime,
       status: "running",
@@ -168,12 +196,17 @@ export class ExecutionSessionManager {
     })
 
     try {
-      // ── Always use ExecutionOrchestrator (with EditPreview enforcement) ──
-      console.log(`[SessionManager] ▶ using ExecutionOrchestrator (session=${id})`)
-      const eventStream = this.orchestrator.execute({
-        ...options,
-        goalId,
-      })
+      const editedFiles = extractEditedFiles(options.input)
+
+      if (options.onPreview && editedFiles.length > 0) {
+        const approved = await options.onPreview(editedFiles)
+        if (!approved) {
+          session.status = "cancelled"
+          session.completedAt = Date.now()
+          this.recordRuntimeTelemetry(session, 0)
+          return session
+        }
+      }
 
       // ── Observability: start replay session + trace ──
       if (observabilityEnabled) {
@@ -181,48 +214,56 @@ export class ExecutionSessionManager {
         await this.obsManager.getReplay().startSession(id)
       }
 
-      // Stall detection: cancel if no event received within timeout
-      let firstEventReceived = false
-      let stallTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-        if (!firstEventReceived) {
-          console.warn(`${mgrTag} ✗ no event received within ${ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS}ms — auto-cancelling`)
-          this.orchestrator.cancel()
-        }
-      }, ExecutionSessionManager.FIRST_EVENT_TIMEOUT_MS)
+      const durationTimeout = setTimeout(() => {
+        this.gateway.cancel()
+      }, ExecutionSessionManager.SESSION_MAX_DURATION_MS)
 
       let eventCount = 0
-      for await (const event of eventStream) {
-        eventCount++
-        if (!firstEventReceived) {
-          firstEventReceived = true
-          console.log(`${mgrTag} ✓ first event received: ${event.type} (${Math.round(performance.now() - sessionStartTime)}ms)`)
-          if (stallTimer !== null) {
-            clearTimeout(stallTimer)
-            stallTimer = null
-          }
+      try {
+        const result = await this.gateway.execute({
+          input: options.input,
+          activeRole: options.activeRole,
+          correlationId: options.correlationId,
+          goalId: options.goalId,
+          mode: options.mode ?? "full",
+          signal: options.signal,
+          editedFiles,
+        })
+
+        for (const event of result.events) {
+          eventCount++
+          this.handleEvent(event, options)
         }
 
-        // Total session duration check
-        if (Date.now() - sessionStartTime > ExecutionSessionManager.SESSION_MAX_DURATION_MS) {
-          console.warn(`${mgrTag} ✗ session exceeded max duration — force-cancelling (${Math.round(performance.now() - sessionStartTime)}ms, events=${eventCount})`)
-          this.orchestrator.cancel()
-          break
+        if (!result.engineeringResult.passed) {
+          this.handleEvent({
+            type: "EXECUTION_FAILED" as any,
+            executionId: "",
+            error: result.engineeringResult.summary,
+            durationMs: result.engineeringResult.durationMs,
+            timestamp: Date.now(),
+          } as ExecutionEvent, options)
         }
-
-        this.handleEvent(event, options)
+      } finally {
+        clearTimeout(durationTimeout)
       }
 
       console.log(`${mgrTag} ✓ event stream ended (${Math.round(performance.now() - sessionStartTime)}ms, events=${eventCount})`)
-
-      if (stallTimer !== null) {
-        clearTimeout(stallTimer)
-        stallTimer = null
-      }
 
       if (session.status !== "cancelled") {
         session.status = "completed"
       }
       session.completedAt = Date.now()
+
+      // Propose and submit ChangeSet for review on successful completion
+      if (session.status === "completed") {
+        const changeSetId = this.sessionChangeSets.get(id)
+        if (changeSetId) {
+          const changesetMgr = ChangeSetManager.getInstance()
+          changesetMgr.proposeChangeSet(changeSetId)
+          changesetMgr.submitForReview(changeSetId)
+        }
+      }
 
       this.recordRuntimeTelemetry(session, eventCount)
 
@@ -266,6 +307,20 @@ export class ExecutionSessionManager {
       session.error = msg
       session.status = msg.includes("abort") || msg.includes("cancel") ? "cancelled" : "failed"
       session.completedAt = Date.now()
+
+      // Clean up ChangeSet on failure/cancellation — discard draft changes
+      const changeSetId = this.sessionChangeSets.get(id)
+      if (changeSetId) {
+        const changesetMgr = ChangeSetManager.getInstance()
+        const cs = useChangeSetStore.getState().getChangeSet(changeSetId)
+        if (cs && cs.status === "draft") {
+          useChangeSetStore.getState().removeChangeSet(changeSetId)
+        } else if (cs) {
+          changesetMgr.rejectChangeSet(changeSetId)
+        }
+        this.sessionChangeSets.delete(id)
+      }
+
       this.recordRuntimeTelemetry(session, 0)
 
       console.log(`${mgrTag} ✗ ${session.status} at ${Math.round(performance.now() - sessionStartTime)}ms: ${msg}`)
@@ -288,6 +343,7 @@ export class ExecutionSessionManager {
       }
       this.stepByExecId.clear()
       this.sessionToExecId.clear()
+      this.pendingToolArgs.clear()
       // Clean up optimistic session via correlationId
       if (options.correlationId) {
         const optimisticStepId = `optimistic_${options.correlationId}`
@@ -329,6 +385,11 @@ export class ExecutionSessionManager {
 
     switch (event.type) {
       case "AGENT_ASSIGNED": {
+        // Redact internal agent labels per feature flag (mutate event in-place)
+        if (!FeatureFlagManager.getInstance().isEnabled("showInternalAgentLabels")) {
+          ;(event as any).roleName = "Assistant"
+        }
+
         // Track agent role for this execution
         this.execRoleMap.set(event.executionId, event.roleId)
         useAgentStore.getState().setAgentStatus(event.roleId, {
@@ -343,10 +404,10 @@ export class ExecutionSessionManager {
         // This prevents scroll jumps, flicker, and lost animation state
         const optimisticStepId = event.correlationId ? `optimistic_${event.correlationId}` : null
         if (optimisticStepId && timeline.agentSessions.has(optimisticStepId)) {
-          // Also clean up the init session from EXECUTION_CREATED — it's no longer needed
+          // Remove the init session from EXECUTION_CREATED — it's a stub, not a real session
           const initBeforeUpgrade = this.initStepIds.get(event.executionId)
           if (initBeforeUpgrade) {
-            timeline.updateAgentSession(initBeforeUpgrade, { status: "complete", streamState: "completed" })
+            timeline.removeAgentSession(initBeforeUpgrade)
             this.initStepIds.delete(event.executionId)
           }
           timeline.upgradeOptimisticSession(optimisticStepId, event.stepId, {
@@ -354,14 +415,15 @@ export class ExecutionSessionManager {
             roleName: event.roleName,
             modelName: event.modelName,
             providerName: event.providerName,
+            executionStrategy: event.executionStrategy,
             currentPhase: undefined,
             phaseHistory: [{ label: "Thinking", timestamp: Date.now() }, { label: "Connecting", timestamp: Date.now() }],
           })
         } else {
-          // No optimistic session — create fresh
+          // No optimistic session — create fresh, but remove the init stub
           const initBeforeReal = this.initStepIds.get(event.executionId)
           if (initBeforeReal) {
-            timeline.updateAgentSession(initBeforeReal, { status: "complete", streamState: "completed" })
+            timeline.removeAgentSession(initBeforeReal)
             this.initStepIds.delete(event.executionId)
           }
           timeline.addAgentSession({
@@ -377,6 +439,7 @@ export class ExecutionSessionManager {
             terminalOutputs: [],
             modelName: event.modelName,
             providerName: event.providerName,
+            executionStrategy: event.executionStrategy,
             startedAt: Date.now(),
             tokenAppended: 0,
           }, event.correlationId)
@@ -505,6 +568,29 @@ export class ExecutionSessionManager {
         useDiffStore.getState().setCorrelationId(options.correlationId ?? event.executionId)
         useDiffStore.getState().addFileDiff(diffEntry)
 
+        // Route through ChangeSetManager — create or get the ChangeSet for this session
+        const changesetMgr = ChangeSetManager.getInstance()
+        let changeSetId = this.sessionChangeSets.get(stepId)
+        if (!changeSetId) {
+          const session = timeline.agentSessions.get(stepId)
+          const cs = changesetMgr.createChangeSet({
+            sessionId: stepId,
+            correlationId: session?.correlationId ?? options.correlationId ?? event.executionId,
+            title: `File changes for ${stepId}`,
+            reason: "Agent file modifications",
+            sourceToolCallIds: [event.executionId],
+          })
+          changeSetId = cs.id
+          this.sessionChangeSets.set(stepId, changeSetId)
+        }
+        changesetMgr.addFileToChangeSet({
+          changeSetId,
+          path: event.path,
+          changeType: event.oldContent ? "modify" : "create",
+          beforeContent: event.oldContent ?? undefined,
+          afterContent: event.newContent ?? undefined,
+        })
+
         // Update agent status for editing activity + track file activity
         const role = this.execRoleMap.get(event.executionId)
         if (role) {
@@ -527,8 +613,22 @@ export class ExecutionSessionManager {
           command: event.command,
           output: "",
           status: "running",
+          cwd: event.cwd,
         }
         timeline.addTerminalToAgent(cmdStepId, terminal)
+
+        const commandLogId = `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+        this.commandLogIds.set(event.executionId, commandLogId)
+        useCommandLogStore.getState().addLog({
+          id: commandLogId,
+          sessionId: this.activeSessionId ?? "",
+          correlationId: options.correlationId,
+          command: event.command,
+          cwd: event.cwd,
+          fullOutput: "",
+          status: "running",
+          startedAt: Date.now(),
+        })
 
         const role = this.execRoleMap.get(event.executionId)
         if (role) {
@@ -551,6 +651,12 @@ export class ExecutionSessionManager {
         const updated = [...session.terminalOutputs]
         updated[lastIdx] = { ...updated[lastIdx], status: "success", exitCode: event.exitCode, durationMs: event.durationMs, output: session.terminalOutputs[lastIdx].output }
         timeline.updateAgentSession(ccStepId, { terminalOutputs: updated })
+
+        const ccClId = this.commandLogIds.get(event.executionId)
+        if (ccClId) {
+          useCommandLogStore.getState().updateLog(ccClId, { status: "success", exitCode: event.exitCode, durationMs: event.durationMs, completedAt: Date.now() })
+          this.commandLogIds.delete(event.executionId)
+        }
         break
       }
 
@@ -562,8 +668,26 @@ export class ExecutionSessionManager {
         const ceLastIdx = ceSession.terminalOutputs.length - 1
         if (ceLastIdx < 0) break
         const ceUpdated = [...ceSession.terminalOutputs]
-        ceUpdated[ceLastIdx] = { ...ceUpdated[ceLastIdx], status: "error", exitCode: 1, output: event.error }
+        const wasCancelled = this.activeSessionId
+          ? this.sessions.get(this.activeSessionId)?.status === "cancelled"
+          : false
+        ceUpdated[ceLastIdx] = {
+          ...ceUpdated[ceLastIdx],
+          status: wasCancelled ? "cancelled" : "error",
+          exitCode: 1,
+          output: wasCancelled ? "" : event.error,
+        }
         timeline.updateAgentSession(ceStepId, { terminalOutputs: ceUpdated })
+
+        const ceClId = this.commandLogIds.get(event.executionId)
+        if (ceClId) {
+          useCommandLogStore.getState().updateLog(ceClId, {
+            status: wasCancelled ? "cancelled" : "error",
+            exitCode: 1,
+            completedAt: Date.now(),
+          })
+          this.commandLogIds.delete(event.executionId)
+        }
         break
       }
 
@@ -658,6 +782,10 @@ export class ExecutionSessionManager {
         const coUpdated = [...coSession.terminalOutputs]
         coUpdated[coLastIdx] = { ...coUpdated[coLastIdx], output: coUpdated[coLastIdx].output + event.output }
         timeline.updateAgentSession(coStepId, { terminalOutputs: coUpdated })
+        const outClId = this.commandLogIds.get(event.executionId)
+        if (outClId) {
+          useCommandLogStore.getState().appendOutput(outClId, event.output)
+        }
         break
       }
 
@@ -748,7 +876,7 @@ export class ExecutionSessionManager {
       case "EXECUTION_COMPLETE": {
         const initCompleteId = this.initStepIds.get(event.executionId)
         if (initCompleteId) {
-          timeline.updateAgentSession(initCompleteId, { status: "complete", streamState: "completed" })
+          timeline.removeAgentSession(initCompleteId)
           this.initStepIds.delete(event.executionId)
         }
         break
@@ -784,7 +912,7 @@ export class ExecutionSessionManager {
       }
 
       case "PLAN_PROPOSED": {
-        // Plan is already in the store via ExecutionOrchestrator
+        // Plan is already in the store
         // Just set the phase on the timeline
         const propStepId = this.stepByExecId.get(event.executionId)
         if (propStepId) {
@@ -848,6 +976,15 @@ export class ExecutionSessionManager {
       }
       case "MESSAGE_UPDATE":
         break
+    }
+
+    // ── Canonical event adapter ──
+    // Record canonical events in the timeline store for replay
+    const sid = this.activeSessionId ?? "unknown"
+    const cid = (event as any).correlationId ?? options.correlationId ?? sid
+    const canonicalEvents = adaptEvent(event, sid, cid)
+    if (canonicalEvents.length > 0) {
+      timeline.addCanonicalEventLog(canonicalEvents)
     }
   }
 
@@ -1034,7 +1171,7 @@ export class ExecutionSessionManager {
     StreamManager.getInstance().clearAll()
 
     // 2. Abort any active runtime
-    this.orchestrator.cancel()
+    this.gateway.cancel()
 
     // 3. Finalize all store state immediately
     const timeline = useTimelineStore.getState()
@@ -1051,6 +1188,18 @@ export class ExecutionSessionManager {
     this.initStepIds.clear()
     this.sessionToExecId.delete(sessionId)
     this.activeSessionId = null
+
+    // Discard or reject ChangeSet for this session on cancel
+    const csId = this.sessionChangeSets.get(sessionId)
+    if (csId) {
+      const cs = useChangeSetStore.getState().getChangeSet(csId)
+      if (cs && cs.status === "draft") {
+        useChangeSetStore.getState().removeChangeSet(csId)
+      } else if (cs) {
+        ChangeSetManager.getInstance().rejectChangeSet(csId)
+      }
+      this.sessionChangeSets.delete(sessionId)
+    }
 
     // Observability teardown on cancel
     if (FeatureFlagManager.getInstance().isEnabled("observability")) {

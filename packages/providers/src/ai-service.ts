@@ -1,6 +1,6 @@
 import { ProviderTransport } from "./transport"
 import type { CompletionRequest, TransportAdapterConfig } from "./transport-adapters"
-import type { ChatRequest, ChatResponse, StreamCallbacks, ToolCall } from "./provider-gateway"
+import type { ChatRequest, ChatResponse, ToolCall } from "./provider-gateway"
 
 export type { ChatMessage, ToolCall, ToolDef, ChatRequest, ChatResponse, UsageInfo } from "./provider-gateway"
 export interface StreamCallbacks {
@@ -153,7 +153,7 @@ export async function streamChatCompletion(
       finishReason = reason
     },
     onError: (error) => {
-      callbacks.onError(error instanceof Error ? error : new Error(error.message))
+      callbacks.onError(error instanceof Error ? error : new Error(String(error)))
     },
     onDone: () => {
       if (!readyFired) {
@@ -167,8 +167,6 @@ export async function streamChatCompletion(
     },
   })
 }
-
-let streamCounter = 0
 
 export async function tauriStreamChatCompletion(
   endpoint: string,
@@ -228,7 +226,7 @@ export async function tauriStreamChatCompletion(
     },
     onFinish: () => {},
     onError: (error) => {
-      callbacks.onError(error instanceof Error ? error : new Error(error.message))
+      callbacks.onError(error instanceof Error ? error : new Error(String(error)))
     },
     onDone: () => {
       if (collectedToolCalls.length > 0) {

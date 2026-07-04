@@ -1,5 +1,5 @@
 import { execSync } from "child_process"
-import { readFileSync, readdirSync, statSync } from "fs"
+import { readFileSync, readdirSync } from "fs"
 import { join } from "path"
 import type { BenchmarkResult, BenchmarkMetric } from "./types"
 

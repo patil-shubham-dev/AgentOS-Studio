@@ -4,6 +4,10 @@ import type { ToolContext } from './ToolContext'
 import type { ToolResult } from './ToolResult'
 import type { PromptCategory } from '../../prompting/categories/PromptCategory'
 
+export type ToolNamespace = 'coding' | 'browser' | 'design' | 'device' | 'plugin' | 'mcp'
+
+export type ToolPhase = 'core' | 'advanced' | 'future'
+
 export type ToolInputSchema = Record<string, unknown>
 
 export type AgentTool<I = ToolInputSchema, O = unknown> = {
@@ -13,6 +17,8 @@ export type AgentTool<I = ToolInputSchema, O = unknown> = {
   inputSchema: Record<string, unknown>
   promptCategory?: PromptCategory
   promptPriority?: number
+  namespace: ToolNamespace
+  phase: ToolPhase
 
   execute(ctx: ToolContext, input: I): Promise<ToolResult<O>>
 
@@ -35,6 +41,8 @@ export function buildTool<I, O>(
   return {
     aliases: [],
     promptPriority: 60,
+    namespace: 'coding',
+    phase: 'core',
     isReadOnly: () => false,
     isConcurrencySafe: () => false,
     isEnabled: () => true,

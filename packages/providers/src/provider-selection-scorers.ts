@@ -15,17 +15,6 @@ const HEALTH_STATE_SCORES: Record<ProviderHealthState, number> = {
   unknown: 30,
 }
 
-function binaryPass(score: number, passed: boolean): number {
-  return passed ? score : 0
-}
-
-function normalize(value: number, maxValue: number, inverse = false): number {
-  if (maxValue <= 0) return 50
-  const clamped = Math.max(0, Math.min(value, maxValue))
-  const ratio = clamped / maxValue
-  return inverse ? (1 - ratio) * 100 : ratio * 100
-}
-
 export class RequiredCapabilitiesScorer implements SelectionScorer {
   name = "required_capabilities"
   weight = 100
@@ -214,7 +203,6 @@ export class ReliabilityScorer implements SelectionScorer {
   weight = 40
 
   score(provider: ScoredProvider, _request: SelectionRequest, _context: SelectionContext): ScoredDimension {
-    const total = provider.consecutiveFailures + (provider.successRate > 0 ? Math.round(provider.successRate * 100) : 0)
     if (provider.consecutiveFailures === 0 && provider.successRate === 0) {
       return { name: this.name, score: 50, weight: this.weight, weightedScore: 50, label: "No reliability data", passed: true }
     }

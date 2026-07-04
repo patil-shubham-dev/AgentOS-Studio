@@ -1,5 +1,5 @@
 import { ipcMain, app } from 'electron'
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import { join, resolve, normalize } from 'path'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ function getAppDataPath(): string {
   return process.env.APPDATA || join(app.getPath('home'), 'AppData', 'Roaming')
 }
 
-function getLocalAppDataPath(): string {
+void function getLocalAppDataPath(): string {
   return process.env.LOCALAPPDATA || join(app.getPath('home'), 'AppData', 'Local')
 }
 
@@ -318,7 +318,7 @@ function importFromVSCode(): ImportedSettings | null {
     // Extract explicit values for quick display
     const theme = settings['workbench.colorTheme'] as string | undefined
     const fontSize = settings['editor.fontSize'] as number | undefined
-    const fontFamily = settings['editor.fontFamily'] as string | undefined
+    void settings['editor.fontFamily']
 
     return {
       source: 'vscode',

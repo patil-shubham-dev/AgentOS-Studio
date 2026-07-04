@@ -109,7 +109,7 @@ export function removeFromCaches(filePath: string) {
   }
 }
 
-const LARGE_FILE_THRESHOLD = 5_000_000 // 5MB
+const LARGE_FILE_THRESHOLD = 1_000_000 // 1MB — Monaco performance degrades beyond this
 
 export function isLargeFile(content: string): boolean {
   return content.length > LARGE_FILE_THRESHOLD

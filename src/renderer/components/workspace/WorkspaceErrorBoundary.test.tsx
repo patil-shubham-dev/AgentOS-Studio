@@ -108,7 +108,7 @@ describe("WorkspaceErrorBoundary", () => {
         error: "component crash",
         stack: error.stack,
         componentStack: "at BrokenComponent",
-        route: "/code-canvas",
+        route: "/",
       }),
     )
   })

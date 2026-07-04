@@ -1,3 +1,4 @@
+import { motion } from "framer-motion"
 import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from "react"
 import { useNavigate } from "react-router-dom"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -15,7 +16,6 @@ import { CodeWorkspace } from "@/components/workspace/code-workspace"
 import { ChatPanel } from "@/components/workspace/chat-panel"
 import { PaneContainer, Pane } from "@/components/workspace/pane-layout/PaneContainer"
 
-const BrowserWorkspace = lazy(() => import("@/components/workspace/browser/browser-workspace").then(m => ({ default: m.BrowserWorkspace })))
 const DesignWorkspace = lazy(() => import("@/components/workspace/design-workspace").then(m => ({ default: m.DesignWorkspace })))
 import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
 
@@ -24,7 +24,7 @@ import { DirtyBufferRecoveryDialog } from "@/components/workspace/DirtyBufferRec
 import { GlobalSearch } from "@/components/workspace/global-search"
 import { CommandPalette } from "@/components/workspace/command-palette"
 import { QuickOpen } from "@/components/workspace/QuickOpen"
-import { ExecutionDock } from "@/components/runtime/ExecutionDock"
+
 import { ErrorBoundary } from "@/components/runtime/ErrorBoundary"
 import { WorkspaceErrorBoundary } from "@/components/workspace/WorkspaceErrorBoundary"
 import { ContextUsageIndicator } from "@/components/workspace/context-indicator/ContextUsageIndicator"
@@ -46,13 +46,11 @@ import {
 } from "lucide-react"
 import {
   CodePanelIcon,
-  BrowserPanelIcon,
   DesignPanelIcon,
 } from "@/components/ui/PanelIcons"
 
 const WORKSPACE_PANEL_OPTIONS: { id: WorkspacePanel; label: string; icon: typeof CodePanelIcon }[] = [
   { id: "code", label: "Code", icon: CodePanelIcon },
-  { id: "browser", label: "Browser", icon: BrowserPanelIcon },
   { id: "design", label: "Design & Preview", icon: DesignPanelIcon },
 ]
 
@@ -187,7 +185,10 @@ export function CodeCanvasPage() {
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel>(() => loadPanelState("workspacePanel", "code"))
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(() => loadPanelState("workspacePanelOpen", true))
   const [workspacePanelWidth, setWorkspacePanelWidth] = useState(() => loadPanelState("workspacePanelWidth", 420))
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
+  const isNarrow = windowWidth < 900
+  const searchOpen = useWorkspaceStore((s) => s.searchOpen)
+  const setSearchOpen = useWorkspaceStore((s) => s.setSearchOpen)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [quickOpenOpen, setQuickOpenOpen] = useState(false)
 
@@ -216,7 +217,6 @@ export function CodeCanvasPage() {
   const paneConfigs = useMemo(() => {
     const paneRenderers: Record<string, () => React.ReactNode> = {
       code: () => <WorkspaceErrorBoundary><CodeWorkspace /></WorkspaceErrorBoundary>,
-      browser: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading browser...</div>}><BrowserWorkspace /></Suspense></WorkspaceErrorBoundary>,
       design: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading design...</div>}><DesignWorkspace /></Suspense></WorkspaceErrorBoundary>,
     }
     return visiblePanes.map((p) => ({
@@ -235,7 +235,7 @@ export function CodeCanvasPage() {
       panelCtrlRef.current?.syncOpenState(next)
       return next
     }),
-    toggleSearch: () => setSearchOpen((p) => !p),
+    toggleSearch: () => setSearchOpen(!useWorkspaceStore.getState().searchOpen),
     closeTab: () => {
       const state = useWorkspaceStore.getState()
       if (state.activeFilePath) state.closeFile(state.activeFilePath)
@@ -667,12 +667,24 @@ export function CodeCanvasPage() {
       // ⌘⇧F — global search
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "f") {
         e.preventDefault()
-        setSearchOpen((p) => !p)
+        setSearchOpen(!useWorkspaceStore.getState().searchOpen)
       }
     }
     window.addEventListener("keydown", handleKey)
     return () => window.removeEventListener("keydown", handleKey)
   }, [rootPath])
+
+  // ── Auto-collapse explorer on narrow screens ──
+  useEffect(() => {
+    function handleResize() {
+      setWindowWidth(window.innerWidth)
+      if (window.innerWidth < 900 && explorerOpen) {
+        setExplorerOpen(false)
+      }
+    }
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [explorerOpen])
 
     // ── Persist panel state on change ──
   useEffect(() => { persistPanelState("explorerOpen", explorerOpen) }, [explorerOpen])
@@ -805,7 +817,7 @@ export function CodeCanvasPage() {
           {runtimeStatus === "uninitialized" && <><Loader2 className="h-2.5 w-2.5 animate-spin mr-1" />Initializing runtime...</>}
           {runtimeStatus === "error" && <><XCircle className="h-3 w-3 mr-1 shrink-0" />{runtimeError}<Button variant="outline" size="sm" className="h-5 text-[9px] ml-auto border-red-500/20 text-red-400" onClick={initializeRuntime}>Retry</Button></>}
           {runtimeStatus === "ready" && !runtimeReady && rootPath && (
-            <>{wiredRoles > 0 ? "Assign a provider to the Manager role in Settings" : "Add providers and assign models in Settings to enable orchestration."}</>
+            <>Add a provider in Settings to start the AI assistant.</>
           )}
           {hasStaleConfig && runtimeReady && (
             <>Configuration changed — <button onClick={() => refreshRuntime()} className="underline font-medium hover:text-yellow-200">refresh now</button></>
@@ -821,46 +833,52 @@ export function CodeCanvasPage() {
       {/* ── MAIN PANEL LAYOUT or Empty State ── */}
       <WorkspaceErrorBoundary onOpenFolder={openWorkspace}>
       {rootPath && typeof rootPath === 'string' && rootPath.length > 0 ? (
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* PANEL 0: Explorer (File Tree) */}
-        <div
-          style={{ width: explorerOpen ? explorerWidth : 0 }}
-          className={cn(
-            "flex flex-col flex-shrink-0 overflow-hidden bg-[#0c0c0d]",
-            explorerOpen && "border-r border-white/[0.06]",
-          )}
-        >
-          {/* Explorer header — minimal */}
-          <div className={cn(
-            "flex items-center gap-1.5 px-2 py-2 border-b border-white/[0.04]",
-            explorerOpen ? "opacity-100" : "opacity-0 pointer-events-none",
-          )}>
-            <button
+      <div className="flex flex-1 overflow-hidden min-h-0 relative">
+        {/* PANEL 0: Explorer (File Tree) — overlays chat when open */}
+        {explorerOpen && (
+          <>
+            <div
+              className="absolute inset-0 z-10 bg-black/40"
               onClick={() => setExplorerOpen(false)}
-              className="rounded p-0.5 text-white/20 hover:text-white/50 hover:bg-white/[0.06] transition-all shrink-0"
-              title="Collapse explorer (⌘B)"
-            >
-              <ChevronLeft className="h-3 w-3" />
-            </button>
-            <span className="text-[9px] font-medium text-white/25 uppercase tracking-widest">Explorer</span>
-            {rootPath && (
-              <span className="text-[10px] text-white/40 truncate max-w-[120px]" title={rootPath}>
-                {rootPath.split(/[/\\]/).pop()}
-              </span>
-            )}
-          </div>
-
-          {/* Explorer */}
-          <div className={cn("flex-1 min-h-0", explorerOpen ? "opacity-100" : "opacity-0 pointer-events-none")}>
-            <WorkspaceExplorer
-              ref={explorerRef}
-              onOpenWorkspace={openWorkspace}
             />
-          </div>
+            <div
+              style={{ width: explorerWidth }}
+              className="absolute left-0 top-0 bottom-0 z-20 flex flex-col bg-[#0c0c0d] border-r border-white/[0.12] shadow-2xl"
+            >
+              {/* Explorer header */}
+              <div className="flex items-center gap-1.5 px-2 py-2 border-b border-white/[0.04] shrink-0">
+                <button
+                  onClick={() => setExplorerOpen(false)}
+                  className="rounded p-0.5 text-white/20 hover:text-white/50 hover:bg-white/[0.06] transition-all shrink-0"
+                  title="Collapse explorer (⌘B)"
+                >
+                  <ChevronLeft className="h-3 w-3" />
+                </button>
+                <span className="text-[9px] font-medium text-white/25 uppercase tracking-widest">Explorer</span>
+                {rootPath && (
+                  <span className="text-[10px] text-white/40 truncate max-w-[120px]" title={rootPath}>
+                    {rootPath.split(/[/\\]/).pop()}
+                  </span>
+                )}
+              </div>
 
-        </div>
-
-        {explorerOpen && <ResizeHandle onMouseDown={handleExplorerResize} />}
+              {/* Explorer content */}
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <WorkspaceExplorer
+                  ref={explorerRef}
+                  onOpenWorkspace={openWorkspace}
+                />
+              </div>
+            </div>
+            {/* Resize handle placed outside the overlay so hit-area isn't clipped */}
+            <div
+              style={{ left: explorerWidth }}
+              className="absolute top-0 bottom-0 z-30"
+            >
+              <ResizeHandle onMouseDown={handleExplorerResize} />
+            </div>
+          </>
+        )}
 
       {/* PANEL 1: Chat — Session + Conversation */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0" role="region" aria-label="Chat panel">
@@ -924,10 +942,10 @@ export function CodeCanvasPage() {
           </div>
         </div>
 
-        {/* Resize handle: Assistant | Docking Area */}
+        {/* Resize handle: Chat | Workspace Panel */}
         {workspacePanelOpen && <ResizeHandle onMouseDown={handleWorkspaceResize} />}
 
-        {/* PANEL 2: Docking Area — multi-pane grid (Code/Browser/Design/Preview) */}
+        {/* PANEL 2: Workspace Panel — Code/Browser/Design */}
         <div
           style={{ width: workspacePanelOpen ? workspacePanelWidth : 0 }}
           className={cn(
@@ -935,7 +953,7 @@ export function CodeCanvasPage() {
             workspacePanelOpen && "border-l border-white/[0.06]",
           )}
           role="region"
-          aria-label="Docking area"
+          aria-label="Workspace panel"
         >
           {/* Pane toggle bar */}
           <div className="flex items-center bg-[#0c0c0d] border-b border-white/[0.04] px-1.5 overflow-x-auto shrink-0">
@@ -950,7 +968,8 @@ export function CodeCanvasPage() {
                   onClick={() => {
                     if (visible && isMainPanel) {
                       setPaneVisibility(opt.id, false)
-                    } else if (!visible) {
+                    } else {
+                      panes.forEach((p) => { if (["code", "design"].includes(p.type)) setPaneVisibility(p.type, false) })
                       setPaneVisibility(opt.id, true)
                       setWorkspacePanel(opt.id)
                     }
@@ -970,7 +989,7 @@ export function CodeCanvasPage() {
             })}
           </div>
 
-          {/* PaneContainer — all visible panes shown simultaneously */}
+          {/* PaneContainer — single active pane */}
           <div className="flex-1 overflow-hidden min-h-0">
             <PaneContainer panes={paneConfigs} />
           </div>
@@ -979,24 +998,89 @@ export function CodeCanvasPage() {
       </div>
 
       ) : (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-          <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-white/[0.04] border border-white/[0.06]">
-            <FolderOpen className="h-6 w-6 text-white/30" aria-hidden="true" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-white/60">No workspace open</h2>
-            <p className="text-sm text-white/30 mt-1 max-w-sm">
-              Open a folder to start coding, browsing files, and running agents.
-            </p>
-          </div>
-          <button
-            onClick={openWorkspace}
-            className="flex items-center gap-2 rounded-xl bg-blue-500/15 border border-blue-500/20 px-5 py-2.5 text-sm font-medium text-blue-400 hover:bg-blue-500/25 transition-all"
+        <div className="flex flex-1 flex-col items-center justify-center gap-5 p-8 text-center overflow-y-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="flex flex-col items-center gap-5 max-w-sm w-full"
           >
-            <FolderOpen className="h-4 w-4" />
-            Open Workspace
-          </button>
-          <p className="text-[10px] text-white/20">Or drag and drop a folder onto the window</p>
+            <div className="relative h-16 w-16">
+              <svg viewBox="0 0 64 64" fill="none" className="absolute inset-0 h-full w-full">
+                <motion.rect
+                  x="8" y="12" width="48" height="40" rx="4"
+                  stroke="currentColor" strokeWidth="1.5" fill="none"
+                  className="text-blue-400/40"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  transition={{ duration: 0.6, ease: "easeOut" }}
+                />
+                <motion.path
+                  d="M22 28L18 32L22 36"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  className="text-blue-400"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  transition={{ duration: 0.4, delay: 0.4 }}
+                />
+                <motion.path
+                  d="M42 28L46 32L42 36"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  className="text-cyan-400"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  transition={{ duration: 0.4, delay: 0.6 }}
+                />
+                <motion.path
+                  d="M34 22L30 42"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                  className="text-purple-400"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  transition={{ duration: 0.3, delay: 0.8 }}
+                />
+                <motion.circle
+                  cx="32" cy="32" r="2"
+                  fill="currentColor" className="text-blue-400"
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 0.3 }}
+                  transition={{ duration: 0.3, delay: 0.3 }}
+                />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-white/70">No workspace open</h2>
+              <p className="text-sm text-white/30 mt-1.5 max-w-xs mx-auto leading-relaxed">
+                Open a project folder to start coding with AI-powered file context, safe edit reviews, and intelligent assistance.
+              </p>
+            </div>
+            <button
+              onClick={openWorkspace}
+              className="flex items-center gap-2 rounded-xl bg-blue-500/15 border border-blue-500/20 px-5 py-2.5 text-sm font-medium text-blue-400 hover:bg-blue-500/25 transition-all"
+            >
+              <FolderOpen className="h-4 w-4" />
+              Open Workspace
+            </button>
+            <p className="text-[10px] text-white/20">Or drag and drop a folder onto the window</p>
+            <div className="w-full pt-3 border-t border-white/[0.04]">
+              <p className="text-[9px] font-medium text-white/15 uppercase tracking-wider mb-2">Keyboard Shortcuts</p>
+              <div className="space-y-1">
+                {[
+                  { keys: "⌘P", desc: "Quick open" },
+                  { keys: "⌘⇧P", desc: "Command palette" },
+                  { keys: "⌘B", desc: "Toggle explorer" },
+                  { keys: "⌘J", desc: "Toggle panel" },
+                  { keys: "⌘S", desc: "Save file" },
+                  { keys: "⌘W", desc: "Close tab" },
+                ].map(({ keys, desc }) => (
+                  <div key={keys} className="flex items-center justify-between">
+                    <span className="text-[10px] text-white/20">{desc}</span>
+                    <kbd className="text-[9px] font-mono text-white/15 bg-white/[0.04] px-1.5 py-0.5 rounded">{keys}</kbd>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
         </div>
       )}
       </WorkspaceErrorBoundary>
@@ -1020,9 +1104,6 @@ export function CodeCanvasPage() {
         onClose={() => setCommandPaletteOpen(false)}
         context={commandPaletteContext}
       />
-
-      {/* Execution Dock — always visible, survives navigation */}
-      <ExecutionDock />
 
       {/* Side Chat — Cmd+; overlay */}
       <SideChat />

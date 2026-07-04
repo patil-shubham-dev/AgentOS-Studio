@@ -62,20 +62,20 @@ const StatusIcon = memo(function StatusIcon({ status, name }: { status: ToolCall
   switch (status) {
     case "pending":
       return (
-        <span className="relative flex h-4 w-4 items-center justify-center">
+        <span className="relative flex h-3.5 w-3.5 items-center justify-center">
           <Clock className="h-3 w-3 text-white/30" />
         </span>
       )
     case "running":
       return (
-        <span className="relative flex h-4 w-4 items-center justify-center">
+        <span className="relative flex h-3.5 w-3.5 items-center justify-center">
           <span className="absolute inset-0 rounded-full animate-pulse-ring-soft" />
           <Loader2 className="h-3 w-3 text-amber-400/70 animate-spin" />
         </span>
       )
     case "complete":
       return (
-        <span className="relative flex h-4 w-4 items-center justify-center">
+        <span className="relative flex h-3.5 w-3.5 items-center justify-center">
           <span className="absolute inset-0 rounded-full animate-pulse-ring-green" />
           <svg
             viewBox="0 0 16 16"
@@ -133,7 +133,7 @@ function ImpactBadge({ result }: { result?: string }) {
   const hasWarning = result.toLowerCase().includes("warning") || result.toLowerCase().includes("impact")
   if (!hasWarning) return null
   return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-400/60 text-[9px] font-medium">
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-400/60 text-[9px] font-medium shrink-0">
       <AlertTriangle className="h-2.5 w-2.5" />
       Impact
     </span>
@@ -240,8 +240,8 @@ export const ToolCallCard = memo(function ToolCallCard({ toolCall, index = 0 }: 
         layout
         onClick={toggleExpand}
         className={cn(
-          "flex items-center gap-2.5 w-full text-left",
-          "rounded-xl border px-3 py-2",
+          "flex items-center gap-2 w-full text-left relative",
+          "rounded-lg border px-2.5 py-1.5",
           "transition-colors duration-200",
           STATUS_BG[status],
           STATUS_COLORS[status],
@@ -250,6 +250,11 @@ export const ToolCallCard = memo(function ToolCallCard({ toolCall, index = 0 }: 
         whileHover={hasResult && !expanded ? { opacity: 1 } : undefined}
         whileTap={{ scale: 0.995 }}
       >
+        {status === "running" && !expanded && (
+          <span className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
+            <span className="absolute inset-0 animate-shimmer opacity-20" />
+          </span>
+        )}
         <StatusIcon status={status} name={name} />
         <span className="text-[12px] font-medium text-white/75 flex-shrink-0 leading-tight">
           {activity.label}

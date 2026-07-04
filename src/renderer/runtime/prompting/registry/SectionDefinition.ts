@@ -2,6 +2,7 @@ import type { PromptCategory } from '../categories/PromptCategory'
 import type { PromptNode, Importance } from '../ast/PromptNode'
 import type { ProviderCapabilities } from '@agentic-os/providers'
 import type { SectionDiagnostics } from '../diagnostics/SectionDiagnostics'
+import type { ToolNamespace } from '@/runtime/tools/core/AgentTool'
 
 export type ResolutionContext = {
   role: string
@@ -34,12 +35,21 @@ export type ResolutionContext = {
   unsavedChanges?: number
   recentEdits?: { path: string; timestamp: number }[]
   fileTreeSummary?: string
+  pinnedFiles?: string[]
 
   // ── Enhanced context (computed at assembly time) ──
   relevantFiles?: Array<{ path: string; relevance: number; reason: string }>
+  diagnostics?: Array<{ filePath: string; line: number; message: string; severity: string }>
   contextEstimate?: { total: number; used: number; remaining: number }
   gitContext?: string
   workspaceSummary?: string
+
+  /**
+   * Namespace allowlist for sections. Sections whose namespace is not in this
+   * list are excluded. Default: ['coding']. Set to undefined or empty to disable
+   * filtering (include all sections).
+   */
+  namespaceFilter?: ToolNamespace[]
 }
 
 export type CacheStrategy = 'none' | 'request' | 'task' | 'session' | 'workspace'
@@ -51,6 +61,7 @@ export type SectionDefinition = {
   priority: number
   dependsOn?: string[]
   cache?: CacheStrategy
+  namespace?: ToolNamespace
   when?: (ctx: ResolutionContext) => boolean
   compute: (ctx: ResolutionContext) => Promise<string | null>
 }
@@ -84,6 +95,7 @@ export function defaultContext(overrides?: Partial<ResolutionContext>): Resoluti
     hasTools: true,
     hasVision: false,
     hasBrowser: false,
+    namespaceFilter: ['coding'],
     environmentInfo: undefined,
     customInstructions: undefined,
     // Workspace defaults
@@ -100,6 +112,7 @@ export function defaultContext(overrides?: Partial<ResolutionContext>): Resoluti
     unsavedChanges: undefined,
     recentEdits: undefined,
     fileTreeSummary: undefined,
+    pinnedFiles: undefined,
     relevantFiles: undefined,
     contextEstimate: undefined,
     gitContext: undefined,

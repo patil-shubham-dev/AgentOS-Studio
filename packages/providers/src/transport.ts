@@ -2,11 +2,11 @@ import type { TransportRequest, TransportResponse, TransportConfig, TransportTim
 import { DEFAULT_TRANSPORT_CONFIG } from "./transport-types"
 import type { TransportMiddleware } from "./transport-middleware"
 import { composeMiddleware, RequestIdMiddleware, AuthMiddleware, RetryMiddleware, DiagnosticsMiddleware } from "./transport-middleware"
-import type { TransportAdapter, TransportAdapterConfig, CompletionRequest, ProviderCapabilities } from "./transport-adapters"
+import type { TransportAdapterConfig, CompletionRequest, ProviderCapabilities } from "./transport-adapters"
 import { resolveAdapter } from "./transport-adapters"
-import type { StreamingTransportOptions, StreamCallbacks } from "./streaming-transport"
-import { streamingTransportFetch, SseParser } from "./streaming-transport"
-import { TransportError, classifyNetworkError, classifyHttpError } from "./transport-errors"
+import type { StreamCallbacks } from "./streaming-transport"
+import { streamingTransportFetch } from "./streaming-transport"
+import { TransportError } from "./transport-errors"
 import { tauriFetch } from "./http-client"
 
 
@@ -68,10 +68,10 @@ export class ProviderTransport {
       if (!resp.ok) {
         const errMsg = body ? body.slice(0, 500) : `HTTP ${resp.status} ${resp.statusText}`
         throw new TransportError(
-          resp.status === 401 || resp.status === 403 ? "AUTH_ERROR" :
-          resp.status === 404 ? "NOT_FOUND" :
+          resp.status === 401 || resp.status === 403 ? "AUTH_FAILED" :
+          resp.status === 404 ? "HTTP_ERROR" :
           resp.status === 429 ? "RATE_LIMITED" :
-          resp.status >= 500 ? "SERVER_ERROR" : "HTTP_ERROR",
+          resp.status >= 500 ? "HTTP_ERROR" : "HTTP_ERROR",
           `Provider returned HTTP ${resp.status}: ${errMsg}`
         )
       }

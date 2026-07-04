@@ -5,6 +5,7 @@ import { requiresApproval } from "@/runtime/execution-mode"
 import { TerminalRuntime, type TerminalStreamOptions } from "@/runtime/terminal/TerminalRuntime"
 import { EventBus } from "@/runtime/EventBus"
 import { emitTelemetry } from "@/lib/telemetry"
+import { sandboxCommand, generatePolicy, isSandboxEnabled, getCommandCategory } from "@/runtime/sandbox"
 
 const ALLOWED_COMMANDS = new Set([
   'git', 'node', 'npm', 'npx', 'yarn', 'pnpm',
@@ -206,6 +207,21 @@ export class ToolExecutionSandbox {
     const command = String(toolCall.args.command ?? "")
     const cwd = useWorkspaceStore.getState().rootPath
     const lines: string[] = []
+
+    const osSandboxEnabled = isSandboxEnabled()
+    if (osSandboxEnabled && cwd) {
+      const parsed = parseCommand(command)
+      const policy = generatePolicy(parsed.command, parsed.args, cwd)
+      const result = await sandboxCommand({
+        command: parsed.command,
+        args: parsed.args,
+        cwd,
+        policy,
+      })
+      if (result) {
+        lines.push(`[sandbox:${result.platform}] ${result.constraints.join('; ')}`)
+      }
+    }
     const startedAt = performance.now()
     const { onOutput, requiresInteraction } = context
 

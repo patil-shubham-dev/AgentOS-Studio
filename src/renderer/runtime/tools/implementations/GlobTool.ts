@@ -25,7 +25,7 @@ export const GlobTool: AgentTool = buildTool({
     const p = (input as any)?.pattern
     return p ? `Globbing ${p}` : 'Searching files by pattern'
   },
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const { globFiles } = await import('@/lib/search-utils')
     const pattern = String(input.pattern ?? '')
     if (!pattern) return { data: null, error: 'pattern is required', isError: true }

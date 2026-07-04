@@ -11,7 +11,7 @@ export type { OpenAICompatibleConfig } from "./provider-presets"
 
 // Chat completion — uses ProviderTransport internally for adapter-based provider routing
 export { chatCompletion, streamChatCompletion, tauriStreamChatCompletion, directChatCompletion } from "./ai-service"
-export type { ChatMessage, ToolCall, ToolDef, ChatRequest, ChatResponse, UsageInfo, StreamCallbacks } from "./ai-service"
+export type { ChatMessage, ToolCall, ToolDef, ChatRequest, ChatResponse, UsageInfo } from "./ai-service"
 
 // ── Transport Layer Exports ──
 
@@ -41,33 +41,6 @@ export type { StreamCallbacks, SseChunk, ToolCallBuffer } from "./streaming-tran
 
 export { ProviderRegistry } from "./provider-registry-engine"
 export type { RegisteredAdapter, ModelMetadata, RegistryQuery } from "./provider-registry-engine"
-export { ProviderSelector } from "./provider-selector"
-export type { ProviderCatalogEntry } from "./provider-selector"
 export { CapabilityNegotiator } from "./capability-negotiation"
 export type { CapabilityRequest, NegotiationResult, ProviderModelCatalog } from "./capability-negotiation"
-export type {
-  SelectionRequest,
-  SelectionDecision,
-  SelectionScorer,
-  SelectionContext,
-  ScoredDimension,
-  ScoredProvider,
-} from "./provider-selection-types"
-export { createDefaultScorers } from "./provider-selection-scorers"
 export { globalProviderRegistry } from "./provider-registry-instance"
-export {
-  RequiredCapabilitiesScorer,
-  PreferredModelScorer,
-  PreferredProviderScorer,
-  ContextWindowScorer,
-  StreamingCapabilityScorer,
-  ToolCallingScorer,
-  HealthStateScorer,
-  LatencyScorer,
-  ReliabilityScorer,
-  LocalPreferenceScorer,
-  RoleFitScorer,
-  RecencyScorer,
-  CapabilityBreadthScorer,
-  ConsecutiveFailureScorer,
-} from "./provider-selection-scorers"

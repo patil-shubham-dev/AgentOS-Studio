@@ -55,7 +55,7 @@ export class AuthMiddleware implements TransportMiddleware {
         req.headers["Authorization"] = `Bearer ${apiKey}`
       }
     } else {
-      throw new TransportError("AUTH_ERROR", `No API key configured for provider "${req.providerName ?? req.providerId ?? "unknown"}". Please add an API key in Settings.`)
+      throw new TransportError("AUTH_FAILED", `No API key configured for provider "${req.providerName ?? req.providerId ?? "unknown"}". Please add an API key in Settings.`)
     }
 
     return next(req)
@@ -83,12 +83,12 @@ export class RetryMiddleware implements TransportMiddleware {
 
       const elapsed = Date.now() - startTime
       if (elapsed >= totalTimeoutMs) {
-        throw new TransportError("TIMEOUT", `Request exceeded total timeout of ${totalTimeoutMs}ms after ${attempt} attempt(s)`)
+        throw new TransportError("CONNECTION_TIMEOUT", `Request exceeded total timeout of ${totalTimeoutMs}ms after ${attempt} attempt(s)`)
       }
 
       if (attempt > 0) {
         const delay = Math.min(this.computeDelay(attempt), totalTimeoutMs - elapsed)
-        if (delay <= 0) throw new TransportError("TIMEOUT", "No time remaining for retry backoff")
+        if (delay <= 0) throw new TransportError("CONNECTION_TIMEOUT", "No time remaining for retry backoff")
         await this.sleep(delay, req.signal)
         if (req.signal?.aborted) {
           throw new TransportError("CANCELLED", "Request cancelled during retry backoff")

@@ -11,6 +11,8 @@ import { ReferenceChipRow } from "@/components/workspace/context-refs/ReferenceC
 import type { UserMessageEvent } from "../types"
 import { QuickActions } from "../QuickActions"
 import { PremiumEmptyState, getTimelineEmptyState } from "@/components/workspace/premium-empty-state"
+import { ContextBreakdown } from "./ContextBreakdown"
+import { useContextPackSlot } from "@/stores/context-pack-slot"
 import { getSpringConfig } from "@/lib/motion"
 import { useReducedMotion } from "@/lib/reduced-motion"
 
@@ -34,6 +36,7 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [terminalPaneOpen, setTerminalPaneOpen] = useState(false)
   const reduced = useReducedMotion()
+  const currentPack = useContextPackSlot((s) => s.currentPack)
 
   const latestTerminalInfo = useTimelineStore(
     useShallow((s) => {
@@ -155,6 +158,7 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
                           content={turn.userEvent.content}
                           timestamp={turn.userEvent.timestamp}
                         />
+                        {currentPack && <ContextBreakdown pack={currentPack} />}
                       </>
                     )}
                     {turn.sessionIds.map((sid, sIdx) => (

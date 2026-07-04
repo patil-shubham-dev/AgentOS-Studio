@@ -4,10 +4,7 @@ import { persist } from "zustand/middleware"
 export type PaneType =
   | "chat"
   | "code"
-  | "terminal"
-  | "output"
   | "diff"
-  | "browser"
   | "design"
   | "explorer"
   | "tasks"
@@ -22,11 +19,8 @@ export interface PaneInstance {
   maxSize: number
 }
 
-export type PaneLayoutMode = "single" | "grid-2col" | "grid-3col"
-
 export interface PaneState {
   panes: PaneInstance[]
-  layoutMode: PaneLayoutMode
   focusedPaneId: string | null
   sideChatOpen: boolean
 
@@ -39,7 +33,6 @@ export interface PaneState {
   reorderPanes: (ids: string[]) => void
   setPaneOrder: (id: string, order: number) => void
   focusPane: (id: string) => void
-  setLayoutMode: (mode: PaneLayoutMode) => void
   toggleSideChat: () => void
   setSideChatOpen: (open: boolean) => void
   getPane: (type: PaneType) => PaneInstance | undefined
@@ -50,18 +43,14 @@ const DEFAULT_PANES: PaneInstance[] = [
   { id: "explorer", type: "explorer", visible: true, order: 0, size: 240, minSize: 180, maxSize: 400 },
   { id: "chat", type: "chat", visible: true, order: 1, size: 1, minSize: 300, maxSize: Infinity },
   { id: "code", type: "code", visible: true, order: 2, size: 480, minSize: 300, maxSize: Infinity },
-  { id: "terminal", type: "terminal", visible: false, order: 3, size: 200, minSize: 100, maxSize: 600 },
-  { id: "output", type: "output", visible: false, order: 4, size: 200, minSize: 100, maxSize: 600 },
-  { id: "diff", type: "diff", visible: false, order: 5, size: 480, minSize: 300, maxSize: Infinity },
-  { id: "browser", type: "browser", visible: false, order: 6, size: 480, minSize: 300, maxSize: Infinity },
-  { id: "design", type: "design", visible: false, order: 7, size: 480, minSize: 300, maxSize: Infinity },
+  { id: "diff", type: "diff", visible: false, order: 3, size: 480, minSize: 300, maxSize: Infinity },
+  { id: "design", type: "design", visible: false, order: 4, size: 480, minSize: 300, maxSize: Infinity },
 ]
 
 export const usePaneStore = create<PaneState>()(
   persist(
     (set, get) => ({
       panes: DEFAULT_PANES,
-      layoutMode: "grid-2col",
       focusedPaneId: null,
       sideChatOpen: false,
 
@@ -142,8 +131,6 @@ export const usePaneStore = create<PaneState>()(
 
       focusPane: (id) => set({ focusedPaneId: id }),
 
-      setLayoutMode: (mode) => set({ layoutMode: mode }),
-
       toggleSideChat: () =>
         set((s) => ({ sideChatOpen: !s.sideChatOpen })),
 
@@ -160,7 +147,6 @@ export const usePaneStore = create<PaneState>()(
       name: "aos-pane-store",
       partialize: (state) => ({
         panes: state.panes,
-        layoutMode: state.layoutMode,
       }),
     }
   )

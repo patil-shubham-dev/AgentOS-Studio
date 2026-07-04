@@ -1,7 +1,7 @@
 import { tauriFetch } from "./http-client"
 import type { ValidationRun, ValidationStepResult } from "./provider-types"
 import type { ProviderCapabilities } from "./transport-adapters"
-import { recordValidationRun, recordSuccess, recordFailure, addTrace } from "./provider-health"
+import { recordValidationRun, recordSuccess, recordFailure } from "./provider-health"
 
 // ── Helpers ──
 
@@ -551,8 +551,7 @@ export async function validateStreaming(
 
     // Try to read the first chunk of the stream
     const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let firstChunk = ""
+    // const _decoder = new TextDecoder()
     let chunkCount = 0
     let firstChunkTime = 0
     const readTimeout = 10000
@@ -565,7 +564,6 @@ export async function validateStreaming(
 
       const { value } = await Promise.race([readPromise, timeoutPromise])
       if (value) {
-        firstChunk = decoder.decode(value, { stream: true })
         firstChunkTime = performance.now() - t0
         chunkCount++
 
@@ -718,8 +716,8 @@ export function detectCapabilities(modelIds: string[]): ProviderCapabilities {
 }
 
 export async function discoverCapabilities(
-  baseUrl: string,
-  apiKey: string,
+  _baseUrl: string,
+  _apiKey: string,
   models: string[],
 ): Promise<{
   capabilities: ProviderCapabilities

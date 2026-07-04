@@ -30,6 +30,7 @@ export class MemoryArchitecture {
   private initialized = false
   private lastConsolidation = 0
   private consolidationTimer: ReturnType<typeof setInterval> | null = null
+  private _totalEntryCount = 0
 
   private constructor() {
     this.config = { ...DEFAULT_MEMORY_CONFIG }
@@ -142,6 +143,7 @@ export class MemoryArchitecture {
     })
 
     await this.storage.store(entry)
+    this._totalEntryCount++
   }
 
   // ── Query ──
@@ -226,6 +228,10 @@ export class MemoryArchitecture {
 
   isInitialized(): boolean {
     return this.initialized
+  }
+
+  getTotalEntryCount(): number {
+    return this._totalEntryCount
   }
 
   private startConsolidationTimer(): void {

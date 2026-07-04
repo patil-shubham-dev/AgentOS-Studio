@@ -29,7 +29,7 @@ import { loadFileTree } from "@/lib/filesystem"
 import {
   Bot, AlertTriangle, Settings2, Plus, CheckCircle2, ArrowRight,
   Loader2, CheckCircle, XCircle, Terminal as TerminalIcon, GitBranch, ChevronDown,
-  Shield, FileText, Edit3,
+  Shield, FileText, Edit3, FolderOpen,
 } from "lucide-react"
 
 const executionSessionManager = ExecutionSessionManager.getInstance()
@@ -37,63 +37,132 @@ const executionSessionManager = ExecutionSessionManager.getInstance()
 function SetupRequired() {
   const navigate = useNavigate()
   const providers = useAppStore((s) => s.providers)
-  const roleConfigs = useAppStore((s) => s.roleConfigs)
+  const mockMode = useAppStore((s) => s.mockMode)
+  const setMockMode = useAppStore((s) => s.setMockMode)
+  const rootPath = useWorkspaceStore((s) => s.rootPath)
+  const setRootPath = useWorkspaceStore((s) => s.setRootPath)
 
-  const checks = [
-    { label: "Add an AI Provider", done: providers.length > 0, action: () => navigate("/settings"), icon: Plus },
-    { label: "Set API Key", done: providers.some((p) => p.apiKey.length > 0), action: () => navigate("/settings"), icon: Settings2 },
-    { label: "Configure Manager Role", done: roleConfigs.some((r) => r.name.toLowerCase() === "manager" && r.providerId && r.model), action: () => navigate("/settings"), icon: Settings2 },
-  ]
+  const handleOpenFolder = useCallback(async () => {
+    try {
+      const { dialogOpen } = await import('@/lib/electron-api')
+      const result = await dialogOpen({ properties: ['openDirectory'] })
+      if (!result.canceled && result.filePaths?.[0]) {
+        setRootPath(result.filePaths[0])
+      }
+    } catch { /* folder dialog not available in all environments */ }
+  }, [setRootPath])
 
-  const allDone = checks.every((c) => c.done)
+  const hasProvider = providers.length > 0
+  const hasFolder = !!rootPath
+  const isReady = mockMode || hasProvider
 
   return (
     <div className="flex flex-col items-center justify-center h-full p-6 text-center">
-      <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-br from-amber-500/15 to-orange-500/10 border border-amber-500/20 mb-4">
-        <AlertTriangle className="h-7 w-7 text-amber-400" />
+      <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500/15 to-indigo-500/10 border border-blue-500/20 mb-4">
+        <Bot className="h-7 w-7 text-blue-400" />
       </div>
-      <h2 className="text-base font-semibold text-white mb-1">Setup Required</h2>
+      <h2 className="text-base font-semibold text-white mb-1">
+        {mockMode ? "Mock Mode Active" : "Get Started"}
+      </h2>
       <p className="text-xs text-white/40 max-w-sm mb-6">
-        Complete the steps below before sending messages to the agent workforce.
+        {mockMode
+          ? "Responses are simulated. Open a folder and start chatting to test the workflow."
+          : "Add an AI provider and open a folder to start coding."}
       </p>
 
       <div className="w-full max-w-xs space-y-2">
-        {checks.map((check) => (
-          <button
-            key={check.label}
-            onClick={check.action}
-            disabled={check.done}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
-              check.done
-                ? "border-green-500/15 bg-green-500/[0.03] cursor-default"
-                : "border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04] cursor-pointer",
+        {/* Step 1: AI Provider */}
+        <button
+          onClick={() => navigate("/settings")}
+          disabled={hasProvider || mockMode}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
+            hasProvider
+              ? "border-green-500/15 bg-green-500/[0.03] cursor-default"
+              : "border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04] cursor-pointer",
+          )}
+        >
+          <div className={cn(
+            "flex items-center justify-center h-7 w-7 rounded-lg shrink-0",
+            hasProvider ? "bg-green-500/10" : "bg-white/[0.04]",
+          )}>
+            {hasProvider ? (
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+            ) : (
+              <Plus className="h-3.5 w-3.5 text-white/40" />
             )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={cn("text-xs font-medium", hasProvider ? "text-green-400" : "text-white/70")}>
+              Add an AI Provider
+            </p>
+          </div>
+          {!hasProvider && !mockMode && <ArrowRight className="h-3.5 w-3.5 text-white/20 shrink-0" />}
+        </button>
+
+        {/* Step 2: Open a Folder */}
+        <button
+          onClick={handleOpenFolder}
+          disabled={hasFolder}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
+            hasFolder
+              ? "border-green-500/15 bg-green-500/[0.03] cursor-default"
+              : "border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04] cursor-pointer",
+          )}
+        >
+          <div className={cn(
+            "flex items-center justify-center h-7 w-7 rounded-lg shrink-0",
+            hasFolder ? "bg-green-500/10" : "bg-white/[0.04]",
+          )}>
+            {hasFolder ? (
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+            ) : (
+              <FolderOpen className="h-3.5 w-3.5 text-white/40" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={cn("text-xs font-medium", hasFolder ? "text-green-400" : "text-white/70")}>
+              Open a Folder
+            </p>
+          </div>
+          {!hasFolder && <ArrowRight className="h-3.5 w-3.5 text-white/20 shrink-0" />}
+        </button>
+
+        {/* Mock mode toggle */}
+        {!mockMode ? (
+          <button
+            onClick={() => setMockMode(true)}
+            className="flex w-full items-center gap-3 rounded-xl border border-dashed border-indigo-500/20 px-3 py-2.5 text-left transition-all hover:border-indigo-500/40 hover:bg-indigo-500/[0.03]"
           >
-            <div className={cn(
-              "flex items-center justify-center h-7 w-7 rounded-lg shrink-0",
-              check.done ? "bg-green-500/10" : "bg-white/[0.04]",
-            )}>
-              {check.done ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
-              ) : (
-                <check.icon className="h-3.5 w-3.5 text-white/40" />
-              )}
+            <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-indigo-500/10 shrink-0">
+              <Bot className="h-3.5 w-3.5 text-indigo-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className={cn("text-xs font-medium", check.done ? "text-green-400" : "text-white/70")}>
-                {check.label}
-              </p>
+              <p className="text-xs font-medium text-indigo-400">Try Mock Mode</p>
+              <p className="text-[10px] text-white/30">Simulate AI responses without a real provider</p>
             </div>
-            {!check.done && <ArrowRight className="h-3.5 w-3.5 text-white/20 shrink-0" />}
           </button>
-        ))}
+        ) : (
+          <button
+            onClick={() => setMockMode(false)}
+            className="flex w-full items-center gap-3 rounded-xl border border-white/5 px-3 py-2.5 text-left transition-all hover:border-white/15"
+          >
+            <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-white/[0.04] shrink-0">
+              <Settings2 className="h-3.5 w-3.5 text-white/40" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-white/70">Configure a real provider</p>
+              <p className="text-[10px] text-white/30">Switch to a real AI provider for full functionality</p>
+            </div>
+          </button>
+        )}
       </div>
 
-      {allDone && (
+      {isReady && hasFolder && (
         <div className="mt-4 flex items-center gap-2 text-xs text-green-400">
           <CheckCircle2 className="h-4 w-4" />
-          All checks passed — you can start chatting!
+          Ready — start chatting below!
         </div>
       )}
     </div>
@@ -135,11 +204,12 @@ export function ChatPanel() {
   }, [activeRole])
 
   const canSend = useMemo(() => {
+    const mockMode = useAppStore.getState().mockMode
+    if (mockMode) return true
     const hasProvider = providers.length > 0
     const hasApiKey = providers.some((p) => p.apiKey.length > 0)
-    const hasManager = roleConfigs.some((r) => r.name.toLowerCase() === "manager" && r.providerId && r.model)
-    return hasProvider && hasApiKey && hasManager
-  }, [providers, roleConfigs])
+    return hasProvider && hasApiKey
+  }, [providers])
 
   const onPreview = useCallback(async (files: string[]): Promise<boolean> => {
     return new Promise((resolve) => {

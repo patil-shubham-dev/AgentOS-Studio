@@ -1,5 +1,5 @@
 import { tauriFetch } from "./http-client"
-import type { GatewayProvider, ProviderModel, RuntimeInfo, ValidationResult, DiscoveryResult } from "@agentic-os/shared"
+import type { ProviderModel, RuntimeInfo, ValidationResult, DiscoveryResult } from "@agentic-os/shared"
 import { recordSuccess, recordFailure, addTrace } from "./provider-health"
 
 export type { RuntimeInfo, ValidationResult, DiscoveryResult }
@@ -162,23 +162,7 @@ export function nextDiscoveryToken(): number {
 
 // ── Provider Runtime Detection (frontend-only via fetch) ──
 
-const RUNTIME_PATTERNS: { match: RegExp; runtime: string; isOpenAiCompatible: boolean; isLocal: boolean }[] = [
-  { match: /api\.openai\.com/i, runtime: "OpenAI", isOpenAiCompatible: true, isLocal: false },
-  { match: /api\.anthropic\.com/i, runtime: "Anthropic", isOpenAiCompatible: false, isLocal: false },
-  { match: /generativelanguage\.googleapis\.com/i, runtime: "Google Gemini", isOpenAiCompatible: false, isLocal: false },
-  { match: /api\.groq\.com/i, runtime: "Groq", isOpenAiCompatible: true, isLocal: false },
-  { match: /openrouter\.ai/i, runtime: "OpenRouter", isOpenAiCompatible: true, isLocal: false },
-  { match: /api\.deepseek\.com/i, runtime: "DeepSeek", isOpenAiCompatible: true, isLocal: false },
-  { match: /together\.xyz/i, runtime: "Together AI", isOpenAiCompatible: true, isLocal: false },
-  { match: /nvidia\.com/i, runtime: "Nvidia NIM", isOpenAiCompatible: true, isLocal: false },
-  { match: /azure\.com|azure-api\.net/i, runtime: "Azure OpenAI", isOpenAiCompatible: true, isLocal: false },
-  { match: /localhost|127\.0\.0\.1/i, runtime: "Local", isOpenAiCompatible: true, isLocal: true },
-  { match: /11434/i, runtime: "Ollama", isOpenAiCompatible: true, isLocal: true },
-  { match: /8000/i, runtime: "vLLM", isOpenAiCompatible: true, isLocal: true },
-  { match: /1234/i, runtime: "LM Studio", isOpenAiCompatible: true, isLocal: true },
-  { match: /8080/i, runtime: "LocalAI", isOpenAiCompatible: true, isLocal: true },
-  { match: /4000/i, runtime: "LiteLLM", isOpenAiCompatible: true, isLocal: true },
-]
+
 
 export async function detectRuntime(baseUrl: string): Promise<RuntimeInfo> {
   // First try pattern matching
@@ -507,7 +491,7 @@ export async function validateProvider(baseUrl: string, apiKey: string, _token?:
 
 // ── Provider Model Discovery (frontend-only via fetch) ──
 
-const KNOWN_MODEL_PATTERNS: { pattern: RegExp; category: string }[] = [
+/* const _KNOWN_MODEL_PATTERNS: { pattern: RegExp; category: string }[] = [
   { pattern: /gpt-4o/i, category: "chat" },
   { pattern: /gpt-4/i, category: "chat" },
   { pattern: /gpt-3\.5/i, category: "chat" },
@@ -536,14 +520,7 @@ const KNOWN_MODEL_PATTERNS: { pattern: RegExp; category: string }[] = [
   { pattern: /tts/i, category: "audio" },
   { pattern: /whisper/i, category: "audio" },
   { pattern: /vision/i, category: "vision" },
-]
-
-function categorizeModel(id: string): string {
-  for (const { pattern, category } of KNOWN_MODEL_PATTERNS) {
-    if (pattern.test(id)) return category
-  }
-  return "chat" // default
-}
+] */
 
 function isVisionModel(id: string): boolean {
   return /vision|gemini|gpt-4o|claude-3|claude-4|claude-5|llava|cogvlm|qwen-vl|internvl/i.test(id)

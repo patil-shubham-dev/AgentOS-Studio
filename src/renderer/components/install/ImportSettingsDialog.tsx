@@ -6,7 +6,7 @@ import { useToastStore } from "@/stores/toast-store"
 import type { GatewayProvider } from "@/types"
 import {
   X, Check, ChevronRight, Code2, Bot, Settings2, Server,
-  Loader2, AlertTriangle, CheckCircle2, FileCode, ArrowRight,
+  Loader2, AlertTriangle, CheckCircle2, FileCode,
   Monitor, Terminal, Braces, Zap, Search,
 } from "lucide-react"
 
@@ -126,7 +126,7 @@ export function ImportSettingsDialog({ open, onClose }: ImportSettingsDialogProp
   const scanSources = useCallback(async () => {
     setState((prev) => ({ ...prev, scanning: true, error: null }))
     try {
-      const result = await window.electronAPI?.importSettingsScan()
+      const result = await (window.electronAPI as any)?.importSettingsScan()
       if (!result) {
         setState((prev) => ({ ...prev, scanning: false, error: "Failed to scan for settings" }))
         return
@@ -141,7 +141,7 @@ export function ImportSettingsDialog({ open, onClose }: ImportSettingsDialogProp
       for (const source of detected) {
         if (!source.detected) continue
 
-        const data = await window.electronAPI?.importSettingsRead(source.id)
+        const data = await (window.electronAPI as any)?.importSettingsRead(source.id)
         if (data) {
           dataMap.push(data as ImportableData)
 
@@ -194,7 +194,7 @@ export function ImportSettingsDialog({ open, onClose }: ImportSettingsDialogProp
       }
 
       let importedItems = 0
-      const sourceMeta = SOURCE_META[data.source]
+      // const _sourceMeta = SOURCE_META[data.source]
 
       try {
         // Import providers (from Claude Desktop)

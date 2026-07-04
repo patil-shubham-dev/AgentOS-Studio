@@ -26,6 +26,12 @@ import { ToolExecutionSandbox } from "@/runtime/tools/ToolExecutionSandbox"
 import { EXPLORE_AGENT_PROMPT, PLAN_AGENT_PROMPT, VERIFICATION_AGENT_PROMPT, DEFAULT_SUBAGENT_PROMPT } from "@/runtime/sub-agents/sub-agent-prompts"
 export type SubAgentType = "explore" | "plan" | "verify" | "general"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
+import { useAgentStore } from "@/stores/agent-store"
+
+// ── Constants ──
+
+export const MAX_SUBAGENT_DEPTH = 5
+export const MAX_TOTAL_SUBAGENTS = 50
 
 // ── Sub-agent tool restrictions ──
 
@@ -158,6 +164,10 @@ export interface SubAgentDelegationRequest {
   modelOverride?: string
   /** Optional: abort signal */
   signal?: AbortSignal
+  /** Optional: tree node ID for visualisation */
+  treeNodeId?: string
+  /** Optional: current nesting depth (for recursion limit) */
+  depth?: number
 }
 
 export interface SubAgentDelegationResult {
@@ -233,15 +243,25 @@ function emitResult(opts: {
  */
 export async function executeSubAgent(request: SubAgentDelegationRequest): Promise<SubAgentDelegationResult> {
   const t0 = performance.now()
-  const { type, task, modelOverride, signal } = request
-  const logTag = `[SubAgent:${type}]`
+  const { type, task, modelOverride, signal, treeNodeId, depth = 0 } = request
+  const logTag = `[SubAgent:${type}${depth > 0 ? `:depth=${depth}` : ''}]`
+
+  if (depth >= MAX_SUBAGENT_DEPTH) {
+    const msg = `Sub-agent recursion limit reached: depth ${depth} >= max ${MAX_SUBAGENT_DEPTH}`
+    console.warn(`${logTag} ${msg}`)
+    if (treeNodeId) {
+      useAgentStore.getState().updateAgentTreeNode(treeNodeId, { state: 'failed', lastUpdated: Date.now() })
+    }
+    return emitResult({ success: false, type, error: msg, duration: 0, toolCalls: 0, tokens: 0 })
+  }
 
   console.log(`${logTag} starting isolated delegation`, {
     taskLength: task.length,
     type,
+    depth,
     modelOverride: modelOverride ?? "default",
   })
-  trace("executeSubAgent", "start", { type, taskLength: task.length })
+  trace("executeSubAgent", "start", { type, taskLength: task.length, depth })
 
   // ── 1. Resolve provider + model from wired agents ──
   const runtimeState = useWorkspaceRuntime.getState()
@@ -316,8 +336,15 @@ export async function executeSubAgent(request: SubAgentDelegationRequest): Promi
     subAgentType: type,
     taskPreview: task.slice(0, 200),
     model,
+    depth,
+    treeNodeId: treeNodeId ?? null,
     timestamp: Date.now(),
   })
+
+  // Update tree node state via agent store
+  if (treeNodeId) {
+    useAgentStore.getState().updateAgentTreeNode(treeNodeId, { state: 'researching', lastUpdated: Date.now() })
+  }
 
   for (let round = 0; round < MAX_SUBAGENT_ROUNDS; round++) {
     if (signal?.aborted) {

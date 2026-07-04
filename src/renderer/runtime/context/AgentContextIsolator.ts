@@ -9,6 +9,7 @@ import type {
 import { TokenBudgetManager } from "./TokenBudgetManager"
 import { MemoryInjector } from "./MemoryInjector"
 import { AdaptiveStrategySelector } from "./AdaptiveStrategySelector"
+import { TokenEstimator } from "./TokenEstimator"
 
 export interface IsolatedAgentSession {
   agentId: string
@@ -308,7 +309,7 @@ export class AgentContextIsolator {
   }
 
   private estimateTokens(text: string): number {
-    return Math.ceil(text.length / 4)
+    return TokenEstimator.rough(text)
   }
 
   clearAgentState(agentId: string): void {

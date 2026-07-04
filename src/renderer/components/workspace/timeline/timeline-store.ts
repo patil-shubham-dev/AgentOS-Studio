@@ -15,6 +15,7 @@ import type {
 } from "./types"
 import type { ToolCallRecord, FileEditRecord, TerminalRecord, FileOpRecord } from "./step-card"
 import type { ContextReference } from "@/lib/context-references/ReferenceParser"
+import type { CanonicalExecutionEvent } from "@/runtime/execution/canonical-events"
 
 /** Resolved context reference with content for rendering as chips in timeline */
 export interface ResolvedReferenceChip {
@@ -56,6 +57,7 @@ function persistStorage(state: TimelineState): void {
       collapsedSections: Array.from(state.collapsedSections),
       messageReferences: Array.from(state.messageReferences.entries()),
       streamingMetrics: state.streamingMetrics,
+      canonicalEventLog: state.canonicalEventLog,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
   } catch (err) {
@@ -80,6 +82,7 @@ function loadPersistedState(): Partial<TimelineState> | null {
       streamingMetrics: parsed.streamingMetrics ?? {
         tokensReceived: 0, tokensPerSecond: 0, lastTokenTimestamp: 0, firstTokenLatency: 0, totalLatency: 0,
       },
+      canonicalEventLog: parsed.canonicalEventLog ?? [],
     }
   } catch (err) {
     console.warn("[timeline-store] Failed to load persisted state:", err)
@@ -124,6 +127,8 @@ export interface AgentSession {
   currentPhase?: string
   phaseHistory?: PhaseEntry[]
   confidence?: SessionConfidence
+  /** "single-agent" | "multi-agent" — set at session creation from the routing decision */
+  executionStrategy?: string
 }
 
 export interface PhaseEntry {
@@ -154,6 +159,8 @@ interface TimelineState {
   streamingMetrics: StreamingMetrics
   /** Resolved @-references per correlation ID — for rendering inline chips */
   messageReferences: Map<string, ResolvedReferenceChip[]>
+  /** Canonical event log — parallel event stream for replay and persistence */
+  canonicalEventLog: CanonicalExecutionEvent[]
 
   addEvent: (event: TimelineEvent) => void
   updateEvent: (id: string, updates: Partial<TimelineEvent>) => void
@@ -173,6 +180,7 @@ interface TimelineState {
 
   addAgentSession: (session: AgentSession, correlationId?: string) => void
   updateAgentSession: (stepId: string, updates: Partial<AgentSession>) => void
+  removeAgentSession: (stepId: string) => void
   addOptimisticSession: (stepId: string, correlationId?: string) => void
   upgradeOptimisticSession: (oldStepId: string, newStepId: string, updates: Partial<AgentSession>) => void
   setStreamState: (stepId: string, state: StreamState) => void
@@ -190,6 +198,7 @@ interface TimelineState {
   addFileOpToAgent: (stepId: string, fileOp: FileOpRecord) => void
   addTerminalToAgent: (stepId: string, terminal: TerminalRecord) => void
 
+  setMessageReferences: (correlationId: string, refs: ResolvedReferenceChip[]) => void
   toggleCollapse: (id: string) => void
   isCollapsed: (id: string) => boolean
 
@@ -201,6 +210,9 @@ interface TimelineState {
     agentsUsed: string[]
     totalDurationMs: number
   }
+
+  addCanonicalEventLog: (events: CanonicalExecutionEvent[]) => void
+  clearCanonicalEventLog: () => void
 
   generateId: () => string
 }
@@ -216,6 +228,26 @@ function generateId(): string {
  * Conversations are restored on launch. Use `clear()` for a fresh start.
  */
 const persisted = loadPersistedState()
+
+// ── Recovery: mark interrupted sessions ──
+function recoverInterruptedSessions(sessions: Map<string, AgentSession>): Map<string, AgentSession> {
+  const now = Date.now()
+  for (const [stepId, session] of sessions) {
+    if (session.streamState === "streaming" || session.streamState === "not_started") {
+      sessions.set(stepId, {
+        ...session,
+        streamState: "cancelled",
+        status: "complete",
+        completedAt: now,
+        error: session.error ?? "Session was interrupted — app closed while running.",
+      })
+    }
+  }
+  return sessions
+}
+if (persisted?.agentSessions) {
+  persisted.agentSessions = recoverInterruptedSessions(persisted.agentSessions)
+}
 
 export const useTimelineStore = create<TimelineState>((set, get) => ({
   events: persisted?.events ?? [],
@@ -233,6 +265,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     firstTokenLatency: 0,
     totalLatency: 0,
   },
+  canonicalEventLog: persisted?.canonicalEventLog ?? [],
 
   addEvent: (event) => {
     set((s) => ({
@@ -259,8 +292,19 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       collapsedSections: new Set(),
       streamingMetrics: { tokensReceived: 0, tokensPerSecond: 0, lastTokenTimestamp: 0, firstTokenLatency: 0, totalLatency: 0 },
       messageReferences: new Map(),
+      canonicalEventLog: [],
     })
     clearStorage()
+  },
+
+  addCanonicalEventLog: (events) => {
+    set((s) => ({
+      canonicalEventLog: [...s.canonicalEventLog, ...events].slice(-1000),
+    }))
+  },
+
+  clearCanonicalEventLog: () => {
+    set({ canonicalEventLog: [] })
   },
 
   setMessageReferences: (correlationId, refs) => {
@@ -479,6 +523,20 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
         next.set(stepId, { ...existing, ...updates })
       }
       return { agentSessions: next }
+    })
+  },
+
+  removeAgentSession: (stepId) => {
+    set((s) => {
+      const next = new Map(s.agentSessions)
+      next.delete(stepId)
+      return {
+        agentSessions: next,
+        sessionOrder: s.sessionOrder.filter((id) => id !== stepId),
+        sessionCreatedAtEventCount: s.sessionOrder
+          .map((id, i) => (id === stepId ? null : s.sessionCreatedAtEventCount[i]))
+          .filter((x): x is number => x !== null),
+      }
     })
   },
 

@@ -182,7 +182,7 @@ export const TerminalBlock = memo(function TerminalBlock({ terminal }: TerminalB
                     {displayLines.map((line, i) => (
                       <span key={lineOffset + i} className="block">
                         {showLineNumbers && (
-                          <span className="inline-block w-8 text-right text-[8px] text-white/15 select-none mr-2 shrink-0">
+                          <span className="inline-block w-6 text-right text-[8px] text-white/15 select-none mr-1.5 shrink-0">
                             {lineOffset + i + 1}
                           </span>
                         )}

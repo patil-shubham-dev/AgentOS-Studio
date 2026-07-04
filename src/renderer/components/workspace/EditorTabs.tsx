@@ -43,7 +43,7 @@ export function EditorTabs({ openFiles, activeFilePath, liveEditingFile, onOpen,
   }
 
   return (
-    <div ref={tabsRef} className="flex items-center border-b border-white/[0.04] bg-black/20 overflow-x-auto shrink-0 scrollbar-thin">
+    <div ref={tabsRef} role="tablist" className="flex items-center border-b border-white/[0.04] bg-black/20 overflow-x-auto shrink-0 scrollbar-thin">
       <style>{`
         @keyframes streaming-border-pulse {
           0%, 100% { border-left-color: rgba(34, 197, 94, 0); }
@@ -58,6 +58,8 @@ export function EditorTabs({ openFiles, activeFilePath, liveEditingFile, onOpen,
             key={file.path}
             data-active={file.path === activeFilePath ? "true" : undefined}
             data-streaming={isBeingStreamed ? "true" : undefined}
+            role="tab"
+            aria-selected={file.path === activeFilePath}
             onMouseDown={(e) => handleMiddleClick(e, file.path)}
             layout
             layoutId={file.path}
@@ -89,12 +91,15 @@ export function EditorTabs({ openFiles, activeFilePath, liveEditingFile, onOpen,
               <motion.span
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 500, damping: 15 }}
                 className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0"
+                title="Unsaved changes"
               />
             )}
             <button
               onClick={(e) => { e.stopPropagation(); onClose(file.path) }}
               className="ml-0.5 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all text-white/30 hover:text-white"
+              aria-label={`Close ${file.name}`}
             >
               <X className="h-3 w-3" />
             </button>

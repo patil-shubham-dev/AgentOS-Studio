@@ -95,6 +95,7 @@ export type ContextAssemblyInput = {
   fileTreeSummary?: string
   relevantFiles?: ScoredFile[]
   contextEstimate?: ContextEstimate
+  pinnedFiles?: string[]
   gitContext?: string
   workspaceSummary?: string
   executionScratchpad?: string

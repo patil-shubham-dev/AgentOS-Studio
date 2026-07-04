@@ -256,7 +256,6 @@ function PaneLayout({ panes, layoutMode }: { panes: PaneConfig[]; layoutMode: st
 }
 
 export function PaneContainer({ panes }: { panes: PaneConfig[] }) {
-  const layoutMode = usePaneStore((s) => s.layoutMode)
   const reorderPanes = usePaneStore((s) => s.reorderPanes)
 
   const sensors = useSensors(
@@ -297,13 +296,12 @@ export function PaneContainer({ panes }: { panes: PaneConfig[] }) {
     )
   }
 
-  const direction = layoutMode === "grid-2col" || panes.length <= 2 ? "horizontal" : "vertical"
-  const sortingStrategy = direction === "horizontal" ? horizontalListSortingStrategy : rectSortingStrategy
+  const sortingStrategy = panes.length <= 2 ? horizontalListSortingStrategy : rectSortingStrategy
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={panes.map((pane) => pane.id)} strategy={sortingStrategy}>
-        <PaneLayout panes={panes} layoutMode={layoutMode} />
+        <PaneLayout panes={panes} layoutMode={panes.length <= 2 ? "grid-2col" : "grid-3col"} />
       </SortableContext>
     </DndContext>
   )

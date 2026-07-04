@@ -7,6 +7,7 @@ import { RuntimeOS } from '@/runtime/RuntimeOS'
 export const RunSkillTool: AgentTool = buildTool({
   name: 'run_skill',
   description: 'Execute a registered skill by name and get the expanded prompt back. Skills are reusable prompt templates. Also supports searching and listing available skills.',
+  phase: 'advanced',
   inputSchema: {
     type: 'object',
     properties: {
@@ -27,7 +28,7 @@ export const RunSkillTool: AgentTool = buildTool({
     if (action === 'search') return 'Searching skills'
     return n ? `Running skill "${n}"` : 'Running a skill'
   },
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const name = String(input.name ?? '')
     const skillArgs = String(input.args ?? '')
     const action = String(input.action ?? 'execute')

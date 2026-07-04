@@ -21,7 +21,7 @@ export const WebSearchTool: AgentTool = buildTool({
     const q = (input as any)?.query
     return q ? `Searching web for "${String(q).slice(0, 60)}"` : 'Searching the web'
   },
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const query = String(input.query ?? '')
     const num = Number(input.num_results ?? 5)
     if (!query) return { data: null, error: 'query is required', isError: true }

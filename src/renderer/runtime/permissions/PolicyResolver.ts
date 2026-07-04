@@ -28,7 +28,7 @@ export class PolicyResolver {
     this.rules = []
   }
 
-  resolve(toolName: string, input: unknown, ctx: PermissionContext): PermissionResult | null {
+  resolve(toolName: string, input: unknown, _ctx: PermissionContext): PermissionResult | null {
     for (const rule of this.rules) {
       const names = Array.isArray(rule.toolName) ? rule.toolName : [rule.toolName]
       if (!names.includes(toolName)) continue

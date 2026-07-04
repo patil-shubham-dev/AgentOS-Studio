@@ -24,6 +24,20 @@ export interface OrchestrationStep {
   timestamp: number
 }
 
+export interface AgentTreeNode {
+  id: string
+  parentId: string | null
+  depth: number
+  role: string
+  type: "main" | "explore" | "plan" | "verify" | "general"
+  state: "idle" | "planning" | "researching" | "browsing" | "editing" | "validating" | "complete" | "failed" | "pending" | "waiting"
+  currentTask: string
+  progress?: number
+  lastAction?: string
+  lastUpdated: number
+  children: string[]
+}
+
 export interface AgentStatus {
   id: string
   role: string
@@ -74,8 +88,14 @@ export interface AgentStore {
   clearOrchestrationSteps: () => void
   resetOrchestration: () => void
 
+  agentTree: Record<string, AgentTreeNode>
+  agentTreeRootId: string | null
   setAgentStatus: (id: string, status: Partial<AgentStatus>) => void
   removeAgentStatus: (id: string) => void
+  addAgentTreeNode: (node: AgentTreeNode) => void
+  updateAgentTreeNode: (id: string, updates: Partial<AgentTreeNode>) => void
+  removeAgentTreeBranch: (id: string) => void
+  setAgentTreeRoot: (id: string) => void
   setFileActivity: (path: string, agentRole: string, activity: FileActivity["activity"]) => void
   clearFileActivity: (path: string) => void
   clearAllFileActivities: () => void
@@ -185,6 +205,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       orchestrationSteps: [],
     }),
 
+  agentTree: {},
+  agentTreeRootId: null,
+
   setAgentStatus: (id, status) =>
     set((s) => ({
       agentStatuses: {
@@ -202,6 +225,42 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       const { [id]: _, ...rest } = s.agentStatuses
       return { agentStatuses: rest }
     }),
+
+  addAgentTreeNode: (node) =>
+    set((s) => ({
+      agentTree: { ...s.agentTree, [node.id]: node },
+    })),
+
+  updateAgentTreeNode: (id, updates) =>
+    set((s) => {
+      const existing = s.agentTree[id]
+      if (!existing) return s
+      return { agentTree: { ...s.agentTree, [id]: { ...existing, ...updates } } }
+    }),
+
+  removeAgentTreeBranch: (id) =>
+    set((s) => {
+      const toRemove = new Set<string>([id])
+      const queue = [id]
+      while (queue.length > 0) {
+        const current = queue.shift()!
+        const node = s.agentTree[current]
+        if (node) {
+          for (const childId of node.children) {
+            toRemove.add(childId)
+            queue.push(childId)
+          }
+        }
+      }
+      const rest = { ...s.agentTree }
+      for (const r of toRemove) delete rest[r]
+      return {
+        agentTree: rest,
+        agentTreeRootId: s.agentTreeRootId === id ? null : s.agentTreeRootId,
+      }
+    }),
+
+  setAgentTreeRoot: (id) => set({ agentTreeRootId: id }),
 
   setFileActivity: (path, agentRole, activity) =>
     set((s) => {

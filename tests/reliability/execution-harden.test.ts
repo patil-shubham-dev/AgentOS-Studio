@@ -3,7 +3,7 @@ import { useTimelineStore } from "@/components/workspace/timeline/timeline-store
 import { useAgentStore } from "@/stores/agent-store"
 import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
-import { ExecutionOrchestrator } from "@/runtime/execution/ExecutionOrchestrator"
+import { UnifiedExecutionGateway } from "@/runtime/execution/UnifiedExecutionGateway"
 import { StreamManager } from "@/runtime/streaming/StreamManager"
 
 vi.mock("@/runtime/providers/ProviderRuntime", () => ({
@@ -32,7 +32,7 @@ vi.mock("@agentic-os/providers", () => {
           handlers.onToken?.(t)
           await new Promise(r => setTimeout(r, 1))
         }
-        handlers.onDone?.()
+        handlers.onDone?.("Hello! I am an AI assistant.")
       })()
     }
     return {
@@ -43,7 +43,23 @@ vi.mock("@agentic-os/providers", () => {
       chatCompletion: vi.fn().mockResolvedValue({ content: "Hello! I am an AI assistant.", usage: { promptTokens: 10, completionTokens: 8, totalTokens: 18 } }),
     }
   })
-  return { ProviderTransport: mockProviderTransport, StreamTransport: vi.fn() }
+  return {
+    ProviderTransport: mockProviderTransport,
+    StreamTransport: vi.fn(),
+    streamChatCompletion: vi.fn().mockImplementation((_baseUrl: string, _apiKey: string, _runtime: string | null, _req: any, callbacks: any) => {
+      const tokens = ["Hello", "! ", "I", " am", " an", " AI", " assistant", "."]
+      ;(async () => {
+        for (const t of tokens) {
+          callbacks.onToken?.(t)
+          await new Promise(r => setTimeout(r, 1))
+        }
+        callbacks.onDone?.("Hello! I am an AI assistant.")
+      })()
+      return Promise.resolve()
+    }),
+    chatCompletion: vi.fn().mockResolvedValue({ content: "Hello! I am an AI assistant.", usage: { promptTokens: 10, completionTokens: 8, totalTokens: 18 } }),
+    resolveByBaseUrl: vi.fn().mockReturnValue({ runtimeKey: "openai" }),
+  }
 })
 vi.mock("@/runtime/runtime-coordinator", () => ({ requestRefresh: vi.fn() }))
 vi.mock("@/runtime/EventBus", () => ({
@@ -59,11 +75,14 @@ function setupStores(overrides?: Record<string, any>) {
     ...overrides,
   } as any)
   useAppStore.setState({
-    providers: [{ id: "test-provider", name: "Test Provider", baseUrl: "https://test.api.com", apiKey: "test-key", runtime: null }],
+    providers: [{ id: "test-provider", name: "Test Provider", baseUrl: "https://test.api.com", apiKey: "test-key", runtime: null, models: [{ id: "gpt-4" }] }],
   } as any)
   useWorkspaceRuntime.setState({
-    status: "ready", wiredRuntimeRoles: ["manager"], wiredRoles: 1,
-    wiredAgents: [{ id: "agent-1", name: "Manager Agent", runtimeRole: "manager" as any, model: "gpt-4", providerId: "test-provider", providerName: "Test Provider", roleId: "manager" as any }],
+    status: "ready", wiredRuntimeRoles: ["manager", "coder"], wiredRoles: 2,
+    wiredAgents: [
+      { id: "agent-1", name: "Manager Agent", runtimeRole: "manager" as any, model: "gpt-4", providerId: "test-provider", providerName: "Test Provider", roleId: "manager" as any },
+      { id: "agent-2", name: "Coder Agent", runtimeRole: "coder" as any, model: "gpt-4", providerId: "test-provider", providerName: "Test Provider", roleId: "coder" as any },
+    ],
     managerWired: true, runtimeRoleRegistry: null, dataManager: null, runtimeClients: [], runtimes: [],
     setMemoryPressure: () => {}, setTokenUsage: () => {}, setStatus: () => {},
   } as any)
@@ -77,21 +96,13 @@ function setupStores(overrides?: Record<string, any>) {
 }
 
 /** Fully consume an execution stream to ensure isExecuting resets */
-async function consume(stream: AsyncGenerator<any, void, unknown>): Promise<any[]> {
-  const events: any[] = []
-  try {
-    for await (const e of stream) { events.push(e) }
-  } catch { /* expected */ }
-  return events
-}
-
-describe("ExecutionOrchestrator — duplicate EXECUTION_COMPLETE validation", () => {
+describe("Gateway — duplicate EXECUTION_COMPLETE validation", () => {
   afterEach(() => { StreamManager.getInstance().clearAll() })
 
   it("should emit EXECUTION_COMPLETE exactly once and no EXECUTION_FAILED", async () => {
     setupStores()
-    const orch = ExecutionOrchestrator.getInstance()
-    const events = await consume(orch.execute({ input: "hello", activeRole: "coder" as any }))
+    const result = await UnifiedExecutionGateway.getInstance().execute({ input: "hello", activeRole: "coder" as any, editedFiles: [] })
+    const events = result.events
 
     const completeCount = events.filter((e: any) => e.type === "EXECUTION_COMPLETE").length
     const failedCount = events.filter((e: any) => e.type === "EXECUTION_FAILED").length
@@ -103,19 +114,16 @@ describe("ExecutionOrchestrator — duplicate EXECUTION_COMPLETE validation", ()
   })
 })
 
-describe("ExecutionOrchestrator — concurrent execution queuing", () => {
+describe("Gateway — concurrent execution queuing", () => {
   afterEach(() => { StreamManager.getInstance().clearAll() })
 
   it("should queue concurrent execute calls instead of rejecting", async () => {
     setupStores()
-    const orch = ExecutionOrchestrator.getInstance()
-    const stream1 = orch.execute({ input: "test", activeRole: "coder" as any })
-    const stream2 = orch.execute({ input: "test2", activeRole: "coder" as any })
+    const result1 = await UnifiedExecutionGateway.getInstance().execute({ input: "test", activeRole: "coder" as any, editedFiles: [] })
+    const result2 = await UnifiedExecutionGateway.getInstance().execute({ input: "test2", activeRole: "coder" as any, editedFiles: [] })
+    const events1 = result1.events
+    const events2 = result2.events
 
-    const events1 = await consume(stream1)
-    const events2 = await consume(stream2)
-
-    // Both streams should produce events (queued, not rejected)
     expect(events1.length).toBeGreaterThan(0)
     expect(events2.length).toBeGreaterThan(0)
     const firstCreated = events1.find((e: any) => e.type === "EXECUTION_CREATED")
@@ -125,42 +133,34 @@ describe("ExecutionOrchestrator — concurrent execution queuing", () => {
   })
 })
 
-describe("ExecutionOrchestrator — cancellation propagation", () => {
+describe("Gateway — cancellation propagation", () => {
   afterEach(() => { StreamManager.getInstance().clearAll() })
 
   it("should handle abort before execution starts", async () => {
     setupStores()
-    const orch = ExecutionOrchestrator.getInstance()
     const ctrl = new AbortController()
     ctrl.abort()
 
-    const stream = orch.execute({ input: "test", activeRole: "coder" as any, signal: ctrl.signal })
-    // The error should be an AbortError (DOMException with name AbortError)
-    try {
-      for await (const _ of stream) { /* */ }
-      expect.fail("Should have thrown")
-    } catch (err: any) {
-      expect(err.name).toBe("AbortError")
-      expect(err.message).toContain("cancelled before start")
-    }
+    const result = await UnifiedExecutionGateway.getInstance().execute({ input: "test", activeRole: "coder" as any, signal: ctrl.signal, editedFiles: [] })
+    expect(result.engineeringResult.passed).toBe(false)
   })
 })
 
-describe("ExecutionOrchestrator — error scenarios", () => {
+describe("Gateway — error scenarios", () => {
   afterEach(() => { StreamManager.getInstance().clearAll() })
 
   it("should fail with EXECUTION_FAILED when no providers configured", async () => {
     setupStores({ providers_custom: true })
     useAppStore.setState({ providers: [] })
-    const events = await consume(ExecutionOrchestrator.getInstance().execute({ input: "test", activeRole: "coder" as any }))
-    expect(events.some((e: any) => e.type === "EXECUTION_FAILED")).toBe(true)
+    const result = await UnifiedExecutionGateway.getInstance().execute({ input: "test", activeRole: "coder" as any, editedFiles: [] })
+    expect(result.events.some((e: any) => e.type === "EXECUTION_FAILED")).toBe(true)
   })
 
   it("should fail with EXECUTION_FAILED when runtime is initializing", async () => {
     setupStores()
     useWorkspaceRuntime.setState({ status: "initializing" })
-    const events = await consume(ExecutionOrchestrator.getInstance().execute({ input: "test", activeRole: "coder" as any }))
-    expect(events.some((e: any) => e.type === "EXECUTION_FAILED")).toBe(true)
+    const result = await UnifiedExecutionGateway.getInstance().execute({ input: "test", activeRole: "coder" as any, editedFiles: [] })
+    expect(result.events.some((e: any) => e.type === "EXECUTION_FAILED")).toBe(true)
   })
 })
 

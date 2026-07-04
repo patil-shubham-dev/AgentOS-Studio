@@ -6,6 +6,7 @@
  */
 
 import type { ToolPermissions } from '../tools/core/ToolPermissions'
+import { getAllowedToolsForRole } from './role-tool-allowlist'
 
 export interface PermissionContext {
   mode: 'default' | 'autonomous' | 'interactive' | 'bypass'
@@ -24,6 +25,25 @@ export function createPermissionContext(overrides?: Partial<PermissionContext>):
     permissions: {
       mode: 'default',
       alwaysAllow: [],
+      alwaysDeny: [],
+      alwaysAsk: [],
+    },
+    ...overrides,
+  }
+}
+
+/**
+ * Create a permission context for a specific role, automatically populating
+ * the alwaysAllow list from the shared role-tool allowlist.
+ */
+export function createRolePermissionContext(role: string, overrides?: Partial<PermissionContext>): PermissionContext {
+  const allowedTools = getAllowedToolsForRole(role)
+  return {
+    mode: 'default',
+    role,
+    permissions: {
+      mode: 'default',
+      alwaysAllow: allowedTools ?? [],
       alwaysDeny: [],
       alwaysAsk: [],
     },

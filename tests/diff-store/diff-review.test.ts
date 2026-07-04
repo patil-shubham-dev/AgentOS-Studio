@@ -76,7 +76,8 @@ describe("diff review helpers", () => {
     const success = await rejectDiffReviewFile("src/test.ts")
 
     expect(success).toBe(true)
-    expect(writeFileMock).toHaveBeenCalledWith("C:\\workspace\\src\\test.ts", "before\n")
+    // writeFile is skipped when content already matches disk
+    expect(writeFileMock).not.toHaveBeenCalled()
     expect(useDiffStore.getState().files.get("src/test.ts")?.status).toBe("rejected")
     expect(useWorkspaceStore.getState().openFiles.find((file) => file.path === "src/test.ts")?.content).toBe("before\n")
     expect(useWorkspaceStore.getState().lastEditedFile).toBe("src/test.ts")
@@ -134,10 +135,12 @@ describe("diff review helpers", () => {
     expect(updatedEntry?.hunks[1].status).toBe("pending")
 
     const reviewedContent = updatedEntry ? getReviewedContent(updatedEntry) : ""
+    const writtenContent = updatedEntry ? getReviewedContent(updatedEntry, "original") : ""
     expect(reviewedContent).toContain("line-2")
     expect(reviewedContent).not.toContain("line-2 updated")
     expect(reviewedContent).toContain("line-10 updated")
-    expect(writeFileMock).toHaveBeenLastCalledWith("C:\\workspace\\src\\test.ts", reviewedContent)
-    expect(useWorkspaceStore.getState().openFiles.find((file) => file.path === "src/test.ts")?.content).toBe(reviewedContent)
+    // rejectDiffReviewHunk writes with pendingBehavior="original" so pending hunks show original content
+    expect(writeFileMock).toHaveBeenLastCalledWith("C:\\workspace\\src\\test.ts", writtenContent)
+    expect(useWorkspaceStore.getState().openFiles.find((file) => file.path === "src/test.ts")?.content).toBe(writtenContent)
   })
 })

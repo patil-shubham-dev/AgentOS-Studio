@@ -6,11 +6,10 @@ export type PaneAction =
   | { type: "focus"; pane: PaneType }
   | { type: "open"; pane: PaneType }
   | { type: "close"; pane: PaneType }
-  | { type: "navigate"; pane: "browser"; url: string }
+  | { type: "navigate"; pane: "design"; url: string }
   | { type: "showArtifact"; artifactId: string }
   | { type: "showDiff"; filePath: string }
   | { type: "runAgent"; task: string }
-  | { type: "openTerminal"; command?: string }
 
 export interface PaneState {
   browserUrl: string
@@ -82,8 +81,8 @@ export const usePanelCoordinator = create<PanelCoordinator>((set, get) => ({
             browserHistory: newHistory,
           },
         })
-        paneStore.ensurePane("browser")
-        paneStore.focusPane("browser")
+        paneStore.ensurePane("design")
+        paneStore.focusPane("design")
         break
       }
 
@@ -109,12 +108,6 @@ export const usePanelCoordinator = create<PanelCoordinator>((set, get) => ({
         }))
         break
 
-      case "openTerminal":
-        paneStore.ensurePane("terminal")
-        set((s) => ({
-          paneState: { ...s.paneState, terminalCommand: action.command ?? null },
-        }))
-        break
     }
   },
 }))

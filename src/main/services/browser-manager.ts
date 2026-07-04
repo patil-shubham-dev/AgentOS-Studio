@@ -390,7 +390,7 @@ export class BrowserManager {
 
   async saveState(filePath: string): Promise<boolean> {
     try {
-      const state = Array.from(this.sessions.entries()).map(([id, s]) => ({
+      const state = Array.from(this.sessions.entries()).map(([, s]) => ({
         id: s.id,
         tabs: s.tabs.map(t => ({ id: t.id, url: t.url, title: t.title })),
         activeTabId: s.activeTabId,

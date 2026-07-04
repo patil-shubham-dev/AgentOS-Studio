@@ -1,7 +1,7 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { cn } from "@agentic-os/shared"
 
 const Dialog = DialogPrimitive.Root
@@ -21,7 +21,7 @@ const contentVariants = {
     opacity: 1,
     scale: 1,
     y: 0,
-    transition: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: 0.18, ease: [0.16, 1, 0.3, 1] as const },
   },
   exit: {
     opacity: 0,
@@ -29,12 +29,12 @@ const contentVariants = {
     y: -8,
     transition: { duration: 0.12, ease: "easeIn" },
   },
-}
+} as const
 
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, ...props }, ref) => (
+>(({ className }, ref) => (
   <DialogPrimitive.Overlay asChild>
     <motion.div
       ref={ref}
@@ -54,7 +54,7 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content asChild>

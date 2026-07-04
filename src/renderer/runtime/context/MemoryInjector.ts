@@ -3,6 +3,8 @@ import type { MemoryInjectionConfig, MemoryInjectionStrategy } from "./context-t
 import { DEFAULT_MEMORY_INJECTION_CONFIG } from "./context-types"
 import { MemoryArchitecture } from "@/runtime/memory/unified/MemoryArchitecture"
 import { TokenBudgetManager } from "./TokenBudgetManager"
+import { TokenEstimator } from "./TokenEstimator"
+import { GlobalMemoryStore } from "@/core/memory/GlobalMemoryStore"
 
 export interface MemoryInjectionResult {
   memories: MemoryEntry[]
@@ -84,6 +86,16 @@ export class MemoryInjector {
       strategy: this.config.strategy,
       dedupCount,
       compressedCount,
+    }
+  }
+
+  static async injectGlobalPreferences(): Promise<string> {
+    try {
+      const store = GlobalMemoryStore.getInstance()
+      const formatted = await store.formatForPrompt()
+      return formatted || ""
+    } catch {
+      return ""
     }
   }
 
@@ -193,9 +205,10 @@ export class MemoryInjector {
   }
 
   private truncateToTokens(text: string, maxTokens: number): string {
-    const avgCharsPerToken = 4
-    const maxChars = maxTokens * avgCharsPerToken
-    if (text.length <= maxChars) return text
+    const estimatedTokens = TokenEstimator.rough(text)
+    if (estimatedTokens <= maxTokens) return text
+    const ratio = maxTokens / estimatedTokens
+    const maxChars = Math.floor(text.length * ratio * 0.9)
     return text.slice(0, maxChars) + "...[truncated]"
   }
 
@@ -221,7 +234,7 @@ export class MemoryInjector {
   }
 
   private estimateTokens(text: string): number {
-    return Math.ceil(text.length / 4)
+    return TokenEstimator.rough(text)
   }
 
   private getAvailableMemoryBudget(): number {

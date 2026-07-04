@@ -194,7 +194,7 @@ describe("TypeGraph", () => {
       ]
       graph.build(symbols)
       const ctx = graph.getTypeContextForFiles(["src/types.ts"], 3)
-      const match = ctx.match(/`[A-Z]`/g)
+      const match = ctx.match(/name="([A-Z])"/g)
       expect(match).toBeTruthy()
       expect(match!.length).toBeLessThanOrEqual(3)
     })

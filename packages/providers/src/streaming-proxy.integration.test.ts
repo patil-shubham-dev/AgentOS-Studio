@@ -33,7 +33,7 @@ describe("Streaming HTTP Proxy Integration", () => {
           },
         ),
       },
-    }
+    } as any
   })
 
   afterEach(() => {
@@ -92,7 +92,7 @@ describe("Streaming HTTP Proxy Integration", () => {
 
   it("abort signal cancels proxy request", async () => {
     const abortCtrl = new AbortController()
-    const abortMock = globalThis.window.electronAPI
+    const abortMock = (globalThis.window as any).electronAPI
       .proxyHttpStreamAbort as ReturnType<typeof vi.fn>
 
     const response = await tauriFetchStreaming(
@@ -114,7 +114,7 @@ describe("Streaming HTTP Proxy Integration", () => {
   it("subscribe-before-start prevents race condition", async () => {
     const callOrder: string[] = []
 
-    globalThis.window.electronAPI = {
+    ;(globalThis.window as any).electronAPI = {
       proxyHttpStreamStart: vi.fn().mockImplementation(() => {
         callOrder.push("start")
         return Promise.resolve({
@@ -149,7 +149,7 @@ describe("Streaming HTTP Proxy Integration", () => {
     const capturedChunk: Array<(...args: any[]) => void> = []
     const capturedEnd: Array<(...args: any[]) => void> = []
 
-    globalThis.window.electronAPI = {
+    ;(globalThis.window as any).electronAPI = {
       proxyHttpStreamStart: vi.fn().mockImplementation(() => {
         if (capturedChunk.length > 0) {
           capturedChunk[0]({

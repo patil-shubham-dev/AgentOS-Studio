@@ -503,14 +503,16 @@ describe("Pane Persistence (PC-21 to PC-30)", () => {
 
   it("PC-21: pane-store persists and restores pane visibility", async () => {
     const { usePaneStore } = await import("@/stores/pane-store")
-    usePaneStore.getState().setPaneVisibility("browser", true)
-    usePaneStore.getState().setPaneVisibility("design", false)
+    usePaneStore.getState().setPaneVisibility("design", true)
+    usePaneStore.getState().setPaneVisibility("diff", false)
 
     const state = usePaneStore.getState()
-    const browserPane = state.panes.find((p) => p.id === "browser")
     const designPane = state.panes.find((p) => p.id === "design")
-    expect(browserPane?.visible).toBe(true)
-    expect(designPane?.visible).toBe(false)
+    const diffPane = state.panes.find((p) => p.id === "diff")
+    expect(designPane?.visible).toBe(true)
+    expect(diffPane?.visible).toBe(false)
+
+    usePaneStore.getState().setPaneVisibility("design", false)
   })
 
   it("PC-22: pane-store togglePane works correctly", async () => {
@@ -729,18 +731,15 @@ describe("File Tree Operations (PC-31 to PC-35)", () => {
     expect(designPane?.visible).toBe(true)
   })
 
-  it("PC-35: panel-coordinator navigate action sets URL in pane state", async () => {
+  it("PC-35: panel-coordinator dispatch focus pane", async () => {
     const { usePanelCoordinator } = await import("@/stores/panel-coordinator")
     const { usePaneStore } = await import("@/stores/pane-store")
 
-    usePanelCoordinator.getState().dispatch({ type: "navigate", pane: "browser", url: "http://localhost:3000" })
+    usePaneStore.getState().setPaneVisibility("design", false)
+    usePanelCoordinator.getState().dispatch({ type: "focus", pane: "design" })
 
-    const state = usePanelCoordinator.getState()
-    expect(state.paneState.browserUrl).toBe("http://localhost:3000")
-    expect(state.paneState.browserHistory).toContain("http://localhost:3000")
-
-    const browserPane = usePaneStore.getState().panes.find((p) => p.type === "browser")
-    expect(browserPane?.visible).toBe(true)
+    const designPane = usePaneStore.getState().panes.find((p) => p.type === "design")
+    expect(designPane?.visible).toBe(true)
   })
 })
 

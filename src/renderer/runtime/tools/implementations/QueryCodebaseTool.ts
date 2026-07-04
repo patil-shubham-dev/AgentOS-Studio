@@ -4,17 +4,18 @@ import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
 import * as wi from '@/lib/workspace-intelligence'
 import * as symIndex from '@/lib/symbol-index'
+import { getOutlineForFile, formatOutline } from '@/core/context/AstOutlineExtractor'
 
 export const QueryCodebaseTool: AgentTool = buildTool({
   name: 'query_codebase',
-  description: 'Query codebase intelligence: analyze impact, find callers, find importers, find definitions, find references',
+  description: 'Query codebase intelligence: analyze impact, find callers, find importers, find definitions, find references, or get AST outline of a file',
   inputSchema: {
     type: 'object',
     properties: {
       query: {
         type: 'string',
         description: 'Type of query to run',
-        enum: ['impact_analysis', 'who_calls', 'who_imports', 'where_defined', 'where_referenced'],
+        enum: ['impact_analysis', 'who_calls', 'who_imports', 'where_defined', 'where_referenced', 'ast_outline'],
       },
       target: {
         type: 'string',
@@ -31,7 +32,7 @@ export const QueryCodebaseTool: AgentTool = buildTool({
     const t = (input as any)?.target
     return q && t ? `${q}: ${t}` : 'Querying codebase'
   },
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const query = String(input.query ?? '')
     const target = String(input.target ?? '')
 
@@ -78,8 +79,16 @@ export const QueryCodebaseTool: AgentTool = buildTool({
           return { data: `References to "${target}":\n${refs.map((r: any) => `  - ${r.file}${r.line ? `:${r.line}` : ''}`).join('\n')}` }
         }
 
+        case 'ast_outline': {
+          const outline = await getOutlineForFile(target)
+          if (!outline) {
+            return { data: `Could not read file "${target}" or no outline available.` }
+          }
+          return { data: formatOutline(outline) }
+        }
+
         default:
-          return { data: null, error: `Unknown query type "${query}". Valid types: impact_analysis, who_calls, who_imports, where_defined, where_referenced`, isError: true }
+          return { data: null, error: `Unknown query type "${query}". Valid types: impact_analysis, who_calls, who_imports, where_defined, where_referenced, ast_outline`, isError: true }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

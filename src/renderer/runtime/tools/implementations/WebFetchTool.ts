@@ -20,7 +20,7 @@ export const WebFetchTool: AgentTool = buildTool({
     const u = (input as any)?.url
     return u ? `Fetching ${u}` : 'Fetching a web page'
   },
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const url = String(input.url ?? '')
     if (!url) return { data: null, error: 'url is required', isError: true }
     try {

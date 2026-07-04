@@ -43,6 +43,16 @@ export const outputStyleSection: SectionDefinition = {
       '- Any sign-off or closing pleasantries',
       '',
       'Just state what changed and move on.',
+      '',
+      '## Token efficiency',
+      '',
+      'Be efficient with output length:',
+      '- For simple questions, use 1–3 sentences.',
+      '- For code changes, show the diff or the changed section — not the full file.',
+      '- For explanations, use tight bullets. Avoid multi-paragraph prose for simple answers.',
+      '- For error analysis, state the root cause first, then the fix, then verification.',
+      '- Never repeat the user\'s question back to them.',
+      '- Never explain what you are about to do before doing it. Just do it.',
     ].join('\n')
   },
 }

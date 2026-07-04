@@ -69,7 +69,6 @@ export function createBenchmarkRunner(): { runAll: () => Promise<any>; runCatego
 
 export { AutonomousExecutionPath } from "./AutonomousExecutionPath"
 export { ExecutionBudgetManager } from "./ExecutionBudgetManager"
-export { ExecutionOrchestrator } from "./ExecutionOrchestrator"
 export { ExecutionQueue } from "./ExecutionQueue"
 export { ExecutionScratchpad } from "./ExecutionScratchpad"
 export { SynthesisEngine } from "./SynthesisEngine"

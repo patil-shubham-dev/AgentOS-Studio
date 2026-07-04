@@ -65,12 +65,15 @@ const CONFIG_FILE_DEFS: ConfigFileDef[] = [
   { source: "managed", pathTemplate: "${root}/.agentic-os/global/AGENTIC.md", priority: 0, optional: true },
   // User-level preferences
   { source: "user", pathTemplate: "${root}/.agentic-os/user/AGENTIC.md", priority: 1, optional: true },
-  // Project-level (checked into git)
+  // Project-level AGENTIC.md (checked into git)
   { source: "project", pathTemplate: "${root}/AGENTIC.md", priority: 2, optional: true },
   { source: "project", pathTemplate: "${root}/.agentic/AGENTIC.md", priority: 2, optional: true },
+  // CLAUDE.md — legacy project-level instructions (same priority as AGENTIC.md)
+  { source: "project", pathTemplate: "${root}/CLAUDE.md", priority: 2, optional: true },
   // Local (git-ignored personal overrides) — highest priority
   { source: "local", pathTemplate: "${root}/AGENTIC.local.md", priority: 3, optional: true },
   { source: "local", pathTemplate: "${root}/.agentic/AGENTIC.local.md", priority: 3, optional: true },
+  { source: "local", pathTemplate: "${root}/CLAUDE.local.md", priority: 3, optional: true },
 ]
 
 // ── Default AGENTIC.md template ──
@@ -279,6 +282,31 @@ export class ConfigLoader {
   getStructured(rootPath: string): StructuredProjectConfig | null {
     if (!this.cached) return null
     return this.cached.structured
+  }
+
+  /**
+   * Load project memory files (CLAUDE.md, rules) for injection into agent prompts.
+   * Returns combined text from all loaded files plus any AGENTIC.md project config.
+   */
+  async loadProjectMemory(rootPath: string): Promise<{
+    combined: string
+    projectConfig: string | undefined
+    projectConfigHash: string | undefined
+  }> {
+    const result = await this.load(rootPath)
+    const claudeFiles = result.configs.filter(
+      (c) => c.path.endsWith("CLAUDE.md") || c.path.endsWith("CLAUDE.local.md"),
+    )
+    const rulesFiles = result.configs.filter((c) => c.source === "path-rules")
+    const memoryParts = [...claudeFiles, ...rulesFiles]
+      .sort((a, b) => a.priority - b.priority)
+      .map((c) => c.content)
+
+    return {
+      combined: memoryParts.join("\n\n"),
+      projectConfig: result.combined || undefined,
+      projectConfigHash: result.hash || undefined,
+    }
   }
 }
 

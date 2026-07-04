@@ -41,6 +41,30 @@
   --surface-elevated: #111113;
   --surface-overlay: #1a1a1f;
 
+  /* ── UI Surface Colors (Claude Design 2.0) ── */
+  --color-workspace-bg: hsl(220 15% 8%);
+  --color-editor-bg: hsl(220 12% 10%);
+  --color-chat-bg: hsl(220 12% 9%);
+  --color-panel-border: hsl(220 12% 15%);
+  --color-card-bg: hsl(220 15% 12% / 0.6);
+  --color-card-border: hsl(220 12% 18%);
+
+  /* ── Accent Colors ── */
+  --color-accent-amber: hsl(35 100% 60%);
+  --color-accent-amber-hover: hsl(35 100% 50%);
+  --color-accent-indigo: hsl(250 85% 65%);
+
+  /* ── Text Colors ── */
+  --color-text-primary: hsl(220 10% 90%);
+  --color-text-secondary: hsl(220 8% 65%);
+  --color-text-muted: hsl(220 6% 45%);
+
+  /* ── Git Status Colors ── */
+  --color-git-added: hsl(140 70% 45%);
+  --color-git-modified: hsl(35 90% 55%);
+  --color-git-deleted: hsl(0 75% 55%);
+  --color-git-ignored: hsl(220 6% 35%);
+
   /* ── Panel accent colors ── */
   --accent-code: #3b82f6;
   --accent-browser: #06b6d4;
@@ -58,6 +82,10 @@
   --border-default: rgba(255, 255, 255, 0.08);
   --border-subtle: rgba(255, 255, 255, 0.04);
   --border-hover: rgba(255, 255, 255, 0.12);
+
+  /* ── Animation Tokens ── */
+  --animate-shimmer: shimmer 1.5s infinite;
+  --animate-spring-up: spring-up 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 
   /* ── Semantic typography scale ── */
   /* Display — Cormorant Garamond, rare/high-impact */
@@ -197,6 +225,12 @@ body {
   background: var(--color-muted-foreground);
 }
 
+/* ── Focus & Accessibility ── */
+*:focus-visible {
+  outline: 2px solid var(--color-accent-amber);
+  outline-offset: 2px;
+}
+
 /* ── Keyframes ── */
 @keyframes fade-in {
   from { opacity: 0; }
@@ -239,6 +273,11 @@ body {
   50% { transform: scale(1.05); }
   70% { transform: scale(0.9); }
   100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes spring-up {
+  0% { transform: translateY(8px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
 }
 
 @keyframes spin-slow {
@@ -333,6 +372,22 @@ body {
   background: linear-gradient(90deg, transparent 0%, var(--color-muted) 50%, transparent 100%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
+}
+
+@utility animate-spring-up {
+  animation: spring-up 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@utility text-gradient-amber {
+  background: linear-gradient(135deg, var(--color-accent-amber), var(--color-accent-amber-hover));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@utility row-fade-text {
+  mask-image: linear-gradient(to right, black 80%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
 }
 
 @utility animate-scale-in {

@@ -2,6 +2,15 @@ import type { BudgetState, MessageLike } from './context-types'
 import { TokenEstimator } from './TokenEstimator'
 import { ContextWindowResolver } from './ContextWindowResolver'
 
+/**
+ * Per-task budget tracker.
+ *
+ * NOTE: This shares the same budget formula as TokenBudgetManager (contextWindow alone).
+ * The 'remaining' tracking here is per-task (a single execution turn), while
+ * TokenBudgetManager tracks globally across all agents and tasks.
+ * Both should produce consistent 'percentage used' for the same base contextWindow.
+ */
+
 const COMPLETION_THRESHOLD = 0.9
 const DIMINISHING_THRESHOLD = 500
 
@@ -32,7 +41,10 @@ export class TokenBudgetTracker {
 
   initializeTask(model: string, betas?: string[]): void {
     const ctxConfig = this.resolver.getModelConfig(model)
-    this.taskBudget = ctxConfig.contextWindow + ctxConfig.defaultMaxTokens
+    // Uses contextWindow alone (not contextWindow + maxOutputTokens) to stay
+    // consistent with TokenBudgetManager's formula. Output tokens are accounted
+    // separately via updateAfterResponse().
+    this.taskBudget = ctxConfig.contextWindow
     this.remainingBudget = this.taskBudget
     this.outputTokensUsed = 0
     this.autoContinueTriggered = false

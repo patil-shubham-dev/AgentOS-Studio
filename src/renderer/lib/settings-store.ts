@@ -2,6 +2,7 @@ import { useAppStore } from "@/stores/app-store"
 import { useToastStore } from "@/stores/toast-store"
 import { loadConfig, saveConfig, type ConfigData } from "./persistence"
 import { safeSetItem } from "./safe-storage"
+import { getApiKey } from "./secure-storage"
 import type { GatewayProvider, AgentRoleConfig, RoleMapping, LedgerEntry } from "@/types"
 
 const LOG_PREFIX = "[SettingsStore]"
@@ -18,7 +19,7 @@ function serialize(): string {
   const s = useAppStore.getState()
   const config: ConfigData = {
     version: 1,
-    providers: s.providers as unknown as Record<string, unknown>[],
+    providers: s.providers.map(({ apiKey, ...rest }) => rest) as unknown as Record<string, unknown>[],
     roleConfigs: s.roleConfigs as unknown as Record<string, unknown>[],
     roleMappings: s.roleMappings as unknown as Record<string, unknown>[],
     ledger: s.ledger as unknown as Record<string, unknown>[],
@@ -93,6 +94,14 @@ export async function loadSettings() {
     const raw = JSON.stringify(result.config)
     if (raw) {
       deserialize(raw)
+      // Restore API keys from secure storage (keys are stripped from serialized config)
+      const store = useAppStore.getState()
+      for (const provider of store.providers) {
+        const key = await getApiKey(provider.id)
+        if (key && key !== provider.apiKey) {
+          store.updateProvider(provider.id, { apiKey: key })
+        }
+      }
       const mcpCount = result.config.mcpServers?.length || 0
       log(`Settings loaded: ${result.config.providers?.length || 0} providers, ${result.config.roleConfigs?.length || 0} roles, ${mcpCount} MCP servers`)
     }

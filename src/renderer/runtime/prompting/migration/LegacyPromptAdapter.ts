@@ -5,7 +5,7 @@ import type { PromptAST } from '../ast/PromptNode'
 import type { ResolutionContext } from '../registry/SectionDefinition'
 
 export class LegacyPromptAdapter {
-  static adaptFromFactory(promptText: string, role: string, ctx?: ResolutionContext): PromptAST {
+  static adaptFromFactory(promptText: string, role: string, _ctx?: ResolutionContext): PromptAST {
     const builder = new PromptASTBuilder()
     const sections = promptText.split(/(?=### )/)
 

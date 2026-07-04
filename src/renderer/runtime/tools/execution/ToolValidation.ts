@@ -14,7 +14,7 @@ interface SchemaField {
 }
 
 export class ToolValidator {
-  validate(tool: AgentTool, input: unknown, ctx: ToolContext): ValidationResult {
+  validate(tool: AgentTool, input: unknown, _ctx: ToolContext): ValidationResult {
     const schema = tool.inputSchema
     if (!schema || Object.keys(schema).length === 0) return { valid: true }
 

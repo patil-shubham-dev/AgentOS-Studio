@@ -13,9 +13,10 @@ import { ProjectMapPanel } from "./components/ProjectMapPanel"
 import type { ExplorerHandle } from "./types"
 import {
   FilePlus, FolderPlus, Search, FileCode, X, Pin,
-  ChevronRight, ChevronDown, Loader2,
+  ChevronRight, Loader2,
   Hash, Sparkles, Pencil, Eye, ListChecks,
   AlertCircle, AlertTriangle,
+  GitBranch,
 } from "lucide-react"
 import { useComponentState } from "@/lib/state/useComponentState"
 import { workspaceSymbolIndex, type SymbolInfo } from "@/lib/symbol-index"
@@ -24,6 +25,8 @@ import type { FileEntry } from "@/types"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
 import { readFile } from "@/lib/filesystem"
+import { stat } from "@/lib/electron-api"
+import { useToastStore } from "@/stores/toast-store"
 import { getSpringConfig } from "@/lib/motion"
 
 function ContextMenuItem({ label, onClick, icon, className }: {
@@ -147,6 +150,12 @@ function VirtualTreeRow({
   onToggle,
   onSelect,
   onContextMenu,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  isDropTarget,
+  dropPosition,
   rowIndex,
 }: {
   node: FlatNode
@@ -155,6 +164,12 @@ function VirtualTreeRow({
   onToggle: (path: string) => void
   onSelect: (path: string) => void
   onContextMenu: (e: React.MouseEvent, path: string) => void
+  onDragStart?: (e: React.DragEvent, path: string) => void
+  onDragOver?: (e: React.DragEvent, path: string, isDir: boolean) => void
+  onDragLeave?: (e: React.DragEvent) => void
+  onDrop?: (e: React.DragEvent, path: string, isDir: boolean) => void
+  isDropTarget: boolean
+  dropPosition: "above" | "inside" | null
   rowIndex: number
 }) {
   const agentColor = node.isDir ? undefined : node.agentBadge?.color
@@ -164,6 +179,7 @@ function VirtualTreeRow({
   const diffFiles = useDiffStore((s) => s.files)
   const pendingDiff = !node.isDir ? diffFiles.get(node.path) : undefined
   const hasPendingDiff = pendingDiff?.status === "pending"
+  const pinnedFiles = useWorkspaceStore((s) => s.pinnedFiles)
   const measureRef = useRef<HTMLDivElement>(null)
 
   const diagnostics = useDiagnosticsStore((s) => s.diagnostics)
@@ -192,13 +208,20 @@ function VirtualTreeRow({
       style={{
         ...style,
         borderLeft: agentColor ? `2px solid ${agentColor}` : isActiveFile ? "2px solid rgba(59,130,246,0.5)" : undefined,
+        borderTop: isDropTarget && dropPosition === "above" ? "1.5px solid rgba(59,130,246,0.5)" : undefined,
       }}
       className={cn(
-        "flex items-center gap-1 px-1 text-xs cursor-pointer group select-none",
+        "flex items-center gap-1 px-2 text-xs cursor-pointer group select-none relative",
         isActiveFile ? "bg-blue-500/[0.06]" : agentColor ? "bg-white/[0.02]" : "hover:bg-white/[0.03]",
+        isDropTarget && dropPosition === "inside" && "bg-blue-500/10",
       )}
       onClick={() => (node.isDir ? onToggle(node.path) : onSelect(node.path))}
       onContextMenu={(e) => onContextMenu(e, node.path)}
+      draggable={!node.isDir}
+      onDragStart={(e) => onDragStart?.(e, node.path)}
+      onDragOver={(e) => onDragOver?.(e, node.path, node.isDir)}
+      onDragLeave={(e) => onDragLeave?.(e)}
+      onDrop={(e) => onDrop?.(e, node.path, node.isDir)}
       role="treeitem"
       aria-expanded={node.isDir ? node.isExpanded : undefined}
       aria-selected={isActiveFile}
@@ -211,11 +234,10 @@ function VirtualTreeRow({
           className="flex items-center justify-center h-4 w-4 rounded hover:bg-white/[0.06] shrink-0"
           aria-label={node.isExpanded ? "Collapse folder" : "Expand folder"}
         >
-          {node.isExpanded ? (
-            <ChevronDown className="h-2.5 w-2.5 text-white/30" />
-          ) : (
-            <ChevronRight className="h-2.5 w-2.5 text-white/30" />
-          )}
+          <ChevronRight className={cn(
+            "h-2.5 w-2.5 text-white/30 transition-transform duration-200 ease-out",
+            node.isExpanded && "rotate-90"
+          )} />
         </button>
       ) : (
         <span className="w-4 shrink-0" />
@@ -240,23 +262,25 @@ function VirtualTreeRow({
         <span className="h-1.5 w-1.5 rounded-full bg-amber-400/70 shrink-0" title="Has pending changes to review" />
       )}
       <span className={cn(
-        "truncate text-[11px]",
+        "row-fade-text text-[11px] flex-1",
         isActiveFile ? "text-blue-300 font-medium" : node.isDir ? "text-white/60 font-medium" : "text-white/45",
+        !isActiveFile && node.gitStatus === "M" && "text-git-modified",
+        !isActiveFile && node.gitStatus === "A" && "text-git-added",
+        !isActiveFile && node.gitStatus === "D" && "text-git-deleted",
+        !isActiveFile && node.gitStatus === "R" && "text-git-modified",
+        !isActiveFile && node.gitStatus === "U" && "text-git-ignored",
       )}>
         {typeof node.name === "string" ? node.name : String(node.name ?? "")}
       </span>
 
-      {node.gitStatus && (
-        <span className={cn(
-          "ml-auto text-[9px] font-mono px-1 rounded",
-          node.gitStatus === "M" && "text-yellow-400 bg-yellow-400/10",
-          node.gitStatus === "A" && "text-green-400 bg-green-400/10",
-          node.gitStatus === "D" && "text-red-400 bg-red-400/10",
-          node.gitStatus === "R" && "text-blue-400 bg-blue-400/10",
-          node.gitStatus === "U" && "text-white/40 bg-white/[0.04]",
-        )}>
-          {node.gitStatus}
-        </span>
+      {!node.isDir && (
+        <button
+          onClick={(e) => { e.stopPropagation(); useWorkspaceStore.getState().togglePinFile(node.path) }}
+          className="opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity duration-150 flex items-center justify-center h-4 w-4 shrink-0"
+          title={pinnedFiles.includes(node.path) ? "Unpin file" : "Pin file"}
+        >
+          <Pin className={cn("h-2.5 w-2.5 transition-colors duration-150", pinnedFiles.includes(node.path) ? "text-blue-400" : "text-white/30")} />
+        </button>
       )}
 
       {/* Diagnostics badges */}
@@ -292,6 +316,10 @@ function VirtualTreeRow({
         <span className="ml-auto flex items-center gap-0.5 text-[8px] px-1.5 rounded bg-red-500/15 text-red-400/70 font-medium">
           Error
         </span>
+      )}
+
+      {isDropTarget && dropPosition === "above" && (
+        <div className="absolute top-0 left-0 right-0 h-px bg-blue-400/50 pointer-events-none" />
       )}
     </div>
   )
@@ -359,6 +387,8 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
     const pinnedFiles = useWorkspaceStore((s) => s.pinnedFiles)
     const recentlyOpened = useWorkspaceStore((s) => s.recentlyOpened)
     const togglePinFile = useWorkspaceStore((s) => s.togglePinFile)
+    const revealInExplorer = useWorkspaceStore((s) => s.revealInExplorer)
+    const setRevealInExplorer = useWorkspaceStore((s) => s.setRevealInExplorer)
 
     const [searchQuery, setSearchQuery] = useState("")
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
@@ -367,10 +397,16 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
     const [semanticResults, setSemanticResults] = useState<SemanticSearchResult[]>([])
     const [creatingState, setCreatingState] = useState<{ type: "file" | "folder"; parent: string | null } | null>(null)
     const [createName, setCreateName] = useState("")
+    const [dragState, setDragState] = useState<{
+      draggedPath: string
+      dropTarget: string | null
+      dropPosition: "above" | "inside" | null
+    } | null>(null)
 
     const scrollRef = useRef<HTMLDivElement>(null)
     const searchInputRef = useRef<HTMLInputElement>(null)
     const parentRef = useRef<HTMLDivElement>(null)
+    const pendingRevealRef = useRef<string | null>(null)
 
     const { gitStatus } = useGitStatus(rootPath)
     const { fileActivities: badgeArray } = useAgentFileBadges(rootPath)
@@ -441,6 +477,23 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
       rowHeightCache.clear()
     }, [flatTree.length])
 
+    // Expand ancestor directories when breadcrumb signals a reveal
+    useEffect(() => {
+      if (!revealInExplorer || !fileTree.length) return
+
+      const parts = revealInExplorer.split("/")
+      setExpandedPaths((prev) => {
+        const next = new Set(prev)
+        let acc = ""
+        for (let i = 0; i < parts.length - 1; i++) {
+          acc = acc ? `${acc}/${parts[i]}` : parts[i]
+          next.add(acc)
+        }
+        return next
+      })
+      pendingRevealRef.current = revealInExplorer
+    }, [revealInExplorer, fileTree.length])
+
     const virtualizer = useVirtualizer({
       count: flatTree.length,
       getScrollElement: () => scrollRef.current,
@@ -454,6 +507,18 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
       // when the actual DOM size differs from the estimate
       getItemKey: (index) => flatTree[index]?.id ?? index,
     })
+
+    // Scroll to the revealed item after the tree re-renders with expanded paths
+    useEffect(() => {
+      if (!pendingRevealRef.current || flatTree.length === 0) return
+      const target = pendingRevealRef.current
+      const idx = flatTree.findIndex((n) => n.path === target)
+      if (idx >= 0) {
+        virtualizer.scrollToIndex(idx, { align: "center" })
+        pendingRevealRef.current = null
+        setRevealInExplorer(null)
+      }
+    }, [flatTree, revealInExplorer, virtualizer, setRevealInExplorer])
 
     useEffect(() => {
       if (!searchQuery || searchQuery.length < 2) {
@@ -516,6 +581,15 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
       if (entry && !entry.is_dir && rootPath) {
         const loadContent = async () => {
           try {
+            const stats = await stat(path)
+            const fileSize = stats?.size ?? 0
+            const LARGE_FILE_WARN_THRESHOLD = 5 * 1024 * 1024
+            if (fileSize > LARGE_FILE_WARN_THRESHOLD) {
+              useToastStore.getState().addToast(
+                `Large file (${(fileSize / 1024 / 1024).toFixed(1)}MB) — may affect editor performance`,
+                "warn", 5000,
+              )
+            }
             const content = await readFile(path)
             openFile({ path, name: entry.name, content, isDirty: false })
           } catch {
@@ -537,6 +611,57 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
     const closeContextMenu = useCallback(() => {
       setContextMenu(null)
     }, [])
+
+    const handleDragStart = useCallback((e: React.DragEvent, path: string) => {
+      e.dataTransfer.setData("text/plain", path)
+      e.dataTransfer.effectAllowed = "move"
+      setDragState({ draggedPath: path, dropTarget: null, dropPosition: null })
+    }, [])
+
+    const handleDragOver = useCallback((e: React.DragEvent, path: string, isDir: boolean) => {
+      if (!dragState || dragState.draggedPath === path) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "move"
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const y = e.clientY - rect.top
+      const position: "above" | "inside" = isDir && y > rect.height * 0.3 ? "inside" : "above"
+      setDragState((prev) =>
+        prev && prev.dropTarget === path && prev.dropPosition === position
+          ? prev
+          : { ...prev!, dropTarget: path, dropPosition: position }
+      )
+    }, [dragState])
+
+    const handleDragLeave = useCallback(() => {
+      setDragState((prev) => prev ? { ...prev, dropTarget: null, dropPosition: null } : prev)
+    }, [])
+
+    const doMoveFile = useCallback(async (sourceRelPath: string, targetRelPath: string, targetIsDir: boolean) => {
+      if (!rootPath) return
+      const normRoot = rootPath.replace(/\\/g, "/").replace(/\/$/, "")
+      const srcAbs = `${normRoot}/${sourceRelPath}`
+      let dstAbs: string
+      if (targetIsDir) {
+        dstAbs = `${normRoot}/${targetRelPath}/${sourceRelPath.split("/").pop()}`
+      } else {
+        const parts = targetRelPath.split("/")
+        parts.pop()
+        dstAbs = `${normRoot}/${parts.join("/")}/${sourceRelPath.split("/").pop()}`
+      }
+      if (srcAbs === dstAbs) return
+      await actionsRef.current.renameEntry(srcAbs, dstAbs)
+      setDragState(null)
+    }, [rootPath])
+
+    const handleDrop = useCallback((e: React.DragEvent, path: string, isDir: boolean) => {
+      e.preventDefault()
+      const sourcePath = e.dataTransfer.getData("text/plain")
+      if (!sourcePath || sourcePath === path) {
+        setDragState(null)
+        return
+      }
+      doMoveFile(sourcePath, path, isDir)
+    }, [doMoveFile])
 
     const doRename = useCallback((path: string) => {
       startRenaming(path)
@@ -975,6 +1100,12 @@ const WorkspaceExplorer = forwardRef<ExplorerHandle, WorkspaceExplorerProps>(
                       onToggle={handleToggle}
                       onSelect={handleSelect}
                       onContextMenu={handleContextMenu}
+                      onDragStart={handleDragStart}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      isDropTarget={dragState?.dropTarget === node.path}
+                      dropPosition={dragState?.dropTarget === node.path ? dragState.dropPosition : null}
                       rowIndex={row.index}
                     />
                   </div>

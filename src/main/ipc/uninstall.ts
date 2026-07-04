@@ -81,17 +81,6 @@ function safeRmdir(dir: string): void {
   }
 }
 
-function safeUnlink(file: string): void {
-  try {
-    if (existsSync(file)) {
-      rmSync(file, { force: true })
-      console.log(`${LOG_PREFIX} Removed: ${file}`)
-    }
-  } catch (err) {
-    console.error(`${LOG_PREFIX} Error removing ${file}:`, err)
-  }
-}
-
 function copyDir(src: string, dest: string): void {
   if (!existsSync(src)) return
   if (!existsSync(dest)) mkdirSync(dest, { recursive: true })
@@ -118,8 +107,6 @@ export function detectUserData(): UninstallDataInfo {
   const userData = app.getPath('userData')
   const home = app.getPath('home')
   const localAppData = join(home, 'AppData', 'Local', PRODUCT_NAME)
-  const appData = join(home, 'AppData', 'Roaming', PRODUCT_NAME)
-
   const paths: Record<string, string> = {
     appSize: dirname(process.execPath),
     settings: userData,
@@ -231,7 +218,6 @@ export function removeUserData(
 
 export function backupUserData(options: BackupOptions): UninstallBackupInfo {
   const userData = app.getPath('userData')
-  const home = app.getPath('home')
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
   const backupPath = join(app.getPath('temp'), `${PRODUCT_NAME}-backup`, timestamp)
   const items: string[] = []
@@ -339,7 +325,7 @@ export function restoreBackup(backupPath: string): { success: boolean; restored:
   }
 
   try {
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+    JSON.parse(readFileSync(manifestPath, 'utf-8'))
     const userData = app.getPath('userData')
 
     // Restore settings

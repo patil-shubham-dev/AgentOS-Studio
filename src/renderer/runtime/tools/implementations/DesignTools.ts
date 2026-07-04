@@ -7,6 +7,8 @@ import { useDesignStore } from '@/stores/design-store'
 export const DesignCreateArtifactTool: AgentTool = buildTool({
   name: 'design_create_artifact',
   description: 'Create a new design artifact in the DesignWorkspace with component code',
+  namespace: 'design',
+  phase: 'future',
   inputSchema: {
     type: 'object',
     properties: {
@@ -25,7 +27,7 @@ export const DesignCreateArtifactTool: AgentTool = buildTool({
     const n = (input as any)?.name
     return n ? `Creating design "${n}"` : 'Creating a design artifact'
   },
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const a = input as Record<string, any>
     const id = useDesignStore.getState().addArtifact({
       name: String(a.name ?? ''),
@@ -40,6 +42,8 @@ export const DesignCreateArtifactTool: AgentTool = buildTool({
 export const DesignAddVersionTool: AgentTool = buildTool({
   name: 'design_add_version',
   description: 'Add a new version to an existing design artifact',
+  namespace: 'design',
+  phase: 'future',
   inputSchema: {
     type: 'object',
     properties: {
@@ -53,7 +57,7 @@ export const DesignAddVersionTool: AgentTool = buildTool({
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
   requiredCapabilities: () => [ToolCapabilities.SKILL_EXECUTION],
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const a = input as Record<string, string>
     useDesignStore.getState().addVersion(a.artifact_id ?? '', { label: a.label ?? '', code: a.code ?? '', changes: a.changes ?? '' })
     return { data: `Version added to artifact ${a.artifact_id} (${a.label})` }
@@ -63,6 +67,8 @@ export const DesignAddVersionTool: AgentTool = buildTool({
 export const DesignGeneratePreviewTool: AgentTool = buildTool({
   name: 'design_generate_preview',
   description: 'Generate an HTML preview string for a component design',
+  namespace: 'design',
+  phase: 'future',
   inputSchema: {
     type: 'object',
     properties: {
@@ -73,7 +79,7 @@ export const DesignGeneratePreviewTool: AgentTool = buildTool({
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
   requiredCapabilities: () => [ToolCapabilities.SKILL_EXECUTION],
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const code = String(input.code ?? '')
     const html = `<!DOCTYPE html><html><head><script src="https://cdn.tailwindcss.com"></script></head><body class="p-6 bg-[#0a0a0b] text-white min-h-screen"><pre class="bg-[#1a1a2e] p-4 rounded-lg text-sm overflow-auto"><code>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre></body></html>`
     return { data: html }

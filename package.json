@@ -6,16 +6,11 @@
   "author": "AgenticOS (https://agenticos.ai)",
   "main": "./out/main/index.js",
   "type": "module",
-  "bin": {
-    "agentic": "./out/cli/headless.js"
-  },
   "scripts": {
     "dev": "electron-vite dev",
     "dev:renderer": "electron-vite dev --renderer",
     "build": "tsc --noEmit && electron-vite build && node scripts/verify-build.mjs",
     "verify-build": "node scripts/verify-build.mjs",
-    "build:cli": "tsc --project tsconfig.cli.json",
-    "cli": "node dist/cli/headless.js",
     "preview": "electron-vite preview",
     "start": "electron .",
     "lint": "eslint src/renderer --ext .ts,.tsx",

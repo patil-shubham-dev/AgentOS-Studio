@@ -731,29 +731,21 @@ export function RolesTab({ embedded, searchQuery: externalSearchQuery }: RolesTa
         <p className="text-sm text-white/40">Intelligent workers — configured automatically for orchestration</p>
       </div>
 
-      {/* Manager warning */}
+      {/* Manager info — not required for basic coding */}
       {!managerConfigured && roleConfigs.length > 0 && (
-        <div className="rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-orange-500/5 p-4 backdrop-blur-xl">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-              <AlertTriangle className="h-5 w-5 text-amber-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-semibold text-amber-300">Manager Role Not Configured</h3>
-              <p className="text-xs text-amber-200/60 mt-1">
-                The Manager role is required for multi-agent orchestration. {managerRole ? `Configure \"${managerRole.name}\" with a provider and model to enable autonomous workflows.` : "No Manager role found. It should appear in the list below."}
-              </p>
-              {managerRole && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 border-amber-500/20 text-amber-400 hover:bg-amber-500/10 h-7 text-[10px]"
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <Settings2 className="h-3.5 w-3.5 text-white/30 shrink-0" />
+            <p className="text-[11px] text-white/40">
+              The Manager role enables multi-agent orchestration (optional for basic coding). {managerRole && (
+                <button
                   onClick={() => setSelectedId(managerRole.id)}
+                  className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
                 >
-                  <Settings2 className="h-3 w-3 mr-1" /> Configure Manager
-                </Button>
+                  Configure
+                </button>
               )}
-            </div>
+            </p>
           </div>
         </div>
       )}

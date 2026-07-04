@@ -244,6 +244,8 @@ export function registerHttpProxyHandler(): void {
       // Read body chunks in background and forward via IPC events
       const webContents = event.sender
       ;(async () => {
+        const bgT0 = performance.now()
+        console.log(`${LOG_PREFIX} [FLOW:21] background reader loop START for stream ${streamId}`)
         try {
           const reader = response.body!.getReader()
           while (true) {
@@ -253,15 +255,18 @@ export function registerHttpProxyHandler(): void {
             // Convert Uint8Array to number array for IPC (structured clone)
             sendEvent(webContents, `stream-chunk:${streamId}`, { data: Array.from(value) })
           }
+          console.log(`${LOG_PREFIX} [FLOW:22] background reader loop EXITED for stream ${streamId} (aborted=${ctrl.signal.aborted}, elapsed=${Math.round(performance.now() - bgT0)}ms)`)
           if (!ctrl.signal.aborted) {
             sendEvent(webContents, `stream-end:${streamId}`, {})
+            console.log(`${LOG_PREFIX} [FLOW:23] stream-end sent for stream ${streamId}`)
             log(`✓ [stream ${streamId}] complete (${Math.round(performance.now() - t0)}ms)`)
           }
         } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err)
+          console.log(`${LOG_PREFIX} [FLOW:24] background reader loop CAUGHT for stream ${streamId} (aborted=${ctrl.signal.aborted}, err=${errMsg})`)
           if (!ctrl.signal.aborted) {
-            const msg = err instanceof Error ? err.message : String(err)
-            sendEvent(webContents, `stream-error:${streamId}`, { error: msg })
-            log(`✗ [stream ${streamId}] ${msg}`)
+            sendEvent(webContents, `stream-error:${streamId}`, { error: errMsg })
+            log(`✗ [stream ${streamId}] ${errMsg}`)
           }
         } finally {
           activeStreams.delete(streamId)

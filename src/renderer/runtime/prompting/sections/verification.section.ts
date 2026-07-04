@@ -26,7 +26,7 @@ export const verificationSection: SectionDefinition = {
       '3. The typecheck will run again automatically after your next edit.',
       '4. If the issue persists, try a different approach and explain your reasoning.',
       '',
-      'If auto-verification is unavailable (e.g., non-Tauri environment), run `run_command` to verify manually.',
+      'If auto-verification is unavailable, run `run_command` with the project\'s typecheck or test script (e.g., `npm run typecheck`, `npm test`) to verify manually.',
     ].join('\n')
   },
 }

@@ -132,6 +132,10 @@ const api = {
   stdinInput: (opts: { streamId: string; input: string }) => ipcRenderer.invoke('stdin-input', opts),
   stdinEnd: (streamId: string) => ipcRenderer.invoke('stdin-end', streamId),
 
+  // Sandbox execution (OS-level)
+  sandboxExec: (opts: { command: string; args: string[]; cwd: string; policy: Record<string, unknown>; env?: string[] }) =>
+    ipcRenderer.invoke('sandbox-exec', opts),
+
   // Uninstall
   uninstallDetectData: () => ipcRenderer.invoke('uninstall:detect-data'),
   uninstallPerform: (level: string | Record<string, boolean>) => ipcRenderer.invoke('uninstall:perform', level),

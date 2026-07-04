@@ -47,7 +47,7 @@ export class VerificationService {
     return this.regressionValidator.scan(projectRoot)
   }
 
-  async verifyChanges(changedFiles: string[], projectRoot: string, signal?: AbortSignal): Promise<VerificationResult> {
+  async verifyChanges(changedFiles: string[], projectRoot: string, _signal?: AbortSignal): Promise<VerificationResult> {
     if (changedFiles.length === 0) {
       return { passed: true, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"], issues: [] }
     }

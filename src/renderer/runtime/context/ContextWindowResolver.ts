@@ -5,6 +5,7 @@ import {
   COMPACT_MAX_OUTPUT_TOKENS,
   type ModelContextConfig,
 } from './context-types'
+import { TOKEN_CONFIG } from '../runtime-token-limits'
 
 interface ModelCapability {
   maxInputTokens?: number
@@ -157,20 +158,10 @@ export class ContextWindowResolver {
       }
     }
 
-    const roleWindows: Record<string, { window: number; output: number }> = {
-      manager: { window: 64000, output: 4096 },
-      coder: { window: 128000, output: 16000 },
-      design: { window: 64000, output: 12000 },
-      research: { window: 64000, output: 8000 },
-      vision: { window: 32000, output: 8000 },
-      runtime: { window: 32000, output: 8000 },
-      qa: { window: 64000, output: 8000 },
-      browser: { window: 32000, output: 8000 },
-      'fast-inference': { window: 16000, output: 2048 },
-      memory: { window: 64000, output: 8000 },
-    }
-
-    const roleDefault = roleWindows[role] ?? { window: MODEL_CONTEXT_WINDOW_DEFAULT, output: 8192 }
+    const entry = TOKEN_CONFIG[role]
+    const roleDefault = entry
+      ? { window: entry.maxInput, output: entry.maxOutput }
+      : { window: MODEL_CONTEXT_WINDOW_DEFAULT, output: 8192 }
     return {
       effectiveContextWindow: roleDefault.window,
       effectiveMaxOutput: roleDefault.output,

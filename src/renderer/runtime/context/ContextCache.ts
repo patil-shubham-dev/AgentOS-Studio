@@ -73,6 +73,11 @@ export class ContextCache {
   async get<T>(key: string): Promise<CacheEntry<T> | undefined> {
     const l1Hit = this.l1.get(key)
     if (l1Hit) {
+      if (this.isEntryExpired(l1Hit.entry)) {
+        this.l1.delete(key)
+        this.totalMisses++
+        return undefined
+      }
       l1Hit.lastAccessed = Date.now()
       l1Hit.entry.lastAccessed = Date.now()
       l1Hit.entry.accessCount++
@@ -262,6 +267,11 @@ export class ContextCache {
     }
 
     this.l1.set(entry.key, { entry, lastAccessed: Date.now() })
+  }
+
+  private isEntryExpired(entry: CacheEntry<unknown>): boolean {
+    if (entry.ttl <= 0) return false
+    return Date.now() - entry.createdAt > entry.ttl
   }
 
   private isExpired(persisted: L2Persisted): boolean {

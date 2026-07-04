@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron'
-import { spawn } from 'child_process'
+import { spawn, execSync } from 'child_process'
 import { assertPathAllowed } from './path-utils'
 
 const ALLOWED_COMMANDS = new Set([
@@ -91,7 +91,7 @@ export function registerCommandHandlers(): void {
       child.stdout?.on('data', (data: Buffer) => { output += data.toString() })
       child.stderr?.on('data', (data: Buffer) => { output += data.toString() })
       child.on('error', (err) => reject(err.message))
-      child.on('close', (code) => resolve(output))
+      child.on('close', (_code) => resolve(output))
     })
   })
 
@@ -192,5 +192,59 @@ export function registerCommandHandlers(): void {
       } catch { /* ignore */ }
       runningStreams.delete(streamId)
     }
+  })
+
+  ipcMain.handle('sandbox-exec', async (_event, options: { command: string; args: string[]; cwd: string; policy: { readPaths: string[]; writePaths: string[]; network: boolean; execPaths: string[]; maxMemory?: number; maxProcesses?: number; timeout?: number }; env?: string[] }): Promise<{ pid: number; error?: string }> => {
+    const { command, args, cwd, policy, env } = options
+    try {
+      assertPathAllowed(cwd)
+    } catch {
+      return { pid: -1, error: 'CWD not allowed' }
+    }
+
+    const spawnOptions: import('child_process').SpawnOptions = {
+      cwd,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }
+
+    if (policy.maxProcesses) {
+      spawnOptions.maxBuffer = policy.maxProcesses * 1024 * 1024
+    }
+
+    if (env && env.length > 0) {
+      spawnOptions.env = { ...process.env }
+      for (const entry of env) {
+        const eqIdx = entry.indexOf('=')
+        if (eqIdx > 0) {
+          spawnOptions.env[entry.slice(0, eqIdx)] = entry.slice(eqIdx + 1)
+        }
+      }
+    }
+
+    if (process.platform === 'win32') {
+      spawnOptions.windowsHide = true
+    }
+
+    const child = spawn(command, args, spawnOptions)
+
+    if (policy.timeout) {
+      const timeoutMs = policy.timeout * 1000
+      const timer = setTimeout(() => {
+        try {
+          if (child.pid) {
+            if (process.platform === 'win32') {
+              execSync(`taskkill /pid ${child.pid} /f /t`, { stdio: 'ignore' })
+            } else {
+              child.kill('SIGTERM')
+            }
+          }
+        } catch { }
+      }, timeoutMs)
+
+      child.on('close', () => clearTimeout(timer))
+    }
+
+    return { pid: child.pid || -1 }
   })
 }

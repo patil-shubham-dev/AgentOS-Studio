@@ -3,7 +3,8 @@ import { PromptCategory } from '../categories/PromptCategory'
 import type { SectionDefinition, ResolutionContext } from '../registry/SectionDefinition'
 
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  grep_files: 'Search file contents with regex patterns across the workspace. Use this to find relevant code, understand patterns, and locate imports.',
+  grep_files: 'Fast regex/text search using the workspace file index — supports regex, case sensitivity toggle, and subdirectory scoping. Prefer for precise pattern matching when you know roughly what you\'re looking for.',
+  search_content: 'Slower but more resilient text search that walks files directly — supports directory exclusion (node_modules, .git, dist), array-based extension filtering, and automatic literal fallback if regex fails. Prefer when exploring unfamiliar code or excluding build artifacts.',
   glob_files: 'Find files matching glob patterns (e.g. src/**/*.tsx). Use this to discover file organization and project structure.',
   read_file: 'Read the contents of a file. Always read before editing to understand existing patterns.',
   write_file: 'Create a new file or overwrite an existing one (creates directories if needed). Prefer edit_file for existing files.',
@@ -25,7 +26,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
 
 const ROLE_TOOLS: Record<string, string[]> = {
   manager: ['grep_files', 'glob_files', 'read_file', 'run_command'],
-  coder: ['grep_files', 'glob_files', 'read_file', 'write_file', 'edit_file', 'run_command'],
+  coder: ['grep_files', 'search_content', 'glob_files', 'read_file', 'write_file', 'edit_file', 'run_command'],
   vision: ['read_file', 'run_command'],
   research: ['grep_files', 'glob_files', 'read_file', 'run_command'],
   runtime: ['read_file', 'write_file', 'run_command'],

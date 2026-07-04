@@ -1,5 +1,10 @@
 import { join, basename, extname } from 'path'
 import { SkillRegistry, type SkillDefinition } from './SkillRegistry'
+import { explainCodeSkill } from './bundled/explain-code.skill'
+import { fixBugSkill } from './bundled/fix-bug.skill'
+import { addTestsSkill } from './bundled/add-tests.skill'
+import { codeReviewSkill } from './bundled/code-review.skill'
+import { batchParallelSkill } from './bundled/batch-parallel.skill'
 
 let electronApi: Promise<typeof import("@/lib/electron-api")> | undefined
 async function getElectronApi() {
@@ -184,6 +189,13 @@ export class SkillLoader {
     for (const skill of builtInSkills) {
       this.registry.register(skill)
     }
+
+    // Register specialized bundled skills from skill files
+    this.registry.register(explainCodeSkill)
+    this.registry.register(fixBugSkill)
+    this.registry.register(addTestsSkill)
+    this.registry.register(codeReviewSkill)
+    this.registry.register(batchParallelSkill)
   }
 
   async loadProjectSkills(projectRoot: string): Promise<number> {

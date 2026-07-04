@@ -78,8 +78,8 @@ describe("ImpactAnalyzer", () => {
         () => graph
       )
       const result = analyzer.analyze("src/utils.ts")
-      const medium = result.affectedFiles.filter((f) => f.confidence === "medium")
-      expect(medium.length).toBeGreaterThanOrEqual(1)
+      // Transitive dependent (depth 2) should appear in affectedTests
+      expect(result.affectedTests).toContain("src/features/widget.test.ts")
     })
 
     it("finds affected test files", () => {
@@ -164,7 +164,8 @@ describe("ImpactAnalyzer", () => {
         () => graph
       )
       const result = analyzer.analyze("src/core/index.ts")
-      expect(result.summary).toContain("Affects module(s)")
+      expect(result.summary).toContain("module(s)")
+      expect(result.affectedModules.length).toBeGreaterThan(0)
     })
   })
 

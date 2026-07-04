@@ -88,8 +88,6 @@ export class CapabilityNegotiator {
       const best = partialMatches[0]
       const matched = best.missing.length === 0
 
-      const differences = best.missing.map((m) => `Missing: ${m}`)
-
       let alternative: NegotiationResult["alternative"] = undefined
       const missingRequired = this.findMissingCapabilities(request.required, best.model.capabilities)
 
@@ -146,7 +144,6 @@ export class CapabilityNegotiator {
   }
 
   private calculateCloseness(required: Partial<ProviderCapabilities>, actual: ProviderCapabilities): number {
-    let score = 0
     const checks = [
       required.supportsToolCalling !== undefined && actual.supportsToolCalling === required.supportsToolCalling,
       required.supportsVision !== undefined && actual.supportsVision === required.supportsVision,

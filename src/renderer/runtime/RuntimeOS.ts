@@ -1,5 +1,4 @@
 import { ToolRegistry } from './tools/registry/ToolRegistry'
-import { ToolResolver } from './tools/registry/ToolResolver'
 import { ToolPoolAssembler } from './tools/registry/ToolPoolAssembler'
 import { ToolExecutionPipeline } from './tools/execution/ToolExecutionPipeline'
 import { ToolExecutionPolicy } from './tools/policies/ToolExecutionPolicy'
@@ -21,18 +20,8 @@ import { MemoryArchitecture } from './memory/unified/MemoryArchitecture'
 import { CostTracker } from './cost/CostTracker'
 import { DiskBackedResultStore } from './tools/storage/DiskBackedResultStore'
 
-import { ToolTaskExecutor } from '@/runtime/orchestration/ToolTaskExecutor'
-import { ExecutionCoordinator } from '@/runtime/orchestration/ExecutionCoordinator'
-import { OrchestrationEventBus } from '@/runtime/orchestration/events'
-import { MetricsCollector } from '@/runtime/orchestration/MetricsCollector'
-import {
-  JsonLogTaskStore,
-  LocalStorageBackend,
-  LocalStorageWalStore,
-  LocalStorageHistoryStore,
-  RecoveryManager,
-} from '@/runtime/orchestration/persistence'
-import { ALL_BUILTIN_TOOLS } from '@/runtime/tools/implementations'
+import { CODING_TOOLS } from '@/runtime/tools/implementations'
+import { isFeatureEnabled } from '@/app/feature-flags'
 import { RuntimeCleanupManager } from "./RuntimeCleanupManager"
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { PromptCacheManager } from '@/runtime/caching/PromptCacheManager'
@@ -50,17 +39,10 @@ export class RuntimeOS {
   private static instance: RuntimeOS
 
   readonly toolRegistry: ToolRegistry
-  readonly toolResolver: ToolResolver
   readonly toolPoolAssembler: ToolPoolAssembler
   readonly toolExecutionPipeline: ToolExecutionPipeline
   readonly toolExecutionPolicy: ToolExecutionPolicy
   readonly toolConcurrencyPolicy: ToolConcurrencyPolicy
-  readonly toolTaskExecutor: ToolTaskExecutor
-  executionCoordinator: ExecutionCoordinator | null = null
-  readonly orchestrationEventBus: OrchestrationEventBus
-  readonly orchestrationMetrics: MetricsCollector
-
-  readonly mcpRegistry: MCPRegistry
   readonly mcpServerManager: MCPServerManager
 
   readonly permissionEngine: PermissionEngine
@@ -81,7 +63,6 @@ export class RuntimeOS {
 
   private constructor() {
     this.toolRegistry = new ToolRegistry()
-    this.toolResolver = new ToolResolver(this.toolRegistry)
     this.toolPoolAssembler = new ToolPoolAssembler(this.toolRegistry)
 
     this.permissionEngine = new PermissionEngine()
@@ -92,16 +73,9 @@ export class RuntimeOS {
     this.toolExecutionPipeline.registerPreHook(sandboxPathMapper)
     this.toolExecutionPolicy = new ToolExecutionPolicy()
     this.toolConcurrencyPolicy = new ToolConcurrencyPolicy()
-    this.toolTaskExecutor = new ToolTaskExecutor({
-      registry: this.toolRegistry,
-      pipeline: this.toolExecutionPipeline,
-      permissionEngine: this.permissionEngine,
-    })
-    this.orchestrationEventBus = new OrchestrationEventBus()
-    this.orchestrationMetrics = new MetricsCollector()
 
-    this.mcpRegistry = new MCPRegistry()
-    this.mcpServerManager = new MCPServerManager(this.mcpRegistry, this.toolRegistry)
+    const mcpRegistry = new MCPRegistry()
+    this.mcpServerManager = new MCPServerManager(mcpRegistry, this.toolRegistry)
 
     this.skillRegistry = new SkillRegistry()
     this.skillLoader = new SkillLoader(this.skillRegistry)
@@ -153,8 +127,8 @@ export class RuntimeOS {
 
     const already = this.toolRegistry.size().builtin
     if (already === 0) {
-      this.toolRegistry.registerMany(ALL_BUILTIN_TOOLS)
-      this.toolRegistry.registerBuiltinToolDefs(ALL_BUILTIN_TOOLS.map(t => ({
+      this.toolRegistry.registerMany(CODING_TOOLS)
+      this.toolRegistry.registerBuiltinToolDefs(CODING_TOOLS.map(t => ({
         name: t.name,
         aliases: (t as any).aliases,
         description: t.description,
@@ -171,68 +145,83 @@ export class RuntimeOS {
       allowBackground: true,
     })
 
-    this.initCoordinator()
-
-    if (mcpServers && mcpServers.length > 0) {
+    if (isFeatureEnabled('mcp') && mcpServers && mcpServers.length > 0) {
       for (const cfg of mcpServers) {
         this.mcpServerManager.addServer(cfg)
       }
-      await this.mcpRegistry.connectAll()
+      await this.mcpServerManager.connectAll()
       this.mcpServerManager.syncAllTools()
       this.mcpServerManager.startHealthChecks()
     }
 
     // Initialize skills
-    this.skillLoader.loadBundledSkills()
+    if (isFeatureEnabled('skills')) {
+      this.skillLoader.loadBundledSkills()
+    }
     const rootPath = useWorkspaceStore.getState().rootPath
     if (rootPath) {
-      await this.skillLoader.loadProjectSkills(rootPath)
+      if (isFeatureEnabled('skills')) {
+        await this.skillLoader.loadProjectSkills(rootPath)
+      }
       await this.memoryArchitecture.initialize()
       await this.diskBackedStore.initialize(rootPath)
 
       // ── Start config file watcher (needs rootPath) ──
-      configWatcher.start(rootPath)
-      configWatcher.onChange((_source, _filePath) => {
-        // Invalidate caches on config change
-        PromptCacheManager.getInstance().invalidate('config')
-        configLoader.invalidateCache()
-      })
+      if (isFeatureEnabled('configWatcher')) {
+        configWatcher.start(rootPath)
+        configWatcher.onChange((_source, _filePath) => {
+          PromptCacheManager.getInstance().invalidate('config')
+          configLoader.invalidateCache()
+        })
+      }
 
       // ── Start live graph engine for real-time intelligence sync ──
-      await liveGraphEngine.start()
+      if (isFeatureEnabled('liveGraphEngine')) {
+        await liveGraphEngine.start()
+      }
 
       // ── Enhance graph with AST-level edges from TS compiler ──
-      try {
-        const { ASTEnhancedGraph } = await import('@/runtime/intelligence/ASTEnhancedGraph')
-        const enhancer = new ASTEnhancedGraph()
-        const result = await enhancer.enhance()
-        if (result.edges.length > 0) {
-          console.log(`[RuntimeOS] ASTEnhancedGraph: ${result.edges.length} edges added (${result.totalPropertyAccess} props, ${result.totalJSXRefs} JSX, ${result.totalEventHandlers} handlers, ${result.totalGenerics} generics, ${result.totalTypeRefs} type-refs)`)
+      if (isFeatureEnabled('astGraph')) {
+        try {
+          const { ASTEnhancedGraph } = await import('@/runtime/intelligence/ASTEnhancedGraph')
+          const enhancer = new ASTEnhancedGraph()
+          const result = await enhancer.enhance()
+          if (result.edges.length > 0) {
+            console.log(`[RuntimeOS] ASTEnhancedGraph: ${result.edges.length} edges added (${result.totalPropertyAccess} props, ${result.totalJSXRefs} JSX, ${result.totalEventHandlers} handlers, ${result.totalGenerics} generics, ${result.totalTypeRefs} type-refs)`)
+          }
+        } catch (err) {
+          console.warn('[RuntimeOS] ASTEnhancedGraph enhancement failed:', err)
         }
-      } catch (err) {
-        console.warn('[RuntimeOS] ASTEnhancedGraph enhancement failed:', err)
       }
 
       // ── Initialize reliability suite with circuit breakers ──
-      const reliabilitySuite = ExecutionReliabilitySuite.getInstance()
-      reliabilitySuite.createCircuitBreaker("execution", 5)
-      reliabilitySuite.createCircuitBreaker("verification", 3)
-      reliabilitySuite.createCircuitBreaker("provider", 3)
-      setTimeout(() => {
-        reliabilitySuite.runHealthChecks().then(checks => {
-          const failed = checks.filter(c => !c.passed)
-          if (failed.length > 0) {
-            console.warn(`[RuntimeOS] ${failed.length} health check(s) failed:`, failed.map(c => c.name).join(', '))
-          }
-        }).catch(() => {})
-      }, 1000)
+      if (isFeatureEnabled('reliabilitySuite')) {
+        const reliabilitySuite = ExecutionReliabilitySuite.getInstance()
+        reliabilitySuite.createCircuitBreaker("execution", 5)
+        reliabilitySuite.createCircuitBreaker("verification", 3)
+        reliabilitySuite.createCircuitBreaker("provider", 3)
+        setTimeout(() => {
+          reliabilitySuite.runHealthChecks().then(checks => {
+            const failed = checks.filter(c => !c.passed)
+            if (failed.length > 0) {
+              console.warn(`[RuntimeOS] ${failed.length} health check(s) failed:`, failed.map(c => c.name).join(', '))
+            }
+          }).catch(() => {})
+        }, 1000)
+      }
     }
-    await this.skillLoader.loadUserSkills()
+    if (isFeatureEnabled('skills')) {
+      await this.skillLoader.loadUserSkills()
+    }
 
     // Start listening for session completions for cross-session memory
-    sessionMemoryExtractor.startListening()
+    if (isFeatureEnabled('sessionMemory')) {
+      sessionMemoryExtractor.startListening()
+    }
 
-    await this.loadBuiltinPlugins()
+    if (isFeatureEnabled('plugins')) {
+      await this.loadBuiltinPlugins()
+    }
     this.initialized = true
   }
 
@@ -246,41 +235,29 @@ export class RuntimeOS {
     await pluginRegistry.dispatchOnInit()
   }
 
-  private initCoordinator(): void {
-    try {
-      const storage = new LocalStorageBackend("opencode_orchestration")
-      const walStore = new LocalStorageWalStore("opencode_orchestration_wal")
-      const historyStore = new LocalStorageHistoryStore("opencode_orchestration_history")
-      const taskStore = new JsonLogTaskStore({
-        storage,
-        walStore,
-        historyStore,
-        storagePrefix: "orchestration",
-      })
-      const recoveryManager = new RecoveryManager(taskStore)
-
-      this.executionCoordinator = new ExecutionCoordinator({
-        taskStore,
-        writeAheadLog: taskStore.writeAheadLog,
-        taskHistory: taskStore.taskHistory,
-        recoveryManager,
-        eventBus: this.orchestrationEventBus,
-        metricsCollector: this.orchestrationMetrics,
-        taskExecutor: this.toolTaskExecutor,
-        maxConcurrentTasks: this.toolExecutionPolicy.getDefaultPolicy().maxConcurrent,
-        resourceLimits: {
-          maxConcurrentTasks: this.toolExecutionPolicy.getDefaultPolicy().maxConcurrent,
-        },
-      })
-    } catch (err) {
-      console.warn("[RuntimeOS] Failed to initialize ExecutionCoordinator:", err)
+  async registerIslandTools(namespace: 'browser' | 'design'): Promise<void> {
+    const mod = await import('@/runtime/tools/implementations/extended-tools')
+    const tools = namespace === 'browser' ? mod.BROWSER_TOOLS : mod.DESIGN_TOOLS
+    const existing = new Set(this.toolRegistry.getAllBuiltin().map(t => t.name))
+    for (const tool of tools) {
+      if (!existing.has(tool.name)) {
+        this.toolRegistry.register(tool)
+        this.toolRegistry.registerBuiltinToolDefs([{
+          name: tool.name,
+          aliases: (tool as any).aliases,
+          description: tool.description,
+          parameters: tool.inputSchema as Record<string, unknown>,
+          isReadOnly: tool.isReadOnly({}),
+          isConcurrencySafe: tool.isConcurrencySafe({}),
+        }])
+      }
     }
   }
 
   async shutdown(): Promise<void> {
     liveGraphEngine.stop()
     this.mcpServerManager.stopHealthChecks()
-    await this.mcpRegistry.disconnectAll()
+    await this.mcpServerManager.disconnectAll()
     this.toolConcurrencyPolicy.clear()
     // Clean up cache subscription listeners
     for (const unsub of this._cacheUnsubscribers) {
@@ -291,7 +268,6 @@ export class RuntimeOS {
     configWatcher.stop()
     // Stop session memory listening
     sessionMemoryExtractor.stopListening()
-    this.executionCoordinator = null
     this.initialized = false
   }
 
@@ -303,7 +279,7 @@ export class RuntimeOS {
     cost: { totalCost: string; totalTokens: string }
   } {
     const toolSizes = this.toolRegistry.size()
-    const mcpClients = this.mcpRegistry.getAll()
+    const mcpClients = this.mcpServerManager.getAllClients()
     const skillSizes = this.skillRegistry.size()
     const costSummary = this.costTracker.getSummary()
 
@@ -316,7 +292,7 @@ export class RuntimeOS {
       },
       mcp: {
         servers: mcpClients.length,
-        connected: this.mcpRegistry.getConnected().length,
+        connected: this.mcpServerManager.getConnectedCount(),
       },
       skills: {
         total: skillSizes.total,
@@ -326,7 +302,9 @@ export class RuntimeOS {
         plugin: skillSizes.plugin,
       },
       memory: {
-        totalEntries: this.memoryArchitecture.isInitialized() ? 0 : 0,
+        totalEntries: this.memoryArchitecture.isInitialized()
+          ? this.memoryArchitecture.getTotalEntryCount()
+          : 0,
       },
       cost: {
         totalCost: this.costTracker.formatCost(costSummary.totalCost),

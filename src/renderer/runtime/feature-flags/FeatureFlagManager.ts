@@ -6,6 +6,27 @@ export type FeatureFlag =
   | "autoMemory"
   | "contextCache"
   | "unifiedExecutor"
+  | "showInternalAgentLabels"
+  | "codingCore"
+  | "browserIsland"
+  | "designIsland"
+  | "deviceControlIsland"
+  | "browserToolsInCoding"
+  | "designToolsInCoding"
+  | "deviceToolsInCoding"
+  | "browserContextInCoding"
+  | "designContextInCoding"
+  | "deviceContextInCoding"
+  | "advancedAgents"
+  | "longTermMemory"
+  | "plugins"
+  | "mcp"
+  | "astGraph"
+  | "liveGraphEngine"
+  | "configWatcher"
+  | "sessionMemory"
+  | "skills"
+  | "reliabilitySuite"
 
 export class FeatureFlagManager {
   private static instance: FeatureFlagManager
@@ -19,6 +40,27 @@ export class FeatureFlagManager {
     autoMemory: true,
     contextCache: true,
     unifiedExecutor: false,
+    showInternalAgentLabels: false,
+    codingCore: true,
+    browserIsland: false,
+    designIsland: false,
+    deviceControlIsland: false,
+    browserToolsInCoding: false,
+    designToolsInCoding: false,
+    deviceToolsInCoding: false,
+    browserContextInCoding: false,
+    designContextInCoding: false,
+    deviceContextInCoding: false,
+    advancedAgents: false,
+    longTermMemory: false,
+    plugins: false,
+    mcp: false,
+    astGraph: false,
+    liveGraphEngine: false,
+    configWatcher: true,
+    sessionMemory: true,
+    skills: true,
+    reliabilitySuite: true,
   }
 
   static getInstance(): FeatureFlagManager {
@@ -54,5 +96,9 @@ export class FeatureFlagManager {
     for (const [key, value] of Object.entries(this.defaults)) {
       this.flags.set(key as FeatureFlag, value)
     }
+  }
+
+  static isFeatureFlagEnabled(flag: FeatureFlag): boolean {
+    return FeatureFlagManager.getInstance().isEnabled(flag)
   }
 }

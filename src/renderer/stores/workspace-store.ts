@@ -98,6 +98,10 @@ interface WorkspaceStore {
   setEditorMode: (mode: EditorMode) => void
   openFileInDiffMode: (filePath: string) => void
 
+  // Global search overlay
+  searchOpen: boolean
+  setSearchOpen: (open: boolean) => void
+
   // Pinned files
   pinnedFiles: string[]
   recentlyOpened: { path: string; timestamp: number }[]
@@ -108,6 +112,10 @@ interface WorkspaceStore {
   togglePinFile: (path: string) => void
   persistWorkspaceState: () => void
   restoreWorkspaceState: () => void
+
+  // Reveal a path in the file explorer tree (set by BreadcrumbNav, consumed by WorkspaceExplorer)
+  revealInExplorer: string | null
+  setRevealInExplorer: (path: string | null) => void
 }
 
 // ── Tree rendering limits (prevent context-window blowout) ──
@@ -223,6 +231,7 @@ export function getWorkspaceContextSnapshot(): {
   unsavedChanges: number
   recentEdits: { path: string; timestamp: number }[]
   fileTreeSummary: string
+  pinnedFiles: string[]
   rootPath: string | null
   isUserActive: boolean
   lastUserActivity: number
@@ -271,6 +280,7 @@ export function getWorkspaceContextSnapshot(): {
     recentEdits,
     fileTreeSummary: treeSummary,
     rootPath: state.rootPath,
+    pinnedFiles: state.pinnedFiles,
     isUserActive: state.isUserActive,
     lastUserActivity: state.lastUserActivity,
   }
@@ -297,8 +307,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   runtimeConfig: { ...DEFAULT_RUNTIME_CONFIG },
   workspaceLoaded: false,
 
+  searchOpen: false,
+
   pinnedFiles: [],
   recentlyOpened: [],
+  revealInExplorer: null,
 
   setRootPath: async (path) => {
     set({
@@ -665,7 +678,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   lastUserActivity: 0,
   setUserActive: (active) => {
     if (!active) {
-      // Flush any deferred AI context refreshes now that the editor is blurred
       flushDeferredRefresh()
     }
     return set((s) => ({
@@ -673,6 +685,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       lastUserActivity: active ? Date.now() : s.lastUserActivity,
     }))
   },
+
+  setSearchOpen: (open) => set({ searchOpen: open }),
 
   lastEditedFile: null,
 
@@ -700,6 +714,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   recordFileEdit: (path) => set({ lastEditedFile: path }),
+
+  setRevealInExplorer: (path) => set({ revealInExplorer: path }),
 
   persistWorkspaceState: () => {
     const { openFiles, activeFilePath, cursorLine, cursorColumn, visibleRangeStart, visibleRangeEnd, splitMode, splitFilePath, editorMode, diffReviewFile, pinnedFiles } = get()

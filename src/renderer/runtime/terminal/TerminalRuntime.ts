@@ -1,5 +1,6 @@
 import { normalizeError } from "@/lib/normalize-error"
 import { emitTelemetry } from "@/lib/telemetry"
+import { isCommandBlocked } from "@/runtime/security/SecurityPolicy"
 
 export interface TerminalRunResult {
   command: string
@@ -43,6 +44,11 @@ export class TerminalRuntime {
     cwd: string | null,
     options?: { stepId?: string; role?: string }
   ): Promise<TerminalRunResult> {
+    const blocked = isCommandBlocked(command)
+    if (blocked.blocked) {
+      emitTelemetry({ type: "command_blocked", timestamp: Date.now(), error: blocked.reason ?? "Blocked by security policy", metadata: { command: command.slice(0, 120) } })
+      return { command, output: `[BLOCKED] ${blocked.reason}`, exitCode: 1, durationMs: 0 }
+    }
     const startedAt = performance.now()
     const eapi = getEapi()
     const parts = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [command]
@@ -68,6 +74,15 @@ export class TerminalRuntime {
 
     if (signal?.aborted) {
       yield { type: "COMMAND_COMPLETE", exitCode: -1 }
+      return
+    }
+
+    const blocked = isCommandBlocked(command)
+    if (blocked.blocked) {
+      emitTelemetry({ type: "command_blocked", timestamp: Date.now(), error: blocked.reason ?? "Blocked by security policy", metadata: { command: command.slice(0, 120) } })
+      onOutput?.(`[BLOCKED] ${blocked.reason}`)
+      yield { type: "OUTPUT_LINE", line: `[BLOCKED] ${blocked.reason}` }
+      yield { type: "COMMAND_COMPLETE", exitCode: 1 }
       return
     }
 

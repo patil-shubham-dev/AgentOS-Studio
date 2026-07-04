@@ -66,7 +66,7 @@ export class BridgeAuth {
   validateApiKey(apiKey: string): BridgeToken | null {
     const entry = this.apiKeys.get(apiKey)
     if (!entry) return null
-    return this.generateToken(entry.clientId, entry.role)
+    return this.validateToken(this.generateToken(entry.clientId, entry.role))
   }
 
   revokeToken(tokenStr: string): void {

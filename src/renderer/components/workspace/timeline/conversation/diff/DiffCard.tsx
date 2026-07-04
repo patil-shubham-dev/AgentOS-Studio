@@ -7,6 +7,8 @@ import type { DiffHunk } from "./diff-utils"
 import type { FileEditRecord } from "../../step-card"
 import { useDiffStore } from "@/stores/diff-store"
 import { acceptDiffReviewHunk, rejectDiffReviewHunk } from "@/lib/diff-review"
+import { ChangeSetManager } from "@/runtime/changeset/ChangeSetManager"
+import { useChangeSetStore } from "@/runtime/changeset/ChangeSetStore"
 import DOMPurify from "dompurify"
 
 interface DiffCardProps {
@@ -148,10 +150,24 @@ export const DiffCard = memo(function DiffCard({
 
   const handleAcceptHunk = useCallback((path: string, hunkIndex: number) => {
     void acceptDiffReviewHunk(path, hunkIndex)
+    const changeSets = useChangeSetStore.getState().getPendingChangeSets()
+    for (const cs of changeSets) {
+      const csFile = cs.files.find((f) => f.path === path)
+      if (csFile && csFile.hunks[hunkIndex]) {
+        ChangeSetManager.getInstance().acceptHunk(cs.id, csFile.id, csFile.hunks[hunkIndex].id)
+      }
+    }
   }, [])
 
   const handleRejectHunk = useCallback((path: string, hunkIndex: number) => {
     void rejectDiffReviewHunk(path, hunkIndex)
+    const changeSets = useChangeSetStore.getState().getPendingChangeSets()
+    for (const cs of changeSets) {
+      const csFile = cs.files.find((f) => f.path === path)
+      if (csFile && csFile.hunks[hunkIndex]) {
+        ChangeSetManager.getInstance().rejectHunk(cs.id, csFile.id, csFile.hunks[hunkIndex].id)
+      }
+    }
   }, [])
 
   if (!computed) return null

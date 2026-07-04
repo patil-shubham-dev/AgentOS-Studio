@@ -55,3 +55,9 @@ tests/fixtures/repos/
 
 # Benchmark generated data
 benchmarks/
+
+# Lavish output
+.lavish/
+
+# VibeCoder
+vibecoder/

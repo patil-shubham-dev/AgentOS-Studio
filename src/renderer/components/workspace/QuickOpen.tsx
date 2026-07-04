@@ -7,6 +7,8 @@ import { Search, File, X, ArrowUp, ArrowDown, Loader2, Sparkles } from "lucide-r
 import type { SearchResult } from "@/lib/search-index"
 import { semanticSearch } from "@/lib/semantic-search"
 import { readFile } from "@/lib/filesystem"
+import { stat } from "@/lib/electron-api"
+import { useToastStore } from "@/stores/toast-store"
 
 interface QuickOpenProps {
   open: boolean
@@ -100,6 +102,15 @@ export function QuickOpen({ open, onClose }: QuickOpenProps) {
     const loadAndOpen = async () => {
       try {
         const fullPath = rp + "\\" + filePath.replace(/\//g, "\\")
+        const stats = await stat(fullPath)
+        const fileSize = stats?.size ?? 0
+        const LARGE_FILE_WARN_THRESHOLD = 5 * 1024 * 1024
+        if (fileSize > LARGE_FILE_WARN_THRESHOLD) {
+          useToastStore.getState().addToast(
+            `Large file (${(fileSize / 1024 / 1024).toFixed(1)}MB) — may affect editor performance`,
+            "warn", 5000,
+          )
+        }
         const content = await readFile(fullPath)
         const name = filePath.split("/").pop() || filePath
         openFile({ path: filePath, name, content, isDirty: false })

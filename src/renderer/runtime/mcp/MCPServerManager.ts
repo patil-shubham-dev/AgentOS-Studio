@@ -121,4 +121,20 @@ export class MCPServerManager {
   getAllTools(): AgentTool[] {
     return this.registry.getEnabledTools()
   }
+
+  async connectAll(): Promise<void> {
+    await this.registry.connectAll()
+  }
+
+  async disconnectAll(): Promise<void> {
+    await this.registry.disconnectAll()
+  }
+
+  getAllClients(): import('./MCPClient').MCPClient[] {
+    return this.registry.getAll()
+  }
+
+  getConnectedCount(): number {
+    return this.registry.getConnected().length
+  }
 }

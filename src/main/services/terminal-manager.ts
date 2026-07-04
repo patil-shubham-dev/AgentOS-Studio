@@ -1,6 +1,4 @@
 import { BrowserWindow, app } from 'electron'
-import * as path from 'path'
-import * as fs from 'fs'
 
 export interface TerminalSession {
   id: string
@@ -36,6 +34,7 @@ export class TerminalManager {
   private nextId = 1
 
   create(options?: { shellPath?: string; cwd?: string }): string {
+    const id = String(this.nextId++)
     let shellPath = options?.shellPath || (process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash')
 
     // Validate shell path

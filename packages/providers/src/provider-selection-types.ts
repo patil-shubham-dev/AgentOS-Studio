@@ -1,4 +1,14 @@
 import type { ProviderCapabilities } from "./transport-adapters"
+import type { UnifiedHealthRecord } from "./provider-health"
+
+export type ProviderCatalogEntry = {
+  providerId: string
+  providerName: string
+  baseUrl: string
+  model: string
+  capabilities: ProviderCapabilities
+  health: UnifiedHealthRecord
+}
 
 export interface SelectionRequest {
   requiredCapabilities?: Partial<ProviderCapabilities>

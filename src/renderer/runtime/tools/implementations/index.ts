@@ -11,16 +11,27 @@ import { DelegateSubtaskTool } from './DelegateTool'
 import { RunSkillTool } from './SkillTool'
 import { QueryCodebaseTool } from './QueryCodebaseTool'
 import { QueryGraphTool } from './QueryGraphTool'
-import { DesignCreateArtifactTool, DesignAddVersionTool, DesignGeneratePreviewTool } from './DesignTools'
+import { SavePreferenceTool } from '@/core/tools/SavePreferenceTool'
+import { QuestionTool } from './QuestionTool'
+import { TodoWriteTool } from './TodoWriteTool'
+import { RenameTool } from './RenameTool'
+import { CodeExplainTool } from './CodeExplainTool'
+import { GitCommitTool } from './GitCommitTool'
+import { CodeCompletionTool } from './CodeCompletionTool'
 import {
-  LaunchBrowserTool, BrowserNavigateTool, BrowserScreenshotTool,
-  BrowserClickTool, BrowserFillTool, BrowserExecuteJsTool,
-  BrowserGetTitleTool, BrowserGetTextTool, BrowserWaitTool,
-  BrowserCloseTool, BrowserGetUrlTool, BrowserPressKeyTool,
-  BrowserReloadTool, BrowserNewTabTool, BrowserListTabsTool,
-} from './BrowserTools'
+  GithubListIssuesTool,
+  GithubCreateIssueTool,
+  GithubCloseIssueTool,
+  GithubListPullRequestsTool,
+  GithubCreatePullRequestTool,
+  GithubMergePullRequestTool,
+  GithubSearchIssuesTool,
+  GithubSearchRepoTool,
+} from './github/github-tools'
+import { GithubReviewPullRequestTool } from './github/GithubReviewPullRequestTool'
+import { BatchParallelTaskTool } from './batch/BatchParallelTaskTool'
 
-export const ALL_BUILTIN_TOOLS = [
+export const CODING_TOOLS = [
   ReadFileTool,
   WriteFileTool,
   EditFileTool,
@@ -34,24 +45,23 @@ export const ALL_BUILTIN_TOOLS = [
   RunSkillTool,
   QueryCodebaseTool,
   QueryGraphTool,
-  DesignCreateArtifactTool,
-  DesignAddVersionTool,
-  DesignGeneratePreviewTool,
-  LaunchBrowserTool,
-  BrowserNavigateTool,
-  BrowserScreenshotTool,
-  BrowserClickTool,
-  BrowserFillTool,
-  BrowserExecuteJsTool,
-  BrowserGetTitleTool,
-  BrowserGetTextTool,
-  BrowserWaitTool,
-  BrowserCloseTool,
-  BrowserGetUrlTool,
-  BrowserPressKeyTool,
-  BrowserReloadTool,
-  BrowserNewTabTool,
-  BrowserListTabsTool,
+  SavePreferenceTool,
+  QuestionTool,
+  TodoWriteTool,
+  RenameTool,
+  CodeExplainTool,
+  GitCommitTool,
+  CodeCompletionTool,
+  GithubListIssuesTool,
+  GithubCreateIssueTool,
+  GithubCloseIssueTool,
+  GithubListPullRequestsTool,
+  GithubCreatePullRequestTool,
+  GithubMergePullRequestTool,
+  GithubSearchIssuesTool,
+  GithubSearchRepoTool,
+  GithubReviewPullRequestTool,
+  BatchParallelTaskTool,
 ]
 
 export {
@@ -68,22 +78,21 @@ export {
   RunSkillTool,
   QueryCodebaseTool,
   QueryGraphTool,
-  DesignCreateArtifactTool,
-  DesignAddVersionTool,
-  DesignGeneratePreviewTool,
-  LaunchBrowserTool,
-  BrowserNavigateTool,
-  BrowserScreenshotTool,
-  BrowserClickTool,
-  BrowserFillTool,
-  BrowserExecuteJsTool,
-  BrowserGetTitleTool,
-  BrowserGetTextTool,
-  BrowserWaitTool,
-  BrowserCloseTool,
-  BrowserGetUrlTool,
-  BrowserPressKeyTool,
-  BrowserReloadTool,
-  BrowserNewTabTool,
-  BrowserListTabsTool,
+  SavePreferenceTool,
+  QuestionTool,
+  TodoWriteTool,
+  RenameTool,
+  CodeExplainTool,
+  GitCommitTool,
+  CodeCompletionTool,
+  GithubListIssuesTool,
+  GithubCreateIssueTool,
+  GithubCloseIssueTool,
+  GithubListPullRequestsTool,
+  GithubCreatePullRequestTool,
+  GithubMergePullRequestTool,
+  GithubSearchIssuesTool,
+  GithubSearchRepoTool,
+  GithubReviewPullRequestTool,
+  BatchParallelTaskTool,
 }

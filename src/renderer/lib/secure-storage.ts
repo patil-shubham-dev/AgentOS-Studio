@@ -1,4 +1,4 @@
-const STORAGE_PREFIX = "agentic-secure:"
+﻿const STORAGE_PREFIX = "agentic-secure:"
 const FALLBACK_KEY_PREFIX = "agentic-key:"
 
 type StorageBackend = "tauri" | "electron" | "localstorage" | "none"

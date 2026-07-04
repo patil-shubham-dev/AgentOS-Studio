@@ -50,7 +50,7 @@ export const QueryGraphTool: AgentTool = buildTool({
     const s = (input as any)?.symbol
     return t ? `query_graph ${t}: ${f || s || ''}` : 'Querying repository graph'
   },
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const queryType = String(input.type ?? '')
     const filePath = input.file ? String(input.file) : undefined
     const symbolName = input.symbol ? String(input.symbol) : undefined

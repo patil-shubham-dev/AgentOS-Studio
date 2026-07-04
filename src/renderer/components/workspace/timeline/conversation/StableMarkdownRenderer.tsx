@@ -101,7 +101,7 @@ export const StableMarkdownRenderer = memo(function StableMarkdownRenderer({
 
       {/* Streaming-only: ensure visible cursor even when markdown renders no text */}
       {isStreaming && !text && (
-        <span className="inline-block w-[2px] h-4 bg-blue-400/60 animate-pulse" />
+        <span className="inline-block w-[2px] h-[1em] bg-blue-400/60 animate-pulse" />
       )}
     </div>
   )

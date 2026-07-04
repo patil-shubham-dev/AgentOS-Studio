@@ -1,4 +1,4 @@
-import { BrowserWindow, app, dialog, Notification, ipcMain } from 'electron'
+import { BrowserWindow, dialog } from 'electron'
 import pkg from 'electron-updater'
 const { autoUpdater } = pkg
 

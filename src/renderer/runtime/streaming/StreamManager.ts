@@ -55,6 +55,7 @@ export class StreamManager {
     }
 
     this.idle = false
+    this.lastActivityAt = Date.now()
 
     const result = this.wordBuffer.append(stepId, token)
     if (result !== null) {

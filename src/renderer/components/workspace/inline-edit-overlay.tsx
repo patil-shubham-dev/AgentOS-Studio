@@ -18,7 +18,7 @@ interface InlineEditState {
   streaming: boolean
   tokenCount: number
   error: string | null
-  viewMode: "edit" | "diff"
+  viewMode: "edit" | "diff" | "explain" | "optimize"
 }
 
 interface InlineEditOverlayProps {

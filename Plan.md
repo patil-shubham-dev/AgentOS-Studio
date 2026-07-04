@@ -570,6 +570,175 @@ Fix all P0 and P1 bugs from [Section 11](#11-critical-bug-fixes-pre-feature-work
 
 ---
 
+## 14. Architectural Restoration Issues (Post-Audit)
+
+Found during comprehensive codebase audit on 2026-06-30. Listed by priority.
+
+### Critical (Security/Stability)
+
+**Issue 14-1: Two independent streaming/fallback paths for fast chat**
+- `UnifiedExecutor.fastPath()` (lines 299-450) reimplements streaming + fallback + timeout logic instead of delegating to `AgentExecutor` in FAST mode.
+- Any bugfix to AgentExecutor's retry/fallback must be duplicated.
+- **Fix:** `fastPath()` should delegate to `AgentExecutor.executeFast()`.
+
+**Issue 14-2: Four overlapping permission/approval systems**
+- `PermissionEngine` → `PolicyResolver` → `ApprovalManager` (runtime pipeline)
+- `useApprovalStore` + `requestCommandApproval()` (UI-level Zustand store)
+- `ROLE_TOOL_ALLOWLIST` in `ToolPoolAssembler.ts` (hardcoded per-role allowlist)
+- `filterToolsByCapabilities()` in `AgentExecutor.ts` (capability gating)
+- All four can independently approve/deny the same tool call with different results.
+- **Fix:** Consolidate `alwaysAllow` into single source of truth; merge `ROLE_TOOL_ALLOWLIST` into `PolicyResolver`.
+
+**Issue 14-3: Three independent compaction systems**
+- `Compactor.ts` (keep last 60%, boundary-aware), `ContextEngine.ts` private methods (keep last 60%, simple slice), `memory-manager.ts` (keep 6 latest raw, summarize rest).
+- Same trigger can produce different results depending on path.
+- **Fix:** Unify to `Compactor.ts`, remove private compaction from `ContextEngine.ts`, delegate `memory-manager.ts` to `Compactor`.
+
+**Issue 14-4: Two token budget trackers with disjoint formulas**
+- `TokenBudgetTracker.ts` uses `contextWindow + maxOutputTokens`.
+- `TokenBudgetManager.ts` uses `contextWindow` alone with 5% separate output reserve.
+- No shared state — same operation counts against two independent budgets.
+- **Fix:** Merge into single `TokenBudgetManager`, remove `TokenBudgetTracker`.
+
+### High (Code Health / Duplication)
+
+**Issue 14-5: 19 dead files (~3,580 LOC)**
+- `runtime/PostWriteVerifier.ts` (265 LOC)
+- `runtime/PreflightValidation.ts` + `ProviderInstance.ts` + `ProviderRegistry.ts` (371 LOC dead cluster)
+- `context/ContextEngine.ts` (305 LOC)
+- `watchdog/WatchdogManager.ts` (73 LOC)
+- `lib/history.ts` Tauri shim (138 LOC)
+- `lib/architecture-detector.ts` (194 LOC), `lib/impact-analyzer.ts` (223 LOC)
+- `lib/{index-persistence,indexeddb-persistence,indexeddb-storage,persistence,secure-storage}.ts` — 5 storage files, only `safe-storage.ts` alive
+- `lib/keyboard-shortcuts.ts` (306 LOC), `lib/search-utils.ts` (217 LOC), `lib/type-graph.ts` (231 LOC), `lib/visual-quality-gate.ts` (100 LOC)
+- `lib/ipc/IpcValidator.ts` (312 LOC)
+- **Fix:** Delete them one by one, verify no transitive breakage.
+
+**Issue 14-6: Role token limits duplicated**
+- `runtime-token-config.ts:12-23` and `ContextWindowResolver.ts:160-171` define identical role→token mappings.
+- Any update to one must be manually mirrored in the other.
+- **Fix:** Remove from `ContextWindowResolver`, make it query `runtime-token-config`.
+
+**Issue 14-7: Two overlapping context caches**
+- `PromptCacheManager` (L1 Map, hit-count LRU, 5min TTL, clear-all invalidation) vs `ContextCache` (L1+L2+IndexedDB, access-time LRU, 24h TTL, tag-based invalidation).
+- Both cache context assembly data with different eviction strategies.
+- **Fix:** Merge `PromptCacheManager` into `ContextCache` or vice versa.
+
+**Issue 14-8: Three layers of execution indirection**
+- `ExecutionOrchestrator` → `UnifiedExecutionGateway` → `UnifiedExecutor`.
+- `ExecutionOrchestrator` adds almost no logic (just checks edit preview callback).
+- **Fix:** Remove `ExecutionOrchestrator`, route consumers to `UnifiedExecutionGateway` directly.
+
+**Issue 14-9: Two competing file-loading systems**
+- `ConfigLoader` reads `AGENTIC.md` hierarchy (5 levels).
+- `MemoryLoader` reads `CLAUDE.md` hierarchy (3 levels).
+- Nearly identical caching (30s TTL), hashing, timeout logic duplicated.
+- **Fix:** Merge `MemoryLoader` into `ConfigLoader`; treat CLAUDE.md as additional config file source.
+
+### Medium (Cleanup)
+
+**Issue 14-10: char/4 token estimation heuristic duplicated 10+ times**
+- `TokenEstimator.rough()` is the canonical method.
+- Inline `Math.round(content.length / 4)` in: `ContextManager.ts` (590, 626), `ContextEngine.ts` (326), `MemoryInjector.ts` (223, 196), `AgentContextIsolator.ts` (310), `PromptCacheManager.ts` (126, 138), `memory-manager.ts` (15, 19).
+- **Fix:** Replace all with `TokenEstimator.rough()`.
+
+**Issue 14-11: ToolResolver is thin unnecessary wrapper**
+- Adds only `source` tracking over `ToolRegistry.resolve()`.
+- **Fix:** Inline into `ToolRegistry`, remove `ToolResolver` class.
+
+**Issue 14-12: MCPRegistry exposed publicly from RuntimeOS**
+- Both `runtimeOS.mcpRegistry` and `runtimeOS.mcpServerManager` are public — two competing APIs for MCP tool access.
+- **Fix:** Make `MCPRegistry` internal to `MCPServerManager`.
+
+**Issue 14-13: ROLE_TOOL_ALLOWLIST duplicates PolicyResolver permission concepts**
+- Hardcoded per-role list in `ToolPoolAssembler.ts` and `PolicyResolver.resolveWithMode()` are parallel permission systems.
+- **Fix:** Move allowlist default rules into `PolicyResolver`, have `ToolPoolAssembler` query it.
+
+**Issue 14-14: ContextManager is 799-line god class**
+- Combines: prompt assembly, budget tracking, compaction, caching, file scoring/reranking, intelligence-level components (`ArchitecturePlanningStrategy`, `ImpactAnalyzer`, `VerificationGraph`).
+- **Fix:** Split into `PromptAssembler`, `BudgetManager`, `ContextOptimizer`.
+
+---
+
+## Phase 6: Architectural Cleanup
+
+### Item 14-1: Unify fast-chat execution path
+- Refactor `UnifiedExecutor.fastPath()` to delegate to `AgentExecutor.executeFast()`.
+- Remove duplicate streaming/fallback logic.
+
+### Item 14-2: Consolidate permission systems
+- Merge `ROLE_TOOL_ALLOWLIST` into `PolicyResolver` as default rules.
+- Share single `alwaysAllow` state between runtime and UI approval stores.
+
+### Item 14-3: Unify compaction
+- Use `Compactor.ts` as single compaction authority.
+- Remove private compaction methods from `ContextEngine.ts`.
+- Delegate `memory-manager.ts` compaction to `Compactor`.
+
+### Item 14-4: Merge token budget trackers
+- Fold `TokenBudgetTracker` into `TokenBudgetManager`.
+- Single formula, single source of truth.
+
+### Item 14-5: Delete dead files
+- 19 files, ~3,580 LOC. Remove one by one, verify no breakage.
+
+### Item 14-6: Deduplicate role token limits
+- Move canonical mapping into `runtime-token-config.ts`.
+- `ContextWindowResolver` reads from there.
+
+### Item 14-7: Merge context caches
+- Keep `ContextCache` (more sophisticated: L2, tag-based invalidation, versioning).
+- Fold `PromptCacheManager` behavior into it or remove.
+
+### Item 14-8: Flatten execution indirection
+- Remove `ExecutionOrchestrator`.
+- Consumers call `UnifiedExecutionGateway` directly.
+
+### Item 14-9: Merge file-loading systems
+- Add `CLAUDE.md` / `CLAUDE.local.md` as config file definitions in `ConfigLoader`.
+- Remove `MemoryLoader`.
+
+### Item 14-10: Standardize token estimation
+- Replace all inline `length / 4` with `TokenEstimator.rough()`.
+
+### Item 14-11: Inline ToolResolver
+- Merge `ToolResolver.resolve()` logic into `ToolRegistry.resolve()`.
+- Remove `ToolResolver` class.
+
+### Item 14-12: Encapsulate MCPRegistry
+- Make it internal to `MCPServerManager`.
+- Remove public `mcpRegistry` from `RuntimeOS`.
+
+### Item 14-13: Unify role allowlist
+- Move `ROLE_TOOL_ALLOWLIST` default values into `PolicyResolver`.
+- `ToolPoolAssembler` queries `PolicyResolver` instead.
+
+### Item 14-14: Split ContextManager
+- Extract `PromptAssembler`, `BudgetManager`, `ContextOptimizer`.
+- `ContextManager` becomes thin coordinator.
+
+---
+
+## Completed
+
+### From Section 12 (Refactoring Targets)
+- **12.1** — `DiffViewerPane`/`DiffModeView` merge: already resolved (DiffModeView doesn't exist).
+- **12.3** — Side effect during render: `EditPreviewModal.tsx:101` useMemo→useEffect fixed.
+- **12.4** — Async generator consumption: `UnifiedExecutionGateway.ts` now emits `VERIFY_PASSED`/`VERIFY_FAILED`.
+- **12.5** — Large file threshold: changed 5MB→1MB, Monaco features disabled for large files.
+
+### From Section 11 (Critical Bug Fixes)
+- **P0-2** — Conversations not persisted: fixed `timeline-store.ts` to actually call `localStorage.setItem()`.
+
+### From Real-World Testing (P0/P1 Gaps)
+- **Content search** — Search toolbar tab now opens `GlobalSearch` (was symbol search).
+- **Stubbed Electron APIs** — `clear_*`, `reset_settings`, `open_install_location`, `register_context_menu` all have real implementations.
+- **Browser failure swallowing** — All 20 browser IPC handlers return structured `{ success, error }`.
+- **IPC argument validation** — Already comprehensive (verified all handlers).
+- **Permission default-allow** — Wired `assembleForRole()` into `AgentExecutor.ts:412` and `UnifiedExecutor.ts:707`.
+
+---
+
 ## Architectural Principles (Post-Restoration)
 
 Every change going forward must satisfy:

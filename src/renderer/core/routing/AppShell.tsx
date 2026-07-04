@@ -1,6 +1,8 @@
 import { type ReactNode } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion as _motion, AnimatePresence } from 'framer-motion'
+const motion = _motion
+export { motion }
 import { NavigationRail } from '@/components/layout/navigation-rail'
 import { Toasts } from '@/components/ui/Toasts'
 import { SafeErrorBoundary, SidebarBoundary, WorkspaceBoundary } from '../error-boundaries'

@@ -1,4 +1,4 @@
-import { Menu, BrowserWindow, app, shell } from 'electron'
+import { Menu, BrowserWindow, app } from 'electron'
 import type { WindowManager } from './window-manager'
 import { sendToWindow } from './ipc/safe-send'
 import { getWorkspaceManager } from './ipc/workspace'

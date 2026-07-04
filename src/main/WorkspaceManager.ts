@@ -219,7 +219,7 @@ export class WorkspaceManager {
   }
 
   stopAllWatching(): void {
-    for (const [dir, watcher] of this.watchers) {
+    for (const [, watcher] of this.watchers) {
       watcher.close()
     }
     this.watchers.clear()

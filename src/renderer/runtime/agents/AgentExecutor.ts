@@ -1,11 +1,8 @@
 import type { RuntimeRole, AgentRoleConfig } from "@/types"
 import type { ChatMessage, UsageInfo, ToolCall } from "@agentic-os/providers"
-import { ProviderTransport, type TransportAdapterConfig, type TransportError } from "@agentic-os/providers"
 import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { useWorkspaceStore, getWorkspaceContextSnapshot } from "@/stores/workspace-store"
-import { memoryLoader } from "@/runtime/project-memory/memory-loader"
-import type { MemoryLoadResult } from "@/runtime/project-memory/memory-loader"
 import { configLoader } from "@/runtime/project-config/ConfigLoader"
 import type { StructuredProjectConfig } from "@/runtime/project-config/ProjectConfigTypes"
 import { ContextManager } from "@/runtime/context/ContextManager"
@@ -27,6 +24,8 @@ import { ToolExecutionScheduler, type ToolCallEntry } from "@/runtime/tools/exec
 import { toolRelevanceMatcher } from "@/runtime/tools/core/ToolSearch"
 import { toolResultCache } from "@/runtime/tools/core/ToolResultCache"
 import { pluginRegistry } from "@/runtime/plugins/PluginRegistry"
+import { providerGateway } from "@/runtime/providers/ProviderGateway"
+import type { GatewayRequest } from "@/runtime/providers/ProviderGateway"
 
 const TOOL_OUTPUT_MAX_CHARS = 50000
 
@@ -67,70 +66,10 @@ const PROVIDER_RETRY_POLICY = createRetryPolicy({
   budget: { maxTotalTimeMs: 30_000, maxCumulativeDelayMs: 10_000 },
 })
 
-function createTransport(): ProviderTransport {
-  return new ProviderTransport({
-    getApiKey: (providerId?: string) => {
-      if (providerId) {
-        const providers = useAppStore.getState().providers ?? []
-        const p = providers.find((p) => p.id === providerId)
-        return p?.apiKey
-      }
-      return undefined
-    },
-  })
-}
-
-export interface ResolvedAgentConfig {
-  endpoint: string
-  apiKey: string
-  model: string
-  providerId: string
-  runtime: string | null
-  temperature: number
-}
-
-export interface ResolvedFallbackConfig {
-  endpoint: string
-  apiKey: string
-  model: string
-  providerId: string
-  runtime: string | null
-}
-
-function resolveFallbackProvider(fallbackModel: string): { endpoint: string; apiKey: string; providerId: string; runtime: string | null } | null {
-  const providers = useAppStore.getState().providers ?? []
-  for (const p of providers) {
-    if (p.models.some(m => m.id === fallbackModel)) {
-      return { endpoint: p.baseUrl, apiKey: p.apiKey, providerId: p.id, runtime: p.runtime }
-    }
-  }
-  return null
-}
-
-function resolveAgentConfig(role: RuntimeRole): { primary: ResolvedAgentConfig; fallback: ResolvedFallbackConfig | null } | null {
+function resolveWiredAgent(role: RuntimeRole) {
   const { wiredAgents } = useWorkspaceRuntime.getState()
-  const providers = useAppStore.getState().providers ?? []
   const normalized = normalizeRole(role) ?? role
-  const wired = wiredAgents.find((a) => a.runtimeRole === normalized || a.roleId === normalized || a.runtimeRole === role)
-  if (!wired) return null
-  const provider = providers.find((p) => p.id === wired.providerId)
-  if (!provider) return null
-  const primary: ResolvedAgentConfig = {
-    endpoint: provider.baseUrl,
-    apiKey: provider.apiKey,
-    model: wired.model,
-    providerId: wired.providerId,
-    runtime: provider.runtime,
-    temperature: wired.temperature,
-  }
-  let fallback: ResolvedFallbackConfig | null = null
-  if (wired.fallbackModel) {
-    const fbProvider = resolveFallbackProvider(wired.fallbackModel)
-    if (fbProvider) {
-      fallback = { ...fbProvider, model: wired.fallbackModel }
-    }
-  }
-  return { primary, fallback }
+  return wiredAgents.find((a) => a.runtimeRole === normalized || a.roleId === normalized || a.runtimeRole === role) ?? null
 }
 
 export class AgentExecutor {
@@ -165,173 +104,63 @@ export class AgentExecutor {
 
   private async *executeFast(): AsyncGenerator<ExecutionEvent> {
     const eid = this.executionId
-    const config = resolveAgentConfig(this.role)
-    if (!config) throw new Error(`Role "${this.role}" is not wired. Configure it in Settings → Roles.`)
+    const wired = resolveWiredAgent(this.role)
+    if (!wired) throw new Error(`Role "${this.role}" is not wired. Configure it in Settings → Roles.`)
 
-    const messages: ChatMessage[] = [
-      { role: "system", content: FAST_CHAT_PROMPT },
-      ...this.history,
+    const messages: Array<{ role: "user" | "assistant" | "system"; content: string }> = [
+      ...this.history.map((m) => ({ role: m.role as "user" | "assistant" | "system", content: m.content })),
       { role: "user", content: this.input },
     ]
 
     let content = ""
-    let usage: UsageInfo = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-
-    const primary = config.primary
-    const fallback = config.fallback
-
-    function buildAdapterConfig(cfg: ResolvedAgentConfig | ResolvedFallbackConfig): TransportAdapterConfig {
-      return {
-        baseUrl: cfg.endpoint,
-        apiKey: cfg.apiKey,
-        runtime: cfg.runtime,
-        providerId: cfg.providerId,
-        providerName: thisRole,
-      }
-    }
-
-    const thisRole = this.role
-    const transport = createTransport()
-    let lastAttemptError: string | null = null
+    let tokensIn = 0
+    let tokensOut = 0
+    let failed = false
 
     yield { type: "THINKING_STARTED", executionId: eid, label: "Thinking", timestamp: Date.now() }
-    yield { type: "PROVIDER_CONNECTING", executionId: eid, model: primary.model, provider: this.role, temperature: primary.temperature, timestamp: Date.now() }
 
-    let usedFallback = false
+    const stream = providerGateway.stream({
+      systemPrompt: FAST_CHAT_PROMPT,
+      messages,
+      signal: this.signal,
+    })
 
-    // Attempt 1: streaming with primary model
-    try {
-      const channel = new EventChannel()
-      const streamPromise = transport.streamChatCompletion(
-        buildAdapterConfig(primary),
-        { model: primary.model, messages, maxTokens: 4096, temperature: primary.temperature, signal: this.signal },
-        {
-          onToken: (token: string) => {
-            content += token
-            channel.push({ type: "TOKEN", executionId: eid, token, timestamp: Date.now() })
-          },
-          onToolCallBegin: () => {},
-          onToolCallDelta: () => {},
-          onToolCallEnd: () => {},
-          onFinish: () => {},
-          onError: (error: TransportError) => {
-            lastAttemptError = error.message
-            channel.push({ type: "EXECUTION_FAILED", executionId: eid, error: error.message, durationMs: 0, timestamp: Date.now() })
-            channel.close()
-          },
-          onDone: () => channel.close(),
-        },
-      )
-
-      for await (const event of channel) {
-        yield event
-      }
-      await streamPromise
-    } catch (err) {
-      lastAttemptError = err instanceof Error ? err.message : String(err)
-      console.warn("[AgentExecutor] Primary streaming failed:", lastAttemptError)
-    }
-
-    // Attempt 2: streaming with fallback model if primary streaming failed
-    if (!content && fallback) {
-      usedFallback = true
-      yield { type: "FALLBACK_ACTIVATED", executionId: eid, fromModel: primary.model, toModel: fallback.model, reason: "primary streaming failed", timestamp: Date.now() }
-      try {
-        const channel = new EventChannel()
-        const streamPromise = transport.streamChatCompletion(
-          buildAdapterConfig(fallback),
-          { model: fallback.model, messages, maxTokens: 4096, signal: this.signal },
-          {
-            onToken: (token: string) => {
-              content += token
-              channel.push({ type: "TOKEN", executionId: eid, token, timestamp: Date.now() })
-            },
-            onToolCallBegin: () => {},
-            onToolCallDelta: () => {},
-            onToolCallEnd: () => {},
-            onFinish: () => {},
-            onError: (error: TransportError) => {
-              lastAttemptError = error.message
-              channel.push({ type: "EXECUTION_FAILED", executionId: eid, error: error.message, durationMs: 0, timestamp: Date.now() })
-              channel.close()
-            },
-            onDone: () => channel.close(),
-          },
-        )
-
-        for await (const event of channel) {
-          yield event
-        }
-        await streamPromise
-      } catch (err) {
-        lastAttemptError = err instanceof Error ? err.message : String(err)
-        console.warn("[AgentExecutor] Fallback streaming failed:", lastAttemptError)
-      }
-    }
-
-    const effectiveModel = usedFallback ? fallback!.model : primary.model
-    yield { type: "PROVIDER_CONNECTED", executionId: eid, model: effectiveModel, provider: this.role, temperature: usedFallback ? primary.temperature : primary.temperature, timestamp: Date.now() }
-
-    // Attempt 3: non-streaming with primary (or fallback if fallback streaming was used)
-    if (!content) {
-      const cfg = usedFallback ? fallback! : primary
-      try {
-        const result = await transport.chatCompletion(
-          buildAdapterConfig(cfg),
-          { model: cfg.model, messages, maxTokens: 4096, temperature: 'temperature' in cfg ? (cfg as ResolvedAgentConfig).temperature : primary.temperature, signal: this.signal },
-        )
-        content = result.content
-        if (result.usage) {
-          usage = {
-            prompt_tokens: result.usage.promptTokens,
-            completion_tokens: result.usage.completionTokens,
-            total_tokens: result.usage.totalTokens,
+    for await (const event of stream) {
+      switch (event.type) {
+        case "status":
+          if (event.status === "connecting") {
+            yield { type: "PROVIDER_CONNECTING", executionId: eid, model: event.model ?? wired.model, provider: this.role, temperature: wired.temperature, timestamp: Date.now() }
+          } else if (event.status === "completed") {
+            yield { type: "PROVIDER_CONNECTED", executionId: eid, model: event.model ?? wired.model, provider: this.role, temperature: wired.temperature, timestamp: Date.now() }
           }
-        }
-      } catch (err) {
-        lastAttemptError = err instanceof Error ? err.message : String(err)
-        // Attempt 4: non-streaming with the other model if we haven't tried both
-        if (!usedFallback && fallback) {
-          console.warn("[AgentExecutor] Primary non-streaming failed, trying fallback:", lastAttemptError)
-          try {
-            const result = await transport.chatCompletion(
-              buildAdapterConfig(fallback),
-              { model: fallback.model, messages, maxTokens: 4096, signal: this.signal },
-            )
-            content = result.content
-            if (result.usage) {
-              usage = {
-                prompt_tokens: result.usage.promptTokens,
-                completion_tokens: result.usage.completionTokens,
-                total_tokens: result.usage.totalTokens,
-              }
-            }
-          } catch (fbErr) {
-            lastAttemptError = fbErr instanceof Error ? fbErr.message : String(fbErr)
-            console.warn("[AgentExecutor] Fallback non-streaming also failed:", lastAttemptError)
+          break
+        case "token":
+          content += event.text
+          yield { type: "TOKEN", executionId: eid, token: event.text, timestamp: Date.now() }
+          break
+        case "done":
+          if (event.usage) {
+            tokensIn = event.usage.tokensIn
+            tokensOut = event.usage.tokensOut
           }
-        } else {
-          console.warn("[AgentExecutor] Non-streaming failed:", lastAttemptError)
-        }
-      }
-      if (content) {
-        yield { type: "MESSAGE_UPDATE", executionId: eid, content, timestamp: Date.now() }
+          break
+        case "error":
+          failed = true
+          yield { type: "EXECUTION_FAILED", executionId: eid, error: event.userMessage, durationMs: 0, timestamp: Date.now() }
+          break
       }
     }
 
-    if (!content && lastAttemptError) {
-      yield { type: "EXECUTION_FAILED", executionId: eid, error: `All provider attempts failed: ${lastAttemptError}`, durationMs: 0, timestamp: Date.now() }
-      return
-    }
+    if (failed) return
 
-    yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content, finishReason: "stop", timestamp: Date.now(), tokensIn: usage.prompt_tokens, tokensOut: usage.completion_tokens }
+    yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content, finishReason: "stop", timestamp: Date.now(), tokensIn, tokensOut }
   }
 
   private async *executeFull(): AsyncGenerator<ExecutionEvent> {
     const eid = this.executionId
     const startedAt = performance.now()
-    const config = resolveAgentConfig(this.role)
-    if (!config) throw new Error(`Role "${this.role}" is not wired. Configure it in Settings → Roles.`)
+    const wired = resolveWiredAgent(this.role)
+    if (!wired) throw new Error(`Role "${this.role}" is not wired. Configure it in Settings → Roles.`)
 
     trace("AgentExecutor", "start", { role: this.role, mode: this.mode })
 
@@ -345,13 +174,11 @@ export class AgentExecutor {
     const rootPath = useWorkspaceStore.getState().rootPath
     let projectRules: string | undefined
     const memoryPromise = rootPath
-      ? memoryLoader.load(rootPath).then((memory) => {
-          const filtered = this.filterMemoryByScope(memory, memoryScope)
+      ? configLoader.loadProjectMemory(rootPath).then((memory) => {
           const parts: string[] = []
-          if (filtered.combined.trim().length > 0) {
-            parts.push(filtered.combined.trim())
+          if (memory.combined.trim().length > 0) {
+            parts.push(memory.combined.trim())
           }
-          // Also include AGENTIC.md project config (was being discarded)
           if (memory.projectConfig && memory.projectConfig.trim().length > 0) {
             parts.push(`## Project Configuration\n\n${memory.projectConfig.trim()}`)
           }
@@ -409,7 +236,7 @@ export class AgentExecutor {
 
     // ── Phase 3: Filter tools by role capabilities + relevance ──
     const runtimeOS = RuntimeOS.getInstance()
-    const roleTools = runtimeOS.toolRegistry.getByMode(this.role)
+    const roleTools = runtimeOS.toolPoolAssembler.assembleForRole(this.role)
     const capabilities = myRoleConfig?.capabilities
     let filteredTools = capabilities ? this.filterToolsByCapabilities(roleTools, capabilities) : roleTools
 
@@ -433,22 +260,10 @@ export class AgentExecutor {
     }
     const toolDefs = agentToolsToToolDefs(filteredTools)
 
-    const primary = config.primary
-    const fallback = config.fallback
-
-    function buildAdapterConfig(cfg: ResolvedAgentConfig | ResolvedFallbackConfig): TransportAdapterConfig {
-      return {
-        baseUrl: cfg.endpoint,
-        apiKey: cfg.apiKey,
-        runtime: cfg.runtime,
-        providerId: cfg.providerId,
-        providerName: thisRole,
-      }
-    }
-
-    const thisRole = this.role
-    const transport = createTransport()
-    let lastAttemptError: string | null = null
+    const modelForRole = wired.model
+    const maxTokens = getEffectiveMaxTokens(this.role, modelForRole)
+    let totalTokensIn = 0
+    let totalTokensOut = 0
 
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const elapsed = performance.now() - startedAt
@@ -467,153 +282,61 @@ export class AgentExecutor {
       yield { type: "THINKING_UPDATE", executionId: eid, label: `Round ${round + 1}`, timestamp: Date.now() }
       trace("AgentExecutor", "provider_request", { round: round + 1 })
 
-      const maxTokens = getEffectiveMaxTokens(this.role, primary.model)
       let responseContent = ""
       let responseToolCalls: ToolCall[] = []
-      let usedFallback = false
+      let failed = false
 
-      yield { type: "PROVIDER_CONNECTING", executionId: eid, model: primary.model, provider: this.role, temperature: primary.temperature, timestamp: Date.now() }
+      const gwMessages: Array<{ role: "user" | "assistant" | "system"; content: string }> = msgs.map((m) => ({
+        role: m.role as "user" | "assistant" | "system",
+        content: typeof m.content === "string" ? m.content : "",
+      }))
 
-      // Attempt 1: streaming with primary model
-      try {
-        const channel = new EventChannel()
-        const streamPromise = transport.streamChatCompletion(
-          buildAdapterConfig(primary),
-          { model: primary.model, messages: msgs, tools: toolDefs, maxTokens, temperature: primary.temperature, signal: this.signal },
-          {
-            onToken: (token: string) => {
-              responseContent += token
-              channel.push({ type: "TOKEN", executionId: eid, token, timestamp: Date.now() })
-            },
-            onToolCallBegin: () => {},
-            onToolCallDelta: () => {},
-            onToolCallEnd: () => {},
-            onToolCallsComplete: (toolCalls) => {
-              responseToolCalls = toolCalls.map((tc) => ({
-                id: tc.id,
-                type: "function" as const,
-                function: { name: tc.name, arguments: tc.arguments },
-              }))
-            },
-            onFinish: () => {},
-            onError: (error: TransportError) => {
-              lastAttemptError = error.message
-              channel.push({ type: "EXECUTION_FAILED", executionId: eid, error: error.message, durationMs: 0, timestamp: Date.now() })
-              channel.close()
-            },
-            onDone: () => channel.close(),
-          },
-        )
-
-        for await (const event of channel) {
-          yield event
-        }
-        await streamPromise
-      } catch (err) {
-        lastAttemptError = err instanceof Error ? err.message : String(err)
-        console.warn("[AgentExecutor] Primary streaming failed:", lastAttemptError)
+      const gwRequest: GatewayRequest = {
+        messages: gwMessages,
+        maxTokens,
+        tools: toolDefs,
+        signal: this.signal,
       }
 
-      // Attempt 2: streaming with fallback model if primary streaming produced nothing
-      if (!responseContent && responseToolCalls.length === 0 && fallback) {
-        usedFallback = true
-        yield { type: "FALLBACK_ACTIVATED", executionId: eid, fromModel: primary.model, toModel: fallback.model, reason: "primary streaming failed", timestamp: Date.now() }
-        try {
-          const channel = new EventChannel()
-          const streamPromise = transport.streamChatCompletion(
-            buildAdapterConfig(fallback),
-            { model: fallback.model, messages: msgs, tools: toolDefs, maxTokens, signal: this.signal },
-            {
-              onToken: (token: string) => {
-                responseContent += token
-                channel.push({ type: "TOKEN", executionId: eid, token, timestamp: Date.now() })
-              },
-              onToolCallBegin: () => {},
-              onToolCallDelta: () => {},
-              onToolCallEnd: () => {},
-              onToolCallsComplete: (toolCalls) => {
-                responseToolCalls = toolCalls.map((tc) => ({
-                  id: tc.id,
-                  type: "function" as const,
-                  function: { name: tc.name, arguments: tc.arguments },
-                }))
-              },
-              onFinish: () => {},
-              onError: (error: TransportError) => {
-                lastAttemptError = error.message
-                channel.push({ type: "EXECUTION_FAILED", executionId: eid, error: error.message, durationMs: 0, timestamp: Date.now() })
-                channel.close()
-              },
-              onDone: () => channel.close(),
-            },
-          )
-
-          for await (const event of channel) {
-            yield event
-          }
-          await streamPromise
-        } catch (err) {
-          lastAttemptError = err instanceof Error ? err.message : String(err)
-          console.warn("[AgentExecutor] Fallback streaming failed:", lastAttemptError)
-        }
-      }
-
-      const effectiveModel = usedFallback ? fallback!.model : primary.model
-      yield { type: "PROVIDER_CONNECTED", executionId: eid, model: effectiveModel, provider: this.role, temperature: primary.temperature, timestamp: Date.now() }
-
-      // Attempt 3: non-streaming if streaming produced nothing
-      if (!responseContent && responseToolCalls.length === 0) {
-        const cfg = usedFallback ? fallback! : primary
-        try {
-          const result = await transport.chatCompletion(
-            buildAdapterConfig(cfg),
-            { model: cfg.model, messages: msgs, tools: toolDefs, maxTokens, temperature: primary.temperature, signal: this.signal },
-          )
-          responseContent = result.content
-          if (result.toolCalls) {
-            responseToolCalls = result.toolCalls as ToolCall[]
-          }
-          if (result.usage) {
-            totalUsage.prompt_tokens += result.usage.promptTokens
-            totalUsage.completion_tokens += result.usage.completionTokens
-            totalUsage.total_tokens += result.usage.totalTokens
-          }
-        } catch (err) {
-          lastAttemptError = err instanceof Error ? err.message : String(err)
-          // Attempt 4: non-streaming with the other model if haven't tried both
-          if (!usedFallback && fallback) {
-            console.warn("[AgentExecutor] Primary non-streaming failed, trying fallback:", lastAttemptError)
-            try {
-              const result = await transport.chatCompletion(
-                buildAdapterConfig(fallback),
-                { model: fallback.model, messages: msgs, tools: toolDefs, maxTokens, signal: this.signal },
-              )
-              responseContent = result.content
-              if (result.toolCalls) {
-                responseToolCalls = result.toolCalls as ToolCall[]
-              }
-              if (result.usage) {
-                totalUsage.prompt_tokens += result.usage.promptTokens
-                totalUsage.completion_tokens += result.usage.completionTokens
-                totalUsage.total_tokens += result.usage.totalTokens
-              }
-            } catch (fbErr) {
-              lastAttemptError = fbErr instanceof Error ? fbErr.message : String(fbErr)
-              console.warn("[AgentExecutor] Fallback non-streaming also failed:", lastAttemptError)
+      console.log("[FLOW:14] AgentExecutor.executeFull: calling providerGateway.stream (round " + round + ")")
+      const stream = providerGateway.stream(gwRequest)
+      for await (const event of stream) {
+        switch (event.type) {
+          case "status":
+            if (event.status === "connecting") {
+              yield { type: "PROVIDER_CONNECTING", executionId: eid, model: event.model ?? modelForRole, provider: this.role, temperature: wired.temperature, timestamp: Date.now() }
+            } else if (event.status === "completed") {
+              yield { type: "PROVIDER_CONNECTED", executionId: eid, model: event.model ?? modelForRole, provider: this.role, temperature: wired.temperature, timestamp: Date.now() }
             }
-          } else {
-            console.warn("[AgentExecutor] Non-streaming failed:", lastAttemptError)
-          }
+            break
+          case "token":
+            responseContent += event.text
+            yield { type: "TOKEN", executionId: eid, token: event.text, timestamp: Date.now() }
+            break
+          case "tool_call":
+            responseToolCalls.push(event.toolCall)
+            break
+          case "done":
+            if (event.usage) {
+              totalTokensIn += event.usage.tokensIn
+              totalTokensOut += event.usage.tokensOut
+              totalUsage.prompt_tokens += event.usage.tokensIn
+              totalUsage.completion_tokens += event.usage.tokensOut
+              totalUsage.total_tokens += event.usage.tokensIn + event.usage.tokensOut
+            }
+            break
+          case "error":
+            failed = true
+            yield { type: "EXECUTION_FAILED", executionId: eid, error: event.userMessage, durationMs: Math.round(performance.now() - startedAt), timestamp: Date.now() }
+            break
         }
       }
+      console.log("[FLOW:15] AgentExecutor.executeFull: provider for-await complete (round " + round + ", failed=" + failed + ", contentLen=" + responseContent.length + ", toolCalls=" + responseToolCalls.length + ")")
+
+      if (failed) break
 
       if (responseContent) {
         yield { type: "MESSAGE_UPDATE", executionId: eid, content: responseContent, timestamp: Date.now() }
-      }
-
-      if (!responseContent && responseToolCalls.length === 0 && lastAttemptError && round === 0) {
-        yield { type: "EXECUTION_FAILED", executionId: eid, error: `All provider attempts failed: ${lastAttemptError}`, durationMs: Math.round(performance.now() - startedAt), timestamp: Date.now() }
-        break
       }
 
       const assistantMsg: ChatMessage = {
@@ -799,7 +522,7 @@ export class AgentExecutor {
               const commandStr = isCommand ? (entry.args.command as string || '') : ''
 
               if (isCommand) {
-                yield { type: "COMMAND_START", executionId: eid, command: commandStr, timestamp: Date.now() }
+                yield { type: "COMMAND_START", executionId: eid, command: commandStr, cwd: ctx.cwd, timestamp: Date.now() }
               }
 
               const toolNameDisplay = entry.name.replace(/_/g, ' ')
@@ -1024,6 +747,7 @@ export class AgentExecutor {
     const lastResponse = assistantMessages[assistantMessages.length - 1]?.content || finalResponse || ""
 
     trace("AgentExecutor", "complete", { role: this.role, mode: this.mode, elapsedMs: totalElapsedMs })
+    console.log("[FLOW:16] AgentExecutor.executeFull: yielding MESSAGE_COMPLETE (contentLen=" + lastResponse.length + ")")
 
     yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content: lastResponse, finishReason: "stop", timestamp: Date.now(), tokensIn: totalUsage.prompt_tokens, tokensOut: totalUsage.completion_tokens }
   }

@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest"
 import { ProviderRegistry } from "./provider-registry-engine"
 import type { RegisteredAdapter, ModelMetadata } from "./provider-registry-engine"
-import { ProviderSelector } from "./provider-selector"
-import type { ProviderCatalogEntry } from "./provider-selector"
+import type { ProviderCatalogEntry } from "./provider-selection-types"
 import { CapabilityNegotiator } from "./capability-negotiation"
 import type { CapabilityRequest, ProviderModelCatalog } from "./capability-negotiation"
 import type { ProviderCapabilities } from "./transport-adapters"
@@ -80,18 +79,18 @@ function healthyEntry(overrides?: Partial<ProviderCatalogEntry>): ProviderCatalo
   }
 }
 
-describe("ProviderSelector", () => {
+describe("ProviderRegistry selection", () => {
   it("returns fallback decision when no candidates", () => {
-    const selector = new ProviderSelector()
-    const result = selector.select([], {})
+    const registry = new ProviderRegistry()
+    const result = registry.select([], {})
     expect(result.totalScore).toBe(0)
     expect(result.fallbackReason).toBe("No candidates to evaluate")
     expect(result.providerId).toBe("")
   })
 
   it("selects a single candidate with default scoring", () => {
-    const selector = new ProviderSelector()
-    const result = selector.select([healthyEntry()], {})
+    const registry = new ProviderRegistry()
+    const result = registry.select([healthyEntry()], {})
     expect(result.totalScore).toBeGreaterThan(0)
     expect(result.providerId).toBe("openai")
     expect(result.model).toBe("gpt-4o")
@@ -99,7 +98,7 @@ describe("ProviderSelector", () => {
   })
 
   it("prefers higher-scoring provider", () => {
-    const selector = new ProviderSelector()
+    const registry = new ProviderRegistry()
     const healthy = healthyEntry()
     const degraded = healthyEntry({
       providerId: "ollama",
@@ -110,61 +109,61 @@ describe("ProviderSelector", () => {
       health: { ...healthy.health, state: "degraded", avgLatencyMs: 5000, consecutiveFailures: 8 },
     })
 
-    const result = selector.select([degraded, healthy], {})
+    const result = registry.select([degraded, healthy], {})
     expect(result.providerId).toBe("openai")
     expect(result.totalScore).toBeGreaterThan(0)
   })
 
   it("exact model match scores higher", () => {
-    const selector = new ProviderSelector()
+    const registry = new ProviderRegistry()
     const entries = [
       healthyEntry({ providerId: "ollama", providerName: "Ollama", model: "llama3.2", baseUrl: "http://localhost:11434" }),
       healthyEntry({ model: "gpt-4o" }),
     ]
 
-    const result = selector.select(entries, { preferredModel: "gpt-4o" })
+    const result = registry.select(entries, { preferredModel: "gpt-4o" })
     expect(result.model).toBe("gpt-4o")
   })
 
   it("exact provider match scores higher", () => {
-    const selector = new ProviderSelector()
+    const registry = new ProviderRegistry()
     const entries = [
       healthyEntry({ providerId: "ollama", providerName: "Ollama", model: "llama3.2", baseUrl: "http://localhost:11434" }),
       healthyEntry({ providerId: "openai", model: "gpt-4o" }),
     ]
 
-    const result = selector.select(entries, { preferredProvider: "openai" })
+    const result = registry.select(entries, { preferredProvider: "openai" })
     expect(result.providerId).toBe("openai")
   })
 
   it("rejects provider missing required capabilities", () => {
-    const selector = new ProviderSelector()
+    const registry = new ProviderRegistry()
     const entry = healthyEntry({
       capabilities: mockCapabilities({ supportsVision: false }),
     })
 
-    const result = selector.select([entry], {
+    const result = registry.select([entry], {
       requiredCapabilities: { supportsVision: true },
     })
     expect(result.matchedAllRequired).toBe(false)
   })
 
   it("records decision history", () => {
-    const selector = new ProviderSelector()
-    selector.select([healthyEntry()], {})
-    selector.select([healthyEntry({ providerId: "ollama", providerName: "Ollama" })], {})
+    const registry = new ProviderRegistry()
+    registry.select([healthyEntry()], {})
+    registry.select([healthyEntry({ providerId: "ollama", providerName: "Ollama" })], {})
 
-    const history = selector.getDecisionHistory()
+    const history = registry.getDecisionHistory()
     expect(history.length).toBe(2)
     expect(history[0].providerId).toBe("openai")
     expect(history[1].providerId).toBe("ollama")
   })
 
   it("clearHistory resets decisions", () => {
-    const selector = new ProviderSelector()
-    selector.select([healthyEntry()], {})
-    selector.clearHistory()
-    expect(selector.getDecisionHistory().length).toBe(0)
+    const registry = new ProviderRegistry()
+    registry.select([healthyEntry()], {})
+    registry.clearHistory()
+    expect(registry.getDecisionHistory().length).toBe(0)
   })
 })
 

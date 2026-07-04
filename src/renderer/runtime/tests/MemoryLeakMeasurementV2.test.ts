@@ -76,10 +76,9 @@ function writeHeapSnapshot(label: string): void {
   }
 }
 
-async function runSingleExecution(orchestrator: any, input: string): Promise<void> {
+async function runSingleExecution(gateway: any, input: string): Promise<void> {
   StreamManager.getInstance().resetCancelled()
-  const stream = orchestrator.execute({ input, activeRole: "coder" })
-  for await (const _event of stream) { /* drain */ }
+  await gateway.execute({ input, activeRole: "coder", editedFiles: [] })
 }
 
 interface MemorySnapshot {
@@ -93,7 +92,7 @@ const SNAPSHOT_AT = [0, 100, 500] as const
 const ITERATION_COUNT = 500
 
 describe("Phase 1 — Memory Leak Root Cause V2", () => {
-  let orchestrator: any
+  let gateway: any
   const snapshots: MemorySnapshot[] = []
 
   beforeAll(async () => {
@@ -102,7 +101,7 @@ describe("Phase 1 — Memory Leak Root Cause V2", () => {
     const { useAppStore } = await import("@/stores/app-store")
     const { useWorkspaceRuntime } = await import("@/runtime/workspace-runtime")
     const { useTimelineStore } = await import("@/components/workspace/timeline/timeline-store")
-    const { ExecutionOrchestrator } = await import("@/runtime/execution/ExecutionOrchestrator")
+    const { UnifiedExecutionGateway } = await import("@/runtime/execution/UnifiedExecutionGateway")
 
     useAgentStore.setState({
       conversations: { coder: { messages: [] } },
@@ -147,7 +146,7 @@ describe("Phase 1 — Memory Leak Root Cause V2", () => {
       addFileEditToAgent: vi.fn(),
     } as any)
 
-    orchestrator = ExecutionOrchestrator.getInstance()
+    gateway = UnifiedExecutionGateway.getInstance()
 
     // Warm up
     StreamManager.getInstance().clearAll()
@@ -169,7 +168,7 @@ describe("Phase 1 — Memory Leak Root Cause V2", () => {
 
     // Run to 100 iterations
     for (let i = 1; i <= ITERATION_COUNT; i++) {
-      await runSingleExecution(orchestrator, "hello")
+      await runSingleExecution(gateway, "hello")
       if (SNAPSHOT_AT.includes(i as 0 | 100 | 500)) {
         forceGC()
         snapshots.push({

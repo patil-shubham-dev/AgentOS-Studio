@@ -1,4 +1,4 @@
-import type { FileEntry } from "@/types"
+﻿import type { FileEntry } from "@/types"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
 const EXCLUDED_DIRS = new Set([
@@ -122,7 +122,7 @@ export interface GrepResult {
  * Regex-based file content search (grep).
  *
  * Improvements vs the original:
- *   - Removed the 300-file hard limit — now processes all files via batched reading
+ *   - Removed the 300-file hard limit ΓÇö now processes all files via batched reading
  *   - Increased MAX_TOTAL_MATCHES from 500 to 2000
  *   - Added batched file reading (50 files at a time) for non-blocking throughput
  *   - Added `filesScanned`, `filesMatched`, `truncated` fields to the result
@@ -159,7 +159,7 @@ export async function grepFiles(
   try {
     regex = new RegExp(query, opts?.caseSensitive ? "g" : "gi")
   } catch {
-    // Regex compilation failed — use plain text search
+    // Regex compilation failed ΓÇö use plain text search
     const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     regex = new RegExp(escaped, opts?.caseSensitive ? "g" : "gi")
   }

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { ProviderTransport } from "./transport"
 import { TransportError, classifyHttpError, classifyNetworkError } from "./transport-errors"
-import { ProviderSelector } from "./provider-selector"
+import { ProviderRegistry } from "./provider-registry-engine"
 import { createDefaultScorers } from "./provider-selection-scorers"
 import type { TransportAdapterConfig, CompletionRequest, ProviderCapabilities } from "./transport-adapters"
-import type { ProviderCatalogEntry } from "./provider-selector"
+import type { ProviderCatalogEntry } from "./provider-selection-types"
 import type { UnifiedHealthRecord } from "./provider-health"
 
 // ── Helper: build a ReadableStream from string chunks ──
@@ -421,7 +421,7 @@ describe("Streaming Error Injection", () => {
 
 describe("Provider Selection Error Handling", () => {
   it("all candidates offline — picks the best health anyway", () => {
-    const selector = new ProviderSelector(createDefaultScorers())
+    const registry = new ProviderRegistry(createDefaultScorers())
 
     const candidates: ProviderCatalogEntry[] = [
       makeCandidate({ providerId: "provider-a", health: makeHealth("offline") }),
@@ -429,14 +429,14 @@ describe("Provider Selection Error Handling", () => {
       makeCandidate({ providerId: "provider-c", health: makeHealth("offline") }),
     ]
 
-    const decision = selector.select(candidates, {})
+    const decision = registry.select(candidates, {})
     expect(decision).toBeDefined()
     expect(decision.providerId).toBeTruthy()
     expect(typeof decision.totalScore).toBe("number")
   })
 
   it("candidate missing all required caps — matchedAllRequired = false", () => {
-    const selector = new ProviderSelector(createDefaultScorers())
+    const registry = new ProviderRegistry(createDefaultScorers())
 
     const minimalCaps: ProviderCapabilities = {
       supportsSystemPrompts: false,
@@ -462,7 +462,7 @@ describe("Provider Selection Error Handling", () => {
       }),
     ]
 
-    const decision = selector.select(candidates, {
+    const decision = registry.select(candidates, {
       requiredCapabilities: {
         supportsToolCalling: true,
         supportsVision: true,
@@ -475,7 +475,7 @@ describe("Provider Selection Error Handling", () => {
   })
 
   it("50 candidates — completes in reasonable time", () => {
-    const selector = new ProviderSelector(createDefaultScorers())
+    const registry = new ProviderRegistry(createDefaultScorers())
 
     const candidates: ProviderCatalogEntry[] = Array.from({ length: 50 }, (_, i) =>
       makeCandidate({
@@ -492,7 +492,7 @@ describe("Provider Selection Error Handling", () => {
     )
 
     const t0 = performance.now()
-    const decision = selector.select(candidates, {
+    const decision = registry.select(candidates, {
       requiredCapabilities: { supportsToolCalling: true },
       preferredModel: "model-0",
     })

@@ -74,7 +74,7 @@ async function findFiles(rootPath: string, includePatterns: string[], excludePat
 export const SearchContentTool: AgentTool = buildTool({
   name: 'search_content',
   aliases: ['grep', 'search_in_files'],
-  description: 'Search for text patterns in file contents (grep-like)',
+  description: 'Slower but more resilient text search that walks files directly — supports directory exclusion, array-based extension filtering, and automatic literal fallback for invalid regex. Use when exploring unfamiliar code or when you need to exclude build artifacts.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -94,7 +94,7 @@ export const SearchContentTool: AgentTool = buildTool({
     return `Searching for "${p}"`
   },
   permissions: async () => ({ behavior: 'allow' }),
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const pattern = String(input.pattern ?? '')
     const includePatterns = (input.include as string[]) ?? []
     const excludePatterns = (input.exclude as string[]) ?? ['node_modules', '.git', 'dist', 'out', '.agentic-os']

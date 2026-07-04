@@ -117,7 +117,7 @@ export const ReadFileTool: AgentTool = buildTool({
     const p = (input as any)?.path
     return p ? `Reading ${p}` : 'Reading a file'
   },
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const path = String(input.path ?? '')
     if (!path) return { data: null, error: 'path is required', isError: true }
 

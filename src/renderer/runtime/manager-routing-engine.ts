@@ -22,6 +22,7 @@ export interface RoutingDecision {
   requiresDelegation: boolean
   selectedRoles: RuntimeRole[]
   executionStrategy: ExecutionStrategy
+  mode: "fast" | "full"
   reasoning: string
   intentCategory: IntentCategory
 }
@@ -124,6 +125,16 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
   },
 }
 
+/** Detect code blocks (``` or `inline`) in user input */
+function containsCodeBlock(input: string): boolean {
+  return /```[\s\S]*?```/.test(input) || /`[^`]+`/.test(input)
+}
+
+/** Detect file-path references (e.g. src/foo.ts, ./bar.tsx, path/to/file) */
+function containsFilePathRef(input: string): boolean {
+  return /(?:^|\s)(?:`?[.\/]?[\w.\/-]+\/\w+[\w.\/-]*\.\w{1,4}`?)/.test(input)
+}
+
 const DIRECT_RESPONSE_KEYWORDS = [
   /^hi\b/i, /^hello\b/i, /^hey\b/i, /^thanks\b/i, /^thank you\b/i,
   /^ok\b/i, /^okay\b/i, /^sure\b/i, /^yes\b/i, /^no\b/i,
@@ -178,25 +189,55 @@ export function route(
   const { category, confidence } = classifyIntent(input)
   const pattern = INTENT_PATTERNS[category]
   const isConversation = category === "conversation"
+  const hasCode = containsCodeBlock(input)
+  const hasFilePath = containsFilePathRef(input)
 
-  if (isConversation) {
-    const fastInferenceAvailable = wiredRoles.includes("fast-inference" as RuntimeRole)
-    if (fastInferenceAvailable) {
+  // ── Coding patterns: file paths, code blocks, or coding verbs → full single-agent ──
+  // Check this FIRST so coding-intent always wins over conversation (a fast-mode reply
+  // that ignores a code-fix request is worse than a full-mode reply for a greeting).
+  const isCodingIntent =
+    hasCode ||
+    hasFilePath ||
+    category === "coding" ||
+    /edit|fix|add|refactor|debug|explain|test|write|implement|create|update|remove|delete|rename|optimize/i.test(input)
+
+  if (isCodingIntent) {
+    const coderAvailable = wiredRoles.includes("coder" as RuntimeRole)
+    if (coderAvailable) {
       return {
         requiresDelegation: true,
-        selectedRoles: ["fast-inference"] as RuntimeRole[],
+        selectedRoles: ["coder"] as RuntimeRole[],
         executionStrategy: "single-agent",
-        reasoning: "Conversational message. Delegating to fast-inference for quick response.",
-        intentCategory: "conversation",
+        mode: "full",
+        reasoning: "Coding request — full single-agent execution with tools.",
+        intentCategory: "coding",
       }
     }
+    // Fall through: no coder wired, try conversation or pattern-based routing below
+  }
+
+  // ── High-confidence conversation → fast (toolless) mode, no delegation ──
+  if (isConversation && confidence >= 0.7) {
+    return {
+      requiresDelegation: false,
+      selectedRoles: [],
+      executionStrategy: "direct",
+      mode: "fast",
+      reasoning: "Conversational message — fast toolless response.",
+      intentCategory: "conversation",
+    }
+  }
+
+  // ── Low-confidence conversation but still clearly conversational ──
+  if (isConversation) {
     const managerAvailable = wiredRoles.includes("manager" as RuntimeRole)
     if (managerAvailable) {
       return {
         requiresDelegation: true,
         selectedRoles: ["manager"] as RuntimeRole[],
         executionStrategy: "single-agent",
-        reasoning: "Conversational message. Delegating to manager for response.",
+        mode: "fast",
+        reasoning: "Conversational message. Delegating to manager for quick response.",
         intentCategory: "conversation",
       }
     }
@@ -204,6 +245,7 @@ export function route(
       requiresDelegation: false,
       selectedRoles: [],
       executionStrategy: "direct",
+      mode: "fast",
       reasoning: "Greeting or conversational message — no delegation needed.",
       intentCategory: "conversation",
     }
@@ -211,9 +253,9 @@ export function route(
 
   const availableRoles = pattern.roles.filter((r) => wiredRoles.includes(r))
 
-  // Input length escalation: long inputs indicate complex tasks that benefit from multi-agent
+  // Input length escalation: add supporting roles for long inputs
   const inputWordCount = input.trim().split(/\s+/).length
-  if (inputWordCount > 60 && availableRoles.length === 1 && category !== "conversation") {
+  if (inputWordCount > 60 && availableRoles.length <= 1 && category !== "conversation") {
     if (wiredRoles.includes("research" as RuntimeRole) && !availableRoles.includes("research" as RuntimeRole)) {
       availableRoles.push("research" as RuntimeRole)
     }
@@ -227,26 +269,20 @@ export function route(
       requiresDelegation: false,
       selectedRoles: [],
       executionStrategy: "direct",
+      mode: "full",
       reasoning: `Intent "${category}" but no wired roles available for delegation. Responding directly.`,
       intentCategory: category,
     }
   }
 
-  if (availableRoles.length === 1 && category !== "multi-agent") {
-    return {
-      requiresDelegation: true,
-      selectedRoles: availableRoles,
-      executionStrategy: "single-agent",
-      reasoning: `Classified as "${category}" with confidence ${confidence}. Delegating to ${availableRoles[0]}.`,
-      intentCategory: category,
-    }
-  }
-
+  // ── Single role → single-agent full mode ──
+  // IMPORTANT: never emit "multi-agent" strategy from intent classification
   return {
     requiresDelegation: true,
     selectedRoles: availableRoles,
-    executionStrategy: "multi-agent",
-    reasoning: `Complex task classified as "${category}". Multi-agent delegation to: ${availableRoles.join(", ")}.`,
+    executionStrategy: "single-agent",
+    mode: "full",
+    reasoning: `Classified as "${category}" with confidence ${confidence}. Delegating to ${availableRoles[0]}.`,
     intentCategory: category,
   }
 }
@@ -283,10 +319,12 @@ export async function routeWithLLMFallback(
       return syncDecision
     }
 
+    // LLM fallback: never emit "multi-agent" strategy — always "single-agent"
     return {
       requiresDelegation: true,
       selectedRoles: availableRoles,
-      executionStrategy: availableRoles.length > 1 ? "multi-agent" : "single-agent",
+      executionStrategy: "single-agent",
+      mode: "full",
       reasoning: `LLM fallback: classified as "${llmResult.category}" (confidence ${llmResult.confidence}). Delegating to ${availableRoles.join(", ")}.`,
       intentCategory: llmResult.category,
     }

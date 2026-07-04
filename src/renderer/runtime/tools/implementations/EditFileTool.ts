@@ -3,11 +3,44 @@ import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
 import { useWorkspaceStore } from '@/stores/workspace-store'
-import { FileHistoryManager } from '@/lib/file-history'
 import { applyEdits, generateUnifiedDiff, type DiffEdit, type DiffEngineResult } from '@/lib/diff-engine'
 import { fileContentCache } from '@/lib/FileContentCache'
+import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
 
-const snapshottedFilesByTrace = new Map<string, Set<string>>()
+const changesetByTrace = new Map<string, string>()
+
+function recordChangeSetEntry(
+  ctx: ToolContext,
+  fullPath: string,
+  relativePath: string,
+  originalContent: string,
+  modifiedContent: string,
+  diff: string,
+  changeType: 'modify' | 'create'
+): void {
+  const traceId = ctx.traceId ?? 'unknown'
+  let changeSetId = changesetByTrace.get(traceId)
+
+  if (!changeSetId) {
+    const cs = ChangeSetManager.getInstance().createChangeSet({
+      sessionId: traceId,
+      correlationId: traceId,
+      title: `Edit ${relativePath}`,
+      reason: ctx.role ? `AI edit by ${ctx.role}` : 'AI edit',
+      sourceToolCallIds: [traceId],
+    })
+    changeSetId = cs.id
+    changesetByTrace.set(traceId, changeSetId)
+  }
+
+  ChangeSetManager.getInstance().addFileToChangeSet({
+    changeSetId,
+    path: relativePath,
+    changeType,
+    beforeContent: originalContent,
+    afterContent: modifiedContent,
+  })
+}
 
 async function readTextFile(path: string): Promise<string> {
   if (typeof window !== 'undefined' && (window as any).electronAPI) {
@@ -17,19 +50,6 @@ async function readTextFile(path: string): Promise<string> {
   try {
     const fs = await import('@/lib/electron-api')
     return await fs.readTextFile(path)
-  } catch {
-    throw new Error('File system not available in this environment')
-  }
-}
-
-async function writeTextFile(path: string, content: string): Promise<void> {
-  if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      const { writeTextFile: shimWrite } = await import('@/lib/electron-api')
-        return shimWrite(path, content)
-  }
-  try {
-    const fs = await import('@/lib/electron-api')
-    return await fs.writeTextFile(path, content)
   } catch {
     throw new Error('File system not available in this environment')
   }
@@ -126,25 +146,6 @@ export const EditFileTool: AgentTool = buildTool({
       return { data: null, error: 'edit_file requires edits, old_string/new_string, or old_content/new_content pairs', isError: true }
     }
 
-    const history = FileHistoryManager.getInstance()
-    const traceKey = ctx.traceId ?? 'unknown'
-    if (!snapshottedFilesByTrace.has(traceKey)) {
-      snapshottedFilesByTrace.set(traceKey, new Set())
-    }
-    const snapshottedFiles = snapshottedFilesByTrace.get(traceKey)!
-    let snapshot: string | undefined
-    if (!snapshottedFiles.has(fullPath)) {
-      try {
-        snapshot = await history.createSnapshot(fullPath, originalContent, traceKey)
-        if (!snapshot && originalContent.length > 0) {
-          console.warn(`[EditFileTool] Snapshot could not be created for ${fullPath} — undo will not work`)
-        }
-      } catch (snapErr) {
-        console.warn(`[EditFileTool] Snapshot creation failed for ${fullPath} — proceeding without undo:`, snapErr)
-      }
-      snapshottedFiles.add(fullPath)
-    }
-
     const engineResult: DiffEngineResult = applyEdits(originalContent, edits)
 
     if (!engineResult.allApplied) {
@@ -172,25 +173,16 @@ export const EditFileTool: AgentTool = buildTool({
     const modifiedContent = engineResult.content
     const diff = generateUnifiedDiff(originalContent, modifiedContent, fullPath)
 
-    await writeTextFile(fullPath, modifiedContent)
+    // Update in-memory cache so subsequent reads see proposed content.
+    // NOTE: This does NOT write to disk. The ChangeSet review panel gates disk mutation.
     fileContentCache.set(fullPath, modifiedContent)
-    fileContentCache.invalidate(fullPath)
 
-    const writtenContent = await readTextFile(fullPath)
-    if (writtenContent !== modifiedContent) {
-      return {
-        data: null,
-        error: 'EDIT_FAILED: content after write does not match expected output — file was externally modified',
-        isError: true,
-        meta: { diff },
-      }
-    }
-
-    useWorkspaceStore.getState().notifyFileEdited(fullPath, modifiedContent)
+    const relativePath = filePath.replace(/^[/\\]/, '')
+    recordChangeSetEntry(ctx, fullPath, relativePath, originalContent, modifiedContent, diff, 'modify')
 
     const totalHunks = engineResult.results.reduce((sum, r) => sum + r.hunks, 0)
     return {
-      data: `File edited successfully. Applied ${totalHunks} change(s) across ${engineResult.results.length} edit(s).`,
+      data: `Change proposed: ${totalHunks} edit(s) applied to ${relativePath}. Awaiting user review in the diff panel.`,
       meta: {
         editResults: engineResult.results.map(r => ({
           applied: r.applied,
@@ -200,6 +192,7 @@ export const EditFileTool: AgentTool = buildTool({
         })),
         totalHunks,
         diff,
+        status: 'pending_review',
       },
     }
   },

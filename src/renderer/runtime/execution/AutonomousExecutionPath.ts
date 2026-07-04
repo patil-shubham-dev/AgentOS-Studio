@@ -4,7 +4,7 @@ import type { RoutingDecision } from "@/runtime/manager-routing-engine"
 import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { useWorkspaceStore } from "@/stores/workspace-store"
-import { ProviderRuntime } from "@/runtime/providers/ProviderRuntime"
+import { providerGateway } from "@/runtime/providers/ProviderGateway"
 import { AgentExecutor } from "@/runtime/agents/AgentExecutor"
 import { ExecutionScratchpad } from "@/runtime/execution/ExecutionScratchpad"
 import { ExecutionBudgetManager } from "@/runtime/execution/ExecutionBudgetManager"
@@ -186,20 +186,18 @@ Return one sentence describing what to do next.`
     try {
       const wired = useWorkspaceRuntime.getState().wiredAgents.find((a) => a.runtimeRole === "manager")
       if (!wired) return null
-      const provider = useAppStore.getState().providers?.find((p) => p.id === wired.providerId)
-      if (!provider) return null
-      const runtime = new ProviderRuntime(provider.baseUrl, provider.apiKey)
-      runtime.setDefaultModel(wired.model)
-      const stream = runtime.stream({
+      const stream = providerGateway.stream({
         systemPrompt: "You are a planning assistant. Be concise.",
-        messages: [{ role: "user" as const, content: prompt }],
+        messages: [{ role: "user", content: prompt }],
         maxTokens: 256, signal,
+        providerId: wired.providerId,
+        model: wired.model,
       })
       let text = ""
       for await (const chunk of stream) {
         if (chunk.type === "token") text += chunk.text
         else if (chunk.type === "done") text = chunk.fullText
-        else if (chunk.type === "error") throw new Error(chunk.error)
+        else if (chunk.type === "error") throw new Error(chunk.message)
       }
       return text.trim() || prompt
     } catch {

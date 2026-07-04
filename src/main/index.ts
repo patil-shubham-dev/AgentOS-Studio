@@ -122,7 +122,7 @@ app.whenReady().then(async () => {
   }
 
   // Handle renderer crashes — show a crash page instead of a blank window
-  mainWindow.webContents.on('crashed', () => {
+  ;(mainWindow.webContents as any).on('crashed', () => {
     log('Lifecycle', 'Renderer process CRASHED')
     mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
       <!DOCTYPE html>
@@ -149,7 +149,7 @@ app.whenReady().then(async () => {
         <div style="font-size:40px;margin-bottom:8px;">!</div>
         <h1 style="font-size:18px;font-weight:600;margin-bottom:8px;">AgenticOS couldn't start</h1>
         <p style="font-size:13px;color:#888;max-width:400px;line-height:1.5;">A critical system component failed to load.</p>
-        <p style="font-size:11px;color:#666;max-width:400px;word-break:break-all;">${err.replace(/</g, '&lt;')}</p>
+        <p style="font-size:11px;color:#666;max-width:400px;word-break:break-all;">${String(err).replace(/</g, '&lt;')}</p>
         <button onclick="location.reload()" style="padding:10px 24px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;margin-top:16px;">Reload</button>
       </body>
       </html>

@@ -1,5 +1,4 @@
 import { WebContentsView, BrowserWindow } from 'electron'
-import { join } from 'path'
 
 export interface ViewportBounds {
   x: number
@@ -42,7 +41,6 @@ export class ViewportManager {
   private state: ViewportState = { url: 'about:blank', title: 'New Tab', isLoading: false, canGoBack: false, canGoForward: false }
   private onStateChange: ((state: ViewportState) => void) | null = null
   private onNetworkEvent: ((event: { type: string; data: any }) => void) | null = null
-  private debuggerAttached = false
   private pendingRequests = new Map<string, NetworkRequest>()
 
   attach(mainWindow: BrowserWindow, onStateChange?: (state: ViewportState) => void, onNetworkEvent?: (event: { type: string; data: any }) => void): void {
@@ -128,13 +126,13 @@ export class ViewportManager {
             existing.statusText = params.response.statusText
             existing.mimeType = params.response.mimeType
             existing.responseHeaders = params.response.headers
-            existing.timing = { ...existing.timing, headersReceived: params.timestamp, responseReceived: params.timestamp }
+            existing.timing = { startTime: existing.timing?.startTime ?? params.timestamp, ...existing.timing, headersReceived: params.timestamp, responseReceived: params.timestamp }
             this.onNetworkEvent({ type: 'response', data: existing })
           }
         } else if (method === 'Network.loadingFinished') {
           const existing = this.pendingRequests.get(params.requestId)
           if (existing) {
-            existing.timing = { ...existing.timing, finishTime: params.timestamp }
+            existing.timing = { startTime: existing.timing?.startTime ?? 0, ...existing.timing, finishTime: params.timestamp }
             existing.size = params.encodedDataLength
             this.onNetworkEvent({ type: 'complete', data: existing })
             this.pendingRequests.delete(params.requestId)
@@ -143,7 +141,7 @@ export class ViewportManager {
           const existing = this.pendingRequests.get(params.requestId)
           if (existing) {
             existing.error = params.errorText
-            existing.timing = { ...existing.timing, finishTime: params.timestamp }
+            existing.timing = { startTime: existing.timing?.startTime ?? 0, ...existing.timing, finishTime: params.timestamp }
             this.onNetworkEvent({ type: 'error', data: existing })
             this.pendingRequests.delete(params.requestId)
           }
@@ -152,7 +150,6 @@ export class ViewportManager {
       try {
         debugger_.attach('1.3')
         debugger_.sendCommand('Network.enable')
-        this.debuggerAttached = true
       } catch { /* debugger may not be available in all contexts */ }
     } catch { /* no-op */ }
   }
@@ -179,7 +176,6 @@ export class ViewportManager {
         ;(this.view as any).destroy?.()
       } catch { console.warn("[Viewport] Failed to close/destroy view") }
       this.view = null
-      this.debuggerAttached = false
       this.pendingRequests.clear()
     }
   }

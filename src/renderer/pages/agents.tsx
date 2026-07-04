@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils"
 import { RolesTab } from "@/components/settings/roles-tab"
 import { RoleHierarchyTree } from "@/components/settings/agents/role-hierarchy-tree"
 import { RoleDependencyGraph } from "@/components/settings/agents/role-dependency-graph"
+import { AgentTreeView } from "@/components/settings/agents/agent-tree-view"
 import { useAppStore } from "@/stores/app-store"
 import { useIntegrity } from "@/lib/use-integrity"
 import { Button, Badge } from "@agentic-os/ui"
@@ -14,7 +15,7 @@ import {
   Activity, RefreshCw, Wifi, WifiOff, Loader2,
 } from "lucide-react"
 
-type ViewMode = "grid" | "hierarchy" | "dependencies"
+type ViewMode = "grid" | "hierarchy" | "dependencies" | "runtime"
 
 export function AgentsPage() {
   useLeakTracker("AgentsPage")
@@ -93,6 +94,7 @@ export function AgentsPage() {
     { mode: "grid", label: "Grid", icon: LayoutGrid, desc: "Card-based role management" },
     { mode: "hierarchy", label: "Hierarchy", icon: GitFork, desc: "Parent-child role tree" },
     { mode: "dependencies", label: "Dependencies", icon: Share2, desc: "Role relationship map" },
+    { mode: "runtime", label: "Runtime Tree", icon: Activity, desc: "Live sub-agent hierarchy" },
   ]
 
   if (pageLoading) {
@@ -237,7 +239,7 @@ export function AgentsPage() {
             />
           </div>
 
-          {/* Manager status badge */}
+          {/* Manager status badge — subtle, non-blocking */}
           {(() => {
             const manager = roleConfigs.find((r) => r.name.toLowerCase() === "manager")
             const managerReady = !!(manager?.isEnabled && manager?.model && manager?.providerId)
@@ -246,10 +248,10 @@ export function AgentsPage() {
                 "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium border",
                 managerReady
                   ? "border-green-500/20 bg-green-500/5 text-green-400"
-                  : "border-amber-500/20 bg-amber-500/5 text-amber-400",
+                  : "border-white/[0.06] bg-white/[0.02] text-white/30",
               )}>
-                {managerReady ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-                {managerReady ? "Manager Ready" : "Manager Not Configured"}
+                {managerReady ? <Wifi className="h-3 w-3" /> : <Settings2 className="h-3 w-3" />}
+                {managerReady ? "Manager Ready" : "Manager (optional)"}
               </span>
             )
           })()}
@@ -368,6 +370,17 @@ export function AgentsPage() {
                   onSelect={(role) => setSelectedRoleId(role.id === selectedRoleId ? null : role.id)}
                   selectedId={selectedRoleId}
                 />
+              </div>
+            )}
+            {viewMode === "runtime" && (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold text-white/80">Sub-Agent Runtime Tree</h3>
+                  <p className="text-xs text-white/30">Live hierarchy of running and completed sub-agents, showing delegation depth, current task, and execution state.</p>
+                </div>
+                <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.02] to-white/[0.01] p-4">
+                  <AgentTreeView />
+                </div>
               </div>
             )}
           </motion.div>

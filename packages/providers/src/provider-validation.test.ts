@@ -189,7 +189,7 @@ describe('validateProvider with network error simulation', () => {
 
     const result = await validateProvider('https://integrate.api.nvidia.com/v1', 'nv-test-key')
     expect(result.success).toBe(false)
-    expect(result.error.toLowerCase()).toContain('time')
+    expect(result.error!.toLowerCase()).toContain('time')
   })
 
   it('handles 401 from endpoint', async () => {

@@ -68,7 +68,7 @@ export function getMainProcessLogs(filter?: {
 }): MainProcessLogEntry[] {
   let result = logs
   if (filter?.level) result = result.filter((e) => e.level === filter.level)
-  if (filter?.since) result = result.filter((e) => e.timestamp >= filter.since)
+  if (filter?.since) result = result.filter((e) => e.timestamp >= filter.since!)
   if (filter?.limit && filter.limit > 0) result = result.slice(-filter.limit)
   return result
 }

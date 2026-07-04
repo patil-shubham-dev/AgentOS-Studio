@@ -105,7 +105,7 @@ export function getReviewedContent(
   baseContent?: string,
 ): string {
   const base = baseContent ?? entry.originalContent
-  const hunks = computeDiff(entry.originalContent, entry.modifiedContent)
+  const hunks = computeDiff(base, entry.modifiedContent)
   if (hunks.length === 0) {
     return pendingBehavior === "modified" ? entry.modifiedContent : base
   }
@@ -194,8 +194,7 @@ async function syncReviewedEntry(entry: DiffFileEntry, pendingBehavior: PendingB
 
   await writeFile(absolutePath, reviewedContent)
   setWrittenContent(absolutePath, reviewedContent)
-  const updatedEntry = { ...entry, originalContent: reviewedContent }
-  setDiffEntry(updatedEntry)
+  setDiffEntry(entry)
   workspaceStore.notifyFileEdited(entry.path, reviewedContent)
   return true
 }
@@ -224,12 +223,23 @@ async function commitDiffEntry(entry: DiffFileEntry, content: string, force = fa
   const absolutePath = toAbsoluteWorkspacePath(workspaceStore.rootPath, entry.path)
 
   if (!force) {
+    const dirtyWarning = getDirtyBufferWarning(entry)
+    if (dirtyWarning) {
+      console.error(`[diff-review] Blocked write to "${entry.path}": ${dirtyWarning}. Use force=true to override.`)
+      return false
+    }
     const fileExists = await exists(absolutePath)
     if (!fileExists) {
       console.error(`[diff-review] Blocked write to "${entry.path}": file no longer exists on disk. Use force=true to override.`)
       return false
     }
     const currentContent = await readFile(absolutePath)
+    // Skip write if content already matches disk (e.g. propose-only reject)
+    if (currentContent === content) {
+      setDiffEntry(entry)
+      workspaceStore.notifyFileEdited(entry.path, content)
+      return true
+    }
     if (currentContent !== entry.originalContent && !isOurLastWrite(absolutePath, currentContent)) {
       console.error(`[diff-review] Blocked write to "${entry.path}": file was modified externally. Use force=true to override.`)
       return false
@@ -288,7 +298,7 @@ export async function acceptDiffReviewHunk(path: string, hunkIndex: number, forc
   const nextEntry = withUpdatedHunkStatus(entry, hunkIndex, "accepted")
   if (!nextEntry) return false
 
-  const result = await syncReviewedEntry(nextEntry, "modified", force)
+  const result = await syncReviewedEntry(nextEntry, "original", force)
   if (!result) return false
   return true
 }
@@ -301,7 +311,7 @@ export async function rejectDiffReviewHunk(path: string, hunkIndex: number, forc
   const nextEntry = withUpdatedHunkStatus(entry, hunkIndex, "rejected")
   if (!nextEntry) return false
 
-  const result = await syncReviewedEntry(nextEntry, "modified", force)
+  const result = await syncReviewedEntry(nextEntry, "original", force)
   if (!result) return false
   return true
 }

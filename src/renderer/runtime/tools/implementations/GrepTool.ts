@@ -8,7 +8,7 @@ const ABSOLUTE_MAX_RESULTS = 200
 
 export const GrepTool: AgentTool = buildTool({
   name: 'grep_files',
-  description: 'Search file contents with a regex or text pattern across the workspace',
+  description: 'Fast regex/text search using the workspace file index — best for precise pattern matching with regex, case sensitivity control, or restricting to a subdirectory. Reports scan statistics.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -27,7 +27,7 @@ export const GrepTool: AgentTool = buildTool({
     const p = (input as any)?.pattern
     return p ? `Grepping ${p}` : 'Searching file contents'
   },
-  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const { grepFiles } = await import('@/lib/search-utils')
     const pattern = String(input.pattern ?? '')
     const include = input.include as string | undefined

@@ -1,4 +1,4 @@
-import { runMigrations, createDefaultConfig, type MigrationResult } from "./migration"
+﻿import { runMigrations, createDefaultConfig, type MigrationResult } from "./migration"
 import { migrateApiKeysFromConfig } from "./secure-storage"
 import { safeSetItem, safeGetItem } from "./safe-storage"
 
@@ -267,7 +267,14 @@ export async function loadConfig(migrate = true): Promise<LoadResult> {
       log(`Migrated ${keyResult.migrated} API keys to secure storage`)
     }
 
-    await saveConfig(result.config as ConfigData, false)
+    // Strip apiKeys from providers before saving — they live in secure storage now
+    const cleanedConfig = {
+      ...result.config,
+      providers: (result.config.providers as Array<Record<string, unknown>>).map(
+        ({ apiKey: _, ...p }) => p,
+      ),
+    }
+    await saveConfig(cleanedConfig as ConfigData, false)
 
     return {
       config: result.config as ConfigData,

@@ -20,6 +20,14 @@ export class DependencyResolver {
         skipped.push(section.id)
         continue
       }
+      // Namespace filtering — default excludes future island sections
+      if (ctx.namespaceFilter && ctx.namespaceFilter.length > 0) {
+        const effectiveNamespace = section.namespace ?? 'coding'
+        if (!ctx.namespaceFilter.includes(effectiveNamespace)) {
+          skipped.push(section.id)
+          continue
+        }
+      }
       filtered.push(section)
     }
 

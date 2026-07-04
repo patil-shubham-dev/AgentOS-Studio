@@ -1,265 +1,173 @@
-import * as ts from "typescript"
-import { tsProgramManager, type TSSymbolInfo } from "./ts-program-manager"
-
-export interface TypeMember {
-  name: string
-  type: string
-  optional: boolean
-}
-
 export interface TypeNode {
   name: string
-  kind: "interface" | "class" | "type" | "enum"
+  kind: string
   file: string
   line: number
-  typeParameters: string[]
-  extends: string[]
-  implements: string[]
-  members: TypeMember[]
-  referencedBy: string[]
-}
-
-export interface TypeGraphData {
-  types: Map<string, TypeNode>
-  fileToTypes: Map<string, string[]>
-  indexedAt: number
+  type?: string
+  members?: string[]
+  references?: string[]
 }
 
 export interface WhatBreaksResult {
   files: string[]
   tests: string[]
+  warnings: string[]
 }
 
-function extractMembers(
-  node: ts.InterfaceDeclaration | ts.ClassDeclaration | ts.TypeAliasDeclaration,
-  checker: ts.TypeChecker,
-  sourceFile: ts.SourceFile
-): TypeMember[] {
-  const members: TypeMember[] = []
-  const memberList = node.kind === ts.SyntaxKind.TypeAliasDeclaration
-    ? []
-    : (node as ts.InterfaceDeclaration | ts.ClassDeclaration).members
-  for (const m of memberList) {
-    if (ts.isPropertySignature(m) || ts.isPropertyDeclaration(m)) {
-      const name = m.name ? (ts.isIdentifier(m.name) ? m.name.text : m.name.getText(sourceFile)) : ""
-      if (!name) continue
-      const typeStr = m.type ? m.type.getText(sourceFile) : "unknown"
-      members.push({ name, type: typeStr, optional: m.questionToken ? true : false })
-    } else if (ts.isMethodSignature(m) || ts.isMethodDeclaration(m)) {
-      const name = m.name ? (ts.isIdentifier(m.name) ? m.name.text : m.name.getText(sourceFile)) : ""
-      if (!name) continue
-      const params = m.parameters.map(p => {
-        const pName = p.name ? (ts.isIdentifier(p.name) ? p.name.text : p.name.getText(sourceFile)) : ""
-        const pType = p.type ? p.type.getText(sourceFile) : "unknown"
-        return `${pName}: ${pType}`
-      }).join(", ")
-      const returnType = m.type ? m.type.getText(sourceFile) : "void"
-      members.push({ name, type: `(${params}) => ${returnType}`, optional: false })
-    }
-  }
-  return members
+export interface TypeGraphStats {
+  totalTypes: number
+  totalFiles: number
+  indexedAt: number
 }
+
+const TYPE_KINDS = new Set(["interface", "class", "enum", "type"])
 
 export class TypeGraph {
-  private data: TypeGraphData = { types: new Map(), fileToTypes: new Map(), indexedAt: 0 }
+  private types: TypeNode[] = []
+  private byFile: Map<string, TypeNode[]> = new Map()
+  private byName: Map<string, TypeNode> = new Map()
+  private allSymbols: { name: string; kind: string; file: string; type?: string }[] = []
+  private ready = false
+  private indexedAt = 0
 
   get isReady(): boolean {
-    return this.data.types.size > 0
+    return this.ready
   }
 
-  build(typeSymbols: TSSymbolInfo[]): void {
-    this.data.types.clear()
-    this.data.fileToTypes.clear()
+  build(symbols: unknown[]): void {
+    this.types = []
+    this.byFile.clear()
+    this.byName.clear()
+    this.allSymbols = []
 
-    const checker = tsProgramManager.getChecker()
-
-    const namedTypes = typeSymbols.filter(
-      (s) => s.kind === "class" || s.kind === "interface" || s.kind === "type" || s.kind === "enum"
-    )
-
-    for (const sym of namedTypes) {
-      const node: TypeNode = {
-        name: sym.name,
-        kind: sym.kind as TypeNode["kind"],
-        file: sym.file,
-        line: sym.line,
-        typeParameters: sym.typeParameters ?? [],
-        extends: sym.extends ?? [],
-        implements: sym.implements ?? [],
-        members: [],
-        referencedBy: [],
-      }
-
-      if (sym.type && checker) {
-        const typeDecl = this.findTypeDeclaration(sym, checker)
-        if (typeDecl) {
-          if (ts.isInterfaceDeclaration(typeDecl) || ts.isClassDeclaration(typeDecl) || ts.isTypeAliasDeclaration(typeDecl)) {
-            node.members = extractMembers(typeDecl, checker, typeDecl.getSourceFile())
-          }
+    for (const sym of symbols) {
+      const s = sym as any
+      if (TYPE_KINDS.has(s.kind)) {
+        const node: TypeNode = {
+          name: s.name,
+          kind: s.kind,
+          file: s.file,
+          line: s.line,
+          type: s.type,
+        }
+        this.types.push(node)
+        this.byName.set(node.name, node)
+        const fileList = this.byFile.get(node.file)
+        if (fileList) {
+          fileList.push(node)
+        } else {
+          this.byFile.set(node.file, [node])
         }
       }
-
-      this.data.types.set(sym.name, node)
-      const existing = this.data.fileToTypes.get(sym.file) ?? []
-      existing.push(sym.name)
-      this.data.fileToTypes.set(sym.file, existing)
+      this.allSymbols.push({ name: s.name, kind: s.kind, file: s.file, type: s.type })
     }
 
-    this.buildReferencedBy(typeSymbols)
-    this.data.indexedAt = Date.now()
-  }
-
-  private buildReferencedBy(typeSymbols: TSSymbolInfo[]): void {
-    const typeNames = new Set(this.data.types.keys())
-
-    for (const sym of typeSymbols) {
-      if (typeNames.has(sym.name)) continue
-      if (!sym.type) continue
-      for (const typeName of typeNames) {
-        if (sym.type.includes(typeName)) {
-          const node = this.data.types.get(typeName)
-          if (node && !node.referencedBy.includes(sym.file)) {
-            node.referencedBy.push(sym.file)
-          }
-        }
-      }
-    }
-  }
-
-  private findTypeDeclaration(sym: TSSymbolInfo, checker: ts.TypeChecker): ts.Declaration | null {
-    const program = tsProgramManager["program"] as ts.Program | null
-    if (!program) return null
-    const sourceFile = program.getSourceFiles().find(
-      (sf) => sf.fileName.replace(/\\/g, "/").endsWith(sym.file.replace(/\\/g, "/"))
-    )
-    if (!sourceFile) return null
-
-    let found: ts.Declaration | null = null
-    const visit = (node: ts.Node) => {
-      if (found) return
-      if (
-        (ts.isInterfaceDeclaration(node) || ts.isClassDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isEnumDeclaration(node))
-        && node.name?.text === sym.name
-      ) {
-        found = node
-        return
-      }
-      ts.forEachChild(node, visit)
-    }
-    ts.forEachChild(sourceFile, visit)
-    return found
-  }
-
-  whereUsed(typeName: string): string[] {
-    const node = this.data.types.get(typeName)
-    if (!node) return []
-    return [...node.referencedBy]
-  }
-
-  whoDependsOn(filePath: string): string[] {
-    const typeNames = this.data.fileToTypes.get(filePath)
-    if (!typeNames || typeNames.length === 0) return []
-    const deps = new Set<string>()
-    for (const tn of typeNames) {
-      const node = this.data.types.get(tn)
-      if (!node) continue
-      for (const ref of node.referencedBy) {
-        if (ref !== filePath) deps.add(ref)
-      }
-    }
-    return [...deps]
-  }
-
-  whatBreaks(filePath: string, changedType: string): WhatBreaksResult {
-    const node = this.data.types.get(changedType)
-    if (!node) return { files: [], tests: [] }
-
-    const files: string[] = []
-    const tests: string[] = []
-
-    for (const ref of node.referencedBy) {
-      if (ref === filePath) continue
-      if (ref.includes(".test.") || ref.includes(".spec.") || ref.includes("__tests__") || ref.includes("/test/") || ref.includes("/tests/")) {
-        tests.push(ref)
-      } else {
-        files.push(ref)
-      }
-    }
-
-    return { files: [...new Set(files)], tests: [...new Set(tests)] }
-  }
-
-  getType(typeName: string): TypeNode | undefined {
-    return this.data.types.get(typeName)
-  }
-
-  getTypesInFile(filePath: string): TypeNode[] {
-    const names = this.data.fileToTypes.get(filePath)
-    if (!names) return []
-    return names.map((n) => this.data.types.get(n)).filter((t): t is TypeNode => !!t)
+    this.ready = this.types.length > 0
+    this.indexedAt = Date.now()
   }
 
   getAllTypes(): TypeNode[] {
-    return [...this.data.types.values()]
+    return this.types
   }
 
-  getStats(): { totalTypes: number; totalFiles: number; indexedAt: number } {
-    return {
-      totalTypes: this.data.types.size,
-      totalFiles: this.data.fileToTypes.size,
-      indexedAt: this.data.indexedAt,
+  getType(name: string): TypeNode | undefined {
+    return this.byName.get(name)
+  }
+
+  getTypesInFile(filePath: string): TypeNode[] {
+    return this.byFile.get(filePath) ?? []
+  }
+
+  whereUsed(typeName: string): string[] {
+    const type = this.byName.get(typeName)
+    if (!type) return []
+
+    const files = new Set<string>()
+    for (const sym of this.allSymbols) {
+      if (sym.file === type.file) continue
+      if (sym.type?.includes(typeName)) {
+        files.add(sym.file)
+      }
     }
+    return [...files]
   }
 
-  getTypeContextForFiles(filePaths: string[], maxTypes = 10): string {
-    const seen = new Set<string>()
-    const types: TypeNode[] = []
+  whoDependsOn(filePath: string): string[] {
+    const typesInFile = this.byFile.get(filePath)
+    if (!typesInFile || typesInFile.length === 0) return []
 
+    const dependents = new Set<string>()
+    for (const type of typesInFile) {
+      for (const user of this.whereUsed(type.name)) {
+        dependents.add(user)
+      }
+    }
+    return [...dependents]
+  }
+
+  whatBreaks(filePath: string, changedType: string): WhatBreaksResult {
+    const users = this.whereUsed(changedType)
+    const files: string[] = []
+    const tests: string[] = []
+    const warnings: string[] = []
+
+    for (const file of users) {
+      if (file.includes("__tests__") || file.includes(".test.") || file.includes(".spec.")) {
+        tests.push(file)
+      } else {
+        files.push(file)
+      }
+    }
+
+    if (files.length === 0 && tests.length === 0) {
+      warnings.push(`Type "${changedType}" has no known consumers`)
+    }
+
+    return { files, tests, warnings }
+  }
+
+  getTypeContextForFiles(filePaths: string[], maxTypes?: number): string {
+    const typesInScope: TypeNode[] = []
     for (const fp of filePaths) {
-      const fileTypes = this.getTypesInFile(fp)
-      for (const t of fileTypes) {
-        if (seen.has(t.name) || types.length >= maxTypes) break
-        seen.add(t.name)
-        types.push(t)
-      }
-      if (types.length >= maxTypes) break
+      const found = this.byFile.get(fp)
+      if (found) typesInScope.push(...found)
     }
 
-    if (types.length === 0) return ""
+    if (typesInScope.length === 0) return ""
 
-    const lines: string[] = ["<type_context>"]
-    for (const t of types) {
-      const rel = t.referencedBy.length > 0
-        ? ` used by ${t.referencedBy.length} file(s)`
-        : ""
-      lines.push(`- \`${t.name}\` (${t.kind}) — defined in \`${t.file}:${t.line}\`${rel}`)
-    }
-    lines.push("</type_context>")
-    return lines.join("\n")
+    const limit = maxTypes ?? typesInScope.length
+    const slice = typesInScope.slice(0, limit)
+
+    const parts = slice.map((t) => {
+      const usedBy = this.whereUsed(t.name)
+      const refInfo = usedBy.length > 0 ? ` used by="${usedBy.length} file(s)"` : ""
+      return `  <type name="${t.name}" kind="${t.kind}" file="${t.file}" line="${t.line}"${refInfo} />`
+    })
+
+    return `<type_context>\n${parts.join("\n")}\n</type_context>`
   }
 
-  toJSON(): Record<string, unknown> {
+  toJSON(): string {
+    return JSON.stringify({
+      types: this.types,
+      indexedAt: this.indexedAt,
+    })
+  }
+
+  static fromJSON(json: string): TypeGraph {
+    const data = JSON.parse(json)
+    const graph = new TypeGraph()
+    graph.build(data.types)
+    graph.indexedAt = data.indexedAt ?? 0
+    return graph
+  }
+
+  getStats(): TypeGraphStats {
     return {
-      types: Object.fromEntries(this.data.types),
-      fileToTypes: Object.fromEntries(this.data.fileToTypes),
-      indexedAt: this.data.indexedAt,
+      totalTypes: this.types.length,
+      totalFiles: this.byFile.size,
+      indexedAt: this.indexedAt,
     }
-  }
-
-  static fromJSON(json: Record<string, unknown>): TypeGraph {
-    const tg = new TypeGraph()
-    if (json.types) {
-      for (const [key, val] of Object.entries(json.types as Record<string, TypeNode>)) {
-        tg.data.types.set(key, val)
-      }
-    }
-    if (json.fileToTypes) {
-      for (const [key, val] of Object.entries(json.fileToTypes as Record<string, string[]>)) {
-        tg.data.fileToTypes.set(key, val)
-      }
-    }
-    tg.data.indexedAt = (json.indexedAt as number) ?? 0
-    return tg
   }
 }
 

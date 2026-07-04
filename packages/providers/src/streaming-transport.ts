@@ -1,4 +1,4 @@
-import type { StreamEvent, StreamState, StreamMetrics } from "./transport-types"
+import type { StreamState, StreamMetrics } from "./transport-types"
 import { TransportError } from "./transport-errors"
 import { tauriFetchStreaming } from "./http-client"
 
@@ -420,24 +420,24 @@ export async function streamingTransportFetch(
         callbacks.onFinish(reason)
       }
     },
-    onError: (err) => {
+    onError: (_err) => {
       metrics.parseErrors++
     },
   })
 
   const reader = response.body.getReader()
+  console.log("[FLOW:8] streamingTransportFetch: reader created, entering read loop")
   const decoder = new TextDecoder()
   let firstChunkReceived = false
-  let lastChunkTime = performance.now()
   let overallDeadline = setTimeout(() => {
     console.log(`${STREAM_LOG} ✗ max duration exceeded ${maxDuration}ms (${Math.round(performance.now() - t0)}ms)`)
     abortCtrl.abort()
     callbacks.onError(new TransportError("STREAM_DURATION_EXCEEDED", `Stream exceeded max duration of ${maxDuration}ms`))
   }, maxDuration)
 
-  let readCount = 0
   try {
     while (true) {
+      console.log("[FLOW:9] streamingTransportFetch: read loop iteration (tokens=" + metrics.totalTokens + ")")
       if (abortCtrl.signal.aborted) {
         console.log(`${STREAM_LOG} ✗ abort during read loop (${Math.round(performance.now() - t0)}ms, tokens=${metrics.totalTokens})`)
         break
@@ -475,7 +475,6 @@ export async function streamingTransportFetch(
         break
       }
 
-      lastChunkTime = performance.now()
       metrics.totalChunks++
       metrics.chunkSizes.push(value.byteLength)
 
@@ -488,6 +487,7 @@ export async function streamingTransportFetch(
       const text = decoder.decode(value, { stream: true })
       parser.push(text)
     }
+    console.log("[FLOW:10] streamingTransportFetch: read loop exited")
 
     const finished = parser.finish()
     if (finished.toolCalls.length > 0) {
@@ -528,4 +528,5 @@ export async function streamingTransportFetch(
     options.onStateChange?.("completed")
     callbacks.onDone()
   }
+  console.log("[FLOW:11] streamingTransportFetch: function complete")
 }

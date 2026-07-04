@@ -1,10 +1,9 @@
 import type { ImplementationPlan, PlanStep } from "./PlanTypes"
 import { generatePlanId } from "./PlanTypes"
 import { useAppStore } from "@/stores/app-store"
-import { ProviderRuntime } from "@/runtime/providers/ProviderRuntime"
+import { providerGateway } from "@/runtime/providers/ProviderGateway"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { useWorkspaceStore } from "@/stores/workspace-store"
-import { ContextManager } from "@/runtime/context/ContextManager"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
 import { configLoader } from "@/runtime/project-config/ConfigLoader"
 import type { StructuredProjectConfig } from "@/runtime/project-config/ProjectConfigTypes"
@@ -142,14 +141,13 @@ export class PlanGenerator {
     ]
 
     try {
-      const providerRuntime = new ProviderRuntime(provider.baseUrl, provider.apiKey)
-      providerRuntime.setDefaultModel(managerAgent?.model ?? provider.models[0]?.id ?? "")
-
-      const result = await providerRuntime.chat({
+      const result = await providerGateway.chat({
         messages,
         maxTokens: 4096,
         temperature: 0.3,
         signal,
+        providerId: managerAgent?.providerId,
+        model: managerAgent?.model ?? provider.models[0]?.id,
       })
 
       const plan = this.parsePlanResponse(result.content ?? "")

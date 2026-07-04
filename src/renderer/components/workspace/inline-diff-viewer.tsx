@@ -74,7 +74,7 @@ export function InlineDiffViewer({
     )
   }
 
-  const hunks = computeHunks(original, edited)
+  const hunks = useMemo(() => computeHunks(original, edited), [original, edited])
   const addCount = hunks.reduce((s, h) => s + h.lines.filter((l) => l.type === "add").length, 0)
   const removeCount = hunks.reduce((s, h) => s + h.lines.filter((l) => l.type === "remove").length, 0)
 

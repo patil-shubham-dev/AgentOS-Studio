@@ -20,7 +20,7 @@ export function createMcpTool(def: MCPToolDefinition): AgentTool {
     isMcp: true,
     mcpInfo: { serverName: def.serverName, toolName: def.name },
 
-    execute: async (ctx: ToolContext, input: unknown): Promise<ToolResult> => {
+    execute: async (_ctx: ToolContext, input: unknown): Promise<ToolResult> => {
       try {
         const data = await def.callTool(def.name, (input ?? {}) as Record<string, unknown>)
         return { data, meta: { mcp: true, serverName: def.serverName } }

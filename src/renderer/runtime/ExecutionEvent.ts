@@ -70,6 +70,8 @@ export interface AgentAssignedEvent {
   modelName?: string
   providerName?: string
   stepId: string
+  /** "single-agent" | "multi-agent" — set by the routing decision; deterministic, never inferred client-side */
+  executionStrategy?: string
   timestamp: number
 }
 
@@ -271,6 +273,7 @@ export interface CommandStartEvent {
   type: "COMMAND_START"
   executionId: string
   command: string
+  cwd?: string
   timestamp: number
 }
 
