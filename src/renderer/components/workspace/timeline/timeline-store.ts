@@ -98,7 +98,7 @@ function clearStorage(): void {
   }
 }
 
-export type StreamState = "not_started" | "streaming" | "completed" | "failed" | "fallback" | "cancelled"
+export type StreamState = "not_started" | "streaming" | "loading_slowly" | "completed" | "failed" | "fallback" | "cancelled"
 
 export interface SessionConfidence {
   overall: number
@@ -233,7 +233,7 @@ const persisted = loadPersistedState()
 function recoverInterruptedSessions(sessions: Map<string, AgentSession>): Map<string, AgentSession> {
   const now = Date.now()
   for (const [stepId, session] of sessions) {
-    if (session.streamState === "streaming" || session.streamState === "not_started") {
+    if (session.streamState === "streaming" || session.streamState === "not_started" || session.streamState === "loading_slowly") {
       sessions.set(stepId, {
         ...session,
         streamState: "cancelled",

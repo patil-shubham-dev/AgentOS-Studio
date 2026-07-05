@@ -385,7 +385,7 @@ export const AssistantResponse = memo(function AssistantResponse({
 }: AssistantResponseProps) {
   const session = useTimelineStore((s) => s.agentSessions.get(stepId))
   const streamState = session?.streamState ?? "not_started"
-  const isRunning = streamState === "streaming" || streamState === "not_started"
+  const isRunning = streamState === "streaming" || streamState === "not_started" || streamState === "loading_slowly"
 
   if (!session) {
     if (isLatest) {

@@ -77,6 +77,7 @@ export class ExecutionSessionManager {
   private forceStopTimer: ReturnType<typeof setTimeout> | null = null
   /** Tracks correlationIds that are currently being executed — prevents duplicate sends */
   private activeCorrelationIds = new Set<string>()
+  private loadingSlowTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
   // ── Observability ──
   private obsManager = ObservabilityManager.getInstance()
@@ -445,10 +446,26 @@ export class ExecutionSessionManager {
           }, event.correlationId)
         }
         this.stepByExecId.set(event.executionId, event.stepId)
+
+        // Start a 5-second timeout: if no TOKEN arrives, mark as loading_slowly
+        const slowTimeout = setTimeout(() => {
+          const tl = useTimelineStore.getState()
+          const sid = this.stepByExecId.get(event.executionId)
+          if (sid) {
+            tl.updateAgentSession(sid, {
+              streamState: "loading_slowly",
+              currentPhase: "Still working...",
+            })
+          }
+          this.loadingSlowTimeouts.delete(event.executionId)
+        }, 5000)
+        this.loadingSlowTimeouts.set(event.executionId, slowTimeout)
         break
       }
 
       case "MESSAGE_COMPLETE": {
+        const slowTimeout = this.loadingSlowTimeouts.get(event.executionId)
+        if (slowTimeout) { clearTimeout(slowTimeout); this.loadingSlowTimeouts.delete(event.executionId) }
         StreamManager.getInstance().clearStep(event.stepId)
         timeline.commitStreamingText(event.stepId)
         timeline.updateAgentSession(event.stepId, { status: "complete" })
@@ -723,6 +740,9 @@ export class ExecutionSessionManager {
             break
           }
         }
+        const efTimeout = this.loadingSlowTimeouts.get(event.executionId)
+        if (efTimeout) { clearTimeout(efTimeout); this.loadingSlowTimeouts.delete(event.executionId) }
+
         const efStepId = this.stepByExecId.get(event.executionId)
         if (efStepId) {
           StreamManager.getInstance().clearStep(efStepId)
@@ -972,6 +992,9 @@ export class ExecutionSessionManager {
         if (tokenStepId) {
           StreamManager.getInstance().append(tokenStepId, (event as any).token ?? "")
         }
+        // First token arrived — clear the loading_slowly timeout
+        const tTimeout = this.loadingSlowTimeouts.get(event.executionId)
+        if (tTimeout) { clearTimeout(tTimeout); this.loadingSlowTimeouts.delete(event.executionId) }
         break
       }
       case "MESSAGE_UPDATE":

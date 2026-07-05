@@ -322,7 +322,7 @@ export function ChatPanel() {
       // Safety: finalize any remaining optimistic sessions that weren't upgraded
       const timeline = useTimelineStore.getState()
       for (const [stepId, session] of timeline.agentSessions) {
-        if (stepId.startsWith("optimistic_") && session.streamState === "streaming") {
+        if (stepId.startsWith("optimistic_") && (session.streamState === "streaming" || session.streamState === "loading_slowly")) {
           timeline.flushPendingText(stepId)
           timeline.updateAgentSession(stepId, {
             status: "error",
@@ -347,6 +347,7 @@ export function ChatPanel() {
         const stageMap: Record<StreamState, { label: string; icon: typeof Loader2 | typeof CheckCircle | typeof XCircle; color: string }> = {
           not_started: { label: "Waiting...", icon: Loader2, color: "text-yellow-400" },
           streaming: { label: "Streaming...", icon: Loader2, color: "text-green-400" },
+          loading_slowly: { label: "Still working...", icon: Loader2, color: "text-orange-400" },
           completed: { label: "Complete", icon: CheckCircle, color: "text-green-400" },
           failed: { label: "Failed", icon: XCircle, color: "text-red-400" },
           fallback: { label: "Fallback", icon: AlertTriangle, color: "text-amber-400" },
@@ -374,7 +375,7 @@ export function ChatPanel() {
     // Clean up optimistic sessions
     const timeline = useTimelineStore.getState()
     for (const [stepId, session] of timeline.agentSessions) {
-      if (session.streamState === "streaming" || session.streamState === "not_started") {
+      if (session.streamState === "streaming" || session.streamState === "not_started" || session.streamState === "loading_slowly") {
         timeline.commitStreamingText(stepId)
         timeline.updateAgentSession(stepId, { status: "complete", streamState: "cancelled", completedAt: Date.now() })
       }

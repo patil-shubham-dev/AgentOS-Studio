@@ -34,7 +34,7 @@ function formatDuration(ms: number): string {
 
 export const SessionCard = memo(function SessionCard({ session, children }: SessionCardProps) {
   const streamState = session.streamState
-  const isRunning = streamState === "streaming" || streamState === "not_started"
+  const isRunning = streamState === "streaming" || streamState === "not_started" || streamState === "loading_slowly"
   const isComplete = streamState === "completed"
   const isError = streamState === "failed"
   const isCancelled = streamState === "cancelled"
@@ -126,6 +126,16 @@ function StatusIcon({ streamState }: { streamState: string }) {
         <span className="relative flex h-3.5 w-3.5 items-center justify-center">
           <span className="absolute inset-0 rounded-full animate-pulse-ring-soft" />
           <Loader2 className="h-2.5 w-2.5 text-amber-400/70 animate-spin" />
+        </span>
+      )
+    case "loading_slowly":
+      return (
+        <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+          <span className="absolute inset-0 rounded-full bg-orange-400/20 animate-ping" />
+          <svg className="h-2.5 w-2.5 text-orange-400/70 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" strokeDasharray="31.4 31.4" strokeDashoffset="18" />
+            <circle cx="12" cy="12" r="4" />
+          </svg>
         </span>
       )
     case "completed":
