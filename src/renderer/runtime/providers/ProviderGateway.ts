@@ -220,6 +220,37 @@ export class ProviderGateway {
     }
   }
 
+  async *pacedNonStreaming(request: GatewayRequest): AsyncGenerator<ProviderStreamEvent> {
+    if (useAppStore.getState().mockMode) {
+      yield* this.mockStream(request)
+      return
+    }
+
+    yield { type: "status", status: "connecting", model: request.model || "..." }
+
+    const result = await this.chat(request)
+
+    if (result.error) {
+      yield { type: "error", code: result.error.code, message: result.error.message, userMessage: result.error.userMessage, retryable: result.error.retryable }
+      return
+    }
+
+    if (result.content) {
+      const words = result.content.split(/(\s+)/)
+      for (const word of words) {
+        if (request.signal?.aborted) {
+          yield { type: "error", code: "cancelled", message: "Cancelled", userMessage: "Cancelled", retryable: false }
+          return
+        }
+        yield { type: "token", text: word }
+        await new Promise((r) => setTimeout(r, 15))
+      }
+    }
+
+    yield { type: "done", fullText: result.content ?? "", toolCalls: result.toolCalls, usage: result.usage }
+    yield { type: "status", status: "completed" }
+  }
+
   private collectProviderIds(requestedId?: string): string[] {
     const state = useAppStore.getState()
     const providers = state.providers ?? []
