@@ -34,6 +34,7 @@ export type ExecutionEventType =
   | "VERIFY_PASSED"
   | "VERIFY_FAILED"
   | "GOAL_ACHIEVED"
+  | "GOAL_FAILED"
 
   // ── Plan Mode Events ──
   | "PLAN_PROPOSED"
@@ -258,6 +259,7 @@ export interface ExecutionCompleteEvent {
   toolCalls: number
   durationMs: number
   timestamp: number
+  executionMode: "fast" | "full" | "autonomous"
 }
 
 export interface ExecutionFailedEvent {
@@ -348,6 +350,17 @@ export interface GoalAchievedEvent {
   iterations: number
   stepsCompleted: number
   reflectionsCount: number
+  timestamp: number
+}
+
+export interface GoalFailedEvent {
+  type: "GOAL_FAILED"
+  executionId: string
+  goalId: string
+  objective: string
+  reason: string
+  stepsCompleted: number
+  totalSteps: number
   timestamp: number
 }
 
@@ -542,6 +555,7 @@ export type ExecutionEvent =
   | (VerifyPassedEvent & ExecutionTraceable)
   | (VerifyFailedEvent & ExecutionTraceable)
   | (GoalAchievedEvent & ExecutionTraceable)
+  | (GoalFailedEvent & ExecutionTraceable)
   | (PlanProposedEvent & ExecutionTraceable)
   | (PlanApprovedEvent & ExecutionTraceable)
   | (PlanRejectedEvent & ExecutionTraceable)

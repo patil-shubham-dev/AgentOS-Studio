@@ -127,7 +127,12 @@ export class ProviderGateway {
       const model = request.model || active.model
       const messages: ChatMessage[] = [
         ...(request.systemPrompt ? [{ role: "system" as const, content: request.systemPrompt }] : []),
-        ...request.messages.map((m) => ({ role: m.role as ChatMessage["role"], content: m.content })),
+        ...request.messages.map((m) => {
+          const msg: ChatMessage = { role: m.role as ChatMessage["role"], content: m.content }
+          if ((m as any).tool_call_id) msg.tool_call_id = (m as any).tool_call_id
+          if ((m as any).tool_calls) msg.tool_calls = (m as any).tool_calls
+          return msg
+        }),
       ]
 
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -279,7 +284,12 @@ export class ProviderGateway {
       const model = request.model || active.model
       const messages: ChatMessage[] = [
         ...(request.systemPrompt ? [{ role: "system" as const, content: request.systemPrompt }] : []),
-        ...request.messages.map((m) => ({ role: m.role as ChatMessage["role"], content: m.content })),
+        ...request.messages.map((m) => {
+          const msg: ChatMessage = { role: m.role as ChatMessage["role"], content: m.content }
+          if ((m as any).tool_call_id) msg.tool_call_id = (m as any).tool_call_id
+          if ((m as any).tool_calls) msg.tool_calls = (m as any).tool_calls
+          return msg
+        }),
       ]
 
       for (let attempt = 0; attempt < 3; attempt++) {

@@ -72,7 +72,12 @@ export class ProviderRuntime {
 
     const messages: ChatMessage[] = [
       ...(request.systemPrompt ? [{ role: 'system' as const, content: request.systemPrompt }] : []),
-      ...request.messages.map(m => ({ role: m.role as ChatMessage['role'], content: m.content })),
+      ...request.messages.map(m => {
+        const msg: ChatMessage = { role: m.role as ChatMessage['role'], content: m.content }
+        if ((m as any).tool_call_id) msg.tool_call_id = (m as any).tool_call_id
+        if ((m as any).tool_calls) msg.tool_calls = (m as any).tool_calls
+        return msg
+      }),
     ]
 
     const startTime = performance.now()
@@ -155,7 +160,12 @@ export class ProviderRuntime {
 
     const messages: ChatMessage[] = [
       ...(request.systemPrompt ? [{ role: 'system' as const, content: request.systemPrompt }] : []),
-      ...request.messages.map(m => ({ role: m.role as ChatMessage['role'], content: m.content })),
+      ...request.messages.map(m => {
+        const msg: ChatMessage = { role: m.role as ChatMessage['role'], content: m.content }
+        if ((m as any).tool_call_id) msg.tool_call_id = (m as any).tool_call_id
+        if ((m as any).tool_calls) msg.tool_calls = (m as any).tool_calls
+        return msg
+      }),
     ]
 
     const req: ChatRequest = {
@@ -235,7 +245,12 @@ export class ProviderRuntime {
 
     const messages: ChatMessage[] = [
       ...(request.systemPrompt ? [{ role: 'system' as const, content: request.systemPrompt }] : []),
-      ...request.messages.map(m => ({ role: m.role as ChatMessage['role'], content: m.content })),
+      ...request.messages.map(m => {
+        const msg: ChatMessage = { role: m.role as ChatMessage['role'], content: m.content }
+        if ((m as any).tool_call_id) msg.tool_call_id = (m as any).tool_call_id
+        if ((m as any).tool_calls) msg.tool_calls = (m as any).tool_calls
+        return msg
+      }),
     ]
 
     try {

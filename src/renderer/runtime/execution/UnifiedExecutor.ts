@@ -231,7 +231,7 @@ export class UnifiedExecutor {
           yield { type: "MESSAGE_COMPLETE", executionId, stepId: `${executionId}_step`, content: noWsMsg, finishReason: "stop", timestamp: Date.now() }
           const durationMs = Math.round(performance.now() - t0)
           recordAgentExecution(durationMs, 0, 0)
-          yield { type: "EXECUTION_COMPLETE", executionId, content: noWsMsg, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now() }
+          yield { type: "EXECUTION_COMPLETE", executionId, content: noWsMsg, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now(), executionMode: "fast" }
           return
         }
       }
@@ -342,7 +342,7 @@ export class UnifiedExecutor {
     StreamManager.getInstance().complete(stepId)
     if (content) {
       yield { type: "MESSAGE_COMPLETE", executionId, stepId, content, finishReason: "stop", timestamp: Date.now() }
-      yield { type: "EXECUTION_COMPLETE", executionId, content, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: Math.round(performance.now() - (t0 ?? performance.now())), timestamp: Date.now() }
+      yield { type: "EXECUTION_COMPLETE", executionId, content, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: Math.round(performance.now() - (t0 ?? performance.now())), timestamp: Date.now(), executionMode: "fast" }
     }
   }
 
@@ -373,7 +373,7 @@ export class UnifiedExecutor {
     yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: fullText, finishReason: "stop", timestamp: Date.now() }
 
     const durationMs = Math.round(performance.now() - (t0 ?? performance.now()))
-    yield { type: "EXECUTION_COMPLETE", executionId, content: fullText, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now() }
+    yield { type: "EXECUTION_COMPLETE", executionId, content: fullText, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now(), executionMode: "fast" }
   }
 
   private async *fullPath(
@@ -410,16 +410,28 @@ export class UnifiedExecutor {
     if (useMultiAgent) {
       yield { type: "THINKING_STARTED", executionId, label: "Multi-agent orchestration", timestamp: Date.now() }
       const orchestrator = new MultiAgentOrchestrator()
-      yield* orchestrator.execute(executionId, input, correlationId, ctrl.signal)
+      let goalFailed = false
+      let goalFailedReason = ""
+      for await (const event of orchestrator.execute(executionId, input, correlationId, ctrl.signal)) {
+        if (event.type === "GOAL_FAILED") {
+          goalFailed = true
+          goalFailedReason = (event as any).reason ?? "Multi-agent execution failed"
+        }
+        yield event
+      }
+      if (goalFailed) {
+        const durMs = Math.round(performance.now() - t0)
+        yield { type: "EXECUTION_FAILED", executionId, error: goalFailedReason, durationMs: durMs, timestamp: Date.now() }
+        return
+      }
       const finalContent = orchestrator.getMessages().map((m) => m.summary).join("\n")
       results.push({ role: "multi-agent", content: finalContent })
       previousOutput = finalContent
-      // ── FIX: always yield MESSAGE_COMPLETE and EXECUTION_COMPLETE before returning ──
       const stepId = `${executionId}_multi`
       StreamManager.getInstance().complete(stepId)
       yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: finalContent, finishReason: "stop", timestamp: Date.now() }
       const durMs = Math.round(performance.now() - t0)
-      yield { type: "EXECUTION_COMPLETE", executionId, content: finalContent, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: durMs, timestamp: Date.now() }
+      yield { type: "EXECUTION_COMPLETE", executionId, content: finalContent, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: durMs, timestamp: Date.now(), executionMode: "full" }
       return
     }
 
@@ -512,7 +524,7 @@ export class UnifiedExecutor {
 
     const durationMs = Math.round(performance.now() - t0)
     console.log("[FLOW:13] UnifiedExecutor.fullPath: yielding EXECUTION_COMPLETE")
-    yield { type: "EXECUTION_COMPLETE", executionId, content: results.map((r) => r.content).join("\n"), filesEdited: uniqueFiles.length, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now() }
+    yield { type: "EXECUTION_COMPLETE", executionId, content: results.map((r) => r.content).join("\n"), filesEdited: uniqueFiles.length, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now(), executionMode: "full" }
   }
 
   private async *runPlanPhase(

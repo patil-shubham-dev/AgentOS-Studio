@@ -177,7 +177,7 @@ export function registerHttpProxyHandler(): void {
     activeStreams.set(streamId, ctrl)
 
     // Connection timeout: prevent indefinite hang if provider is unreachable
-    const STREAM_CONNECT_TIMEOUT_MS = 60_000
+    const STREAM_CONNECT_TIMEOUT_MS = 30_000
     const connectTimer = setTimeout(() => {
       if (!ctrl.signal.aborted) {
         ctrl.abort()

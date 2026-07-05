@@ -8,7 +8,7 @@ export function compressConversationHistory(messages: { role: string; content: s
 
   const compressed = summarizeMessages(messages as any, RUNTIME_TOKEN_LIMITS.MAX_HISTORY_TOKENS)
   return compressed.blocks.map((b) => ({
-    role: "user" as const,
+    role: "system" as const,
     content: formatCompressedContext({ blocks: [b], totalTokens: b.tokenEstimate ?? 0 }),
     timestamp: b.timestamp,
   }))

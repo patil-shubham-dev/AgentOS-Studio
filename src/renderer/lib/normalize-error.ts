@@ -1,37 +1,10 @@
 /**
  * normalizeError — ensures user-facing error messages are never "undefined", "[object Object]", or empty.
  *
- * Every catch block in the codebase should use this instead of:
- *   err instanceof Error ? err.message : String(err)
- *
- * Because String(undefined) → "undefined", String(null) → "null", String({}) → "[object Object]"
+ * Re-exports the canonical implementation from @agentic-os/shared so all call sites
+ * across main, renderer, and provider packages resolve to a single utility.
  */
-
-export function normalizeError(err: unknown, fallback = "An unexpected error occurred"): string {
-  if (err === undefined || err === null) return fallback
-
-  if (err instanceof Error) {
-    return err.message || fallback
-  }
-
-  if (typeof err === "string") {
-    return err || fallback
-  }
-
-  if (typeof err === "object") {
-    const msg = (err as any).message ?? (err as any).error ?? (err as any).toString?.()
-    if (msg && typeof msg === "string" && msg.length > 0 && msg !== "[object Object]") {
-      return msg
-    }
-  }
-
-  const str = String(err)
-  if (str === "[object Object]" || str === "undefined" || str === "null" || str === "") {
-    return fallback
-  }
-
-  return str
-}
+export { normalizeError } from "@agentic-os/shared"
 
 /**
  * Safe error message for tool results — never shows "undefined".

@@ -141,7 +141,7 @@ function ToolCallLineStatus({ status }: { status: ToolCallRecord["status"] }) {
 }
 
 function ToolCallLine({ tc }: { tc: ToolCallRecord }) {
-  const [showResult, setShowResult] = useState(false)
+  const [showResult, setShowResult] = useState(tc.status === "error")
   const activity = mapToolToActivity(tc.name)
   const detail = getToolCallDetail(tc)
   const duration = tc.durationMs ? formatMs(tc.durationMs) : null
@@ -193,6 +193,8 @@ function ToolCallAccumulator({ session, isRunning }: { session: AgentSession; is
   const [expanded, setExpanded] = useState(false)
   const count = session.toolCalls.length
   const hasError = session.toolCalls.some(tc => tc.status === "error")
+
+  useEffect(() => { if (isRunning) setExpanded(true) }, [isRunning])
 
   if (count === 0) return null
 

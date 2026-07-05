@@ -68,8 +68,8 @@ export const BashTool: AgentTool = buildTool({
       return { data: null, error: `Command blocked for safety: ${command.slice(0, 100)}`, isError: true }
     }
 
-    const sandboxed = await sandboxAdapter.sandboxCommand(command, args ?? [], { cwd: ctx.cwd, timeout })
-    const rootPath = useWorkspaceStore.getState().rootPath
+    const rootPath = useWorkspaceStore.getState().rootPath ?? ctx.cwd
+    const sandboxed = await sandboxAdapter.sandboxCommand(command, args ?? [], { cwd: rootPath, timeout })
     const sandbox = ToolExecutionSandbox.getInstance()
     const tcId = crypto.randomUUID()
 

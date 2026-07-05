@@ -64,6 +64,7 @@ export function parseSseLine(line: string, lineNumber: number): SseChunk | null 
 
 export type ParsedChunk = {
   content?: string
+  reasoningContent?: string
   finishReason?: string | null
   toolCalls?: Array<{ index: number; id?: string; name?: string; arguments?: string }>
 }
@@ -81,6 +82,10 @@ export function parseOpenAiStreamChunk(data: string): ParsedChunk | null {
 
     if (delta.content !== undefined && delta.content !== null) {
       result.content = String(delta.content)
+    }
+
+    if (delta.reasoning_content !== undefined && delta.reasoning_content !== null) {
+      result.reasoningContent = String(delta.reasoning_content)
     }
 
     if (choice.finish_reason !== undefined && choice.finish_reason !== null) {

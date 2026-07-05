@@ -60,8 +60,6 @@ export function registerWorkspaceIpcHandlers(): void {
   ipcMain.handle('workspace:get-tree', async (_event, dirPath: string, maxDepth?: number) => {
     const validated = validatePath(dirPath, 'directory path')
     const resolvedPath = resolve(normalize(validated))
-    setAllowedWorkspacePath(resolvedPath)
-    addGitAllowedPath(resolvedPath)
     const depth = maxDepth !== undefined ? Math.min(Math.max(1, maxDepth), 50) : 10
     const entries = wm.getFileTree(resolvedPath, depth)
     const normalized = entries.map(toRendererEntry)
@@ -159,8 +157,6 @@ export function registerWorkspaceIpcHandlers(): void {
   ipcMain.handle('workspace:list-dir', async (_event, dirPath: string) => {
     const validated = validatePath(dirPath, 'directory path')
     const resolvedPath = resolve(normalize(validated))
-    setAllowedWorkspacePath(resolvedPath)
-    addGitAllowedPath(resolvedPath)
     const entries = wm.listDirectory(resolvedPath)
     const normalized = entries.map(toRendererEntry)
     return normalized

@@ -171,7 +171,7 @@ export class AutonomousExecutionPath {
       for await (const _ of browserBridge.saveSession(actualGoalId)) { yield _ }
     }
 
-    yield { type: "EXECUTION_COMPLETE", executionId, content: objective, filesEdited: goal.steps.filter((s) => s.status === "verified").length, commandsRun: 0, toolCalls: 0, durationMs: Math.round(performance.now() - t0), timestamp: Date.now() }
+    yield { type: "EXECUTION_COMPLETE", executionId, content: objective, filesEdited: goal.steps.filter((s) => s.status === "verified").length, commandsRun: 0, toolCalls: 0, durationMs: Math.round(performance.now() - t0), timestamp: Date.now(), executionMode: "autonomous" }
   }
 
   private async generateAutonomousStep(

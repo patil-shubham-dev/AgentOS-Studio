@@ -55,7 +55,7 @@ const ERROR_PATTERNS: Array<{
     test: (msg) => /timeout|timed.?out/i.test(msg),
     code: "timeout",
     retryable: true,
-    userMessage: "Provider took too long to respond. Retrying...",
+    userMessage: "Provider took too long to respond. All attempts failed.",
   },
   {
     test: (msg) => /econnrefused|econnreset|enetunreach|network|fetch.*fail|dns|socket/i.test(msg),
@@ -67,13 +67,13 @@ const ERROR_PATTERNS: Array<{
     test: (_msg, code) => !!code && code >= 500,
     code: "server_error",
     retryable: true,
-    userMessage: "Provider server error. Retrying...",
+    userMessage: "Provider server error. All attempts failed.",
   },
   {
     test: (msg) => /stream.*error|chunk.*parse/i.test(msg),
     code: "stream_error",
     retryable: true,
-    userMessage: "Stream error occurred. Retrying...",
+    userMessage: "Stream error occurred. All attempts failed.",
   },
   {
     test: (msg) => /not configured|no provider|missing api key/i.test(msg),
