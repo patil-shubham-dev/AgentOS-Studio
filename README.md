@@ -41,6 +41,41 @@ npm run cli -- --file prompt.txt --json
 
 ---
 
+## Codebase Audit (2026-07-05)
+
+### Structure Overview
+
+| Metric | Count |
+|--------|-------|
+| Source files (`src/`) | ~350 |
+| Test files (`tests/`) | ~100 across 31 categories |
+| Runtime subdirectories | 34 (too many — needs regrouping) |
+| Stores (Zustand) | 28 files |
+| Lib root files | 53 files + 11 subdirectories (mixed) |
+| Workspace components | 29 files in flat directory |
+| Vibecoder docs | 26 files in flat directory |
+| Top-level config files | 17 files |
+
+### Top 5 Largest Source Files
+
+| Size | File |
+|------|------|
+| 58.7 KB | `components/workspace/code-workspace.tsx` |
+| 52.8 KB | `pages/install-wizard.tsx` |
+| 50.6 KB | `components/workspace/explorer/WorkspaceExplorer.tsx` |
+| 49.2 KB | `runtime/ExecutionSessionManager.ts` |
+| 47.5 KB | `pages/code-canvas.tsx` |
+
+### Known Issues / Tech Debt
+
+1. **Heap snapshots at root** — 3 files totaling ~78 MB (`heap-iter-*.heapsnapshot`) — should be gitignored or deleted.
+2. **Runtime sprawl** — 34 immediate subdirectories under `runtime/` should be grouped into domains (engine, communication, governance, lifecycle, etc.).
+3. **Lib inconsistency** — `lib/` has 53 root files alongside 11 subdirectories; domain files like `git.ts` coexist with `git/WorktreeSandbox.ts`.
+4. **Config sprawl** — 17 config files at root (vite, vitest, electron-vite, eslint, tsconfig x2, electron-builder, etc.) — candidate for a `config/` directory.
+5. **Large files** — 15 source files exceed 30 KB; `code-workspace.tsx` (58.7 KB) should be split.
+6. **Duplicate entries** — `tsx` extension listed twice in `electron-builder.config.cjs` fileAssociations.
+7. **Electron-builder CJS** — `electron-builder.config.cjs` uses CommonJS while the rest of the project is ESM (`"type": "module"`).
+
 ## Project Structure
 
 ```
@@ -52,14 +87,14 @@ src/
     ├── components/ # UI components organized by domain
     ├── pages/      # Route pages
     ├── runtime/    # AI execution engine (agents, tools, memory, context, streaming)
-    ├── stores/     # Zustand state stores
+    ├── stores/     # Zustand state stores (28 stores)
     ├── lib/        # Utilities and services
     └── types/      # TypeScript type definitions
 packages/
 ├── providers/  # Provider transport layer
 ├── shared/     # Shared types and utilities
 └── ui/         # Shared UI components
-tests/          # Test files organized by domain
+tests/          # 880+ tests across 31 categories
 ```
 
 ### Architecture
