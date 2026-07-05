@@ -129,6 +129,10 @@ export interface AgentSession {
   confidence?: SessionConfidence
   /** "single-agent" | "multi-agent" — set at session creation from the routing decision */
   executionStrategy?: string
+  /** Single-line transient status — replaces itself, never accumulates into a list */
+  statusNote?: string
+  /** Reasoning content from provider (reasoning_content / REASONING_TOKEN) */
+  reasoningText?: string
 }
 
 export interface PhaseEntry {
@@ -192,6 +196,7 @@ interface TimelineState {
   /** Flush pending streaming text into session for the given stepId (recovery) */
   flushPendingText: (stepId: string) => void
   setPhase: (stepId: string, phase: string) => void
+  setNote: (stepId: string, note: string | undefined) => void
   addToolCallToAgent: (stepId: string, toolCall: ToolCallRecord) => void
   updateToolCall: (stepId: string, toolId: string, updates: Partial<ToolCallRecord>) => void
   addFileEditToAgent: (stepId: string, fileEdit: FileEditRecord) => void
@@ -355,6 +360,17 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
           currentPhase: phase,
           phaseHistory: nextPhaseHistory,
         })
+      }
+      return { agentSessions: next }
+    })
+  },
+
+  setNote: (stepId, note) => {
+    set((s) => {
+      const next = new Map(s.agentSessions)
+      const existing = next.get(stepId)
+      if (existing) {
+        next.set(stepId, { ...existing, statusNote: note })
       }
       return { agentSessions: next }
     })

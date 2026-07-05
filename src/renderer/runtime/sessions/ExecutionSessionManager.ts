@@ -839,7 +839,7 @@ export class ExecutionSessionManager {
       case "THINKING_STARTED": {
         const tsStepId = this.stepByExecId.get(event.executionId)
         if (tsStepId) {
-          timeline.setPhase(tsStepId, event.label)
+          timeline.setNote(tsStepId, event.label)
         }
         break
       }
@@ -847,7 +847,7 @@ export class ExecutionSessionManager {
       case "THINKING_UPDATE": {
         const tuStepId = this.stepByExecId.get(event.executionId)
         if (tuStepId) {
-          timeline.setPhase(tuStepId, event.label)
+          timeline.setNote(tuStepId, event.label)
         }
         break
       }
@@ -864,7 +864,7 @@ export class ExecutionSessionManager {
       case "CONTEXT_LOADING": {
         const clStepId = this.stepByExecId.get(event.executionId)
         if (clStepId) {
-          timeline.setPhase(clStepId, `Loading ${event.source}...`)
+          timeline.setNote(clStepId, `Loading ${event.source}...`)
         }
         break
       }
@@ -872,7 +872,7 @@ export class ExecutionSessionManager {
       case "CONTEXT_READY": {
         const crStepId = this.stepByExecId.get(event.executionId)
         if (crStepId) {
-          timeline.setPhase(crStepId, `${event.source} loaded`)
+          timeline.setNote(crStepId, `${event.source} loaded`)
         }
         break
       }
@@ -880,7 +880,7 @@ export class ExecutionSessionManager {
       case "PROVIDER_CONNECTING": {
         const pcnStepId = this.stepByExecId.get(event.executionId)
         if (pcnStepId) {
-          timeline.setPhase(pcnStepId, `Connecting to ${event.provider}...`)
+          timeline.setNote(pcnStepId, `Connecting to ${event.provider}...`)
         }
         break
       }
@@ -888,7 +888,7 @@ export class ExecutionSessionManager {
       case "PROVIDER_CONNECTED": {
         const pcdStepId = this.stepByExecId.get(event.executionId)
         if (pcdStepId) {
-          timeline.setPhase(pcdStepId, `Connected to ${event.provider}`)
+          timeline.setNote(pcdStepId, `Connected to ${event.provider}`)
         }
         break
       }

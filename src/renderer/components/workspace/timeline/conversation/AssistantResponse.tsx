@@ -1,7 +1,8 @@
 import { memo, useCallback, useMemo, useState, useEffect } from "react"
 import { FeatureFlagManager } from "@/runtime/feature-flags/FeatureFlagManager"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronDown, ChevronRight, Brain, Wrench, FileEdit, AlertTriangle, Clock, Loader2, XCircle } from "lucide-react"
+import { ReasoningBlock } from "./ReasoningBlock"
+import { ChevronDown, ChevronRight, Wrench, FileEdit, AlertTriangle, Clock, Loader2, XCircle } from "lucide-react"
 import { ProviderErrorCard } from "./ProviderErrorCard"
 import { useTimelineStore } from "../timeline-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -106,54 +107,6 @@ interface AssistantResponseProps {
 }
 
 const SECTION_SPRING = getSpringConfig("gentle")
-
-function sortPhaseHistory(phases: { label: string; timestamp: number }[]) {
-  return [...phases].sort((a, b) => a.timestamp - b.timestamp)
-}
-
-function ThinkingBlock({ session }: { session: AgentSession }) {
-  const isCollapsed = useTimelineStore((s) => s.collapsedSections.has(`thinking-${session.stepId}`))
-  const toggleCollapse = useTimelineStore((s) => s.toggleCollapse)
-  const expanded = isCollapsed
-
-  if (!session.phaseHistory || session.phaseHistory.length === 0) return null
-
-  const sorted = sortPhaseHistory(session.phaseHistory)
-
-  return (
-    <div className="py-1">
-      <button
-        onClick={() => toggleCollapse(`thinking-${session.stepId}`)}
-        className="flex items-center gap-1.5 text-[10px] text-white/30 hover:text-white/50 transition-colors"
-      >
-        {expanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
-        <Brain className="h-2.5 w-2.5" />
-        <span>{expanded ? "Hide thinking" : "Show thinking"}</span>
-      </button>
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={getSpringConfig("fast")}
-            className="mt-1 ml-4 space-y-0.5 overflow-hidden"
-          >
-            {sorted.map((phase, i) => (
-              <div key={i} className="flex items-center gap-1.5 text-[10px] text-white/25">
-                <span className="h-1 w-1 rounded-full bg-white/20 shrink-0" />
-                <span>{phase.label}</span>
-                <span className="text-[8px] text-white/10 ml-auto">
-                  {new Date(phase.timestamp).toLocaleTimeString([], { minute: "2-digit", second: "2-digit" })}
-                </span>
-              </div>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
 
 function getToolCallDetail(tc: ToolCallRecord): string | null {
   try {
@@ -402,7 +355,7 @@ export const AssistantResponse = memo(function AssistantResponse({
   const hasToolErrors = session.toolCalls.some((tc) => tc.status === "error")
   const isError = streamState === "failed"
   const isComplete = !isRunning && streamState === "completed"
-  const hasThinking = session.phaseHistory != null && session.phaseHistory.length > 0
+  const hasThinking = (session.reasoningText?.length ?? 0) > 0
   // Toolless turn (fast mode) → render a plain streaming bubble without chrome
   const isToolless = !hasToolCalls && !hasEdits && !hasTerminals && !hasFileOps
 
@@ -563,9 +516,21 @@ export const AssistantResponse = memo(function AssistantResponse({
         </motion.div>
       )}
 
-      {/* Thinking process — collapsed */}
-      {hasThinking && !isRunning && (
-        <ThinkingBlock session={session} />
+      {/* Single-line status note — replaces itself, never accumulates */}
+      {session.statusNote && isRunning && (
+        <motion.div
+          initial={{ opacity: 0, y: -2 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-1.5 py-1"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-blue-400/50 animate-pulse shrink-0" />
+          <span className="text-[11px] text-white/40 italic">{session.statusNote}</span>
+        </motion.div>
+      )}
+
+      {/* Reasoning content — collapsed by default, only when real reasoning exists */}
+      {hasThinking && (
+        <ReasoningBlock content={session.reasoningText!} stepId={stepId} />
       )}
 
       {/* Tool calls — accumulator */}
