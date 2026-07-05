@@ -16,7 +16,7 @@
     "lint": "eslint src/renderer --ext .ts,.tsx",
     "check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "node scripts/check-clean-worktree.mjs && vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "postinstall": "electron-builder install-app-deps",

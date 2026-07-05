@@ -47,6 +47,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Assert clean worktree
+        run: node scripts/check-clean-worktree.mjs
+
       - name: Run tests
         run: npx vitest run --reporter=verbose
         env:
@@ -67,6 +70,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Assert clean worktree
+        run: node scripts/check-clean-worktree.mjs
 
       - name: Run leak detection tests
         run: npx vitest run tests/leak-detection --reporter=verbose
