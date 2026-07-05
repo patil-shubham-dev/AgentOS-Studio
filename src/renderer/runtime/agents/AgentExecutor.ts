@@ -10,6 +10,7 @@ import type { ContextAssemblyInput } from "@/runtime/context/context-types"
 import { VerificationPipeline } from "@/runtime/verification/VerificationPipeline"
 import { ExecutionScratchpad } from "@/runtime/execution/ExecutionScratchpad"
 import { normalizeRole } from "@/lib/role-identity"
+import { normalizeError } from "@/lib/normalize-error"
 import * as wi from "@/lib/workspace-intelligence"
 import { getEffectiveMaxTokens } from "@/runtime/runtime-token-config"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
@@ -107,9 +108,17 @@ export class AgentExecutor {
     const wired = resolveWiredAgent(this.role)
     if (!wired) throw new Error(`Role "${this.role}" is not wired. Configure it in Settings → Roles.`)
 
-    const messages: Array<{ role: "user" | "assistant" | "system"; content: string }> = [
-      ...this.history.map((m) => ({ role: m.role as "user" | "assistant" | "system", content: m.content })),
-      { role: "user", content: this.input },
+    const messages: GatewayRequest["messages"] = [
+      ...this.history.map((m) => {
+        const base: GatewayRequest["messages"][number] = {
+          role: m.role as "user" | "assistant" | "system" | "tool",
+          content: m.content,
+        }
+        if (m.tool_call_id) base.tool_call_id = m.tool_call_id
+        if (m.tool_calls) base.tool_calls = m.tool_calls
+        return base
+      }),
+      { role: "user" as const, content: this.input },
     ]
 
     let content = ""
@@ -123,13 +132,14 @@ export class AgentExecutor {
       systemPrompt: FAST_CHAT_PROMPT,
       messages,
       signal: this.signal,
+      mode: "fast",
     })
 
     for await (const event of stream) {
       switch (event.type) {
         case "status":
           if (event.status === "connecting") {
-            yield { type: "PROVIDER_CONNECTING", executionId: eid, model: event.model ?? wired.model, provider: this.role, temperature: wired.temperature, timestamp: Date.now() }
+            yield { type: "PROVIDER_CONNECTING", executionId: eid, model: event.model ?? wired.model, provider: this.role, temperature: wired.temperature, timestamp: Date.now(), note: event.note }
           } else if (event.status === "completed") {
             yield { type: "PROVIDER_CONNECTED", executionId: eid, model: event.model ?? wired.model, provider: this.role, temperature: wired.temperature, timestamp: Date.now() }
           }
@@ -283,13 +293,18 @@ export class AgentExecutor {
       trace("AgentExecutor", "provider_request", { round: round + 1 })
 
       let responseContent = ""
-      let responseToolCalls: ToolCall[] = []
+      const responseToolCalls: ToolCall[] = []
       let failed = false
 
-      const gwMessages: Array<{ role: "user" | "assistant" | "system"; content: string }> = msgs.map((m) => ({
-        role: m.role as "user" | "assistant" | "system",
-        content: typeof m.content === "string" ? m.content : "",
-      }))
+      const gwMessages: GatewayRequest["messages"] = msgs.map((m) => {
+        const base: GatewayRequest["messages"][number] = {
+          role: m.role as "user" | "assistant" | "system" | "tool",
+          content: typeof m.content === "string" ? m.content : "",
+        }
+        if (m.tool_call_id) base.tool_call_id = m.tool_call_id
+        if (m.tool_calls) base.tool_calls = m.tool_calls
+        return base
+      })
 
       const gwRequest: GatewayRequest = {
         messages: gwMessages,
@@ -304,7 +319,7 @@ export class AgentExecutor {
         switch (event.type) {
           case "status":
             if (event.status === "connecting") {
-              yield { type: "PROVIDER_CONNECTING", executionId: eid, model: event.model ?? modelForRole, provider: this.role, temperature: wired.temperature, timestamp: Date.now() }
+              yield { type: "PROVIDER_CONNECTING", executionId: eid, model: event.model ?? modelForRole, provider: this.role, temperature: wired.temperature, timestamp: Date.now(), note: event.note }
             } else if (event.status === "completed") {
               yield { type: "PROVIDER_CONNECTED", executionId: eid, model: event.model ?? modelForRole, provider: this.role, temperature: wired.temperature, timestamp: Date.now() }
             }
@@ -447,7 +462,7 @@ export class AgentExecutor {
                       entry,
                       result: null as any,
                       durationMs: Math.round(performance.now() - toolStart),
-                      error: err instanceof Error ? err.message : String(err),
+                      error: normalizeError(err),
                     }
                   }
                 })
@@ -577,7 +592,7 @@ export class AgentExecutor {
                     result = {
                       data: undefined,
                       isError: true,
-                      error: retryErr instanceof Error ? retryErr.message : String(retryErr),
+                      error: normalizeError(retryErr),
                     }
                   }
                 }
@@ -596,7 +611,7 @@ export class AgentExecutor {
                   executionId: eid,
                   toolId: entry.id,
                   toolName: entry.name,
-                  error: result.error ?? "Unknown error",
+                  error: result.error,
                   durationMs: Math.round(toolDuration),
                   timestamp: Date.now(),
                 }

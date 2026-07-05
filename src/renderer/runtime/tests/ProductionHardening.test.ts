@@ -692,7 +692,7 @@ describe("Phase 9 — Hardening", () => {
 
   it("handles command cancellation via abort signal", async () => {
     const abortController = new AbortController()
-    let eventCount = 0
+    const eventCount = 0
 
     // Start execution then cancel immediately
     const promise = UnifiedExecutionGateway.getInstance().execute({

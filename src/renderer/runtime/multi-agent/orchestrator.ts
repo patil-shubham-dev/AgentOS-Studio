@@ -16,6 +16,12 @@ import { AgentExecutor } from "@/runtime/agents/AgentExecutor"
 import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
 import { normalizeRole } from "@/lib/role-identity"
 import type { RuntimeRole } from "@/types"
+import { getLogger } from "@/lib/logger"
+
+const LOG_PREFIX = "[Orchestrator]"
+const log = getLogger("orchestrator")
+
+const MAX_USER_MESSAGE_LENGTH = 8000
 
 export interface OrchestrationPlan {
   tasks: AgentTask[]
@@ -32,7 +38,10 @@ Available roles:
 - debugger: analyze and fix failures
 - tester: run verification commands
 
-Respond with a JSON object:
+Respond with the requested JSON only. No preamble, no explanation outside the JSON structure.
+
+Each step should touch 1-3 files maximum. Prefer more, smaller steps over fewer, larger ones. Do not assign more than 6 steps.
+
 {
   "goal": "summary of the goal",
   "approach": "high-level approach",
@@ -42,11 +51,22 @@ Respond with a JSON object:
   "risks": ["optional risk notes"]
 }
 
-Keep the plan focused and minimal. Do not assign more than 6 steps.`
+Example (for "add a dark mode toggle on the settings page"):
+{
+  "goal": "Add dark mode toggle to settings page",
+  "approach": "Modify SettingsPage to add a dark mode toggle that writes to app store",
+  "steps": [
+    { "order": 1, "role": "coder", "description": "Add darkMode field to app store and create toggle component", "estimatedEffort": "medium", "files": ["src/stores/app-store.ts", "src/components/SettingsPage.tsx"] },
+    { "order": 2, "role": "coder", "description": "Wire toggle to CSS variables and persist preference", "estimatedEffort": "low", "files": ["src/styles/globals.css", "src/hooks/useDarkMode.ts"] },
+    { "order": 3, "role": "tester", "description": "Verify toggle renders and correctly switches CSS variables", "estimatedEffort": "low", "files": [] }
+  ],
+  "risks": ["CSS variable override may conflict with existing theme"]
+}`
 
 const MANAGER_SYSTEM_PROMPT = `You are the Manager agent inside AgenticOS. Analyze the user request and decide which internal agents should execute it.
 
-Respond with a JSON object:
+Respond with the requested JSON only. No preamble, no explanation outside the JSON structure.
+
 {
   "executionStrategy": "single" | "sequential" | "parallel",
   "roles": ["planner", "coder", "reviewer", "tester"],
@@ -58,7 +78,8 @@ Available roles: manager, planner, coder, reviewer, debugger, tester`
 
 const REPAIR_PROMPT = `You are the Debugger agent inside AgenticOS. Analyze the failure and propose a fix.
 
-Respond with a JSON object:
+Respond with the requested JSON only. No preamble, no explanation outside the JSON structure.
+
 {
   "rootCause": "what went wrong",
   "failedFile": "path to file",
@@ -71,10 +92,17 @@ async function callLLM<T>(systemPrompt: string, userMessage: string, signal?: Ab
   const providers = useAppStore.getState().providers ?? []
   if (providers.length === 0) throw new Error("No providers configured for multi-agent orchestration")
   const provider = providers[0]
+
+  let messageContent = userMessage
+  if (messageContent.length > MAX_USER_MESSAGE_LENGTH) {
+    log.warn(`${LOG_PREFIX} User message truncated from ${messageContent.length} to ${MAX_USER_MESSAGE_LENGTH} chars`)
+    messageContent = messageContent.slice(0, MAX_USER_MESSAGE_LENGTH)
+  }
+
   const result = await providerGateway.chat({
     messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage.slice(0, 4000) },
+      { role: 'user', content: messageContent },
     ],
     providerId: provider.id,
     model: provider.model,
@@ -82,9 +110,39 @@ async function callLLM<T>(systemPrompt: string, userMessage: string, signal?: Ab
     temperature: 0.3,
   })
   const text = result.content ?? ""
-  const jsonMatch = text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error(`LLM returned non-JSON response: ${text.slice(0, 200)}`)
-  return JSON.parse(jsonMatch[0]) as T
+
+  const tryParse = (raw: string): T | null => {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return null
+    try {
+      return JSON.parse(jsonMatch[0]) as T
+    } catch {
+      return null
+    }
+  }
+
+  const parsed = tryParse(text)
+  if (parsed) return parsed
+
+  // Retry once with a clarification message
+  log.warn(`${LOG_PREFIX} LLM returned non-JSON response, requesting JSON reformat`)
+  const retryResult = await providerGateway.chat({
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: messageContent },
+      { role: 'assistant', content: text },
+      { role: 'user', content: "Your previous response was not valid JSON. Respond with ONLY the valid JSON object as specified in the system prompt. No preamble, no explanation, no markdown formatting." },
+    ],
+    providerId: provider.id,
+    model: provider.model,
+    signal,
+    temperature: 0.3,
+  })
+  const retryText = retryResult.content ?? ""
+  const retryParsed = tryParse(retryText)
+  if (retryParsed) return retryParsed
+
+  throw new Error(`Planning failed: LLM did not return valid JSON after retry. First response: ${text.slice(0, 200)}`)
 }
 
 export class MultiAgentOrchestrator {
@@ -185,7 +243,10 @@ export class MultiAgentOrchestrator {
 
     const runtimeRole = normalizeRole("coder") ?? "coder"
     const agentsResults: { role: string; content: string }[] = []
-    let maxRepairLoops = 2
+    const maxRepairLoops = 2
+
+    let planFailed = false
+    let failReason = ""
 
     for (let repairLoop = 0; repairLoop <= maxRepairLoops; repairLoop++) {
       let task: AgentTask | null
@@ -251,6 +312,8 @@ export class MultiAgentOrchestrator {
         const review = await this.runReviewer(reviewerTask.result, signal)
         if (review.overall === "blocked") {
           yield { type: "VERIFY_FAILED", executionId, stepId: `${executionId}_review`, lintErrors: review.findings.length, typeErrors: 0, buildErrors: 0, testFailures: 0, details: [review.summary], autoFixApplied: false, timestamp: Date.now() }
+          planFailed = true
+          failReason = `Reviewer blocked the changes: ${review.summary}`
           break
         }
         if (review.overall === "changes_requested" && repairLoop < maxRepairLoops) {
@@ -278,18 +341,29 @@ export class MultiAgentOrchestrator {
           }
           continue
         }
+        if (!testResult.passed) {
+          yield { type: "VERIFY_FAILED", executionId, stepId: `${executionId}_test_fail`, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: testResult.testResults.filter((t) => !t.passed).length, details: [testResult.summary], autoFixApplied: false, timestamp: Date.now() }
+          planFailed = true
+          failReason = `Tests still failing after ${maxRepairLoops} repair attempts: ${testResult.summary}`
+          break
+        }
         yield { type: "VERIFY_PASSED", executionId, stepId: `${executionId}_test_pass`, details: [testResult.summary], recovered: repairLoop > 0, timestamp: Date.now() }
       }
 
       break // No repairs needed
     }
 
-    yield { type: "GOAL_ACHIEVED", executionId, goalId: executionId, objective: input.slice(0, 200), iterations: agentsResults.length, stepsCompleted: this.getCompletedCount(), reflectionsCount: 0, timestamp: Date.now() }
+    if (planFailed) {
+      yield { type: "GOAL_FAILED", executionId, goalId: executionId, objective: input.slice(0, 200), reason: failReason, stepsCompleted: this.getCompletedCount(), totalSteps: this.getTaskCount(), timestamp: Date.now() }
+    } else {
+      yield { type: "GOAL_ACHIEVED", executionId, goalId: executionId, objective: input.slice(0, 200), iterations: agentsResults.length, stepsCompleted: this.getCompletedCount(), reflectionsCount: 0, timestamp: Date.now() }
+    }
   }
 
   private async runReviewer(content: string, signal?: AbortSignal): Promise<ReviewerOutput> {
     return callLLM<ReviewerOutput>(
-      `You are the Reviewer agent. Review this output and respond in JSON:
+      `You are the Reviewer agent. Review this output and respond in JSON only. No preamble.
+
 { "overall": "approve"|"changes_requested"|"blocked", "summary": "review summary", "findings": [{ "filePath": "path", "severity": "error"|"warning"|"suggestion", "message": "description", "category": "correctness"|"security"|"performance"|"style"|"maintainability" }] }`,
       content,
       signal,
@@ -298,7 +372,8 @@ export class MultiAgentOrchestrator {
 
   private async runTester(content: string, signal?: AbortSignal): Promise<TesterOutput> {
     return callLLM<TesterOutput>(
-      `You are the Tester agent. Analyze the output and determine if testing passed. Respond in JSON:
+      `You are the Tester agent. Analyze the output and determine if testing passed. Respond in JSON only. No preamble.
+
 { "passed": true|false, "summary": "test summary", "testResults": [{ "testName": "name", "passed": true|false, "output": "details" }] }`,
       content,
       signal,
