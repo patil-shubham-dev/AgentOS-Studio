@@ -468,7 +468,7 @@ export class ExecutionSessionManager {
         if (slowTimeout) { clearTimeout(slowTimeout); this.loadingSlowTimeouts.delete(event.executionId) }
         StreamManager.getInstance().clearStep(event.stepId)
         timeline.commitStreamingText(event.stepId)
-        timeline.updateAgentSession(event.stepId, { status: "complete" })
+        timeline.updateAgentSession(event.stepId, { status: "complete", streamState: "completed", completedAt: Date.now() })
         this.stepByExecId.delete(event.executionId)
         if (event.content) {
           useAgentStore.getState().addMessage(options.activeRole, {
