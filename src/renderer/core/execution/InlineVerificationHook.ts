@@ -22,7 +22,7 @@ async function detectBuildCommand(rootPath: string): Promise<string | null> {
       if (parsed.scripts?.build) return parsed.scripts.build.includes("tsc") ? "npx tsc --noEmit" : null
       if (parsed.scripts?.typecheck) return `npx ${parsed.scripts.typecheck}`
     }
-  } catch {}
+  } catch { console.warn("[InlineVerification] Failed to read package.json") }
   return null
 }
 

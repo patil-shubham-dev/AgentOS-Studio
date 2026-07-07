@@ -69,11 +69,11 @@ export class DiskBackedResultStore {
           })
           this.totalBytes += parsed.storedLength ?? 0
         } catch {
-          try { await remove(join(this.resultsDir!, name)) } catch {}
+          try { await remove(join(this.resultsDir!, name)) } catch { console.warn("[DiskBackedResultStore] Failed to remove corrupted entry") }
         }
       }
       this.enforceQuota()
-    } catch {}
+    } catch { console.warn("[DiskBackedResultStore] Failed to initialize from disk") }
   }
 
   private enforceQuota(): void {
@@ -126,7 +126,7 @@ export class DiskBackedResultStore {
           return { content: parsed.content ?? '', meta }
         }
       }
-    } catch {}
+    } catch { console.warn("[DiskBackedResultStore] Failed to read result from disk") }
     return null
   }
 
@@ -155,7 +155,7 @@ export class DiskBackedResultStore {
           await remove(meta.filePath)
         }
       }
-    } catch {}
+    } catch { console.warn("[DiskBackedResultStore] Failed to delete result from disk") }
     this.store.delete(id)
     this.totalBytes -= meta.storedLength
     return true

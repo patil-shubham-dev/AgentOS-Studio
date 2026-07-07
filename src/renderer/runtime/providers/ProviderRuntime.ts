@@ -109,7 +109,7 @@ export class ProviderRuntime {
         if (!this.apiKey && active.apiKey) this.apiKey = active.apiKey
         if (active.model) this.defaultModel = active.model
       }
-    } catch { }
+    } catch { console.warn("[ProviderRuntime] Failed to restore provider config") }
     if (!this.baseUrl) this.baseUrl = 'https://api.openai.com/v1'
     this.resolveRuntime()
   }

@@ -51,7 +51,7 @@ async function invokeBrowser<T>(method: string, args: Record<string, unknown>): 
       durationMs: 0,
       timestamp: Date.now(),
     })
-  } catch {}
+  } catch { console.warn("[BrowserTools] Failed to record notification") }
 
   return result
 }

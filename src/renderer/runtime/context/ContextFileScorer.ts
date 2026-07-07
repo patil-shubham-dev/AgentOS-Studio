@@ -73,7 +73,7 @@ export class ContextFileScorer {
         if (r.score > maxTaskScore) maxTaskScore = r.score
         taskScores.set(r.filePath, r.score)
       }
-    } catch { }
+    } catch { console.warn("[ContextFileScorer] Task scoring failed") }
 
     const ws = getWorkspaceContextSnapshot()
     const activeFile = ws?.activeFilePath ?? ''
@@ -99,7 +99,7 @@ export class ContextFileScorer {
           symbolRefs.set(c.file, Math.max(existing, 0.2))
         }
       }
-    } catch { }
+    } catch { console.warn("[ContextFileScorer] Symbol scoring failed") }
 
     const depScores = new Map<string, number>()
     try {
@@ -118,7 +118,7 @@ export class ContextFileScorer {
           }
         }
       }
-    } catch { }
+    } catch { console.warn("[ContextFileScorer] Dependency scoring failed") }
 
     const allPaths = new Set([...scored.keys(), ...taskScores.keys(), ...symbolRefs.keys(), ...depScores.keys()])
     const result: ScoredFile[] = []

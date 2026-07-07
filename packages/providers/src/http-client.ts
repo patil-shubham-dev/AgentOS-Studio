@@ -176,7 +176,7 @@ export async function tauriFetchStreaming(
       abortHandler = () => {
         streamingProxies.abort(streamId)
         if (streamController) {
-          try { streamController.error(new DOMException('The operation was aborted', 'AbortError')) } catch { }
+          try { streamController.error(new DOMException('The operation was aborted', 'AbortError')) } catch { console.warn("[HTTP] Failed to abort stream") }
         }
         runCleanup()
       }

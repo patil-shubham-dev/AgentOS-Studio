@@ -61,3 +61,6 @@ benchmarks/
 
 # VibeCoder
 vibecoder/
+
+# Agent session summaries (internal, not for repo)
+ANCHORED_SUMMARY.md

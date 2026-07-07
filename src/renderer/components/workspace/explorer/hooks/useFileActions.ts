@@ -135,7 +135,7 @@ export function useFileActions(
   const copyPath = useCallback((absolutePath: string) => {
     try {
       navigator.clipboard.writeText(absolutePath)
-    } catch {}
+    } catch { console.warn("[Explorer] Failed to copy path") }
   }, [])
 
   const revealInOs = useCallback(async (absolutePath: string) => {
@@ -146,7 +146,7 @@ export function useFileActions(
       try {
         const { invoke } = await import("@/lib/electron-api")
         await invoke("open_in_explorer", { path: absolutePath })
-      } catch {}
+      } catch { console.warn("[Explorer] Failed to reveal in OS") }
     }
   }, [])
 
@@ -174,7 +174,7 @@ export function useFileActions(
   const copyPaths = useCallback((paths: string[]) => {
     try {
       navigator.clipboard.writeText(paths.join("\n"))
-    } catch {}
+    } catch { console.warn("[Explorer] Failed to copy paths") }
   }, [])
 
   return {

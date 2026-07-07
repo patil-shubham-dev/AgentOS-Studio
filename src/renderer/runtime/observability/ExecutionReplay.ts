@@ -227,7 +227,7 @@ export class ExecutionReplay {
             })
           }
         }
-      } catch {}
+      } catch { console.warn("[ExecutionReplay] Failed to replay session") }
     }
 
     return Array.from(this.sessions.values())

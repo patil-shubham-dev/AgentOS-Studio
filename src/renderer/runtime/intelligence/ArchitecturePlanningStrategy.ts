@@ -39,7 +39,7 @@ export class ArchitecturePlanningStrategy {
           this.architectureType = config.structured.architecture.type
         }
       }
-    } catch {}
+    } catch { console.warn("[ArchitecturePlanningStrategy] Failed to load config") }
     this.initialized = true
   }
 
@@ -119,7 +119,7 @@ export class ArchitecturePlanningStrategy {
         const result = await configLoader.load(ws.rootPath)
         config = result.structured ?? null
       }
-    } catch {}
+    } catch { console.warn("[ArchitecturePlanningStrategy] Failed to load project config") }
 
     return {
       architectureType: this.architectureType,

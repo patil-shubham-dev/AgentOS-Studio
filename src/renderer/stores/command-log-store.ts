@@ -21,7 +21,7 @@ function persist(logs: CommandLogEntry[]): void {
   try {
     const recent = logs.slice(-MAX_LOGS)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(recent))
-  } catch {}
+  } catch { console.warn("[CommandLog] Failed to persist logs") }
 }
 
 function restore(): CommandLogEntry[] {

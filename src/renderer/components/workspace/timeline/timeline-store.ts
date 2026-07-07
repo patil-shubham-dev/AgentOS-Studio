@@ -828,7 +828,7 @@ function schedulePersist(): void {
       _pendingPersist = true
       return
     }
-  } catch {}
+  } catch { console.warn("[Timeline] Failed to persist") }
 
   if (_pendingPersist) {
     _pendingPersist = false

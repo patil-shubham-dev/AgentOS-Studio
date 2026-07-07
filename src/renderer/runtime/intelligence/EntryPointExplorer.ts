@@ -109,7 +109,7 @@ export class EntryPointExplorer {
           architectureType = config.structured.architecture.type
         }
       }
-    } catch {}
+    } catch { console.warn("[EntryPointExplorer] Failed to load config") }
 
     return {
       entryPoints: structuredEntryPoints,

@@ -84,7 +84,7 @@ export class ToolResultCache {
               this.cache.delete(key)
             }
           }
-        } catch { }
+        } catch { console.warn("[ToolResultCache] Failed to invalidate entry") }
       }
     }
   }
@@ -103,7 +103,7 @@ export class ToolResultCache {
               removed++
             }
           }
-        } catch { }
+        } catch { console.warn("[ToolResultCache] Failed to invalidate prefix") }
       }
     }
     return removed

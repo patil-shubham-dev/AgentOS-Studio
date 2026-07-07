@@ -71,13 +71,13 @@ export class CostTracker {
       if (stored) {
         this.entries = JSON.parse(stored)
       }
-    } catch {}
+    } catch { console.warn("[CostTracker] Failed to load from storage") }
   }
 
   private saveToStorage(): void {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(this.entries.slice(-1000)))
-    } catch {}
+    } catch { console.warn("[CostTracker] Failed to save to storage") }
   }
 
   recordUsage(
@@ -211,7 +211,7 @@ export class CostTracker {
 
   private notifyListeners(): void {
     for (const listener of this.listeners) {
-      try { listener(this.entries) } catch {}
+      try { listener(this.entries) } catch { console.warn("[CostTracker] Listener threw") }
     }
   }
 

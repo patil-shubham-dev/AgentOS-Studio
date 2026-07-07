@@ -110,7 +110,7 @@ export class ContextCache {
           this.l2Hits++
           return entry
         }
-      } catch {}
+      } catch { console.warn("[ContextCache] L2 get failed") }
     }
 
     this.totalMisses++
@@ -151,7 +151,7 @@ export class ContextCache {
           tags: entry.tags,
         }
         await this.putInDB(persisted)
-      } catch {}
+      } catch { console.warn("[ContextCache] L2 set failed") }
     }
   }
 
@@ -161,7 +161,7 @@ export class ContextCache {
     if (this.db) {
       try {
         await this.deleteFromDB(key)
-      } catch {}
+      } catch { console.warn("[ContextCache] L2 invalidate failed") }
     }
   }
 
@@ -185,7 +185,7 @@ export class ContextCache {
             }
           }
         }
-      } catch {}
+      } catch { console.warn("[ContextCache] L2 invalidateByTag failed") }
     }
   }
 
@@ -217,7 +217,7 @@ export class ContextCache {
           tx.oncomplete = () => resolve()
           tx.onerror = () => reject(tx.error)
         })
-      } catch {}
+      } catch { console.warn("[ContextCache] clear failed") }
     }
     this.l1Hits = 0
     this.l2Hits = 0

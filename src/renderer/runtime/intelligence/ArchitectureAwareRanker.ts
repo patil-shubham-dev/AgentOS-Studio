@@ -35,7 +35,7 @@ export class ArchitectureAwareRanker {
           this.architectureType = config.structured.architecture.type
         }
       }
-    } catch {}
+    } catch { console.warn("[ArchitectureAwareRanker] Failed to initialize") }
     this.initialized = true
   }
 
@@ -131,7 +131,7 @@ export class ArchitectureAwareRanker {
           scores.set(r.filePath, r.score / maxScore)
         }
       }
-    } catch {}
+    } catch { console.warn("[ArchitectureAwareRanker] Semantic search failed") }
 
     return scores
   }
@@ -160,7 +160,7 @@ export class ArchitectureAwareRanker {
           scores.set(c.file, Math.max(existing, 0.2))
         }
       }
-    } catch {}
+    } catch { console.warn("[ArchitectureAwareRanker] Symbol scoring failed") }
 
     return scores
   }
@@ -196,7 +196,7 @@ export class ArchitectureAwareRanker {
           }
         }
       }
-    } catch {}
+    } catch { console.warn("[ArchitectureAwareRanker] Dependency scoring failed") }
 
     return scores
   }
@@ -253,7 +253,7 @@ export class ArchitectureAwareRanker {
           }
         }
       }
-    } catch {}
+    } catch { console.warn("[ArchitectureAwareRanker] Architecture scoring failed") }
 
     return scores
   }

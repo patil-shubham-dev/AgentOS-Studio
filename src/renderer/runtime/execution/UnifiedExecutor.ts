@@ -672,7 +672,7 @@ export class UnifiedExecutor {
           }
         }
       }
-    } catch { }
+    } catch { console.warn("[UnifiedExecutor] Tool resolution failed") }
     return false
   }
 

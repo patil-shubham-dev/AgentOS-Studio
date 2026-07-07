@@ -128,7 +128,7 @@ export class PlanGenerator {
           const epLines = plan.entryPoints.map(e => `  - ${e.id}`).join("\n")
           explorationBlock = `\n## Repository Map\nEntry Points:\n${epLines}\nModules: ${plan.modules.components.length} components, ${plan.modules.pages.length} routes, ${plan.modules.services.length} services\nTotal: ${plan.totalFiles} files, ${plan.totalSymbols} symbols`
         }
-      } catch {}
+      } catch { console.warn("[PlanGenerator] Failed to build exploration block") }
     }
 
     const contextStr = contextParts.length > 0 || projectConfigStr || architectureBlock || explorationBlock

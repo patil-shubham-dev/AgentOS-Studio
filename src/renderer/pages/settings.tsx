@@ -70,14 +70,14 @@ export function SettingsPage() {
     try {
       const stored = localStorage.getItem('agenticOS.settings.showAdvanced')
       return stored !== null ? JSON.parse(stored) : false
-    } catch {}
+    } catch { console.warn("[Settings] Failed to parse showAdvanced") }
     return false
   })
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
     try {
       const stored = localStorage.getItem('agenticOS.settings.collapsedSections')
       if (stored) return JSON.parse(stored)
-    } catch {}
+    } catch { console.warn("[Settings] Failed to parse collapsedSections") }
     return { Advanced: true }
   })
 

@@ -239,7 +239,7 @@ export function registerCommandHandlers(): void {
               child.kill('SIGTERM')
             }
           }
-        } catch { }
+        } catch { console.warn("[IPC] Failed to kill timed-out child process") }
       }, timeoutMs)
 
       child.on('close', () => clearTimeout(timer))

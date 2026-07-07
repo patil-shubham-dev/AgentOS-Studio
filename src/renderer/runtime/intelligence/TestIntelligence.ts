@@ -135,7 +135,7 @@ export class TestIntelligence {
 
     try {
       ts.forEachChild(tssf, visit)
-    } catch {}
+    } catch { console.warn("[TestIntelligence] Source discovery failed") }
 
     return [...new Set(sources)]
   }
@@ -190,7 +190,7 @@ export class TestIntelligence {
       }
 
       ts.forEachChild(sf, visit)
-    } catch {}
+    } catch { console.warn("[TestIntelligence] Specific test discovery failed") }
 
     return [...new Set(specificTests)]
   }
@@ -321,7 +321,7 @@ export class TestIntelligence {
       const root = (tsProgramManager as any)["rootPath"] ?? ""
       const absPath = path.join(root, relPath)
       return await readTextFile(absPath) ?? null
-    } catch {}
+    } catch { console.warn("[TestIntelligence] Failed to read file content") }
     return null
   }
 

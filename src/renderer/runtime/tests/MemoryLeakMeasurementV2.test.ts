@@ -164,7 +164,7 @@ describe("Phase 1 — Memory Leak Root Cause V2", () => {
       heap: getHeapDetails(),
     })
     // Attempt heap snapshot (may fail in some environments)
-    try { writeHeapSnapshot("startup") } catch {}
+    try { writeHeapSnapshot("startup") } catch { /* ignore — cleanup */ }
 
     // Run to 100 iterations
     for (let i = 1; i <= ITERATION_COUNT; i++) {
@@ -177,7 +177,7 @@ describe("Phase 1 — Memory Leak Root Cause V2", () => {
           mem: getMemoryDetails(),
           heap: getHeapDetails(),
         })
-        try { writeHeapSnapshot(`iter-${i}`) } catch {}
+        try { writeHeapSnapshot(`iter-${i}`) } catch { /* ignore — cleanup */ }
         console.log(`[MemoryLeak] Iteration ${i}: heapUsed=${(snapshots[snapshots.length - 1].mem.heapUsed / 1024 / 1024).toFixed(3)}MB`)
       }
     }

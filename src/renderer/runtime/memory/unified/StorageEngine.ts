@@ -125,7 +125,7 @@ export class StorageEngine {
           const entry = this.fromPersisted(stored)
           return this.touch(entry)
         }
-      } catch {}
+      } catch { console.warn("[StorageEngine] L2 get failed") }
     }
     return undefined
   }
@@ -156,7 +156,7 @@ export class StorageEngine {
     if (this.db) {
       try {
         await this.deleteFromDB(id)
-      } catch {}
+      } catch { console.warn("[StorageEngine] L2 delete failed") }
     }
   }
 
@@ -175,7 +175,7 @@ export class StorageEngine {
             results.push(this.touch(dbEntry))
           }
         }
-      } catch {}
+      } catch { console.warn("[StorageEngine] L2 query failed") }
     }
 
     results.sort((a, b) => {
@@ -248,7 +248,7 @@ export class StorageEngine {
           tx.oncomplete = () => resolve()
           tx.onerror = () => reject(tx.error)
         })
-      } catch {}
+      } catch { console.warn("[StorageEngine] clear failed") }
     }
   }
 
@@ -263,7 +263,7 @@ export class StorageEngine {
         for (const entry of entries) {
           await this.deleteFromDB(entry.id)
         }
-      } catch {}
+      } catch { console.warn("[StorageEngine] clearScope failed") }
     }
   }
 

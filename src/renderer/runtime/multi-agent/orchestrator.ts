@@ -5,11 +5,9 @@ import type {
   ManagerOutput,
   PlannerOutput,
   ReviewerOutput,
-  DebuggerOutput,
   TesterOutput,
-  AgentTaskStatus,
 } from "./types"
-import { INTERNAL_ROLE_NAMES, ROLE_PERMISSIONS } from "./types"
+import { INTERNAL_ROLE_NAMES } from "./types"
 import { providerGateway } from "@/runtime/providers/ProviderGateway"
 import { useAppStore } from "@/stores/app-store"
 import { AgentExecutor } from "@/runtime/agents/AgentExecutor"
@@ -75,18 +73,6 @@ Respond with the requested JSON only. No preamble, no explanation outside the JS
 }
 
 Available roles: manager, planner, coder, reviewer, debugger, tester`
-
-const REPAIR_PROMPT = `You are the Debugger agent inside AgenticOS. Analyze the failure and propose a fix.
-
-Respond with the requested JSON only. No preamble, no explanation outside the JSON structure.
-
-{
-  "rootCause": "what went wrong",
-  "failedFile": "path to file",
-  "errorMessage": "the error",
-  "proposedFix": [{ "file": "path", "original": "code to replace", "replacement": "new code" }],
-  "verificationCommand": "optional command to verify the fix"
-}`
 
 async function callLLM<T>(systemPrompt: string, userMessage: string, signal?: AbortSignal): Promise<T> {
   const providers = useAppStore.getState().providers ?? []

@@ -86,9 +86,9 @@ export class SkillLoader {
             this.registry.register(skill)
             count++
           }
-        } catch {}
+        } catch { console.warn("[SkillLoader] Failed to load skill") }
       }
-    } catch {}
+    } catch { console.warn("[SkillLoader] Failed to load skills directory") }
     return count
   }
 

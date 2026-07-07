@@ -31,7 +31,7 @@ export function emitTelemetry(event: TelemetryEvent): void {
     events = events.slice(-500)
   }
   for (const listener of listeners) {
-    try { listener(event) } catch {}
+    try { listener(event) } catch { console.warn("[Telemetry] Listener threw") }
   }
 }
 

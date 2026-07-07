@@ -850,7 +850,7 @@ export class ASTEnhancedGraph {
           }
         }
       }
-    } catch {}
+    } catch { console.warn("[ASTEnhancedGraph] Batch read failed") }
   }
 
   private getFileContent(relPath: string): string | null {

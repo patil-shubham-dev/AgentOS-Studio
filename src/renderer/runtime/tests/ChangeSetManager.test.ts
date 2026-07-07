@@ -804,12 +804,12 @@ describe("PR 9 — FILE_EDIT → ChangeSet wiring", () => {
 
 describe("PR 10 — ChangeSet persistence", () => {
   beforeEach(() => {
-    try { localStorage.removeItem("agentic-changeset-state") } catch {}
+    try { localStorage.removeItem("agentic-changeset-state") } catch { /* ignore — cleanup */ }
     useChangeSetStore.setState({ changeSets: new Map(), activeChangeSetId: null })
   })
 
   afterEach(() => {
-    try { localStorage.removeItem("agentic-changeset-state") } catch {}
+    try { localStorage.removeItem("agentic-changeset-state") } catch { /* ignore — cleanup */ }
   })
 
   it("persistNow saves pending ChangeSets to localStorage", () => {

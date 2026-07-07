@@ -118,7 +118,7 @@ export async function addRecentWorkspace(folderPath: string): Promise<void> {
     const recent = JSON.parse(localStorage.getItem('recent-workspaces') || '[]')
     recent.unshift({ path: folderPath, name: folderPath.split(/[/\\]+/).pop(), lastOpened: Date.now(), pinned: false })
     localStorage.setItem('recent-workspaces', JSON.stringify(recent.slice(0, 20)))
-  } catch {}
+  } catch { console.warn("[Workspace] Failed to save recent workspace") }
 }
 
 // ── Web-only: get root handle for tree population ──

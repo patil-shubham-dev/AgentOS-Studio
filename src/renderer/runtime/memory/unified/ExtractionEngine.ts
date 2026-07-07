@@ -1,6 +1,6 @@
 import { DeduplicationEngine } from "./DeduplicationEngine"
 import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
-import type { MemoryCandidate, MemoryCategory, MemoryScope, ExtractionTrigger, MemoryEntry } from "./types"
+import type { MemoryCandidate, MemoryCategory, ExtractionTrigger, MemoryEntry } from "./types"
 
 export interface ExtractionResult {
   candidates: MemoryCandidate[]
@@ -181,7 +181,6 @@ export class ExtractionEngine {
   private extractToolComplete(event: ExecutionEvent & { toolName?: string; result?: string; durationMs?: number }): MemoryCandidate[] {
     if (!event.toolName) return []
 
-    const resultStr = typeof event.result === "string" ? event.result : JSON.stringify(event.result)
     const candidates: MemoryCandidate[] = []
 
     candidates.push({
@@ -224,7 +223,6 @@ export class ExtractionEngine {
 
   private extractVerifyPassed(event: ExecutionEvent & { details?: string[]; recovered?: boolean }): MemoryCandidate[] {
     const detailStr = event.details?.join(", ") ?? ""
-    const tagSuffix = event.recovered ? "_recovered" : ""
 
     return [{
       content: `Verification passed: ${detailStr.slice(0, 300)}`,

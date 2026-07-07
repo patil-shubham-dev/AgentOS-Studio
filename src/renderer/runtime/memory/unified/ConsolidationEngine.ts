@@ -1,4 +1,4 @@
-import type { MemoryEntry, MemoryScope, MemoryStatus, MemoryConfig } from "./types"
+import type { MemoryEntry, MemoryScope, MemoryConfig } from "./types"
 import { DEFAULT_MEMORY_CONFIG } from "./types"
 
 export interface ConsolidationReport {
