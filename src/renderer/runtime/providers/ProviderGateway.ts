@@ -76,6 +76,11 @@ export class ProviderGateway {
     return { provider, model, apiKey: provider.apiKey, baseUrl: provider.baseUrl, runtime }
   }
 
+  private modelSupportsStreaming(provider: GatewayProvider, modelId: string): boolean {
+    const modelEntry = provider.models?.find((m) => m.id === modelId)
+    return modelEntry ? modelEntry.supportsStreaming !== false : true
+  }
+
   isConfigured(providerId?: string): boolean {
     if (useAppStore.getState().mockMode) return true
     const active = this.resolveActiveProvider(providerId)
@@ -125,6 +130,12 @@ export class ProviderGateway {
       if (!active) continue
 
       const model = request.model || active.model
+
+      if (!this.modelSupportsStreaming(active.provider, model)) {
+        yield* this.pacedNonStreaming({ ...request, model })
+        return
+      }
+
       const messages: ChatMessage[] = [
         ...(request.systemPrompt ? [{ role: "system" as const, content: request.systemPrompt }] : []),
         ...request.messages.map((m) => {
