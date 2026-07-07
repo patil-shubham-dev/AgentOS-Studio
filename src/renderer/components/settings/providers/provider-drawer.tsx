@@ -183,7 +183,7 @@ export function ProviderDrawer({ open, onClose, editProvider }: ProviderDrawerPr
       setValidationState("idle")
       setValidationResult(null)
       setDiscoveryState("idle")
-      setAvailableModels([])
+      if (!editProvider) setAvailableModels([])
       setModelError(null)
       return
     }
@@ -192,7 +192,7 @@ export function ProviderDrawer({ open, onClose, editProvider }: ProviderDrawerPr
     setValidationState("validating")
     setValidationResult(null)
     setDiscoveryState("idle")
-    setAvailableModels([])
+    if (!editProvider) setAvailableModels([])
     setModelError(null)
 
     safeValidateProvider(url, key).then((result) => {
