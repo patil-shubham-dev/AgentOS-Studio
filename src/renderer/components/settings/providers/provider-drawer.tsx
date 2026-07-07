@@ -175,7 +175,7 @@ export function ProviderDrawer({ open, onClose, editProvider }: ProviderDrawerPr
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [open, step, showSuggestions, canSave, canSaveWithWarning])
 
-  const runValidation = useCallback((url: string, key: string) => {
+  const runValidation = useCallback((url: string, key: string, isEdit: boolean) => {
     cancelPendingValidation()
     cancelPendingDiscovery()
 
@@ -183,7 +183,7 @@ export function ProviderDrawer({ open, onClose, editProvider }: ProviderDrawerPr
       setValidationState("idle")
       setValidationResult(null)
       setDiscoveryState("idle")
-      if (!editProvider) setAvailableModels([])
+      if (!isEdit) setAvailableModels([])
       setModelError(null)
       return
     }
@@ -192,7 +192,7 @@ export function ProviderDrawer({ open, onClose, editProvider }: ProviderDrawerPr
     setValidationState("validating")
     setValidationResult(null)
     setDiscoveryState("idle")
-    setAvailableModels([])
+    if (!isEdit) setAvailableModels([])
     setModelError(null)
 
     safeValidateProvider(url, key).then((result) => {
@@ -238,13 +238,15 @@ export function ProviderDrawer({ open, onClose, editProvider }: ProviderDrawerPr
     })
   }
 
+  // Debounced validation on baseUrl or apiKey changes
   useEffect(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    const isEdit = !!editProvider
     debounceTimer.current = setTimeout(() => {
-      runValidation(baseUrl, apiKey)
+      runValidation(baseUrl, apiKey, isEdit)
     }, VALIDATION_DEBOUNCE_MS)
     return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current) }
-  }, [baseUrl, apiKey, runValidation])
+  }, [baseUrl, apiKey, runValidation, editProvider])
 
   function handlePresetSelect(preset: Preset) {
     setName(preset.name)
@@ -282,7 +284,7 @@ export function ProviderDrawer({ open, onClose, editProvider }: ProviderDrawerPr
     })
   }
 
-  function handleRetryValidation() { runValidation(baseUrl, apiKey) }
+  function handleRetryValidation() { runValidation(baseUrl, apiKey, !!editProvider) }
 
   async function handleRawConnectionTest() {
     if (!baseUrl) return
