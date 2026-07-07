@@ -351,8 +351,8 @@ export function ProviderCard({
                 {/* Metrics */}
                 <div className="grid grid-cols-4 gap-2">
                   <div className="rounded-lg bg-white/[0.02] border border-white/5 px-2.5 py-2">
-                    <span className={cn("block font-mono text-xs font-medium", isConnected ? "text-green-400" : "text-white/40")}>
-                      {isConnected ? "Online" : "Offline"}
+                    <span className={cn("block font-mono text-xs font-medium", healthMeta.color)}>
+                      {healthMeta.label}
                     </span>
                     <span className="block text-[9px] text-white/20 leading-tight">Status</span>
                   </div>
