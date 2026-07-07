@@ -612,8 +612,9 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       if (metrics.totalLatency === 0) {
         metrics.totalLatency = now
       }
-      if (now - metrics.totalLatency >= 1000) {
-        metrics.tokensPerSecond = metrics.tokensReceived
+      const elapsed = (now - metrics.totalLatency) / 1000
+      metrics.tokensPerSecond = Math.round(metrics.tokensReceived / Math.max(elapsed, 0.01))
+      if (elapsed >= 1) {
         metrics.totalLatency = now
         metrics.tokensReceived = 0
       }
