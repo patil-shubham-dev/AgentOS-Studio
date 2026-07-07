@@ -192,7 +192,7 @@ export function ProviderDrawer({ open, onClose, editProvider }: ProviderDrawerPr
     setValidationState("validating")
     setValidationResult(null)
     setDiscoveryState("idle")
-    if (!editProvider) setAvailableModels([])
+    setAvailableModels([])
     setModelError(null)
 
     safeValidateProvider(url, key).then((result) => {
