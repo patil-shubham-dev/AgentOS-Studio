@@ -997,6 +997,15 @@ export class ExecutionSessionManager {
         if (tTimeout) { clearTimeout(tTimeout); this.loadingSlowTimeouts.delete(event.executionId) }
         break
       }
+      case "REASONING_TOKEN": {
+        const rStepId = this.stepByExecId.get(event.executionId)
+        if (rStepId) {
+          timeline.appendAgentReasoningText(rStepId, (event as any).token ?? "")
+        }
+        const rTimeout = this.loadingSlowTimeouts.get(event.executionId)
+        if (rTimeout) { clearTimeout(rTimeout); this.loadingSlowTimeouts.delete(event.executionId) }
+        break
+      }
       case "MESSAGE_UPDATE":
         break
     }

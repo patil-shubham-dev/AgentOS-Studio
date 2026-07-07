@@ -340,10 +340,8 @@ export class UnifiedExecutor {
     if (ctrl.signal.aborted) return
 
     StreamManager.getInstance().complete(stepId)
-    if (content) {
-      yield { type: "MESSAGE_COMPLETE", executionId, stepId, content, finishReason: "stop", timestamp: Date.now() }
-      yield { type: "EXECUTION_COMPLETE", executionId, content, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: Math.round(performance.now() - (t0 ?? performance.now())), timestamp: Date.now(), executionMode: "fast" }
-    }
+    yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: content || "", finishReason: "stop", timestamp: Date.now() }
+    yield { type: "EXECUTION_COMPLETE", executionId, content: content || "", filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: Math.round(performance.now() - (t0 ?? performance.now())), timestamp: Date.now(), executionMode: "fast" }
   }
 
   private async *mockExecutionPath(

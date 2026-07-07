@@ -189,6 +189,7 @@ interface TimelineState {
   upgradeOptimisticSession: (oldStepId: string, newStepId: string, updates: Partial<AgentSession>) => void
   setStreamState: (stepId: string, state: StreamState) => void
   appendAgentStreamText: (stepId: string, text: string) => void
+  appendAgentReasoningText: (stepId: string, text: string) => void
   /** Fast path: append to streamingTexts only — does NOT touch agentSessions */
   appendStreamingText: (stepId: string, text: string) => void
   /** On stream completion: move text from streamingTexts into agentSession, remove from streamingTexts */
@@ -585,6 +586,17 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
           for (const k of toRemove) nextPending.delete(k)
         }
         return { agentSessions: next, pendingStreamTexts: nextPending }
+      }
+      return { agentSessions: next }
+    })
+  },
+
+  appendAgentReasoningText: (stepId, text) => {
+    set((s) => {
+      const next = new Map(s.agentSessions)
+      const existing = next.get(stepId)
+      if (existing) {
+        next.set(stepId, { ...existing, reasoningText: (existing.reasoningText ?? "") + text })
       }
       return { agentSessions: next }
     })

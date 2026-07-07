@@ -5,6 +5,7 @@ import type { ChatRequest, ChatResponse, ToolCall } from "./provider-gateway"
 export type { ChatMessage, ToolCall, ToolDef, ChatRequest, ChatResponse, UsageInfo } from "./provider-gateway"
 export interface StreamCallbacks {
   onToken: (token: string) => void
+  onReasoning?: (text: string) => void
   onReady: () => void
   onDone: (fullContent: string, meta?: { toolCalls?: ToolCall[]; finishReason?: string | null }) => void
   onError: (error: Error) => void
@@ -139,6 +140,7 @@ export async function streamChatCompletion(
       fullContent += token
       callbacks.onToken(token)
     },
+    onReasoning: callbacks.onReasoning,
     onToolCallBegin: () => {},
     onToolCallDelta: () => {},
     onToolCallEnd: () => {},

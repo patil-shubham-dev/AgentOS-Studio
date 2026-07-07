@@ -19,6 +19,7 @@ export interface ToolCallBuffer {
 
 export interface StreamCallbacks {
   onToken: (token: string) => void
+  onReasoning?: (text: string) => void
   onToolCallBegin: (index: number, id: string, name: string) => void
   onToolCallDelta: (index: number, argumentDelta: string) => void
   onToolCallEnd: (index: number) => void
@@ -133,6 +134,7 @@ export function parseGeminiStreamChunk(data: string): ParsedChunk | null {
 
 export interface SseParserOptions {
   onToken?: (token: string) => void
+  onReasoning?: (text: string) => void
   onToolCallBegin?: (index: number, id: string, name: string) => void
   onToolCallDelta?: (index: number, delta: string) => void
   onToolCallEnd?: (index: number) => void
@@ -254,6 +256,10 @@ export class SseParser {
 
     if (parsed.content) {
       this.options.onToken?.(parsed.content)
+    }
+
+    if (parsed.reasoningContent) {
+      this.options.onReasoning?.(parsed.reasoningContent)
     }
 
     if (parsed.toolCalls) {
@@ -401,6 +407,9 @@ export async function streamingTransportFetch(
       metrics.lastTokenMs = now
       metrics.totalTokens += token.length
       callbacks.onToken(token)
+    },
+    onReasoning: (text) => {
+      callbacks.onReasoning?.(text)
     },
     onToolCallBegin: (index, id, name) => {
       metrics.totalToolCalls++

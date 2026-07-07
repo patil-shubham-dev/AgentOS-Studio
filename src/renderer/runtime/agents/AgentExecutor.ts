@@ -148,6 +148,9 @@ export class AgentExecutor {
           content += event.text
           yield { type: "TOKEN", executionId: eid, token: event.text, timestamp: Date.now() }
           break
+        case "reasoning_token":
+          yield { type: "REASONING_TOKEN", executionId: eid, token: event.text, timestamp: Date.now() }
+          break
         case "done":
           if (event.usage) {
             tokensIn = event.usage.tokensIn
@@ -328,6 +331,9 @@ export class AgentExecutor {
           case "token":
             responseContent += event.text
             yield { type: "TOKEN", executionId: eid, token: event.text, timestamp: Date.now() }
+            break
+          case "reasoning_token":
+            yield { type: "REASONING_TOKEN", executionId: eid, token: event.text, timestamp: Date.now() }
             break
           case "tool_call":
             responseToolCalls.push(event.toolCall)
