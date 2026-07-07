@@ -158,6 +158,7 @@ export class ProviderTransport {
     request: CompletionRequest,
     callbacks: {
       onToken: (token: string) => void
+      onReasoning?: (text: string) => void
       onToolCallBegin?: (index: number, id: string, name: string) => void
       onToolCallDelta?: (index: number, delta: string) => void
       onToolCallEnd?: (index: number) => void
@@ -177,6 +178,7 @@ export class ProviderTransport {
 
     const streamCallbacks: StreamCallbacks = {
       onToken: callbacks.onToken,
+      onReasoning: callbacks.onReasoning,
       onToolCallBegin: callbacks.onToolCallBegin ?? (() => {}),
       onToolCallDelta: callbacks.onToolCallDelta ?? (() => {}),
       onToolCallEnd: callbacks.onToolCallEnd ?? (() => {}),

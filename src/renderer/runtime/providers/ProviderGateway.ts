@@ -8,6 +8,7 @@ import { generateMockResponse } from "./MockProviderRuntime"
 
 export type ProviderStreamEvent =
   | { type: "token"; text: string }
+  | { type: "reasoning_token"; text: string }
   | { type: "tool_call"; toolCall: ToolCall }
   | { type: "done"; fullText: string; toolCalls?: ToolCall[]; usage?: ProviderUsage }
   | { type: "error"; code: ProviderErrorCode; message: string; userMessage: string; retryable: boolean }
@@ -140,6 +141,7 @@ export class ProviderGateway {
         yield { type: "status", status: "connecting", model }
 
         const tokenQueue: string[] = []
+        const reasoningQueue: string[] = []
         let done = false
         let fullText = ""
         let toolCalls: ToolCall[] = []
@@ -159,6 +161,10 @@ export class ProviderGateway {
                 tokenQueue.push(token)
                 if (streamResolve) { streamResolve(); streamResolve = null }
               },
+              onReasoning: (text: string) => {
+                reasoningQueue.push(text)
+                if (streamResolve) { streamResolve(); streamResolve = null }
+              },
               onDone: (content: string, meta?: { toolCalls?: ToolCall[] }) => {
                 fullText = content; if (meta?.toolCalls) toolCalls = meta.toolCalls
                 done = true
@@ -173,14 +179,16 @@ export class ProviderGateway {
             request.signal,
           )
 
-          while (!done || tokenQueue.length > 0) {
-            console.log("[FLOW:6] ProviderGateway.stream: while loop iteration (done=" + done + ", queueLen=" + tokenQueue.length + ")")
+          while (!done || tokenQueue.length > 0 || reasoningQueue.length > 0) {
+            console.log("[FLOW:6] ProviderGateway.stream: while loop iteration (done=" + done + ", queueLen=" + tokenQueue.length + ", reasoningLen=" + reasoningQueue.length + ")")
             if (request.signal?.aborted) {
-              done = true; tokenQueue.length = 0
+              done = true; tokenQueue.length = 0; reasoningQueue.length = 0
               yield { type: "error", code: "cancelled", message: "Request was cancelled", userMessage: "Request cancelled", retryable: false }
               return
             }
-            if (tokenQueue.length > 0) {
+            if (reasoningQueue.length > 0) {
+              yield { type: "reasoning_token", text: reasoningQueue.shift()! }
+            } else if (tokenQueue.length > 0) {
               yield { type: "token", text: tokenQueue.shift()! }
             } else {
               await new Promise<void>((resolve) => { streamResolve = resolve })
