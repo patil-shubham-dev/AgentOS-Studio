@@ -105,7 +105,7 @@ async function callLLM<T>(systemPrompt: string, userMessage: string, signal?: Ab
       { role: 'user', content: messageContent },
     ],
     providerId: provider.id,
-    model: provider.model,
+    model: provider.models?.[0]?.id,
     signal,
     temperature: 0.3,
   })
@@ -134,7 +134,7 @@ async function callLLM<T>(systemPrompt: string, userMessage: string, signal?: Ab
       { role: 'user', content: "Your previous response was not valid JSON. Respond with ONLY the valid JSON object as specified in the system prompt. No preamble, no explanation, no markdown formatting." },
     ],
     providerId: provider.id,
-    model: provider.model,
+    model: provider.models?.[0]?.id,
     signal,
     temperature: 0.3,
   })

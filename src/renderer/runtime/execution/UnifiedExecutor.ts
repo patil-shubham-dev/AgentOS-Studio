@@ -595,7 +595,7 @@ export class UnifiedExecutor {
         const result = await providerGateway.chat({
           messages: [{ role: 'user', content: `Classify the following user request into exactly one category: conversation, coding, research, execution, planning, browser-task, ui-analysis, multi-agent. Reply with only the category name and confidence (0-1), nothing else.\n\nRequest: ${text.slice(0, 500)}` }],
           providerId: fastProvider.id,
-          model: fastProvider.model,
+          model: fastProvider.models?.[0]?.id,
         })
         const categoryMatch = result.content?.match(/(conversation|coding|research|execution|planning|browser-task|ui-analysis|multi-agent)/i)
         const confidenceMatch = result.content?.match(/(\d\.\d+)/)

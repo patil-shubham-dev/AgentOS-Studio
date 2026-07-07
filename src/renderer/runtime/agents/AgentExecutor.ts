@@ -131,8 +131,8 @@ export class AgentExecutor {
     const stream = providerGateway.stream({
       systemPrompt: FAST_CHAT_PROMPT,
       messages,
+      model: wired.model,
       signal: this.signal,
-      mode: "fast",
     })
 
     for await (const event of stream) {
@@ -310,6 +310,7 @@ export class AgentExecutor {
         messages: gwMessages,
         maxTokens,
         tools: toolDefs,
+        model: modelForRole,
         signal: this.signal,
       }
 

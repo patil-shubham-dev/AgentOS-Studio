@@ -301,7 +301,7 @@ export class NvidiaNimAdapter extends OpenAITransportAdapter {
     const body = super.buildCompletionBody(req)
     if (req.tools && req.tools.length > 0) {
       body.tools = req.tools.map((t) => ({
-        type: "function",
+        type: t.type,
         function: {
           name: t.function.name,
           description: t.function.description,
