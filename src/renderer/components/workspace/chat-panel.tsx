@@ -223,7 +223,12 @@ export function ChatPanel() {
   }, [])
 
   const sendMessage = useCallback(async (prompt?: string) => {
-    const currentInput = prompt ?? inputStateRef.current
+    const rawInput = prompt ?? inputStateRef.current
+    if (typeof rawInput !== "string") {
+      console.warn("[ChatPanel] sendMessage called with non-string input:", typeof rawInput, rawInput)
+      return
+    }
+    const currentInput = rawInput
     if (!currentInput.trim() || sendingRef.current || useAgentStore.getState().isProcessing || !canSend) return
 
     sendingRef.current = true

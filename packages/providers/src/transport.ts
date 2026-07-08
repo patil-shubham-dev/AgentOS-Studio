@@ -174,6 +174,7 @@ export class ProviderTransport {
     const url = adapter.buildChatUrl(request.model)
     const headers = adapter.buildHeaders()
     const body = adapter.buildCompletionBody({ ...request, stream: true })
+    console.log("[DEBUG_REQ_BODY]", JSON.stringify(body).slice(0, 2000))
     const requestId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
     const streamCallbacks: StreamCallbacks = {

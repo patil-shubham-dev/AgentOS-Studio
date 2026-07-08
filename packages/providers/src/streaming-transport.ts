@@ -254,6 +254,10 @@ export class SseParser {
 
     if (!parsed) return
 
+    if (!parsed.content && parsed.finishReason !== undefined) {
+      console.log("[DEBUG_EMPTY_CHUNK]", JSON.stringify({ finishReason: parsed.finishReason, hasReasoning: !!parsed.reasoningContent }))
+    }
+
     if (parsed.content) {
       this.options.onToken?.(parsed.content)
     }
@@ -499,6 +503,7 @@ export async function streamingTransportFetch(
       }
 
       const text = decoder.decode(value, { stream: true })
+      console.log("[DEBUG_RAW_CHUNK]", JSON.stringify({ bytes: value.byteLength, text: text.slice(0, 500) }))
       parser.push(text)
     }
     console.log("[FLOW:10] streamingTransportFetch: read loop exited")
