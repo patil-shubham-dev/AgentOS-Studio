@@ -85,6 +85,14 @@ export function Composer({
   const [autocompleteIndex, setAutocompleteIndex] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
 
+  const handleSendClick = useCallback(() => {
+    if (isProcessing || isCancelling) {
+      onCancel()
+    } else {
+      onSend()
+    }
+  }, [isProcessing, isCancelling, onCancel, onSend])
+
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
@@ -505,7 +513,7 @@ export function Composer({
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.85, opacity: 0 }}
                 transition={{ duration: 0.1 }}
-                onClick={isProcessing || isCancelling ? onCancel : onSend}
+                onClick={handleSendClick}
                 disabled={!isProcessing && !isCancelling && !input.trim()}
                 aria-label={isCancelling ? "Cancelling" : isProcessing ? "Cancel" : "Send"}
                 className={cn(
