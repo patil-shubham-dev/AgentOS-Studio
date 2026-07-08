@@ -440,6 +440,12 @@ export const AssistantResponse = memo(function AssistantResponse({
             <span className="text-sm text-white/50 italic font-medium">Thinking&hellip;</span>
           </motion.div>
         )}
+
+        {/* Reasoning content — collapsed by default, shown when real reasoning exists */}
+        {hasThinking && (
+          <ReasoningBlock content={session.reasoningText!} stepId={stepId} />
+        )}
+
         {hasContent && (
           <motion.div
             initial={{ opacity: 0, y: 2 }}

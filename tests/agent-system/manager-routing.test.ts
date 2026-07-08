@@ -41,6 +41,32 @@ describe("Manager Routing — Intent Classification", () => {
     const { category } = classifyIntent("automate login flow")
     expect(category).toBe("browser-task")
   })
+
+  // ── Bug A regression tests ──────────────────────────────────────────────────
+  it("[BugA] classifies 'analyse the codebase' as research (British spelling)", () => {
+    const { category } = classifyIntent("analyse the codebase")
+    expect(category).toBe("research")
+  })
+
+  it("[BugA] classifies 'analyze the codebase' as research (US spelling)", () => {
+    const { category } = classifyIntent("analyze the codebase")
+    expect(category).toBe("research")
+  })
+
+  it("[BugA] classifies 'what is this project about' as research", () => {
+    const { category } = classifyIntent("what is this project about")
+    expect(category).toBe("research")
+  })
+
+  it("[BugA] classifies 'give me an overview of the project' as research", () => {
+    const { category } = classifyIntent("give me an overview of the project")
+    expect(category).toBe("research")
+  })
+
+  it("[BugA] classifies 'tell me about this codebase' as research", () => {
+    const { category } = classifyIntent("tell me about this codebase")
+    expect(category).toBe("research")
+  })
 })
 
 describe("Manager Routing — Route Decision", () => {
@@ -89,6 +115,25 @@ describe("Manager Routing — Route Decision", () => {
     expect(decision.selectedRoles).toContain("research")
     expect(decision.requiresDelegation).toBe(true)
   })
+
+  // ── Bug A regression tests ──────────────────────────────────────────────────
+  it("[BugA] 'analyse the codebase' routes to mode:full (never fast)", () => {
+    const decision = route("analyse the codebase", ["manager", "research"])
+    expect(decision.mode).toBe("full")
+    expect(decision.intentCategory).toBe("research")
+  })
+
+  it("[BugA] low-confidence fallback (ambiguous input) uses mode:full, not fast", () => {
+    // "we need to think carefully" → no pattern matches → confidence=0.5 conversation
+    // The fix ensures even this fallback does NOT use mode:'fast'
+    const decision = route("we need to think carefully about the approach here", ["manager"])
+    expect(decision.mode).toBe("full")
+  })
+
+  it("[BugA] high-confidence greeting still uses mode:fast", () => {
+    const decision = route("hello", ["manager"])
+    expect(decision.mode).toBe("fast")
+  })
 })
 
 describe("Manager Routing — Role Assignment", () => {
@@ -113,3 +158,4 @@ describe("Manager Routing — Role Assignment", () => {
     expect(decision.selectedRoles).toContain("coder")
   })
 })
+

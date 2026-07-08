@@ -248,7 +248,11 @@ export class UnifiedExecutor {
 
       try {
         // ── Fast mode: skip plan phase entirely ──
-        const isFastMode = reqMode === "fast" || decision.mode === "fast" || activeRole === "fast-inference"
+        // Use the routing decision's mode as the primary signal. The activeRole shortcut
+        // ("fast-inference") is NOT used here: a coding/research intent must still get
+        // the correct role-specific prompt and tool access even if the default channel
+        // is set to fast-inference.
+        const isFastMode = reqMode === "fast" || decision.mode === "fast"
         if (!isFastMode && this.shouldGeneratePlan(input)) {
           yield* this.runPlanPhase(input, executionId, ctrl, t0)
         }
@@ -680,15 +684,28 @@ export class UnifiedExecutor {
     const conversations = useAgentStore.getState().conversations
     const msgs = conversations[activeRole]?.messages ?? []
     const history = msgs.filter((m: any) => m.role !== "system")
-    if (history.length > RUNTIME_TOKEN_LIMITS.MAX_CONTEXT_MESSAGES) {
-      const compressed = summarizeMessages(history, RUNTIME_TOKEN_LIMITS.MAX_HISTORY_TOKENS)
+
+    // Safety net: deduplicate consecutive identical user messages that may have been
+    // appended by a double-submit or retry path before the guard in agent-store.ts
+    // could catch them (e.g. if added via setMessages instead of addMessage).
+    const deduped: any[] = []
+    for (const m of history) {
+      const last = deduped[deduped.length - 1]
+      if (m.role === "user" && last?.role === "user" && last.content === m.content) {
+        continue
+      }
+      deduped.push(m)
+    }
+
+    if (deduped.length > RUNTIME_TOKEN_LIMITS.MAX_CONTEXT_MESSAGES) {
+      const compressed = summarizeMessages(deduped, RUNTIME_TOKEN_LIMITS.MAX_HISTORY_TOKENS)
       const pressure = getMemoryPressure(compressed)
       const runtime = useWorkspaceRuntime.getState()
       runtime.setMemoryPressure(pressure)
       runtime.setTokenUsage(compressed.totalTokens)
-      return compressConversationHistory(history)
+      return compressConversationHistory(deduped)
     }
-    return history
+    return deduped
   }
 
   private extractChangedFiles(content: string): string[] {

@@ -40,7 +40,8 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
       /^(yes|no|maybe|perhaps|correct|right|nah|nope|yep|yeah)\b/i,
       /^(nice|great|awesome|perfect|good|cool|amazing|wonderful)\b/i,
       /^(help me|i need help|can you help)\b/i,
-      /^(what is this|what is agentic|what does this do)\b/i,
+      // Negative lookahead: exclude "what is this project/app/codebase/repo" — those route to research
+      /^(what is this(?! (project|app|codebase|repo|code))|what is agentic|what does this do)\b/i,
       /^(does .* work|how does .* work|can you .*)\b/i,
       /^(i have a question|question|quick question)\b/i,
       /^(summarize|tl;dr|tldr|gist|brief)/i,
@@ -51,7 +52,9 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
   },
   coding: {
     patterns: [
-      /implement|write|create|build|develop|program|code/i,
+      // Use word boundaries for 'code' and 'program' so 'codebase', 'codebase-analysis'
+      // etc. are NOT matched here — those belong in the research category.
+      /implement|write|create|build|develop|\bprogram\b|\bcode\b/i,
       /fix|debug|bug|error|crash|broken|issue|repair/i,
       /refactor|rewrite|restructure|optimize|clean up/i,
       /add feature|new feature|function|class|component|module/i,
@@ -74,9 +77,19 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
   research: {
     patterns: [
       /research|investigate|find out|look up|search for/i,
-      /analyze|analysis|explore|understand how/i,
+      // Both US (analyze) and British (analyse) spellings; also codebase-overview queries
+      /analyz|analys|explore|understand how/i,
       /documentation|docs|readme|architecture|dependency/i,
       /what is|how does|explain|architecture of/i,
+      // Codebase / project understanding queries that should never fast-path.
+      // 'codebase' must be listed here BEFORE the coding patterns fire on 'code'.
+      /codebase|code[-_]?base|project structure|project overview|project layout/i,
+      /what (does|is) (this|the) (project|app|codebase|repo|code)/i,
+      /tell me about (this|the) (project|app|codebase|repo|codebase)/i,
+      /give (me )?an? overview/i,
+      /summarize (the |this )?(project|codebase|repo|code)/i,
+      // "what is this project about" — 'project about' as a phrase
+      /project (about|description|purpose|goal)/i,
     ],
     roles: ["research"],
     delegatable: true,
@@ -195,11 +208,14 @@ export function route(
   // ── Coding patterns: file paths, code blocks, or coding verbs → full single-agent ──
   // Check this FIRST so coding-intent always wins over conversation (a fast-mode reply
   // that ignores a code-fix request is worse than a full-mode reply for a greeting).
+  //
+  // IMPORTANT: 'codebase' must NOT be caught here — it belongs to research.
+  // The guard regex uses \bcode\b so 'codebase' is excluded.
   const isCodingIntent =
     hasCode ||
     hasFilePath ||
     category === "coding" ||
-    /edit|fix|add|refactor|debug|explain|test|write|implement|create|update|remove|delete|rename|optimize/i.test(input)
+    /\bedit\b|\bfix\b|\badd\b|\brefactor\b|\bdebug\b|\bexplain\b|\btest\b|\bwrite\b|\bimplement\b|\bcreate\b|\bupdate\b|\bremove\b|\bdelete\b|\brename\b|\boptimize\b/i.test(input)
 
   if (isCodingIntent) {
     const coderAvailable = wiredRoles.includes("coder" as RuntimeRole)
@@ -228,7 +244,9 @@ export function route(
     }
   }
 
-  // ── Low-confidence conversation but still clearly conversational ──
+  // ── Low-confidence conversation (confidence < 0.7): classifier fell through to the
+  //    default — this is NOT a confirmed greeting. Use mode:"full" so any hidden
+  //    analysis/coding intent still gets tool access.
   if (isConversation) {
     const managerAvailable = wiredRoles.includes("manager" as RuntimeRole)
     if (managerAvailable) {
@@ -236,8 +254,11 @@ export function route(
         requiresDelegation: true,
         selectedRoles: ["manager"] as RuntimeRole[],
         executionStrategy: "single-agent",
-        mode: "fast",
-        reasoning: "Conversational message. Delegating to manager for quick response.",
+        // Use full mode: confidence < 0.7 means the classifier isn't sure. A full
+        // response with tool access is always safe; a fast response may silently
+        // ignore a legitimate analysis or coding request.
+        mode: "full",
+        reasoning: "Low-confidence classification. Delegating to manager with full tool access to avoid misclassification.",
         intentCategory: "conversation",
       }
     }
@@ -245,8 +266,9 @@ export function route(
       requiresDelegation: false,
       selectedRoles: [],
       executionStrategy: "direct",
-      mode: "fast",
-      reasoning: "Greeting or conversational message — no delegation needed.",
+      // Same rationale: unknown intent → full mode
+      mode: "full",
+      reasoning: "Ambiguous input — no delegation but using full mode to ensure analysis/coding requests are not silently fast-pathed.",
       intentCategory: "conversation",
     }
   }

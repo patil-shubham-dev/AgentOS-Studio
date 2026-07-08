@@ -134,6 +134,19 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   addMessage: (role, msg) =>
     set((s) => {
       const existing = s.conversations[role]?.messages ?? []
+
+      // Guard: never allow two consecutive identical user-role messages without an
+      // assistant response between them. This catches double-submit bugs (Enter + click
+      // firing simultaneously) and retry logic that re-appends the input instead of
+      // reusing the existing pending message.
+      if (msg.role === "user") {
+        const lastMsg = existing[existing.length - 1]
+        if (lastMsg && lastMsg.role === "user" && lastMsg.content === msg.content) {
+          console.warn(`[AgentStore] Dropped duplicate consecutive user message: "${msg.content.slice(0, 60)}..."`)
+          return s
+        }
+      }
+
       const messages = existing.length >= MAX_MESSAGES_PER_ROLE
         ? [...existing.slice(-(MAX_MESSAGES_PER_ROLE - 1)), msg]
         : [...existing, msg]

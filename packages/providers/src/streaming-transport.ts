@@ -68,6 +68,7 @@ export type ParsedChunk = {
   reasoningContent?: string
   finishReason?: string | null
   toolCalls?: Array<{ index: number; id?: string; name?: string; arguments?: string }>
+  streamError?: { type: string; message: string; code?: number }
 }
 
 export function parseOpenAiStreamChunk(data: string): ParsedChunk | null {
@@ -75,6 +76,20 @@ export function parseOpenAiStreamChunk(data: string): ParsedChunk | null {
 
   try {
     const parsed = JSON.parse(data)
+
+    // Detect API-level error payloads mid-stream (e.g. Nvidia NIM ResourceExhausted).
+    // These have a top-level "error" key instead of "choices", so the previous code
+    // fell through to "no choice → empty chunk" and silently swallowed the failure.
+    if (parsed.error) {
+      return {
+        streamError: {
+          type: parsed.error.type ?? "api_error",
+          message: parsed.error.message ?? "Unknown API error",
+          code: parsed.error.code ?? parsed.error.status_code,
+        },
+      }
+    }
+
     const choice = parsed.choices?.[0]
     if (!choice) return { content: "", finishReason: null }
 
@@ -115,10 +130,18 @@ export function parseGeminiStreamChunk(data: string): ParsedChunk | null {
     if (!candidates || !Array.isArray(candidates) || candidates.length === 0) return null
     const candidate = candidates[0]
     const parts = candidate.content?.parts
-    if (!parts || !Array.isArray(parts)) return null
-    const text = parts.map((p: any) => p.text ?? "").join("")
     const result: ParsedChunk = {}
-    if (text) result.content = text
+
+    // Extract text content from parts (parts may be absent on the terminal chunk)
+    if (parts && Array.isArray(parts)) {
+      const text = parts.map((p: any) => p.text ?? "").join("")
+      if (text) result.content = text
+    }
+
+    // Always propagate finishReason — the terminal Gemini chunk carries ONLY
+    // finishReason with no content parts. Previously this returned null (because
+    // result was {}) which silently swallowed the finish signal and left
+    // finishReason=null, causing the "tokens=0 / empty chunk" symptom.
     if (candidate.finishReason) {
       const upper = String(candidate.finishReason).toUpperCase()
       if (upper === "STOP") result.finishReason = "stop"
@@ -126,11 +149,14 @@ export function parseGeminiStreamChunk(data: string): ParsedChunk | null {
       else if (upper === "SAFETY" || upper === "RECITATION") result.finishReason = "content_filter"
       else result.finishReason = candidate.finishReason.toLowerCase()
     }
+
+    // Return null only if we extracted nothing at all (malformed chunk)
     return Object.keys(result).length > 0 ? result : null
   } catch {
     return null
   }
 }
+
 
 export interface SseParserOptions {
   onToken?: (token: string) => void
@@ -247,12 +273,28 @@ export class SseParser {
 
     let parsed = parseOpenAiStreamChunk(data)
 
-    if (!parsed || (!parsed.content && parsed.finishReason === undefined && !parsed.toolCalls)) {
+    if (!parsed || (!parsed.content && parsed.finishReason === undefined && !parsed.toolCalls && !parsed.streamError)) {
       const gemini = parseGeminiStreamChunk(data)
       if (gemini) parsed = gemini
     }
 
     if (!parsed) return
+
+    // Propagate stream-level API errors (e.g. ResourceExhausted, capacity limits) as
+    // TransportError so the error classification pipeline surfaces them to the user
+    // instead of silently completing with zero content.
+    if (parsed.streamError) {
+      const isCapacityError = /resource.?exhausted|capacity|rate.?limit/i.test(parsed.streamError.message)
+      const code = isCapacityError ? "RATE_LIMITED" : "STREAM_ERROR"
+      const err = new TransportError(code, parsed.streamError.message, {
+        retryable: isCapacityError,
+        details: `API error: ${parsed.streamError.type}${parsed.streamError.code ? ` (code ${parsed.streamError.code})` : ""}`,
+      })
+      this.options.onError?.(err)
+      // Set finishReason so the stream ends gracefully after the error is propagated
+      this.options.onFinishReason?.("stop")
+      return
+    }
 
     if (!parsed.content && parsed.finishReason !== undefined) {
       console.log("[DEBUG_EMPTY_CHUNK]", JSON.stringify({ finishReason: parsed.finishReason, hasReasoning: !!parsed.reasoningContent }))
@@ -438,8 +480,15 @@ export async function streamingTransportFetch(
         callbacks.onFinish(reason)
       }
     },
-    onError: (_err) => {
+    onError: (err) => {
       metrics.parseErrors++
+      // Propagate mid-stream API errors (e.g. Nvidia NIM ResourceExhausted) to the
+      // caller's error callback so they are surfaced instead of silently completing.
+      if (err instanceof TransportError) {
+        callbacks.onError(err)
+      } else {
+        callbacks.onError(new TransportError("STREAM_ERROR", err.message))
+      }
     },
   })
 

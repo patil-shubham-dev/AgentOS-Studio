@@ -251,6 +251,22 @@ export class ExecutionSessionManager {
 
       console.log(`${mgrTag} ✓ event stream ended (${Math.round(performance.now() - sessionStartTime)}ms, events=${eventCount})`)
 
+      // Safety net: force-complete any agent sessions still in "streaming" state.
+      // This prevents the UI from hanging on "Thinking..." indefinitely when a
+      // MESSAGE_COMPLETE event was never emitted (e.g. swallowed error, silent empty
+      // response, or unexpected stream termination).
+      const tlAfter = useTimelineStore.getState()
+      for (const [, stepId] of this.stepByExecId) {
+        const sess = tlAfter.agentSessions.get(stepId)
+        if (sess && (sess.streamState === "streaming" || sess.streamState === "loading_slowly")) {
+          console.warn(`[SessionManager] Force-completing stuck agent session ${stepId} (state=${sess.streamState})`)
+          StreamManager.getInstance().clearStep(stepId)
+          tlAfter.commitStreamingText(stepId)
+          tlAfter.updateAgentSession(stepId, { status: "complete", streamState: "completed", completedAt: Date.now() })
+        }
+      }
+      this.stepByExecId.clear()
+
       if (session.status !== "cancelled") {
         session.status = "completed"
       }

@@ -76,6 +76,12 @@ const ERROR_PATTERNS: Array<{
     userMessage: "Stream error occurred. All attempts failed.",
   },
   {
+    test: (msg) => /resource.?exhausted|capacity|worker.*limit|request.*limit/i.test(msg),
+    code: "rate_limited",
+    retryable: true,
+    userMessage: "The AI provider is at capacity right now. Retrying with backoff...",
+  },
+  {
     test: (msg) => /not configured|no provider|missing api key/i.test(msg),
     code: "not_configured",
     retryable: false,
