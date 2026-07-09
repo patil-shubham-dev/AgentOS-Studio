@@ -1,6 +1,5 @@
 import { ReliabilityManager } from "@/runtime/reliability/ReliabilityManager"
-import { WatchdogTargetType } from "@/runtime/reliability/Watchdog"
-import { RuntimeCleanupManager } from "@/runtime/RuntimeCleanupManager"
+import { CircuitState } from "@/runtime/reliability/CircuitBreaker"
 import { RepositoryKnowledgeGraph } from "@/runtime/intelligence/RepositoryKnowledgeGraph"
 import { VerificationPipeline } from "@/runtime/verification/VerificationPipeline"
 import { WorkspaceSnapshotManager } from "@/runtime/execution/WorkspaceSnapshotManager"
@@ -31,8 +30,6 @@ export interface CircuitBreakerState {
 export class ExecutionReliabilitySuite {
   private static instance: ExecutionReliabilitySuite
   private reliabilityMgr = ReliabilityManager.getInstance()
-  private cleanupMgr = RuntimeCleanupManager.getInstance()
-  private circuitBreakers = new Map<string, CircuitBreakerState>()
   private healthHistory = new Map<string, HealthCheck[]>()
 
   static getInstance(): ExecutionReliabilitySuite {
@@ -42,58 +39,39 @@ export class ExecutionReliabilitySuite {
     return ExecutionReliabilitySuite.instance
   }
 
-  createCircuitBreaker(name: string, threshold = 5): CircuitBreakerState {
-    const state: CircuitBreakerState = {
-      name,
-      state: "closed",
-      failureCount: 0,
-      lastFailure: null,
-      threshold,
-    }
-    this.circuitBreakers.set(name, state)
-    return state
+  /** Delegates to ReliabilityManager.circuitBreakers as single source of truth */
+  createCircuitBreaker(name: string, threshold = 5): void {
+    this.reliabilityMgr.circuitBreakers.getOrCreate(name, { failureThreshold: threshold })
   }
 
+  /** Delegates to ReliabilityManager.circuitBreakers */
   recordFailure(circuitName: string): void {
-    const cb = this.circuitBreakers.get(circuitName)
-    if (!cb) return
-    cb.failureCount++
-    cb.lastFailure = Date.now()
-
-    if (cb.failureCount >= cb.threshold) {
-      cb.state = "open"
-      console.warn(`[Reliability] Circuit "${circuitName}" opened after ${cb.failureCount} failures`)
-    }
+    this.reliabilityMgr.circuitBreakers.get(circuitName)?.recordFailure(circuitName)
   }
 
+  /** Delegates to ReliabilityManager.circuitBreakers */
   recordSuccess(circuitName: string): void {
-    const cb = this.circuitBreakers.get(circuitName)
-    if (!cb) return
-    cb.failureCount = 0
-    if (cb.state === "half-open") {
-      cb.state = "closed"
-      console.log(`[Reliability] Circuit "${circuitName}" closed after successful half-open probe`)
-    }
+    this.reliabilityMgr.circuitBreakers.get(circuitName)?.recordSuccess()
   }
 
+  /** Delegates to ReliabilityManager.circuitBreakers — single authority */
   isAllowed(circuitName: string): boolean {
-    const cb = this.circuitBreakers.get(circuitName)
-    if (!cb) return true
-
-    if (cb.state === "open") {
-      const cooldownMs = 30_000
-      if (cb.lastFailure && Date.now() - cb.lastFailure > cooldownMs) {
-        cb.state = "half-open"
-        return true
-      }
-      return false
-    }
-
-    return true
+    return this.reliabilityMgr.circuitBreakers.get(circuitName)?.allowRequest() ?? true
   }
 
   getCircuitState(circuitName: string): CircuitBreakerState | undefined {
-    return this.circuitBreakers.get(circuitName)
+    const cb = this.reliabilityMgr.circuitBreakers.get(circuitName)
+    if (!cb) return undefined
+    const mappedState = cb.state === CircuitState.OPEN ? "open"
+      : cb.state === CircuitState.HALF_OPEN ? "half-open"
+      : "closed"
+    return {
+      name: cb.name,
+      state: mappedState,
+      failureCount: cb.failureRate() > 0 ? Math.round(cb.failureRate() * (cb.config_?.failureThreshold ?? 5)) : 0,
+      lastFailure: null,
+      threshold: cb.config_?.failureThreshold ?? 5,
+    }
   }
 
   async withRetry<T>(
@@ -187,7 +165,8 @@ export class ExecutionReliabilitySuite {
   }
 
   private checkCircuitBreakers(): HealthCheck {
-    const openBreakers = [...this.circuitBreakers.values()].filter(c => c.state === "open")
+    const allBreakers = this.reliabilityMgr.circuitBreakers.getAll()
+    const openBreakers = allBreakers.filter(c => c.state === CircuitState.OPEN)
     return {
       name: "circuit-breakers",
       passed: openBreakers.length === 0,

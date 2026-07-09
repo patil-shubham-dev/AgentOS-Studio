@@ -13,7 +13,6 @@ import { useAppStore } from "@/stores/app-store"
 import { AgentExecutor } from "@/runtime/agents/AgentExecutor"
 import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
 import { normalizeRole } from "@/lib/role-identity"
-import type { RuntimeRole } from "@/types"
 import { getLogger } from "@/lib/logger"
 import { VerificationPipeline } from "@/runtime/verification/VerificationPipeline"
 
