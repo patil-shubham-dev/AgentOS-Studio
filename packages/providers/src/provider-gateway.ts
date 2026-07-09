@@ -1,4 +1,5 @@
 import { tauriFetch, fetchWithTimeout } from "./http-client"
+import { normalizeBaseUrl } from "./transport-adapters"
 import type { ProviderModel, RuntimeInfo, ValidationResult, DiscoveryResult } from "@agentic-os/shared"
 import { recordSuccess, recordFailure, addTrace } from "./provider-health"
 
@@ -48,7 +49,7 @@ export interface ChatResponse {
 // ── URL Normalization ──
 
 export function normalizeChatUrl(baseUrl: string, isOpenAiCompatible: boolean): string {
-  const clean = baseUrl.replace(/\/+$/, "")
+  const clean = normalizeBaseUrl(baseUrl)
   let stripped = clean.replace(/\/chat\/completions$/, "")
   stripped = stripped.replace(/\/v1\/v1/, "/v1")
   if (stripped.endsWith("/v1")) return stripped
@@ -210,7 +211,7 @@ export async function detectRuntime(baseUrl: string): Promise<RuntimeInfo> {
 
   // If no pattern matched, try a simple fetch to detect
   try {
-    const cleanUrl = baseUrl.replace(/\/+$/, "")
+    const cleanUrl = normalizeBaseUrl(baseUrl)
     const testUrl = cleanUrl.includes("/v1") ? cleanUrl.replace(/\/v1.*$/, "/v1") : `${cleanUrl}/v1`
     
     const resp = await tauriFetch(`${testUrl}/models`, {
@@ -254,7 +255,7 @@ const DIAG_PREFIX_VAL = "[ValProvider]"
 
 export async function validateProvider(baseUrl: string, apiKey: string, _token?: number): Promise<ValidationResult> {
   const t0 = performance.now()
-  const cleanUrl = baseUrl.replace(/\/+$/, "")
+  const cleanUrl = normalizeBaseUrl(baseUrl)
   const adapterId = getAdapterId(cleanUrl)
 
   const keyPrefix = apiKey.length >= 8 ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` : apiKey.length > 0 ? `(short:${apiKey.length})` : "(empty)"
@@ -293,7 +294,7 @@ export async function validateProvider(baseUrl: string, apiKey: string, _token?:
     
     // For Anthropic
     if (isAnthropic) {
-      const modelsUrl = cleanUrl.replace(/\/+$/, "") + "/v1/models"
+      const modelsUrl = cleanUrl + "/v1/models"
       console.log(`${DIAG_PREFIX_VAL} Anthropic, trying ${modelsUrl}`)
       const resp = await fetchWithTimeout(modelsUrl, {
         method: "GET",
@@ -553,7 +554,7 @@ function extractContextWindow(id: string): number | undefined {
 }
 
 export async function discoverModels(baseUrl: string, apiKey: string, _token?: number): Promise<DiscoveryResult> {
-  const cleanUrl = baseUrl.replace(/\/+$/, "")
+  const cleanUrl = normalizeBaseUrl(baseUrl)
   
   // Determine provider type
   const isOllama = cleanUrl.includes("11434") || cleanUrl.includes("ollama")
@@ -647,7 +648,7 @@ export async function discoverModels(baseUrl: string, apiKey: string, _token?: n
 // ── Connection Testing (frontend-only via fetch) ──
 
 export async function testConnection(endpoint: string, apiKey: string): Promise<string> {
-  const cleanUrl = endpoint.replace(/\/+$/, "")
+  const cleanUrl = normalizeBaseUrl(endpoint)
   const lines: string[] = []
   
   lines.push(`--- Connection Test: ${cleanUrl} ---`)

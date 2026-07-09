@@ -1,4 +1,5 @@
 import { tauriFetch } from './http-client'
+import { normalizeBaseUrl } from './transport-adapters'
 
 // ── Named patterns detect reasoning capability without an API call ──
 const REASONING_MODEL_PATTERNS = [
@@ -50,7 +51,7 @@ function detectReasoningByName(model: string): boolean {
 
 /** Normalize base URL to a clean v1-style URL for API calls */
 function normalizeProbeUrl(base: string): string {
-  let url = base.replace(/\/chat\/completions$/, "").replace(/\/$/, "")
+  let url = normalizeBaseUrl(base).replace(/\/chat\/completions$/, "")
   if (!url.includes("/v1")) url = `${url}/v1`
   return url
 }

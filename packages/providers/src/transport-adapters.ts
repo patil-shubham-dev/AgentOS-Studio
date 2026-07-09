@@ -103,7 +103,7 @@ async function endpointFetch(url: string, options: {
   }
 }
 
-function normalizeBaseUrl(raw: string): string {
+export function normalizeBaseUrl(raw: string): string {
   return raw.replace(/\/+$/, "")
 }
 

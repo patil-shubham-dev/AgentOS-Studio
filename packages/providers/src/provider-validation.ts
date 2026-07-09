@@ -1,4 +1,5 @@
 import { tauriFetch, fetchWithTimeout } from "./http-client"
+import { normalizeBaseUrl } from "./transport-adapters"
 import type { ValidationRun, ValidationStepResult } from "./provider-types"
 import type { ProviderCapabilities } from "./transport-adapters"
 import { recordValidationRun, recordSuccess, recordFailure } from "./provider-health"
@@ -12,7 +13,7 @@ function generateRunId(): string {
 }
 
 function buildBaseUrl(raw: string): string {
-  return raw.replace(/\/+$/, "")
+  return normalizeBaseUrl(raw)
 }
 
 // ── Step 1: URL Validation ──
