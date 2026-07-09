@@ -190,11 +190,13 @@ function ToolCallLine({ tc }: { tc: ToolCallRecord }) {
 }
 
 function ToolCallAccumulator({ session, isRunning }: { session: AgentSession; isRunning: boolean }) {
-  const [expanded, setExpanded] = useState(false)
   const count = session.toolCalls.length
   const hasError = session.toolCalls.some(tc => tc.status === "error")
+  const [expanded, setExpanded] = useState(true)
 
-  useEffect(() => { if (isRunning) setExpanded(true) }, [isRunning])
+  useEffect(() => {
+    if (count > 0) setExpanded(true)
+  }, [count])
 
   if (count === 0) return null
 
@@ -441,9 +443,9 @@ export const AssistantResponse = memo(function AssistantResponse({
           </motion.div>
         )}
 
-        {/* Reasoning content — collapsed by default, shown when real reasoning exists */}
-        {hasThinking && (
-          <ReasoningBlock content={session.reasoningText!} stepId={stepId} />
+        {/* Reasoning content — collapsed by default with live indicator while streaming */}
+        {(hasThinking || isRunning) && (
+          <ReasoningBlock content={session.reasoningText ?? ""} stepId={stepId} isStreaming={isRunning} />
         )}
 
         {hasContent && (
@@ -536,9 +538,9 @@ export const AssistantResponse = memo(function AssistantResponse({
         </motion.div>
       )}
 
-      {/* Reasoning content — collapsed by default, only when real reasoning exists */}
-      {hasThinking && (
-        <ReasoningBlock content={session.reasoningText!} stepId={stepId} />
+      {/* Reasoning content — collapsed by default with live indicator while streaming */}
+      {(hasThinking || isRunning) && (
+        <ReasoningBlock content={session.reasoningText ?? ""} stepId={stepId} isStreaming={isRunning} />
       )}
 
       {/* Tool calls — accumulator */}

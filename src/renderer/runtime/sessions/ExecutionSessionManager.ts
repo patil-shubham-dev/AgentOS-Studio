@@ -221,20 +221,21 @@ export class ExecutionSessionManager {
 
       let eventCount = 0
       try {
-        const result = await this.gateway.execute({
-          input: options.input,
-          activeRole: options.activeRole,
-          correlationId: options.correlationId,
-          goalId: options.goalId,
-          mode: options.mode ?? "full",
-          signal: options.signal,
-          editedFiles,
-        })
-
-        for (const event of result.events) {
-          eventCount++
-          this.handleEvent(event, options)
-        }
+        const result = await this.gateway.execute(
+          {
+            input: options.input,
+            activeRole: options.activeRole,
+            correlationId: options.correlationId,
+            goalId: options.goalId,
+            mode: options.mode ?? "full",
+            signal: options.signal,
+            editedFiles,
+          },
+          (event) => {
+            eventCount++
+            this.handleEvent(event, options)
+          },
+        )
 
         if (!result.engineeringResult.passed) {
           this.handleEvent({

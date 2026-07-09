@@ -38,7 +38,10 @@ export class UnifiedExecutionGateway {
     StreamManager.getInstance().clearAll()
   }
 
-  async execute(options: GatewayOptions): Promise<{ engineeringResult: EngineeringResult; events: ExecutionEvent[] }> {
+  async execute(
+    options: GatewayOptions,
+    onEvent?: (event: ExecutionEvent) => void,
+  ): Promise<{ engineeringResult: EngineeringResult; events: ExecutionEvent[] }> {
     const { input, activeRole, editedFiles, mode, signal, correlationId } = options
 
     if (signal?.aborted) {
@@ -77,6 +80,7 @@ export class UnifiedExecutionGateway {
       if (events.length < MAX_BUFFERED_EVENTS) {
         events.push(event)
       }
+      onEvent?.(event)
     }
 
     const executionId = (events.find(e => e.type === "EXECUTION_CREATED") as { executionId?: string } | undefined)?.executionId ?? "unknown"
