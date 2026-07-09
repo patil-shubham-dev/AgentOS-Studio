@@ -284,6 +284,9 @@ export class VerificationPipeline {
   private repairRetries = new Map<string, number>()
   private stageCache = new Map<string, { result: VerificationStageResult; timestamp: number }>()
   private readonly STAGE_CACHE_TTL = 60_000
+  private readonly MAX_CACHED_RESULTS = 200
+  private readonly MAX_REPAIR_RETRIES = 500
+  private readonly MAX_STAGE_CACHE = 100
   private language: DetectedLanguage = "unknown"
   private commands: LanguageConfig
 
@@ -422,7 +425,34 @@ export class VerificationPipeline {
 
   private setStageCache(stage: string, changedFiles: string[], result: VerificationStageResult): void {
     const key = this.getStageCacheKey(stage, changedFiles)
+    this.pruneCaches()
     this.stageCache.set(key, { result, timestamp: Date.now() })
+  }
+
+  /** Evict oldest entries when caches exceed their max size */
+  private pruneCaches(): void {
+    if (this.stageCache.size >= this.MAX_STAGE_CACHE) {
+      const now = Date.now()
+      for (const [k, v] of this.stageCache) {
+        if (now - v.timestamp > this.STAGE_CACHE_TTL) this.stageCache.delete(k)
+      }
+      // If still over budget, delete oldest 20%
+      if (this.stageCache.size >= this.MAX_STAGE_CACHE) {
+        const entries = [...this.stageCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp)
+        const toRemove = Math.max(1, Math.floor(entries.length * 0.2))
+        for (let i = 0; i < toRemove; i++) this.stageCache.delete(entries[i][0])
+      }
+    }
+    if (this.results.size >= this.MAX_CACHED_RESULTS) {
+      const keys = [...this.results.keys()]
+      const toRemove = Math.max(1, Math.floor(keys.length * 0.2))
+      for (let i = 0; i < toRemove; i++) this.results.delete(keys[i])
+    }
+    if (this.repairRetries.size >= this.MAX_REPAIR_RETRIES) {
+      const keys = [...this.repairRetries.keys()]
+      const toRemove = Math.max(1, Math.floor(keys.length * 0.2))
+      for (let i = 0; i < toRemove; i++) this.repairRetries.delete(keys[i])
+    }
   }
 
   async fastVerify(changedFiles: string[], signal?: AbortSignal): Promise<VerificationResult> {
@@ -581,6 +611,7 @@ export class VerificationPipeline {
     }
 
     result.llmFormatted = this.formatForLLM(result)
+    this.pruneCaches()
     this.results.set(changedFiles.sort().join(","), result)
     return result
   }
@@ -832,6 +863,7 @@ export class VerificationPipeline {
         if (fixResult.exitCode === 0) {
           finalResult = await this.verifyChanges(changedFiles, signal)
           retriesUsed++
+          this.pruneCaches()
           this.repairRetries.set(cacheKey, retriesUsed)
           if (finalResult.passed) return { fixed: true, finalResult, retriesUsed }
           return this.autoFixWithRetry(finalResult, changedFiles, signal)
@@ -840,6 +872,7 @@ export class VerificationPipeline {
       }
     }
 
+    this.pruneCaches()
     this.repairRetries.set(cacheKey, retriesUsed)
     return { fixed: false, finalResult, retriesUsed }
   }
