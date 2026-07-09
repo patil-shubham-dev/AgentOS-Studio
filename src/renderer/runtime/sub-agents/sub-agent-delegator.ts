@@ -33,6 +33,12 @@ import { useAgentStore } from "@/stores/agent-store"
 export const MAX_SUBAGENT_DEPTH = 5
 export const MAX_TOTAL_SUBAGENTS = 50
 
+let totalSubAgentCount = 0
+
+export function resetSubAgentCount(): void {
+  totalSubAgentCount = 0
+}
+
 // ── Sub-agent tool restrictions ──
 
 const READ_ONLY_TOOLS: ToolDef[] = [
@@ -245,6 +251,16 @@ export async function executeSubAgent(request: SubAgentDelegationRequest): Promi
   const t0 = performance.now()
   const { type, task, modelOverride, signal, treeNodeId, depth = 0 } = request
   const logTag = `[SubAgent:${type}${depth > 0 ? `:depth=${depth}` : ''}]`
+
+  totalSubAgentCount++
+  if (totalSubAgentCount > MAX_TOTAL_SUBAGENTS) {
+    const msg = `Sub-agent total limit reached: ${totalSubAgentCount} > max ${MAX_TOTAL_SUBAGENTS}`
+    console.warn(`${logTag} ${msg}`)
+    if (treeNodeId) {
+      useAgentStore.getState().updateAgentTreeNode(treeNodeId, { state: 'failed', lastUpdated: Date.now() })
+    }
+    return emitResult({ success: false, type, error: msg, duration: 0, toolCalls: 0, tokens: 0 })
+  }
 
   if (depth >= MAX_SUBAGENT_DEPTH) {
     const msg = `Sub-agent recursion limit reached: depth ${depth} >= max ${MAX_SUBAGENT_DEPTH}`
