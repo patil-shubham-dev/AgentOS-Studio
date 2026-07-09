@@ -98,7 +98,7 @@ export class ContextManager {
     this.resolver = new ContextWindowResolver()
     this.budgetTracker = new TokenBudgetTracker(this.resolver)
     this.compactor = new Compactor(this.resolver, this.budgetTracker)
-    this.compactor.onCompactFinish = () => configLoader.invalidateCache()
+    this.compactor.onPostCompact = () => configLoader.invalidateCache()
 
     this.budgetTracker.initializeTask(this.currentModel, this.currentBetas)
 

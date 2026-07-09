@@ -32,8 +32,8 @@ export class Compactor {
   private consecutiveCompactions: number = 0
   private lastCompactStrategy: CompactStrategy | null = null
 
-  /** Callback invoked after any compaction completes (for cache invalidation, etc.) */
-  onCompactFinish: (() => void) | null = null
+  /** Callback invoked after any compaction completes with the result (for cache invalidation, observability, etc.) */
+  onPostCompact: ((result: CompactResult) => void) | null = null
 
   constructor(
     resolver: ContextWindowResolver,
@@ -86,12 +86,14 @@ export class Compactor {
     const beforeTokens = TokenEstimator.tokenCountWithEstimation(messages)
 
     if (messages.length <= 10) {
-      return {
+      const noopResult: CompactResult = {
         strategy: 'auto',
         messagesRetained: messages.length,
         tokensRecovered: 0,
         retainedMessages: messages,
       }
+      this.onPostCompact?.(noopResult)
+      return noopResult
     }
 
     const { system, conversation } = this.splitSystemMessages(messages)
@@ -103,12 +105,14 @@ export class Compactor {
     this.consecutiveCompactions++
     this.lastCompactStrategy = 'auto'
 
-    return {
+    const autoResult: CompactResult = {
       strategy: 'auto',
       messagesRetained: retained.length,
       tokensRecovered: Math.max(0, beforeTokens - afterTokens),
       retainedMessages: retained,
     }
+    this.onPostCompact?.(autoResult)
+    return autoResult
   }
 
   shouldMicroCompact(messages: MessageLike[]): boolean {
@@ -147,12 +151,14 @@ export class Compactor {
     this.consecutiveCompactions++
     this.lastCompactStrategy = 'micro'
 
-    return {
+    const microResult: CompactResult = {
       strategy: 'micro',
       messagesRetained: retained.length,
       tokensRecovered: Math.max(0, beforeTokens - afterTokens),
       retainedMessages: retained,
     }
+    this.onPostCompact?.(microResult)
+    return microResult
   }
 
   shouldReactiveCompact(): boolean {
@@ -164,12 +170,14 @@ export class Compactor {
     const beforeTokens = TokenEstimator.tokenCountWithEstimation(messages)
 
     if (messages.length <= 5) {
-      return {
+      const noopResult: CompactResult = {
         strategy: 'reactive',
         messagesRetained: messages.length,
         tokensRecovered: 0,
         retainedMessages: messages,
       }
+      this.onPostCompact?.(noopResult)
+      return noopResult
     }
 
     const { system, conversation } = this.splitSystemMessages(messages)
@@ -182,13 +190,15 @@ export class Compactor {
     this.consecutiveCompactions++
     this.lastCompactStrategy = 'reactive'
 
-    return {
+    const reactiveResult: CompactResult = {
       strategy: 'reactive',
       messagesRetained: retained.length,
       tokensRecovered: Math.max(0, beforeTokens - afterTokens),
       summaryGenerated: true,
       retainedMessages: retained,
     }
+    this.onPostCompact?.(reactiveResult)
+    return reactiveResult
   }
 
   shouldSessionMemoryCompact(messages: MessageLike[]): boolean {
@@ -210,14 +220,15 @@ export class Compactor {
 
     this.consecutiveCompactions++
     this.lastCompactStrategy = 'session-memory'
-    this.onCompactFinish?.()
 
-    return {
+    const smResult: CompactResult = {
       strategy: 'session-memory',
       messagesRetained: result.retained.length,
       tokensRecovered: Math.max(0, beforeTokens - afterTokens),
       summaryGenerated: true,
     }
+    this.onPostCompact?.(smResult)
+    return smResult
   }
 
   decideStrategy(model: string, messages: MessageLike[], betas?: string[]): CompactStrategy | null {
@@ -253,7 +264,6 @@ export class Compactor {
         break
     }
 
-    this.onCompactFinish?.()
     return result
   }
 
