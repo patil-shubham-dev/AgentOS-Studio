@@ -630,8 +630,12 @@ export class UnifiedExecutor {
 
   private resolveMode(decision: RoutingDecision, requestedMode?: ExecutionMode): AgentMode {
     if (requestedMode === "fast") return "FAST"
+    // When the routing engine explicitly decides "direct" + "fast" (e.g. a greeting
+    // like "Hi" with selectedRoles=[]), trust it over a default "full" reqMode.
+    // The Gateway defaults reqMode to "full", but the routing engine already knows
+    // this message doesn't need tool access, roles, or agent assignment.
+    if (decision.executionStrategy === "direct" && decision.mode === "fast") return "FAST"
     if (requestedMode === "full" || requestedMode === "autonomous") return "FULL"
-    // Use decision.mode as the primary signal (set by routing engine based on intent)
     if (decision.mode === "fast") return "FAST"
     return "FULL"
   }

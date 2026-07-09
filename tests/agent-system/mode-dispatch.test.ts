@@ -88,39 +88,40 @@ describe("Mode dispatch — resolveMode() is single source of truth", () => {
     expect(inlineIsFast).toBe(true)
   })
 
-  it("ensure isFastMode inline check and resolveMode() always agree", () => {
-    // Test all (reqMode, decision.mode) combinations for consistency
+  it("ensure resolveMode() and inline agentMode check always agree", () => {
+    // Simulate resolveMode logic exactly as implemented in UnifiedExecutor.ts.
+    // This must match the actual resolveMode() method — any divergence here is a bug in the test.
+    function simulateResolveMode(reqMode: string | undefined, decisionMode: string, strategy: string): string {
+      if (reqMode === "fast") return "FAST"
+      // Trust routing engine when it says "direct" + "fast" (e.g. greeting with no roles)
+      if (strategy === "direct" && decisionMode === "fast") return "FAST"
+      if (reqMode === "full" || reqMode === "autonomous") return "FULL"
+      if (decisionMode === "fast") return "FAST"
+      return "FULL"
+    }
 
-    const cases: Array<{ reqMode: string | undefined; decisionMode: string; expectedResolved: string; expectedInlineFast: boolean }> = [
-      // reqMode=undefined + decision.fast → FAST, inline=false (disagrees — this is the actual architecture bug)
-      // But in practice reqMode=undefined only when not specified, and decision.fast only for greetings,
-      // so this case almost never triggers. The test EXISTS to surface the duplication.
-      { reqMode: undefined, decisionMode: "fast", expectedResolved: "FAST", expectedInlineFast: true },
-      // reqMode=undefined + decision.full → FULL, inline=false (both agree)
-      { reqMode: undefined, decisionMode: "full", expectedResolved: "FULL", expectedInlineFast: false },
-      // reqMode=fast + decision.full → FAST, inline=true (both agree)
-      { reqMode: "fast", decisionMode: "full", expectedResolved: "FAST", expectedInlineFast: true },
-      // reqMode=fast + decision.fast → FAST, inline=true (both agree)
-      { reqMode: "fast", decisionMode: "fast", expectedResolved: "FAST", expectedInlineFast: true },
-      // reqMode=full + decision.fast → FULL (resolveMode checks reqMode first), inline=false (after fix: no duplicate check)
-      { reqMode: "full", decisionMode: "fast", expectedResolved: "FULL", expectedInlineFast: false },
-      // reqMode=full + decision.full → FULL, inline=false (both agree)
-      { reqMode: "full", decisionMode: "full", expectedResolved: "FULL", expectedInlineFast: false },
+    const cases: Array<{ reqMode: string | undefined; decisionMode: string; strategy: string; expectedResolved: string }> = [
+      // reqMode=undefined + decision.fast + direct → FAST (trust routing engine)
+      { reqMode: undefined, decisionMode: "fast", strategy: "direct", expectedResolved: "FAST" },
+      // reqMode=undefined + decision.full + single-agent → FULL
+      { reqMode: undefined, decisionMode: "full", strategy: "single-agent", expectedResolved: "FULL" },
+      // reqMode=fast + decision.full + single-agent → FAST (explicit fast override)
+      { reqMode: "fast", decisionMode: "full", strategy: "single-agent", expectedResolved: "FAST" },
+      // reqMode=fast + decision.fast + direct → FAST
+      { reqMode: "fast", decisionMode: "fast", strategy: "direct", expectedResolved: "FAST" },
+      // reqMode=full + decision.fast + direct → FAST (trust direct+fast over default full)
+      { reqMode: "full", decisionMode: "fast", strategy: "direct", expectedResolved: "FAST" },
+      // reqMode=full + decision.fast + single-agent → FULL (not direct, reqMode wins)
+      { reqMode: "full", decisionMode: "fast", strategy: "single-agent", expectedResolved: "FULL" },
+      // reqMode=full + decision.full + single-agent → FULL
+      { reqMode: "full", decisionMode: "full", strategy: "single-agent", expectedResolved: "FULL" },
     ]
 
-    for (const { reqMode, decisionMode, expectedResolved, expectedInlineFast } of cases) {
-      // Simulate resolveMode decision logic
-      const resolvedMode = reqMode === "fast" ? "FAST"
-        : reqMode === "full" || reqMode === "autonomous" ? "FULL"
-        : decisionMode === "fast" ? "FAST"
-        : "FULL"
-
+    for (const { reqMode, decisionMode, strategy, expectedResolved } of cases) {
+      const resolvedMode = simulateResolveMode(reqMode, decisionMode, strategy)
       expect(resolvedMode).toBe(expectedResolved)
-
-      // After the fix: the inline check is replaced with agentMode === "FAST",
-      // so it always agrees with resolveMode() and there is no second source of truth.
-      const inlineIsFast = resolvedMode === "FAST"
-      expect(inlineIsFast).toBe(expectedInlineFast)
+      // The inline check is simply agentMode === "FAST", so it always agrees
+      expect(resolvedMode === "FAST").toBe(expectedResolved === "FAST")
     }
   })
 
@@ -139,5 +140,29 @@ describe("Mode dispatch — resolveMode() is single source of truth", () => {
     const decision = route("what is this project about", ["manager", "research"])
     expect(decision.mode).toBe("full")
     expect(decision.intentCategory).toBe("research")
+  })
+
+  it("REGRESSION: 'Hi' with reqMode=full defaults → must resolve to FAST via direct+fast", () => {
+    // This is the exact regression: chat-panel.tsx calls start() without mode,
+    // ExecutionSessionManager defaults to "full", Gateway passes mode="full" to
+    // UnifiedExecutor. But the routing engine says mode="fast" + strategy="direct".
+    // resolveMode() MUST return "FAST" so fastPath() runs — fullPath() would iterate
+    // zero roles (selectedRoles=[]) and never emit AGENT_ASSIGNED, leaving the
+    // optimistic session stuck as "streaming" in chat-panel's finally safety net.
+    const decision = route("Hi", ["manager"])
+    expect(decision.mode).toBe("fast")
+    expect(decision.executionStrategy).toBe("direct")
+    expect(decision.selectedRoles).toEqual([])
+
+    // Simulate resolveMode with reqMode="full" (the Gateway default)
+    function simulateResolveMode(reqMode: string | undefined, decisionMode: string, strategy: string): string {
+      if (reqMode === "fast") return "FAST"
+      if (strategy === "direct" && decisionMode === "fast") return "FAST"
+      if (reqMode === "full" || reqMode === "autonomous") return "FULL"
+      if (decisionMode === "fast") return "FAST"
+      return "FULL"
+    }
+    const resolvedMode = simulateResolveMode("full", decision.mode, decision.executionStrategy)
+    expect(resolvedMode).toBe("FAST")
   })
 })
