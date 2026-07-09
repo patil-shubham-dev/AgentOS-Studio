@@ -606,7 +606,7 @@ ${rules.map(r => r.content).join('\n\n')}`
       const arch = MemoryArchitecture.getInstance()
       if (!arch.isInitialized()) return inputSummary
 
-      const memories = await arch.query({ limit: 5, minImportance: 3 })
+      const memories = await arch.query({ limit: 5, minImportance: 0.3 })
       if (memories.length === 0) return inputSummary
 
       const lines = memories.map((m) => {
