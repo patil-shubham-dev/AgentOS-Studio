@@ -2,7 +2,6 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
-import { useWorkspaceStore } from '@/stores/workspace-store'
 import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
 import { fileContentCache } from '@/lib/FileContentCache'
 import { createFile } from '@/lib/filesystem'
@@ -106,7 +105,7 @@ export const WriteFileTool: AgentTool = buildTool({
     const path = String(input.path ?? '')
     const content = String(input.content ?? '')
     if (!path) return { data: null, error: 'path is required', isError: true }
-    const rootPath = useWorkspaceStore.getState().rootPath
+    const rootPath = ctx.workspaceStore?.rootPath ?? null
     const fullPath = resolvePath(rootPath, path)
 
     // Read-before-write enforcement (P1.2)

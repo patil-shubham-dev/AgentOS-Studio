@@ -2,12 +2,10 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
-import { useWorkspaceStore } from '@/stores/workspace-store'
 import { applyEdits, generateUnifiedDiff, type DiffEdit, type DiffEngineResult } from '@/lib/diff-engine'
 import { fileContentCache } from '@/lib/FileContentCache'
 import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
 import { buildDiffFileEntry } from '@/lib/diff-review'
-import { useDiffStore } from '@/stores/diff-store'
 import { createFile } from '@/lib/filesystem'
 import { FileStateCache } from '../storage/FileStateCache'
 
@@ -258,7 +256,7 @@ export const EditFileTool: AgentTool = buildTool({
       return { data: null, error: 'edit_file requires file_path (or path/file for backward compatibility)', isError: true }
     }
 
-    const rootPath = useWorkspaceStore.getState().rootPath
+    const rootPath = ctx.workspaceStore?.rootPath ?? null
     const fullPath = resolvePath(rootPath, filePath)
 
     // Read-before-edit enforcement (P1.2)
@@ -387,7 +385,7 @@ export const EditFileTool: AgentTool = buildTool({
 
     // Register the diff in the review panel
     const diffEntry = buildDiffFileEntry(filePath, originalContent, modifiedContent)
-    useDiffStore.getState().addFileDiff(diffEntry)
+    ctx.diffStore?.addFileDiff(diffEntry)
 
     const relativePath = filePath.replace(/^[/\\]/, '')
     recordChangeSetEntry(ctx, fullPath, relativePath, originalContent, modifiedContent, diff, changeType)

@@ -18,6 +18,12 @@ export interface SkillDefinition {
   aliases: string[]
   requiresConfirmation: boolean
   filePath?: string
+  /**
+   * Optional lazy loader for the prompt text.
+   * When set, the `prompt` field may be empty or a placeholder;
+   * call `resolvePrompt(skill)` to get the actual prompt.
+   */
+  loadPrompt?: () => Promise<string>
 }
 
 export interface SkillRegistryState {
@@ -89,6 +95,15 @@ export class SkillRegistry {
       s.description.toLowerCase().includes(q) ||
       s.tags.some(t => t.toLowerCase().includes(q)),
     )
+  }
+
+  async resolvePrompt(skill: SkillDefinition): Promise<string> {
+    if (skill.loadPrompt) {
+      const loaded = await skill.loadPrompt()
+      skill.prompt = loaded
+      skill.loadPrompt = undefined
+    }
+    return skill.prompt
   }
 
   size(): SkillRegistryState {

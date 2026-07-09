@@ -1,4 +1,3 @@
-import { classifyNetworkError } from "./transport-errors"
 import { tauriFetch } from "./http-client"
 
 export interface TransportAdapterConfig {
@@ -64,43 +63,6 @@ export interface TransportAdapter {
   parseCompletionResponse(body: string): CompletionResponse
   parseModelsResponse(body: string): ModelsResponse
   normalizeFinishReason(reason: string | null): string | null
-}
-
-export interface EndpointResult {
-  ok: boolean
-  status: number
-  body: string
-  latencyMs: number
-  url: string
-}
-
-async function endpointFetch(url: string, options: {
-  method: string
-  headers?: Record<string, string>
-  body?: string
-  signal?: AbortSignal
-  timeoutMs?: number
-}): Promise<EndpointResult> {
-  const t0 = performance.now()
-  try {
-    const resp = await tauriFetch(url, {
-      method: options.method,
-      headers: options.headers,
-      body: options.body,
-      signal: options.signal,
-    })
-    const body = await resp.text().catch(() => "")
-    return {
-      ok: resp.ok,
-      status: resp.status,
-      body,
-      latencyMs: Math.round(performance.now() - t0),
-      url,
-    }
-  } catch (err) {
-    const transportErr = classifyNetworkError(err)
-    throw transportErr
-  }
 }
 
 export function normalizeBaseUrl(raw: string): string {
@@ -250,15 +212,6 @@ export class OpenAITransportAdapter implements TransportAdapter {
     return lower
   }
 
-  async testEndpoint(url: string, method: string, body?: string, signal?: AbortSignal): Promise<EndpointResult> {
-    return endpointFetch(url, {
-      method,
-      headers: this.buildHeaders(),
-      body,
-      signal,
-      timeoutMs: 10_000,
-    })
-  }
 }
 
 const NVIDIA_NIM_CAPS: ProviderCapabilities = {
@@ -657,15 +610,6 @@ export class AnthropicTransportAdapter implements TransportAdapter {
     return reason
   }
 
-  async testEndpoint(url: string, method: string, body?: string, signal?: AbortSignal): Promise<EndpointResult> {
-    return endpointFetch(url, {
-      method,
-      headers: this.buildHeaders(),
-      body,
-      signal,
-      timeoutMs: 10_000,
-    })
-  }
 }
 
 const GEMINI_DEFAULT_CAPS: ProviderCapabilities = {
@@ -826,15 +770,6 @@ export class GeminiTransportAdapter implements TransportAdapter {
     return reason.toLowerCase()
   }
 
-  async testEndpoint(url: string, method: string, body?: string, signal?: AbortSignal): Promise<EndpointResult> {
-    return endpointFetch(url, {
-      method,
-      headers: this.buildHeaders(),
-      body,
-      signal,
-      timeoutMs: 10_000,
-    })
-  }
 }
 
 export type AdapterType = "openai" | "anthropic" | "nvidia-nim" | "ollama" | "gemini" | "groq" | "deepseek" | "openrouter"

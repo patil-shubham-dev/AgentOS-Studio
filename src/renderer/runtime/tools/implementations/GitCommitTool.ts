@@ -2,7 +2,6 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
-import { useWorkspaceStore } from '@/stores/workspace-store'
 
 interface GitFileChange {
   path: string
@@ -61,8 +60,8 @@ export const GitCommitTool: AgentTool = buildTool({
   isDestructive: () => true,
   requiredCapabilities: () => [ToolCapabilities.COMMAND_EXECUTION],
   getActivityDescription: (_input) => 'Creating git commit',
-  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
-    const rootPath = useWorkspaceStore.getState().rootPath
+  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+    const rootPath = ctx.workspaceStore?.rootPath
     if (!rootPath) return { data: null, error: 'No workspace open', isError: true }
 
     const message = input.message as string | undefined

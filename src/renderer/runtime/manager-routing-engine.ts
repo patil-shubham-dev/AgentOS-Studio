@@ -40,9 +40,7 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
       /^(yes|no|maybe|perhaps|correct|right|nah|nope|yep|yeah)\b/i,
       /^(nice|great|awesome|perfect|good|cool|amazing|wonderful)\b/i,
       /^(help me|i need help|can you help)\b/i,
-      // Negative lookahead: exclude "what is this project/app/codebase/repo" — those route to research
       /^(what is this(?! (project|app|codebase|repo|code))|what is agentic|what does this do)\b/i,
-      /^(does .* work|how does .* work|can you .*)\b/i,
       /^(i have a question|question|quick question)\b/i,
       /^(tl;dr|tldr|gist|brief)/i,
       /^(what did I just|what was I|where was I)/i,
@@ -52,13 +50,14 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
   },
   coding: {
     patterns: [
-      // Use word boundaries for 'code' and 'program' so 'codebase', 'codebase-analysis'
-      // etc. are NOT matched here — those belong in the research category.
       /implement|write|create|build|develop|\bprogram\b|\bcode\b/i,
-      /fix|debug|bug|error|crash|broken|issue|repair/i,
-      /refactor|rewrite|restructure|optimize|clean up/i,
+      /make|fix|debug|bug|error|crash|broken|issue|repair/i,
+      /refactor|rewrite|restructure|optimize|clean.?up/i,
       /add feature|new feature|function|class|component|module/i,
       /typescript|javascript|react|vue|angular|node|python|rust|go|java/i,
+      /html|css|scss|less|style|design|layout|ui|ux/i,
+      /website|webpage|web page|page|site|app|application/i,
+      /component|element|button|form|input|menu|nav|header|footer|section/i,
       /algorithm|data structure|api endpoint|route|handler|service/i,
       /unit test|integration test|test case|test suite/i,
     ],
@@ -216,7 +215,9 @@ export function route(
     hasCode ||
     hasFilePath ||
     category === "coding" ||
-    /\bedit\b|\bfix\b|\badd\b|\brefactor\b|\bdebug\b|\bexplain\b|\btest\b|\bwrite\b|\bimplement\b|\bcreate\b|\bupdate\b|\bremove\b|\bdelete\b|\brename\b|\boptimize\b|\banalyz|\banalys|\bexplor|\bexamin|\binvestigat/i.test(input)
+    /\b(edit|fix|add|refactor|debug|explain|test|write|make|build|implement|create|update|remove|delete|rename|optimize|design|style|generate|render)\b/i.test(input) ||
+    /\b(html|css|javascript|typescript|react|vue|node|python|rust|go|java|webpage|website|page|site|app|application)\b/i.test(input) ||
+    /\banalyz|\banalys|\bexplor|\bexamin|\binvestigat/i.test(input)
 
   if (isCodingIntent) {
     const coderAvailable = wiredRoles.includes("coder" as RuntimeRole)

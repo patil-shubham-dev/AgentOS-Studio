@@ -37,7 +37,7 @@ export class ToolPoolAssembler {
       includeTaskScoped: false,
       permissions: { mode: 'default', alwaysAllow: [], alwaysDeny: [], alwaysAsk: [] },
       excludeNames: [],
-      defaultDeny: false,
+      defaultDeny: true,
       namespaceFilter: ['coding'],
       ...options,
     }

@@ -486,8 +486,8 @@ export class ExecutionSessionManager {
         const finishReason = (event as any).finishReason
         const isError = finishReason === "error"
 
-        StreamManager.getInstance().clearStep(event.stepId)
         timeline.commitStreamingText(event.stepId)
+        StreamManager.getInstance().clearStep(event.stepId)
 
         if (isError) {
           const errorMsg = (event as any).content || event.content || "Request failed — provider returned an error"
@@ -771,8 +771,8 @@ export class ExecutionSessionManager {
 
         const efStepId = this.stepByExecId.get(event.executionId)
         if (efStepId) {
-          StreamManager.getInstance().clearStep(efStepId)
           timeline.commitStreamingText(efStepId)
+          StreamManager.getInstance().clearStep(efStepId)
           timeline.updateAgentSession(efStepId, {
             status: wasCancelled ? "complete" : "error",
             streamState: wasCancelled ? "cancelled" : "failed",

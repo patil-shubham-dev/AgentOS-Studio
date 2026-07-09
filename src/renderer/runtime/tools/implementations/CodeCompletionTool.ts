@@ -2,7 +2,6 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
-import { useWorkspaceStore } from '@/stores/workspace-store'
 import { readFile } from '@/lib/filesystem'
 
 interface CompletionContext {
@@ -65,7 +64,7 @@ export const CodeCompletionTool: AgentTool = buildTool({
   isConcurrencySafe: () => true,
   requiredCapabilities: () => [ToolCapabilities.FILE_READ],
   getActivityDescription: (_input) => 'Generating code completion',
-  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const filePath = String(input.path ?? '')
     const prefix = input.prefix as string | undefined
     const suffix = input.suffix as string | undefined
@@ -75,7 +74,7 @@ export const CodeCompletionTool: AgentTool = buildTool({
     const intent = (input.intent as string) ?? 'fill_in_middle'
     const maxLines = (input.max_lines as number) ?? 20
 
-    const rootPath = useWorkspaceStore.getState().rootPath
+    const rootPath = ctx.workspaceStore?.rootPath ?? null
     const resolvedPath = rootPath && !/^[a-zA-Z]:[\\/]/.test(filePath)
       ? `${rootPath}\\${filePath.replace(/\//g, '\\')}`
       : filePath

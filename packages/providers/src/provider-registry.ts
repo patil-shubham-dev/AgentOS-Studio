@@ -163,9 +163,9 @@ export function resolveByBaseUrl(baseUrl: string): RegistryEntry | null {
   if (u.includes("azure.com") || u.includes("azure-api.net")) return REGISTRY.azure
   if (u.includes("ollama") || u.includes("11434")) return REGISTRY.ollama
   if (u.includes("localhost") || u.includes("127.0.0.1")) {
-    if (u.includes("8000")) return REGISTRY["custom-vllm"]
+    try { const port = new URL(url).port; if (port === "8000") return REGISTRY["custom-vllm"] } catch {}
     if (u.includes("1234")) return REGISTRY["custom-lmstudio"]
-    if (u.includes("8080")) return REGISTRY["custom-localai"]
+    try { const port = new URL(url).port; if (port === "8080") return REGISTRY["custom-localai"] } catch {}
     if (u.includes("4000")) return REGISTRY["custom-litellm"]
   }
   return null

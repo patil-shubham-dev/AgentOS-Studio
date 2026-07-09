@@ -475,18 +475,16 @@ export class VerificationPipeline {
     if (checks.runLint) {
       promises.push(
         (async () => {
-          try {
-            const lintOut = await IPC.runCommand(this.commands.lintCommand, this.config.stageTimeoutMs)
-            if (lintOut.exitCode !== 0) {
-              const lintIssues = parseEslintOutput(lintOut.stdout)
-              allIssues.push(...lintIssues)
-              lintErrors = lintIssues.length
-              details.push(`Lint: ${lintErrors} issues`)
-            } else {
-              details.push("Lint: 0 issues")
-            }
-          } catch {
-            details.push("Lint: unavailable")
+          const lintResponse = await IPC.runCommand(this.commands.lintCommand, this.config.stageTimeoutMs)
+          if (!lintResponse.success) { details.push("Lint: unavailable"); return }
+          const lintOut = lintResponse.data
+          if (lintOut.exitCode !== 0) {
+            const lintIssues = parseEslintOutput(lintOut.stdout)
+            allIssues.push(...lintIssues)
+            lintErrors = lintIssues.length
+            details.push(`Lint: ${lintErrors} issues`)
+          } else {
+            details.push("Lint: 0 issues")
           }
         })()
       )
@@ -495,18 +493,16 @@ export class VerificationPipeline {
     if (checks.runTypecheck) {
       promises.push(
         (async () => {
-          try {
-            const typeOut = await IPC.runCommand(this.commands.typecheckCommand, this.config.stageTimeoutMs)
-            if (typeOut.exitCode !== 0) {
-              const tsIssues = parseTscOutput(typeOut.stdout)
-              allIssues.push(...tsIssues)
-              typeErrors = tsIssues.length
-              details.push(`Typecheck: ${typeErrors} errors`)
-            } else {
-              details.push("Typecheck: 0 errors")
-            }
-          } catch {
-            details.push("Typecheck: unavailable")
+          const typeResponse = await IPC.runCommand(this.commands.typecheckCommand, this.config.stageTimeoutMs)
+          if (!typeResponse.success) { details.push("Typecheck: unavailable"); return }
+          const typeOut = typeResponse.data
+          if (typeOut.exitCode !== 0) {
+            const tsIssues = parseTscOutput(typeOut.stdout)
+            allIssues.push(...tsIssues)
+            typeErrors = tsIssues.length
+            details.push(`Typecheck: ${typeErrors} errors`)
+          } else {
+            details.push("Typecheck: 0 errors")
           }
         })()
       )
@@ -649,41 +645,41 @@ export class VerificationPipeline {
       return this.runSpecialStage(stage, changedFiles, startTime, emit)
     }
 
-    try {
-      const result = await IPC.runCommand(command, this.config.stageTimeoutMs)
-      const durationMs = Date.now() - startTime
-      const issues = this.parseStageOutput(stage, result.stdout)
-      const errors = issues.filter((i) => i.severity === "error").length
-      const warnings = issues.filter((i) => i.severity === "warning").length
-
-      const stageResult: VerificationStageResult = {
-        stage,
-        passed: result.exitCode === 0,
-        errors,
-        warnings,
-        details: [`${stage}: ${result.exitCode === 0 ? "passed" : `${errors} issues`} (${durationMs}ms)`],
-        durationMs,
-        rawOutput: result.stdout.slice(0, 2000),
-        issues,
-      }
-
-      this.setStageCache(stage, changedFiles, stageResult)
-      emit?.(stage, stageResult)
-      return stageResult
-    } catch (err) {
+    const cmdResponse = await IPC.runCommand(command, this.config.stageTimeoutMs)
+    if (!cmdResponse.success) {
       const durationMs = Date.now() - startTime
       const stageResult: VerificationStageResult = {
         stage,
         passed: false,
         errors: 1,
         warnings: 0,
-        issues: [{ message: normalizeError(err).message, severity: "error", source: "build" }],
-        details: [`${stage}: error - ${normalizeError(err).message} (${durationMs}ms)`],
+        issues: [{ message: cmdResponse.reason, severity: "error", source: "build" }],
+        details: [`${stage}: error - ${cmdResponse.reason} (${durationMs}ms)`],
         durationMs,
       }
       emit?.(stage, stageResult)
       return stageResult
     }
+    const result = cmdResponse.data
+    const durationMs = Date.now() - startTime
+    const issues = this.parseStageOutput(stage, result.stdout)
+    const errors = issues.filter((i) => i.severity === "error").length
+    const warnings = issues.filter((i) => i.severity === "warning").length
+
+    const stageResult: VerificationStageResult = {
+      stage,
+      passed: result.exitCode === 0,
+      errors,
+      warnings,
+      details: [`${stage}: ${result.exitCode === 0 ? "passed" : `${errors} issues`} (${durationMs}ms)`],
+      durationMs,
+      rawOutput: result.stdout.slice(0, 2000),
+      issues,
+    }
+
+    this.setStageCache(stage, changedFiles, stageResult)
+    emit?.(stage, stageResult)
+    return stageResult
   }
 
   private async runSpecialStage(stage: string, changedFiles: string[], startTime: number, emit?: (stage: string, result: VerificationStageResult) => void): Promise<VerificationStageResult> {
@@ -691,7 +687,9 @@ export class VerificationPipeline {
       let result: Pick<VerificationStageResult, "passed" | "errors" | "warnings" | "details" | "rawOutput" | "issues">
 
       if (stage === "security") {
-        const scanResult = await IPC.securityScan([...new Set(changedFiles)])
+        const scanResponse = await IPC.securityScan([...new Set(changedFiles)])
+        if (!scanResponse.success) { throw new Error(scanResponse.reason) }
+        const scanResult = scanResponse.data
         const issues: StructuredIssue[] = scanResult.issues.map((i) => ({
           file: i.file,
           line: i.line,
@@ -708,7 +706,9 @@ export class VerificationPipeline {
           issues,
         }
       } else if (stage === "performance") {
-        const benchResult = await IPC.runBenchmarks()
+        const benchResponse = await IPC.runBenchmarks()
+        if (!benchResponse.success) { throw new Error(benchResponse.reason) }
+        const benchResult = benchResponse.data
         result = {
           passed: benchResult.passed,
           errors: benchResult.metrics.filter((m) => !m.passed).length,
@@ -718,7 +718,9 @@ export class VerificationPipeline {
           issues: benchmarkIssuesToStructured(benchResult),
         }
       } else {
-        const regResult = await IPC.regressionScan()
+        const regResponse = await IPC.regressionScan()
+        if (!regResponse.success) { throw new Error(regResponse.reason) }
+        const regResult = regResponse.data
         const issues: StructuredIssue[] = regResult.issues.map((i) => ({
           message: i.description,
           severity: i.severity === "high" ? "error" : "warning",
@@ -858,17 +860,14 @@ export class VerificationPipeline {
     let retriesUsed = currentRetries
 
     if (result.lintErrors > 0) {
-      try {
-        const fixResult = await IPC.runCommand(this.commands.lintCommand.replace(" --quiet", " --quiet --fix"), this.config.stageTimeoutMs)
-        if (fixResult.exitCode === 0) {
-          finalResult = await this.verifyChanges(changedFiles, signal)
-          retriesUsed++
-          this.pruneCaches()
-          this.repairRetries.set(cacheKey, retriesUsed)
-          if (finalResult.passed) return { fixed: true, finalResult, retriesUsed }
-          return this.autoFixWithRetry(finalResult, changedFiles, signal)
-        }
-      } catch {
+      const fixResponse = await IPC.runCommand(this.commands.lintCommand.replace(" --quiet", " --quiet --fix"), this.config.stageTimeoutMs)
+      if (fixResponse.success && fixResponse.data.exitCode === 0) {
+        finalResult = await this.verifyChanges(changedFiles, signal)
+        retriesUsed++
+        this.pruneCaches()
+        this.repairRetries.set(cacheKey, retriesUsed)
+        if (finalResult.passed) return { fixed: true, finalResult, retriesUsed }
+        return this.autoFixWithRetry(finalResult, changedFiles, signal)
       }
     }
 
@@ -881,17 +880,17 @@ export class VerificationPipeline {
     const issues: string[] = []
     let fixed = false
     if (result.lintErrors > 0) {
-      try {
-        const fixResult = await IPC.runCommand(this.commands.lintCommand.replace(" --quiet", " --quiet --fix"), this.config.stageTimeoutMs)
-        issues.push(`Lint auto-fix: exit ${fixResult.exitCode}`)
+      const fixResponse = await IPC.runCommand(this.commands.lintCommand.replace(" --quiet", " --quiet --fix"), this.config.stageTimeoutMs)
+      if (fixResponse.success) {
+        issues.push(`Lint auto-fix: exit ${fixResponse.data.exitCode}`)
         fixed = true
-      } catch (err) {
-        issues.push(`Lint auto-fix failed: ${normalizeError(err).message}`)
+      } else {
+        issues.push(`Lint auto-fix failed: ${fixResponse.reason}`)
       }
     }
     if (result.typeErrors > 0) {
-      const typeResult = await IPC.runCommand(this.commands.typecheckCommand, this.config.stageTimeoutMs)
-      if (typeResult.exitCode === 0) {
+      const typeResponse = await IPC.runCommand(this.commands.typecheckCommand, this.config.stageTimeoutMs)
+      if (typeResponse.success && typeResponse.data.exitCode === 0) {
         issues.push("Type errors resolved after lint fix")
         fixed = true
       } else {

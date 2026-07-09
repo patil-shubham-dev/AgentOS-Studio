@@ -10,6 +10,8 @@
  */
 
 import { EventBus } from "@/runtime/EventBus"
+import type { LifecycleHookRegistry } from "@/runtime/lifecycle"
+import type { LifecycleStage, LifecycleContext } from "@/runtime/lifecycle"
 import type {
   Plugin,
   PluginManifest,
@@ -22,6 +24,11 @@ import type { AgentTool } from "@/runtime/tools/core/AgentTool"
 export class PluginRegistry {
   private plugins = new Map<string, Plugin>()
   private listeners = new Map<string, Set<() => void>>()
+  private lifecycleHooks: LifecycleHookRegistry | null = null
+
+  connectLifecycleRegistry(registry: LifecycleHookRegistry): void {
+    this.lifecycleHooks = registry
+  }
 
   // ── Registration ──
 
@@ -131,6 +138,7 @@ export class PluginRegistry {
         }
       }
     }
+    await this.lifecycleHooks?.dispatchAll('init', {})
   }
 
   async dispatchOnSessionStart(sessionId: string, input: string): Promise<void> {
@@ -143,6 +151,7 @@ export class PluginRegistry {
         }
       }
     }
+    await this.lifecycleHooks?.dispatchAll('sessionStart', { sessionId, input })
   }
 
   async dispatchOnSessionEnd(sessionId: string, status: string): Promise<void> {
@@ -155,6 +164,7 @@ export class PluginRegistry {
         }
       }
     }
+    await this.lifecycleHooks?.dispatchAll('sessionEnd', { sessionId, status })
   }
 
   async dispatchOnBeforeTool(toolName: string, args: Record<string, unknown>): Promise<boolean> {
@@ -168,6 +178,8 @@ export class PluginRegistry {
         }
       }
     }
+    const lifecycleResult = await this.lifecycleHooks?.dispatch('preToolUse', { toolName, toolArgs: args })
+    if (lifecycleResult && !lifecycleResult.proceed) return false
     return true
   }
 
@@ -181,6 +193,7 @@ export class PluginRegistry {
         }
       }
     }
+    await this.lifecycleHooks?.dispatchAll('postToolUse', { toolName, toolArgs: args, toolResult: result })
   }
 
   // ── Listeners ──

@@ -1,6 +1,5 @@
 import { resolve, normalize, basename } from 'path'
 import { existsSync, realpathSync, appendFileSync, mkdirSync } from 'fs'
-import { log } from '../observability'
 import { app } from 'electron'
 
 /**
@@ -76,7 +75,7 @@ function resolveSymlinks(p: string): string {
   return resolve(normalize(p))
 }
 
-function isPathAllowed(targetPath: string): boolean {
+export function isPathAllowed(targetPath: string): boolean {
   // Deny all paths when no workspace has been explicitly opened
   if (!allowedWorkspacePath) return false
   try {
@@ -109,12 +108,25 @@ function isPathAllowed(targetPath: string): boolean {
 
 export function assertPathAllowed(targetPath: string): void {
   if (!isPathAllowed(targetPath)) {
-    const msg = `Access denied: path "${targetPath}" is outside the workspace`
-    console.warn(`[PathAllowlist] ${msg}`)
-    log('warn', 'path-allowlist', msg, { targetPath, allowedWorkspacePath })
     persistAuditEvent(`DENY path="${targetPath}" workspace="${allowedWorkspacePath ?? "(none)"}"`)
-    throw new Error(msg)
+    // Invisibility mode: throw ENOENT instead of revealing the path exists
+    const err = new Error(`ENOENT: no such file or directory`)
+    ;(err as any).code = "ENOENT"
+    ;(err as NodeJS.ErrnoException).errno = -2
+    throw err
   }
+}
+
+/**
+ * Filter out denied paths from a list of file entries.
+ * Used by directory listing handlers to make sensitive paths invisible.
+ */
+export function filterDeniedPaths(entries: Array<{ name: string; path?: string }>): Array<{ name: string; path?: string }> {
+  if (!allowedWorkspacePath) return entries
+  return entries.filter((entry) => {
+    const fullPath = entry.path ? resolve(normalize(entry.path)) : resolve(normalize(entry.name))
+    return isPathAllowed(fullPath)
+  })
 }
 
 const GIT_ALLOWED_PATHS = new Set<string>()

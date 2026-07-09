@@ -170,8 +170,18 @@ export class RepairExecutor {
   private async readFile(filePath: string): Promise<string | null> {
     if (this.fileContents.has(filePath)) return this.fileContents.get(filePath)!
     try {
-      const fs = await import("fs")
-      const content = fs.readFileSync(filePath, "utf-8")
+      const pipeline = ToolExecutionPipeline.getInstance()
+      const sandbox = ToolExecutionSandbox.getInstance()
+      await sandbox.assertAllowed(
+        { id: "repair-auto", name: "read_file", args: { path: filePath } },
+        { role: "repair" },
+      )
+      const result = await pipeline.execute("read_file", { path: filePath }, { role: "repair", signal: new AbortController().signal })
+      if (result.isError) {
+        console.error(`[RepairExecutor] read_file failed for ${filePath}: ${result.error}`)
+        return null
+      }
+      const content = result.data as string
       this.fileContents.set(filePath, content)
       return content
     } catch {

@@ -385,7 +385,7 @@ if (fileStateCache.isStale(filePath, currentMtime)) {
 
 ---
 
-### P1.3 Split UnifiedExecutor.ts into separate modules
+### P1.3 Split UnifiedExecutor.ts into separate modules ✅
 
 **Impact:** Maintainability, testability, ability to extend agent pipeline  
 **Effort:** Large (1027-line file → 5-6 files)  
@@ -440,14 +440,14 @@ class UnifiedExecutor {
 
 ---
 
-### P1.4 Add context micro-compaction
+### P1.4 Add context micro-compaction ✅
 
 **Impact:** Enables long sessions (50+ turns), saves API tokens  
 **Effort:** Medium  
 
 **Why:** Without compaction, every tool result accumulates in the conversation history. After 10 turns reading and editing files, the context window is often full. Micro-compaction silently replaces old bulky tool results with short placeholders, keeping the context focused on recent activity.
 
-**Current state:** No compaction exists. `getProcessedHistory()` deduplicates consecutive messages but does not compact.
+**Current state:** `Compactor.ts` exists with multi-strategy compaction framework. `microCompact.ts` utility + post-hook in ToolExecutionPipeline now replace old tool result content with compacted placeholders.
 
 **Implementation:**
 

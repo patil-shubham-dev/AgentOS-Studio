@@ -1,67 +1,42 @@
 import { useState, useEffect, useRef } from "react"
-import type { GitStatusEntry } from "@pierre/trees"
 import { getGitStatus } from "@/lib/git"
+import type { GitStatusEntry } from "@pierre/trees"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 
-const REFRESH_INTERVAL_MS = 30_000
+const POLL_INTERVAL = 30000
+const CACHE_TTL = 30000
 
-interface CacheEntry {
-  entries: GitStatusEntry[]
-  timestamp: number
-}
+const cache = new Map<string, { data: GitStatusEntry[]; ts: number }>()
 
-const statusCache = new Map<string, CacheEntry>()
-
-export function useGitStatus(rootPath: string | null): {
-  gitStatus: readonly GitStatusEntry[] | undefined
-} {
-  const [gitStatus, setGitStatus] = useState<readonly GitStatusEntry[]>([])
-  const rootRef = useRef(rootPath)
-  const mountedRef = useRef(true)
+export function useGitStatus(rootPath: string | null): GitStatusEntry[] {
+  const [status, setStatus] = useState<GitStatusEntry[]>([])
+  const fileTree = useWorkspaceStore((s) => s.fileTree)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    mountedRef.current = true
-    rootRef.current = rootPath
-
     if (!rootPath) {
-      setGitStatus([])
+      setStatus([])
+      return
+    }
+
+    const cached = cache.get(rootPath)
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+      setStatus(cached.data)
       return
     }
 
     const fetch = async () => {
-      if (!rootRef.current || !mountedRef.current) return
-
-      const cached = statusCache.get(rootRef.current)
-      if (cached && Date.now() - cached.timestamp < REFRESH_INTERVAL_MS) {
-        if (mountedRef.current) setGitStatus(cached.entries)
-        return
-      }
-
-      try {
-        const entries = await getGitStatus(rootRef.current)
-        statusCache.set(rootRef.current, { entries, timestamp: Date.now() })
-        if (mountedRef.current) setGitStatus(entries)
-      } catch {
-        if (mountedRef.current) setGitStatus([])
-      }
+      const result = await getGitStatus(rootPath)
+      cache.set(rootPath, { data: result, ts: Date.now() })
+      setStatus(result)
     }
-
     fetch()
 
-    const intervalId = setInterval(fetch, REFRESH_INTERVAL_MS)
-
-    const unsub = useWorkspaceStore.subscribe((s) => s.fileTree, () => {
-      if (rootRef.current) {
-        statusCache.delete(rootRef.current)
-      }
-    })
-
+    pollRef.current = setInterval(fetch, POLL_INTERVAL)
     return () => {
-      mountedRef.current = false
-      clearInterval(intervalId)
-      unsub()
+      if (pollRef.current) clearInterval(pollRef.current)
     }
-  }, [rootPath])
+  }, [rootPath, fileTree])
 
-  return { gitStatus }
+  return status
 }

@@ -1,6 +1,7 @@
 import { ToolRegistry } from './tools/registry/ToolRegistry'
 import { ToolPoolAssembler } from './tools/registry/ToolPoolAssembler'
 import { ToolExecutionPipeline } from './tools/execution/ToolExecutionPipeline'
+import { createMicroCompactPostHook } from './tools/execution/compactPostHook'
 import { ToolExecutionPolicy } from './tools/policies/ToolExecutionPolicy'
 import { ToolConcurrencyPolicy } from './tools/policies/ToolConcurrencyPolicy'
 
@@ -35,6 +36,8 @@ import { sessionMemoryExtractor } from '@/runtime/memory/SessionMemoryExtractor'
 import { correctionCapture } from '@/runtime/memory/CorrectionCapture'
 import { liveGraphEngine } from '@/runtime/intelligence/LiveGraphEngine'
 import { ExecutionReliabilitySuite } from '@/runtime/execution/ExecutionReliabilitySuite'
+import { LifecycleHookRegistry } from '@/runtime/lifecycle'
+import { updateSkillMatches } from '@/runtime/prompting/sections'
 
 export class RuntimeOS {
   private static instance: RuntimeOS
@@ -57,6 +60,7 @@ export class RuntimeOS {
   readonly memoryArchitecture: MemoryArchitecture
   readonly costTracker: CostTracker
   readonly diskBackedStore: DiskBackedResultStore
+  readonly lifecycleHooks: LifecycleHookRegistry
 
   private unsubCleanup: (() => void) | null = null
   private _cacheUnsubscribers: (() => void)[] = []
@@ -72,6 +76,7 @@ export class RuntimeOS {
 
     this.toolExecutionPipeline = new ToolExecutionPipeline(this.toolRegistry, this.permissionEngine)
     this.toolExecutionPipeline.registerPreHook(sandboxPathMapper)
+    this.toolExecutionPipeline.registerPostHook(createMicroCompactPostHook())
     this.toolExecutionPolicy = new ToolExecutionPolicy()
     this.toolExecutionPipeline.setPolicy(this.toolExecutionPolicy)
     this.toolConcurrencyPolicy = new ToolConcurrencyPolicy()
@@ -86,6 +91,7 @@ export class RuntimeOS {
     this.memoryArchitecture = MemoryArchitecture.getInstance()
     this.costTracker = CostTracker.getInstance()
     this.diskBackedStore = DiskBackedResultStore.getInstance()
+    this.lifecycleHooks = new LifecycleHookRegistry()
 
     const cm = RuntimeCleanupManager.getInstance()
     this.unsubCleanup = cm.onShutdown("runtime-os", async () => {
@@ -236,6 +242,20 @@ export class RuntimeOS {
       correctionCapture.startListening()
     }
 
+    // Register automatic skill matching lifecycle hook
+    if (isFeatureEnabled('skills')) {
+      this.lifecycleHooks.registerHook({
+        name: 'skill-matcher',
+        stage: 'sessionStart',
+        priority: 100,
+        execute: async (ctx) => {
+          if (ctx.input) {
+            updateSkillMatches(ctx.input)
+          }
+        },
+      })
+    }
+
     if (isFeatureEnabled('plugins')) {
       await this.loadBuiltinPlugins()
     }
@@ -244,12 +264,15 @@ export class RuntimeOS {
 
   private async loadBuiltinPlugins(): Promise<void> {
     const rootPath = useWorkspaceStore.getState().rootPath
+    pluginRegistry.connectLifecycleRegistry(this.lifecycleHooks)
     const result = await pluginLoader.loadAll(rootPath ?? undefined)
     for (const plugin of result.loaded) {
       pluginRegistry.register(plugin)
     }
     // Dispatch onInit hooks for all enabled plugins
     await pluginRegistry.dispatchOnInit()
+    // Also dispatch unified lifecycle init hooks
+    await this.lifecycleHooks.dispatchAll('init', { input: rootPath ?? undefined })
   }
 
   async registerIslandTools(namespace: 'browser' | 'design'): Promise<void> {
@@ -276,6 +299,7 @@ export class RuntimeOS {
     this.mcpServerManager.stopHealthChecks()
     await this.mcpServerManager.disconnectAll()
     this.toolConcurrencyPolicy.clear()
+    this.lifecycleHooks.clear()
     // Clean up cache subscription listeners
     for (const unsub of this._cacheUnsubscribers) {
       unsub()

@@ -19,7 +19,7 @@ export { ProviderTransport } from "./transport"
 export { SseParser, parseSseLine, parseOpenAiStreamChunk, streamingTransportFetch } from "./streaming-transport"
 export { TransportError, classifyHttpError, classifyNetworkError, isRetryable } from "./transport-errors"
 export { RetryMiddleware, AuthMiddleware, DiagnosticsMiddleware, composeMiddleware } from "./transport-middleware"
-export { OpenAITransportAdapter, NvidiaNimAdapter, OllamaAdapter, AnthropicTransportAdapter, resolveAdapter, resolveAdapter as resolveTransportAdapter } from "./transport-adapters"
+export { OpenAITransportAdapter, NvidiaNimAdapter, OllamaAdapter, AnthropicTransportAdapter, resolveAdapter } from "./transport-adapters"
 export { observabilityStore, createDiagnosticsHandler, formatTimelineSummary, formatStreamMetrics } from "./transport-observability"
 export { DEFAULT_TRANSPORT_CONFIG } from "./transport-types"
 

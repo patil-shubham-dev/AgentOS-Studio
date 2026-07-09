@@ -83,6 +83,15 @@ export class SkillLoader {
           const skill = this.parseSkillFile(content, filePath, homeDir)
           if (skill) {
             skill.source = source
+            // Replace the inline prompt with a lazy loader for file-based skills
+            const originalPrompt = skill.prompt
+            skill.loadPrompt = async () => {
+              const { readTextFile: read } = await getElectronApi()
+              const fresh = await read(filePath)
+              const parsed = this.parseSkillFile(fresh, filePath, homeDir)
+              return parsed?.prompt ?? originalPrompt
+            }
+            skill.prompt = ''  // Don't keep prompt text in memory until needed
             this.registry.register(skill)
             count++
           }

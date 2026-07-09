@@ -3,7 +3,6 @@ import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
 import { executeSubAgent, type SubAgentType } from '@/runtime/sub-agents/sub-agent-delegator'
-import { useAgentStore } from '@/stores/agent-store'
 import { MAX_SUBAGENT_DEPTH } from '@/runtime/sub-agents/sub-agent-delegator'
 
 export const DelegateSubtaskTool: AgentTool = buildTool({
@@ -26,7 +25,7 @@ export const DelegateSubtaskTool: AgentTool = buildTool({
     const t = (input as any)?.type
     return t ? `Delegating to ${t} sub-agent` : 'Delegating subtask'
   },
-  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const subAgentType = input.type as SubAgentType
     const task = String(input.task ?? '')
     if (!['explore', 'plan', 'verify', 'general'].includes(subAgentType)) {
@@ -45,29 +44,30 @@ export const DelegateSubtaskTool: AgentTool = buildTool({
     }
 
     const treeId = crypto.randomUUID()
-    const agentStore = useAgentStore.getState()
+    const agentStore = ctx.agentStore
 
-    agentStore.addAgentTreeNode({
-      id: treeId,
-      parentId: parentId || null,
-      depth: currentDepth,
-      role: subAgentType,
-      type: subAgentType,
-      state: 'planning',
-      currentTask: task.slice(0, 120),
-      lastUpdated: Date.now(),
-      children: [],
-    })
-
-    if (!parentId && !agentStore.agentTreeRootId) {
-      agentStore.setAgentTreeRoot(treeId)
-    }
-
-    const agentTree = agentStore.agentTree
-    if (parentId && agentTree[parentId]) {
-      agentStore.updateAgentTreeNode(parentId, {
-        children: [...agentTree[parentId].children, treeId],
+    if (agentStore) {
+      agentStore.addAgentTreeNode({
+        id: treeId,
+        parentId: parentId || null,
+        depth: currentDepth,
+        role: subAgentType,
+        type: subAgentType,
+        state: 'planning',
+        currentTask: task.slice(0, 120),
+        lastUpdated: Date.now(),
+        children: [],
       })
+
+      if (!parentId && !agentStore.agentTreeRootId) {
+        agentStore.setAgentTreeRoot(treeId)
+      }
+
+      if (parentId && agentStore.agentTree[parentId]) {
+        agentStore.updateAgentTreeNode(parentId, {
+          children: [...agentStore.agentTree[parentId].children, treeId],
+        })
+      }
     }
 
     const subResult = await executeSubAgent({
@@ -78,7 +78,7 @@ export const DelegateSubtaskTool: AgentTool = buildTool({
       depth: currentDepth,
     })
 
-    agentStore.updateAgentTreeNode(treeId, {
+    ctx.agentStore?.updateAgentTreeNode(treeId, {
       state: subResult.success ? 'complete' : 'failed',
       lastUpdated: Date.now(),
     })

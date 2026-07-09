@@ -11,10 +11,11 @@ import type { FileEntry } from "@/types"
 import { safeCapitalize } from "@/lib/safeCapitalize"
 import { workspaceIndex } from "@/lib/search-index"
 import { invoke } from "@/lib/electron-api"
-import { WorkspaceExplorer, type WorkspaceExplorerHandle } from "@/components/workspace/explorer/WorkspaceExplorer"
+import { Explorer, type ExplorerHandle } from "@/components/workspace/explorer/Explorer"
+import { ExplorerResizer } from "@/components/workspace/explorer/ExplorerResizer"
 import { CodeWorkspace } from "@/components/workspace/code-workspace"
 import { ChatPanel } from "@/components/workspace/chat-panel"
-import { PaneContainer, Pane } from "@/components/workspace/pane-layout/PaneContainer"
+import { PaneContainer } from "@/components/workspace/pane-layout/PaneContainer"
 
 const DesignWorkspace = lazy(() => import("@/components/workspace/design-workspace").then(m => ({ default: m.DesignWorkspace })))
 import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
@@ -39,9 +40,8 @@ import { WorkspacePanelController, type WorkspacePanel } from "@/lib/workspace-p
 import { useLeakTracker } from "@/performance/leak-detector"
 import {
   PanelRightClose, PanelRight, PanelLeftClose, PanelLeft,
-  FolderOpen, ChevronLeft, Loader2,
+  FolderOpen, Loader2,
   XCircle,
-  GripVertical,
   FileDiff,
 } from "lucide-react"
 import {
@@ -70,25 +70,6 @@ function persistPanelState(key: string, value: unknown): void {
   try {
     localStorage.setItem(`${PANEL_STORAGE_KEY_PREFIX}${key}`, JSON.stringify(value))
   } catch { /* quota exceeded — ignore */ }
-}
-
-
-
-function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
-  return (
-    <div
-      onMouseDown={onMouseDown}
-      className={cn(
-        "group relative w-0.5 cursor-col-resize shrink-0 transition-colors duration-150",
-        "hover:bg-blue-500/30 active:bg-blue-500/50",
-      )}
-    >
-      <div className="absolute inset-y-0 -left-1 -right-1 z-10" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <GripVertical className="h-3 w-3 text-white/30" />
-      </div>
-    </div>
-  )
 }
 
 async function updateImportsOnMove(rootPath: string, oldPath: string, newPath: string): Promise<{ updated: number; files: string[] }> {
@@ -181,7 +162,7 @@ export function CodeCanvasPage() {
 
   // ── Panel state (persisted to localStorage) ──
   const [explorerOpen, setExplorerOpen] = useState(() => loadPanelState("explorerOpen", false))
-  const [explorerWidth, setExplorerWidth] = useState(() => loadPanelState("explorerWidth", 240))
+  const [explorerWidth, setExplorerWidth] = useState(() => loadPanelState("explorerWidth", 320))
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel>(() => loadPanelState("workspacePanel", "code"))
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(() => loadPanelState("workspacePanelOpen", true))
   const [workspacePanelWidth, setWorkspacePanelWidth] = useState(() => loadPanelState("workspacePanelWidth", 420))
@@ -199,7 +180,7 @@ export function CodeCanvasPage() {
   const lastPaneAction = usePanelCoordinator((s) => s.lastAction)
 
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const explorerRef = useRef<WorkspaceExplorerHandle>(null)
+  const explorerRef = useRef<ExplorerHandle>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loadingTreeRef = useRef(false)
   const explorerResizingRef = useRef(false)
@@ -728,76 +709,12 @@ export function CodeCanvasPage() {
   }, [lastPaneAction, panes])
 
   // ── Resize handlers ──
-  const handleExplorerResize = useCallback(() => {
-    explorerResizingRef.current = true
-    document.body.style.cursor = "col-resize"
-    document.body.style.userSelect = "none"
-
-    function onMouseMove(e: MouseEvent) {
-      if (!explorerResizingRef.current) return
-      const newWidth = Math.max(180, Math.min(350, e.clientX - 52))
-      setExplorerWidth(newWidth)
-    }
-
-    function cleanup() {
-      explorerResizingRef.current = false
-      document.body.style.cursor = ""
-      document.body.style.userSelect = ""
-    }
-
-    function onMouseUp() {
-      cleanup()
-      window.removeEventListener("mousemove", onMouseMove)
-    }
-
-    function onBlur() { onMouseUp() }
-
-    window.addEventListener("mousemove", onMouseMove)
-    window.addEventListener("mouseup", onMouseUp, { once: true })
-    window.addEventListener("blur", onBlur, { once: true })
-
-    resizeCleanupFns.current.push(() => {
-      cleanup()
-      window.removeEventListener("mousemove", onMouseMove)
-      window.removeEventListener("mouseup", onMouseUp)
-      window.removeEventListener("blur", onBlur)
-    })
+  const handleExplorerResize = useCallback((width: number) => {
+    setExplorerWidth(width)
   }, [])
 
-  const handleWorkspaceResize = useCallback(() => {
-    workspaceResizingRef.current = true
-    document.body.style.cursor = "col-resize"
-    document.body.style.userSelect = "none"
-
-    function onMouseMove(e: MouseEvent) {
-      if (!workspaceResizingRef.current) return
-      const newWidth = Math.max(300, Math.min(700, window.innerWidth - e.clientX - 52))
-      setWorkspacePanelWidth(newWidth)
-    }
-
-    function cleanup() {
-      workspaceResizingRef.current = false
-      document.body.style.cursor = ""
-      document.body.style.userSelect = ""
-    }
-
-    function onMouseUp() {
-      cleanup()
-      window.removeEventListener("mousemove", onMouseMove)
-    }
-
-    function onBlur() { onMouseUp() }
-
-    window.addEventListener("mousemove", onMouseMove)
-    window.addEventListener("mouseup", onMouseUp, { once: true })
-    window.addEventListener("blur", onBlur, { once: true })
-
-    resizeCleanupFns.current.push(() => {
-      cleanup()
-      window.removeEventListener("mousemove", onMouseMove)
-      window.removeEventListener("mouseup", onMouseUp)
-      window.removeEventListener("blur", onBlur)
-    })
+  const handleWorkspaceResize = useCallback((width: number) => {
+    setWorkspacePanelWidth(width)
   }, [])
 
 
@@ -833,54 +750,31 @@ export function CodeCanvasPage() {
       {/* ── MAIN PANEL LAYOUT or Empty State ── */}
       <WorkspaceErrorBoundary onOpenFolder={openWorkspace}>
       {rootPath && typeof rootPath === 'string' && rootPath.length > 0 ? (
-      <div className="flex flex-1 overflow-hidden min-h-0 relative">
-        {/* PANEL 0: Explorer (File Tree) — overlays chat when open */}
-        {explorerOpen && (
-          <>
-            <div
-              className="absolute inset-0 z-10 bg-black/40"
-              onClick={() => setExplorerOpen(false)}
-            />
-            <div
-              style={{ width: explorerWidth }}
-              className="absolute left-0 top-0 bottom-0 z-20 flex flex-col bg-[#0c0c0d] border-r border-white/[0.12] shadow-2xl"
-            >
-              {/* Explorer header */}
-              <div className="flex items-center gap-1.5 px-2 py-2 border-b border-white/[0.04] shrink-0">
-                <button
-                  onClick={() => setExplorerOpen(false)}
-                  className="rounded p-0.5 text-white/20 hover:text-white/50 hover:bg-white/[0.06] transition-all shrink-0"
-                  title="Collapse explorer (⌘B)"
-                >
-                  <ChevronLeft className="h-3 w-3" />
-                </button>
-                <span className="text-[9px] font-medium text-white/25 uppercase tracking-widest">Explorer</span>
-                {rootPath && (
-                  <span className="text-[10px] text-white/40 truncate max-w-[120px]" title={rootPath}>
-                    {rootPath.split(/[/\\]/).pop()}
-                  </span>
-                )}
-              </div>
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        {/* PANEL 0: Explorer — flex-based split pane, animated width */}
+        <div
+          style={{ width: explorerOpen ? explorerWidth : 0 }}
+          className={cn(
+            "flex-shrink-0 flex flex-col overflow-hidden bg-[#0c0c0d] min-h-0",
+            "transition-[width] duration-[180ms] ease-out",
+            explorerOpen && "border-r border-white/[0.06]",
+          )}
+        >
+          {explorerOpen && (
+            <Explorer ref={explorerRef} onOpenWorkspace={openWorkspace} />
+          )}
+        </div>
 
-              {/* Explorer content */}
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <WorkspaceExplorer
-                  ref={explorerRef}
-                  onOpenWorkspace={openWorkspace}
-                />
-              </div>
-            </div>
-            {/* Resize handle placed outside the overlay so hit-area isn't clipped */}
-            <div
-              style={{ left: explorerWidth }}
-              className="absolute top-0 bottom-0 z-30"
-            >
-              <ResizeHandle onMouseDown={handleExplorerResize} />
-            </div>
-          </>
+        {/* Resize handle: Explorer | Chat */}
+        {explorerOpen && (
+          <ExplorerResizer
+            onResize={handleExplorerResize}
+            minWidth={260}
+            maxWidth={500}
+          />
         )}
 
-      {/* PANEL 1: Chat — Session + Conversation */}
+      {/* PANEL 1: Chat — flex-1, shrinks when explorer opens */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0" role="region" aria-label="Chat panel">
         {/* Chat header bar — minimal */}
         <div className="flex items-center justify-between px-2 py-1 border-b border-white/[0.06] bg-[#0c0c0d]">
@@ -943,13 +837,20 @@ export function CodeCanvasPage() {
         </div>
 
         {/* Resize handle: Chat | Workspace Panel */}
-        {workspacePanelOpen && <ResizeHandle onMouseDown={handleWorkspaceResize} />}
+        {workspacePanelOpen && (
+          <ExplorerResizer
+            onResize={handleWorkspaceResize}
+            minWidth={300}
+            maxWidth={700}
+          />
+        )}
 
         {/* PANEL 2: Workspace Panel — Code/Browser/Design */}
         <div
           style={{ width: workspacePanelOpen ? workspacePanelWidth : 0 }}
           className={cn(
             "flex-shrink-0 flex flex-col overflow-hidden bg-[#0a0a0b] min-h-0",
+            "transition-[width] duration-[180ms] ease-out",
             workspacePanelOpen && "border-l border-white/[0.06]",
           )}
           role="region"

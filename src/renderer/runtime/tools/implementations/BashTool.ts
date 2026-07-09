@@ -3,7 +3,6 @@ import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
 import { ToolExecutionSandbox } from '../ToolExecutionSandbox'
-import { useWorkspaceStore } from '@/stores/workspace-store'
 import { parseShellCommand, CommandType } from './bash/ShellAST'
 import { classifyBashPermission, getDefaultTimeout } from './bash/BashPermissions'
 import { validateReadOnly } from './bash/ReadOnlyValidator'
@@ -68,7 +67,7 @@ export const BashTool: AgentTool = buildTool({
       return { data: null, error: `Command blocked for safety: ${command.slice(0, 100)}`, isError: true }
     }
 
-    const rootPath = useWorkspaceStore.getState().rootPath ?? ctx.cwd
+    const rootPath = ctx.workspaceStore?.rootPath ?? ctx.cwd
     const sandboxed = await sandboxAdapter.sandboxCommand(command, args ?? [], { cwd: rootPath, timeout })
     const sandbox = ToolExecutionSandbox.getInstance()
     const tcId = crypto.randomUUID()

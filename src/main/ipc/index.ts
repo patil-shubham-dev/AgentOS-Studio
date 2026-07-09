@@ -7,7 +7,7 @@ import type { BrowserManager } from '../services/browser-manager'
 import type { TerminalManager } from '../services/terminal-manager'
 import { ViewportManager } from '../services/viewport-manager'
 import { registerCommandHandlers } from './command'
-import { assertPathAllowed, assertGitRepoPath } from './path-utils'
+import { assertPathAllowed, isPathAllowed, filterDeniedPaths, assertGitRepoPath } from './path-utils'
 import { registerHttpProxyHandler } from './http-proxy'
 import { registerViewportHandlers } from './viewport'
 export function registerAllIpcHandlers(
@@ -223,9 +223,10 @@ function registerFileSystemHandlers(): void {
   })
   ipcMain.handle('read-directory', (_e, dp: string) => {
     assertPathAllowed(validatePath(dp))
-    return readdirSync(dp, { withFileTypes: true }).map(e => ({
+    const entries = readdirSync(dp, { withFileTypes: true }).map(e => ({
       name: e.name, path: join(dp, e.name), isDirectory: e.isDirectory(), isFile: e.isFile()
     }))
+    return filterDeniedPaths(entries)
   })
 
   const watchers = new Map<string, ReturnType<typeof watch>>()
@@ -247,12 +248,14 @@ function registerFileSystemHandlers(): void {
     for (const entry of readdirSync(dirPath, { withFileTypes: true })) {
       if (entry.name.startsWith('.') && entry.name !== '.git') continue
       const fullPath = join(dirPath, entry.name)
+      if (!isPathAllowed(fullPath)) continue
       const item: any = { name: entry.name, path: fullPath }
       if (entry.isDirectory()) {
         try {
           item.children = readdirSync(fullPath)
             .filter(c => !c.startsWith('.') || c === '.git')
             .map(c => ({ name: c, path: join(fullPath, c) }))
+            .filter(c => isPathAllowed(c.path))
         } catch { item.children = [] }
       }
       result.push(item)
@@ -269,6 +272,7 @@ function registerWorkspaceHandlers(): void {
       try {
         for (const entry of readdirSync(dir, { withFileTypes: true })) {
           const fp = join(dir, entry.name)
+          if (!isPathAllowed(fp)) continue
           if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') walk(fp)
           else if (entry.isFile()) files.push(fp)
         }

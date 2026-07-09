@@ -201,9 +201,9 @@ export async function detectRuntime(baseUrl: string): Promise<RuntimeInfo> {
   // Local detection
   if (url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0")) {
     if (url.includes("11434")) return { runtime: "Ollama", isOpenAiCompatible: true, isLocal: true }
-    if (url.includes("8000")) return { runtime: "vLLM", isOpenAiCompatible: true, isLocal: true }
+    try { const port = new URL(baseUrl).port; if (port === "8000") return { runtime: "vLLM", isOpenAiCompatible: true, isLocal: true } } catch {}
     if (url.includes("1234")) return { runtime: "LM Studio", isOpenAiCompatible: true, isLocal: true }
-    if (url.includes("8080")) return { runtime: "LocalAI", isOpenAiCompatible: true, isLocal: true }
+    try { const port = new URL(baseUrl).port; if (port === "8080") return { runtime: "LocalAI", isOpenAiCompatible: true, isLocal: true } } catch {}
     if (url.includes("4000")) return { runtime: "LiteLLM", isOpenAiCompatible: true, isLocal: true }
     // Unknown local service — assume OpenAI-compatible
     return { runtime: "Local", isOpenAiCompatible: true, isLocal: true }
@@ -243,11 +243,11 @@ function getAdapterId(baseUrl: string): string {
   if (url.includes("together.xyz")) return "together"
   if (url.includes("nvidia.com")) return "nvidia-nim"
   if (url.includes("azure.com") || url.includes("azure-api.net")) return "azure"
-  if (url.includes("11434")) return "ollama"
-  if (url.includes("8000")) return "vllm"
-  if (url.includes("1234")) return "lm-studio"
-  if (url.includes("8080")) return "local-ai"
-  if (url.includes("4000")) return "litellm"
+    if (url.includes("11434")) return "ollama"
+    try { const port = new URL(baseUrl).port; if (port === "8000") return "vllm" } catch {}
+    if (url.includes("1234")) return "lm-studio"
+    try { const port = new URL(baseUrl).port; if (port === "8080") return "local-ai" } catch {}
+    if (url.includes("4000")) return "litellm"
   return "unknown"
 }
 
@@ -475,37 +475,6 @@ export async function validateProvider(baseUrl: string, apiKey: string, _token?:
 }
 
 // ── Provider Model Discovery (frontend-only via fetch) ──
-
-/* const _KNOWN_MODEL_PATTERNS: { pattern: RegExp; category: string }[] = [
-  { pattern: /gpt-4o/i, category: "chat" },
-  { pattern: /gpt-4/i, category: "chat" },
-  { pattern: /gpt-3\.5/i, category: "chat" },
-  { pattern: /claude/i, category: "chat" },
-  { pattern: /gemini/i, category: "chat" },
-  { pattern: /llama/i, category: "chat" },
-  { pattern: /mistral/i, category: "chat" },
-  { pattern: /mixtral/i, category: "chat" },
-  { pattern: /deepseek/i, category: "chat" },
-  { pattern: /qwen/i, category: "chat" },
-  { pattern: /command/i, category: "chat" },
-  { pattern: /dbrx/i, category: "chat" },
-  { pattern: /phi/i, category: "chat" },
-  { pattern: /falcon/i, category: "chat" },
-  { pattern: /olmo/i, category: "chat" },
-  { pattern: /codestral/i, category: "coding" },
-  { pattern: /code/i, category: "coding" },
-  { pattern: /deepseek-coder/i, category: "coding" },
-  { pattern: /starcoder/i, category: "coding" },
-  { pattern: /o1|o3/i, category: "reasoning" },
-  { pattern: /reason/i, category: "reasoning" },
-  { pattern: /embed/i, category: "embedding" },
-  { pattern: /text-embedding/i, category: "embedding" },
-  { pattern: /rerank/i, category: "reranking" },
-  { pattern: /dall-e/i, category: "image" },
-  { pattern: /tts/i, category: "audio" },
-  { pattern: /whisper/i, category: "audio" },
-  { pattern: /vision/i, category: "vision" },
-] */
 
 function isVisionModel(id: string): boolean {
   return /vision|gemini|gpt-4o|claude-3|claude-4|claude-5|llava|cogvlm|qwen-vl|internvl/i.test(id)

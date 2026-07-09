@@ -17,13 +17,15 @@ export class SkillExecutor {
     return this.registry.resolve(name)
   }
 
-  prepare(skillName: string, userArgs?: string): SkillExecutionResult | null {
+  async prepare(skillName: string, userArgs?: string): Promise<SkillExecutionResult | null> {
     const skill = this.registry.resolve(skillName)
     if (!skill) return null
 
-    let expandedPrompt = skill.prompt
+    const prompt = await this.registry.resolvePrompt(skill)
+
+    let expandedPrompt = prompt
     if (userArgs) {
-      expandedPrompt = `${skill.prompt}\n\nUser request: ${userArgs}`
+      expandedPrompt = `${prompt}\n\nUser request: ${userArgs}`
     }
 
     return {

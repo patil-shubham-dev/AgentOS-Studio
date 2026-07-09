@@ -57,7 +57,7 @@ export const RunSkillTool: AgentTool = buildTool({
       }
       default: {
         if (!name) return { data: null, error: 'name is required for execute', isError: true }
-        const prepared = skillExecutor.prepare(name, skillArgs)
+        const prepared = await skillExecutor.prepare(name, skillArgs)
         if (!prepared) return { data: null, error: `Skill "${name}" not found. Use action="list" to see available skills.`, isError: true }
         return {
           data: prepared.expandedPrompt,

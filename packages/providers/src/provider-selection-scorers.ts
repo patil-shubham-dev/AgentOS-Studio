@@ -1,5 +1,6 @@
 import type { ScoredProvider, SelectionRequest, SelectionScorer, SelectionContext, ScoredDimension } from "./provider-selection-types"
 import type { ProviderHealthState } from "./provider-types"
+import type { ProviderCapabilities } from "./transport-adapters"
 
 const HEALTH_STATE_SCORES: Record<ProviderHealthState, number> = {
   connected: 100,
@@ -302,20 +303,22 @@ export class CapabilityBreadthScorer implements SelectionScorer {
 
   score(provider: ScoredProvider, _request: SelectionRequest, _context: SelectionContext): ScoredDimension {
     const cap = provider.capabilities
-    const total = [
-      cap.supportsSystemPrompts,
-      cap.supportsToolCalling,
-      cap.supportsStreaming,
-      cap.supportsVision,
-      cap.supportsReasoning,
-      cap.supportsJsonMode,
-      cap.supportsStructuredOutput,
-      cap.supportsCacheControl,
-      cap.supportsStreamingTools,
-      cap.supportsEmbeddings,
-    ].filter(Boolean).length
+    const capKeys: Array<keyof ProviderCapabilities> = [
+      "supportsSystemPrompts",
+      "supportsToolCalling",
+      "supportsStreaming",
+      "supportsVision",
+      "supportsReasoning",
+      "supportsJsonMode",
+      "supportsStructuredOutput",
+      "supportsCacheControl",
+      "supportsStreamingTools",
+      "supportsEmbeddings",
+    ]
+    const total = capKeys.filter((k) => cap[k]).length
+    const denominator = capKeys.length
 
-    const score = Math.round((total / 10) * 100)
+    const score = Math.round((total / denominator) * 100)
     return {
       name: this.name, score, weight: this.weight, weightedScore: score,
       label: `${total}/10 capabilities`, passed: true,

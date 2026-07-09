@@ -21,6 +21,7 @@ import { contextManagementSection } from './context-management.section'
 import { memoryPolicySection } from './memory-policy.section'
 import { routingInstructionsSection } from './routing-instructions.section'
 import { streamingBehaviorSection } from './streaming-behavior.section'
+import { skillsContextSection } from './skills-context.section'
 
 export const DEFAULT_SECTIONS: SectionDefinition[] = [
   agentIdentitySection,
@@ -43,6 +44,7 @@ export const DEFAULT_SECTIONS: SectionDefinition[] = [
   streamingBehaviorSection,
   autonomousBehaviorSection,
   contextManagementSection,
+  skillsContextSection,
 ]
 
 export function registerDefaultSections(registry: PromptRegistry): void {
@@ -70,4 +72,6 @@ export {
   memoryPolicySection,
   routingInstructionsSection,
   streamingBehaviorSection,
+  skillsContextSection,
 }
+export { updateSkillMatches } from './skills-context.section'

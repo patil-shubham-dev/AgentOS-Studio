@@ -75,6 +75,11 @@ export class ExecutionQueue {
     }
     this.queue = []
     this.active = null
+
+    for (const slot of this.pending) {
+      slot.reject(new Error("Execution cancelled: all tasks cancelled"))
+    }
+    this.pending = []
   }
 
   cancel(id: string): void {
@@ -95,6 +100,9 @@ export class ExecutionQueue {
       }
       entry.status = "cancelled"
       this.queue.splice(idx, 1)
+
+      const slot = this.pending.splice(idx, 1)[0]
+      if (slot) slot.reject(new Error(`Execution cancelled: ${id}`))
     }
   }
 

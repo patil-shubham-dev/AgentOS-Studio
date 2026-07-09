@@ -3,9 +3,12 @@ import type { ChatMessage, UsageInfo, ToolCall } from "@agentic-os/providers"
 import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 import { useWorkspaceStore, getWorkspaceContextSnapshot } from "@/stores/workspace-store"
+import { useDiffStore } from "@/stores/diff-store"
+import { useAgentStore } from "@/stores/agent-store"
 import { configLoader } from "@/runtime/project-config/ConfigLoader"
 import type { StructuredProjectConfig } from "@/runtime/project-config/ProjectConfigTypes"
 import { ContextManager } from "@/runtime/context/ContextManager"
+import type { ContextSession } from "@/runtime/context/ContextSession"
 import type { ContextAssemblyInput } from "@/runtime/context/context-types"
 import { VerificationPipeline } from "@/runtime/verification/VerificationPipeline"
 import { ExecutionScratchpad } from "@/runtime/execution/ExecutionScratchpad"
@@ -15,6 +18,7 @@ import * as wi from "@/lib/workspace-intelligence"
 import { getEffectiveMaxTokens } from "@/runtime/runtime-token-config"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
 import type { AgentTool } from "@/runtime/tools/core/AgentTool"
+import type { WorkspaceStoreAPI, DiffStoreAPI, AgentStoreAPI } from "@/runtime/tools/core/ToolContext"
 import { agentToolsToToolDefs } from "@/runtime/tools/conversion/agentToolToToolDef"
 import { FAST_CHAT_PROMPT } from "@/runtime/runtime-role-registry"
 import { trace } from "@/lib/execution-trace"
@@ -44,6 +48,7 @@ export interface AgentExecutorConfig {
   input: string
   history: ChatMessage[]
   signal?: AbortSignal
+  contextSession?: ContextSession
 }
 
 export interface AgentExecutorResult {
@@ -81,6 +86,7 @@ export class AgentExecutor {
   private history: ChatMessage[]
   private signal?: AbortSignal
   private scratchpad?: ExecutionScratchpad
+  private contextSession?: ContextSession
 
   constructor(config: AgentExecutorConfig) {
     this.executionId = config.executionId
@@ -89,6 +95,7 @@ export class AgentExecutor {
     this.input = config.input
     this.history = config.history
     this.signal = config.signal
+    this.contextSession = config.contextSession
   }
 
   setScratchpad(sp: ExecutionScratchpad): void {
@@ -375,7 +382,7 @@ export class AgentExecutor {
         tool_calls: responseToolCalls.length > 0 ? responseToolCalls : undefined,
       }
       msgs.push(assistantMsg)
-      ContextManager.getInstance().updateBudget(msgs as any)
+      ;(this.contextSession ?? ContextManager.getInstance()).updateBudget(msgs as any)
 
       if (responseToolCalls.length > 0) {
         yield { type: "THINKING_UPDATE", executionId: eid, label: `Executing ${responseToolCalls.length} tool(s)`, timestamp: Date.now() }
@@ -459,6 +466,9 @@ export class AgentExecutor {
                     const toolCtx: import("@/runtime/tools/core/ToolContext").ToolContext = {
                       role: this.role,
                       signal: this.signal,
+                      workspaceStore: { rootPath: useWorkspaceStore.getState().rootPath },
+                      diffStore: { addFileDiff: (entry: unknown) => useDiffStore.getState().addFileDiff(entry as any) },
+                      agentStore: { ...useAgentStore.getState(), addAgentTreeNode: (n) => useAgentStore.getState().addAgentTreeNode(n as any), setAgentTreeRoot: (id) => useAgentStore.getState().setAgentTreeRoot(id), updateAgentTreeNode: (id, u) => useAgentStore.getState().updateAgentTreeNode(id, u as any) },
                     }
                     const retryResult = await withRetry(
                       () => pipeline.execute(entry.name, entry.args, toolCtx),
@@ -569,6 +579,9 @@ export class AgentExecutor {
                   role: this.role,
                   signal: this.signal,
                   cwd: rootCwd,
+                  workspaceStore: { rootPath: useWorkspaceStore.getState().rootPath },
+                  diffStore: { addFileDiff: (entry: unknown) => useDiffStore.getState().addFileDiff(entry as any) },
+                  agentStore: { ...useAgentStore.getState(), addAgentTreeNode: (n) => useAgentStore.getState().addAgentTreeNode(n as any), setAgentTreeRoot: (id) => useAgentStore.getState().setAgentTreeRoot(id), updateAgentTreeNode: (id, u) => useAgentStore.getState().updateAgentTreeNode(id, u as any) },
                   onOutput: (line: string) => {
                     if (!channel.closed) {
                       channel.push({ type: "COMMAND_OUTPUT", executionId: eid, output: line + "\n", timestamp: Date.now() })
@@ -587,6 +600,9 @@ export class AgentExecutor {
                 const toolCtx: import("@/runtime/tools/core/ToolContext").ToolContext = {
                   role: this.role,
                   signal: this.signal,
+                  workspaceStore: { rootPath: useWorkspaceStore.getState().rootPath },
+                  diffStore: { addFileDiff: (entry: unknown) => useDiffStore.getState().addFileDiff(entry as any) },
+                  agentStore: { ...useAgentStore.getState(), addAgentTreeNode: (n) => useAgentStore.getState().addAgentTreeNode(n as any), setAgentTreeRoot: (id) => useAgentStore.getState().setAgentTreeRoot(id), updateAgentTreeNode: (id, u) => useAgentStore.getState().updateAgentTreeNode(id, u as any) },
                 }
                 const cacheKey = toolResultCache.isCacheable(entry.name)
                   ? toolResultCache.key(entry.name, entry.args)
@@ -712,7 +728,7 @@ export class AgentExecutor {
           }
         }
 
-        const compactResult = ContextManager.getInstance().compact(msgs as any)
+        const compactResult = (this.contextSession ?? ContextManager.getInstance()).compact(msgs as any)
         if (compactResult?.retainedMessages && compactResult.tokensRecovered > 0) {
           msgs = compactResult.retainedMessages as unknown as ChatMessage[]
           console.log(`[Agent:${this.mode}:${this.role}] compacted: ${compactResult.tokensRecovered} tokens (${compactResult.strategy}), ${compactResult.messagesRetained} msgs retained`)
@@ -804,31 +820,6 @@ export class AgentExecutor {
     console.log("[FLOW:16] AgentExecutor.executeFull: yielding MESSAGE_COMPLETE (contentLen=" + lastResponse.length + ")")
 
     yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content: lastResponse, finishReason: "stop", timestamp: Date.now(), tokensIn: totalUsage.prompt_tokens, tokensOut: totalUsage.completion_tokens }
-  }
-
-  private filterMemoryByScope(memory: MemoryLoadResult, scope: string): MemoryLoadResult {
-    if (scope === "none") {
-      return { files: [], combined: "", rules: [] }
-    }
-    const allowedSources = this.scopeToSources(scope)
-    const filtered = memory.files.filter(f => allowedSources.includes(f.source as any))
-    return {
-      files: filtered,
-      combined: filtered
-        .sort((a, b) => a.priority - b.priority)
-        .map(f => f.content)
-        .join("\n\n"),
-      rules: filtered.filter(f => f.source === "rules"),
-    }
-  }
-
-  private scopeToSources(scope: string): string[] {
-    switch (scope) {
-      case "session": return ["local"]
-      case "project": return ["project", "local", "rules"]
-      case "global": return ["global", "project", "local", "rules"]
-      default: return []
-    }
   }
 
   private recordToolInScratchpad(entry: { name: string; args: Record<string, unknown> }, result: unknown): void {

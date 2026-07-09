@@ -30,6 +30,7 @@ import { applyProjectConfig, getTypeContextForFiles } from '@/lib/workspace-inte
 import { ContextFileCache } from './ContextFileCache'
 import { isFeatureEnabled } from '@/app/feature-flags'
 import type { ToolNamespace } from '@/runtime/tools/core/AgentTool'
+import { ContextSession } from './ContextSession'
 
 export type ContextManagerConfig = {
   defaultModel?: string
@@ -116,12 +117,26 @@ export class ContextManager {
     })
 
     this.runtimeOS = RuntimeOS.getInstance()
-    try { this.runtimeOS.initialize() } catch { /* may fail in test env */ }
+    try {
+      this.runtimeOS.initialize()
+      this.compactor.connectLifecycleRegistry(this.runtimeOS.lifecycleHooks)
+    } catch { /* may fail in test env */ }
   }
 
   configure(config: Partial<ContextManagerConfig>): void {
     this.config = { ...this.config, ...config }
     if (config.migrationMode) this.migrationValidator.setMode(config.migrationMode)
+  }
+
+  createSession(role: string, model?: string, betas?: string[]): ContextSession {
+    const session = new ContextSession(
+      this.resolver,
+      role,
+      model ?? this.currentModel,
+      betas ?? this.currentBetas,
+      this.runtimeOS?.lifecycleHooks,
+    )
+    return session
   }
 
   initializeTask(model?: string, betas?: string[]): void {

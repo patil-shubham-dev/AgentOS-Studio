@@ -2,7 +2,6 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
-import { useWorkspaceStore } from '@/stores/workspace-store'
 import { readFile } from '@/lib/filesystem'
 
 export const CodeExplainTool: AgentTool = buildTool({
@@ -49,7 +48,7 @@ export const CodeExplainTool: AgentTool = buildTool({
     const p = (input as any)?.path
     return p ? `Explaining code in ${p}` : 'Explaining code snippet'
   },
-  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const filePath = input.path as string | undefined
     const code = input.code as string | undefined
     const lines = input.lines as string | undefined
@@ -60,7 +59,7 @@ export const CodeExplainTool: AgentTool = buildTool({
     let sourcePath = filePath ?? 'inline snippet'
 
     if (filePath) {
-      const rootPath = useWorkspaceStore.getState().rootPath
+      const rootPath = ctx.workspaceStore?.rootPath ?? null
       const resolvedPath = rootPath && !/^[a-zA-Z]:[\\/]/.test(filePath)
         ? `${rootPath}\\${filePath.replace(/\//g, '\\')}`
         : filePath

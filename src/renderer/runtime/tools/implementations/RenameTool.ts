@@ -2,9 +2,7 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
-import { useWorkspaceStore } from '@/stores/workspace-store'
 import { readFile, writeFile } from '@/lib/filesystem'
-import { useAgentStore } from '@/stores/agent-store'
 
 interface RenameEdit {
   path: string
@@ -59,7 +57,7 @@ export const RenameTool: AgentTool = buildTool({
     const newN = (input as any)?.new_name
     return oldN && newN ? `Renaming ${oldN} → ${newN}` : 'Renaming a symbol'
   },
-  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const filePath = String(input.path ?? '')
     const oldName = String(input.old_name ?? '')
     const newName = String(input.new_name ?? '')
@@ -74,7 +72,7 @@ export const RenameTool: AgentTool = buildTool({
       return { data: null, error: `"${newName}" is not a valid JavaScript/TypeScript identifier`, isError: true }
     }
 
-    const rootPath = useWorkspaceStore.getState().rootPath
+    const rootPath = ctx.workspaceStore?.rootPath ?? null
     const resolvedPath = rootPath && !/^[a-zA-Z]:[\\/]/.test(filePath)
       ? `${rootPath}\\${filePath.replace(/\//g, '\\')}`
       : filePath

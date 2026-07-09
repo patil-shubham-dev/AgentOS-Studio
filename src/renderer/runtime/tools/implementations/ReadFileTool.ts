@@ -2,7 +2,6 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
-import { useWorkspaceStore } from '@/stores/workspace-store'
 import { toolResultCache } from '../core/ToolResultCache'
 import { fileContentCache } from '@/lib/FileContentCache'
 import { FileStateCache } from '../storage/FileStateCache'
@@ -122,7 +121,7 @@ export const ReadFileTool: AgentTool = buildTool({
     const path = String(input.path ?? '')
     if (!path) return { data: null, error: 'path is required', isError: true }
 
-    const rootPath = useWorkspaceStore.getState().rootPath
+    const rootPath = ctx.workspaceStore?.rootPath ?? null
     const fullPath = resolvePath(rootPath, path)
 
     const validationError = validatePath(fullPath, rootPath)

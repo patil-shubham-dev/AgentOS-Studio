@@ -2,7 +2,6 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
-import { useWorkspaceStore } from '@/stores/workspace-store'
 
 async function readTextFile(path: string): Promise<string | null> {
   try {
@@ -94,14 +93,14 @@ export const SearchContentTool: AgentTool = buildTool({
     return `Searching for "${p}"`
   },
   permissions: async () => ({ behavior: 'allow' }),
-  execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const pattern = String(input.pattern ?? '')
     const includePatterns = (input.include as string[]) ?? []
     const excludePatterns = (input.exclude as string[]) ?? ['node_modules', '.git', 'dist', 'out', '.agentic-os']
     const maxResults = (input.maxResults as number) ?? 50
 
     if (!pattern) return { data: null, error: 'pattern is required', isError: true }
-    const rootPath = useWorkspaceStore.getState().rootPath
+    const rootPath = ctx.workspaceStore?.rootPath
     if (!rootPath) return { data: null, error: 'No workspace root set', isError: true }
 
     let regex: RegExp

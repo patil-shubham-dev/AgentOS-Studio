@@ -1,4 +1,4 @@
-import { Folder, FilePlus, FolderPlus, RefreshCw, ChevronsUpDown, ChevronsDown, Loader2 } from "lucide-react"
+import { FilePlus, FolderPlus, RefreshCw, ChevronsUpDown, ChevronsDown, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface WorkspaceHeaderProps {
@@ -10,106 +10,64 @@ interface WorkspaceHeaderProps {
   onRefresh: () => void
   onCollapseAll: () => void
   onExpandAll: () => void
+  onCloseWorkspace?: () => void
 }
 
-export function WorkspaceHeader({
-  rootPath,
-  fileCount,
-  isLoading,
-  onNewFile,
-  onNewFolder,
-  onRefresh,
-  onCollapseAll,
-  onExpandAll,
-}: WorkspaceHeaderProps) {
-  const name = rootPath ? rootPath.split(/[/\\]/).pop() : ""
+export function WorkspaceHeader(props: WorkspaceHeaderProps) {
+  const { rootPath, fileCount, isLoading, onNewFile, onNewFolder, onRefresh, onCollapseAll, onExpandAll, onCloseWorkspace } = props
+  const name = rootPath ? rootPath.split(/[/\\]+/).pop() : ""
 
   return (
     <div className="border-b border-white/[0.04]">
-      <div className="flex items-center justify-between px-2 py-1.5">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Folder className="h-3 w-3 shrink-0 text-white/30" />
-          <span className="text-[10px] font-medium text-white/25 uppercase tracking-widest truncate max-w-[160px]">
+      <div className="flex items-center justify-between px-1 py-0.5">
+        <div className="flex items-center gap-1.5 min-w-0 px-1">
+          <span className="text-[10px] font-semibold text-white/30 uppercase tracking-[0.08em] select-none truncate max-w-[160px]">
             {name || "Explorer"}
           </span>
           {rootPath && !isLoading && (
-            <span className="text-[9px] text-white/15 shrink-0">
-              {fileCount}
-            </span>
+            <span className="text-[9px] text-white/20 font-mono shrink-0">{fileCount}</span>
           )}
         </div>
         <div className="flex items-center gap-0.5">
-          <button
-            onClick={onNewFile}
-            disabled={!rootPath}
-            className={cn(
-              "rounded p-0.5 transition-all",
-              rootPath
-                ? "text-white/25 hover:text-white/60 hover:bg-white/[0.06]"
-                : "text-white/10 cursor-not-allowed"
-            )}
-            title="New File"
-          >
-            <FilePlus className="h-3 w-3" />
-          </button>
-          <button
-            onClick={onNewFolder}
-            disabled={!rootPath}
-            className={cn(
-              "rounded p-0.5 transition-all",
-              rootPath
-                ? "text-white/25 hover:text-white/60 hover:bg-white/[0.06]"
-                : "text-white/10 cursor-not-allowed"
-            )}
-            title="New Folder"
-          >
-            <FolderPlus className="h-3 w-3" />
-          </button>
-          <button
-            onClick={onRefresh}
-            disabled={!rootPath || isLoading}
-            className={cn(
-              "rounded p-0.5 transition-all",
-              rootPath && !isLoading
-                ? "text-white/25 hover:text-white/60 hover:bg-white/[0.06]"
-                : "text-white/10 cursor-not-allowed"
-            )}
-            title="Refresh"
-          >
-            {isLoading ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3" />
-            )}
-          </button>
-          <button
-            onClick={onCollapseAll}
-            disabled={!rootPath}
-            className={cn(
-              "rounded p-0.5 transition-all",
-              rootPath
-                ? "text-white/25 hover:text-white/60 hover:bg-white/[0.06]"
-                : "text-white/10 cursor-not-allowed"
-            )}
-            title="Collapse All"
-          >
-            <ChevronsUpDown className="h-3 w-3" />
-          </button>
-          <button
-            onClick={onExpandAll}
-            disabled={!rootPath}
-            className={cn(
-              "rounded p-0.5 transition-all",
-              rootPath
-                ? "text-white/25 hover:text-white/60 hover:bg-white/[0.06]"
-                : "text-white/10 cursor-not-allowed"
-            )}
-            title="Expand All"
-          >
-            <ChevronsDown className="h-3 w-3" />
-          </button>
+          <HeaderButton onClick={onNewFile} disabled={!rootPath} title="New File">
+            <FilePlus className="h-[11px] w-[11px]" />
+          </HeaderButton>
+          <HeaderButton onClick={onNewFolder} disabled={!rootPath} title="New Folder">
+            <FolderPlus className="h-[11px] w-[11px]" />
+          </HeaderButton>
+          <HeaderButton onClick={onRefresh} disabled={!rootPath || isLoading} title="Refresh Explorer">
+            {isLoading ? <Loader2 className="h-[11px] w-[11px] animate-spin" /> : <RefreshCw className="h-[11px] w-[11px]" />}
+          </HeaderButton>
+          <HeaderButton onClick={onCollapseAll} disabled={!rootPath} title="Collapse All">
+            <ChevronsUpDown className="h-[11px] w-[11px]" />
+          </HeaderButton>
+          <HeaderButton onClick={onExpandAll} disabled={!rootPath} title="Expand All">
+            <ChevronsDown className="h-[11px] w-[11px]" />
+          </HeaderButton>
+          {rootPath && (
+            <HeaderButton onClick={onCloseWorkspace} title="Close Workspace">
+              <X className="h-[11px] w-[11px]" />
+            </HeaderButton>
+          )}
         </div>
       </div>
     </div>
+  )
+}
+
+function HeaderButton({ onClick, disabled, title, children }: { onClick?: () => void; disabled?: boolean; title: string; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick ?? undefined}
+      disabled={disabled}
+      title={title}
+      className={cn(
+        "rounded p-0.5 transition-all duration-100",
+        "text-white/20 hover:text-white/60 hover:bg-white/[0.06]",
+        "disabled:opacity-20 disabled:pointer-events-none",
+      )}
+    >
+      {children}
+    </button>
   )
 }

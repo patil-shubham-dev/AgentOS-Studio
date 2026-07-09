@@ -58,8 +58,7 @@ export type { HealthCheck, RetryConfig, CircuitBreakerState } from "./ExecutionR
 export { Benchmark100 } from "./Benchmark100"
 
 export function createBenchmarkRunner(): { runAll: () => Promise<any>; runCategory: (cat: string) => Promise<any>; formatCategoryBreakdown: () => string } {
-  const { Benchmark100: B } = require("./Benchmark100")
-  const b = new B()
+  const b = new Benchmark100()
   return {
     runAll: () => b.runAll(),
     runCategory: (cat: string) => b.runCategory(cat),
@@ -67,9 +66,15 @@ export function createBenchmarkRunner(): { runAll: () => Promise<any>; runCatego
   }
 }
 
+export { FastPathExecutor } from "./FastPathExecutor"
+export { AgentPipelineOrchestrator } from "./AgentPipelineOrchestrator"
 export { AutonomousExecutionPath } from "./AutonomousExecutionPath"
 export { ExecutionBudgetManager } from "./ExecutionBudgetManager"
 export { ExecutionQueue } from "./ExecutionQueue"
 export { ExecutionScratchpad } from "./ExecutionScratchpad"
 export { SynthesisEngine } from "./SynthesisEngine"
-export { UnifiedExecutor } from "./UnifiedExecutor"
+export { UnifiedExecutor, resolveExecutionMode } from "./UnifiedExecutor"
+export { assignAgentForTask, orderPipelineRoles, checkWorkspaceRequired, checkMultiAgentEligibility } from "./ExecutionRouter"
+export { runPlanPhase, shouldGeneratePlan, waitForPlanApproval } from "./PlanManager"
+export { mockExecutionPath } from "./MockExecutionEngine"
+export { isFileCreationRequest, executeFileCreation } from "./MockFileCreation"

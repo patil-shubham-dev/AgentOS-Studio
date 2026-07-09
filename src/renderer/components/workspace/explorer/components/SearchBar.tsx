@@ -1,5 +1,9 @@
-import { useRef, useCallback, useState, useEffect } from "react"
+import { useRef, useState, useEffect } from "react"
 import { Search, X } from "lucide-react"
+
+function cn(...classes: (string | boolean | undefined | null)[]): string {
+  return classes.filter(Boolean).join(" ")
+}
 
 interface SearchBarProps {
   value: string
@@ -9,92 +13,57 @@ interface SearchBarProps {
   placeholder?: string
 }
 
-export function SearchBar({
-  value,
-  onChange,
-  onClear,
-  onFocus,
-  placeholder = "Search files...",
-}: SearchBarProps) {
+export function SearchBar({ value, onChange, onClear, onFocus, placeholder = "Search files..." }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [focused, setFocused] = useState(false)
 
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "p" && !e.shiftKey) {
+        const active = document.activeElement?.tagName
+        if (active !== "INPUT" && active !== "TEXTAREA") {
+          e.preventDefault()
+          inputRef.current?.focus()
+        }
+        return
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return
-      if (e.key.length !== 1) return
-      if (document.activeElement === inputRef.current) return
+      if (e.key.length !== 1 || document.activeElement === inputRef.current) return
       if (
         document.activeElement instanceof HTMLInputElement ||
         document.activeElement instanceof HTMLTextAreaElement ||
         document.activeElement instanceof HTMLSelectElement
-      )
-        return
+      ) return
       inputRef.current?.focus()
     }
     document.addEventListener("keydown", handler)
     return () => document.removeEventListener("keydown", handler)
   }, [])
 
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onChange(e.target.value)
-    },
-    [onChange]
-  )
-
-  const handleClear = useCallback(() => {
-    onClear()
-    inputRef.current?.focus()
-  }, [onClear])
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Escape") {
-        onClear()
-        inputRef.current?.blur()
-      }
-    },
-    [onClear]
-  )
-
   return (
     <div className="px-2 py-1.5 border-b border-white/[0.04]">
-      <div
-        className={cn(
-          "flex items-center gap-1 rounded px-2 py-1 transition-colors",
-          focused
-            ? "bg-white/[0.08] border border-blue-500/40"
-            : "bg-white/[0.04] border border-white/[0.06]"
-        )}
-      >
-        <Search className="h-3 w-3 shrink-0 text-white/20" />
+      <div className={cn(
+        "flex items-center gap-1.5 rounded-md px-2 py-1 transition-all duration-100 border",
+        focused ? "border-blue-500/40 bg-white/[0.04]" : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1]",
+      )}>
+        <Search className="h-3 w-3 shrink-0 text-white/25" />
         <input
           ref={inputRef}
           value={value}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          onFocus={() => {
-            setFocused(true)
-            onFocus?.()
-          }}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") { onClear(); inputRef.current?.blur() } }}
+          onFocus={() => { setFocused(true); onFocus?.() }}
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
-          className="flex-1 bg-transparent text-[11px] text-white/70 outline-none placeholder-white/20 min-w-0"
+          className="flex-1 bg-transparent text-[11px] text-white/70 outline-none placeholder:text-white/20 min-w-0"
         />
         {value && (
-          <button
-            onClick={handleClear}
-            className="text-white/20 hover:text-white/60 transition-colors shrink-0"
-          >
-            <X className="h-3 w-3" />
+          <button onClick={onClear} className="rounded p-0.5 text-white/20 hover:text-white/50 hover:bg-white/[0.06] transition-all">
+            <X className="h-2.5 w-2.5" />
           </button>
         )}
+        <kbd className="text-[8px] font-mono text-white/15 bg-white/[0.04] px-1 rounded shrink-0">^P</kbd>
       </div>
     </div>
   )
-}
-
-function cn(...classes: (string | boolean | undefined | null)[]): string {
-  return classes.filter(Boolean).join(" ")
 }

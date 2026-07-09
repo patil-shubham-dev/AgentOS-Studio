@@ -1,5 +1,3 @@
-export const TRANSPORT_VERSION = 1
-
 export type TransportMethod = "GET" | "POST" | "DELETE" | "PUT" | "PATCH"
 
 export type TransportProtocol = "openai" | "anthropic" | "gemini" | "ollama" | "unknown"
@@ -100,7 +98,7 @@ export const DEFAULT_TRANSPORT_CONFIG: TransportConfig = {
 
 export interface TransportTraceEvent {
   timestamp: number
-  type: "request_start" | "request_end" | "request_error" | "retry" | "stream_start" | "stream_chunk" | "stream_end" | "stream_error" | "middleware_start" | "middleware_end"
+  type: "request_start" | "request_end" | "request_error"
   label: string
   durationMs?: number
   data?: Record<string, unknown>

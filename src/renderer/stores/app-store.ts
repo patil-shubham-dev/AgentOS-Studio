@@ -141,7 +141,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     persistSandboxMode(mode)
     set({ sandboxMode: mode })
   },
-  mockMode: false,
+  mockMode: true,
   setMockMode: (enabled) => set({ mockMode: enabled }),
   setAppState: (state) => set({ appState: state }),
   updateAgent: (agentId, updates) =>
@@ -178,6 +178,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     if (provider.apiKey) {
       setApiKey(stableId, provider.apiKey).catch(() => {})
+    }
+    // Auto-disable mock mode when a real provider is added
+    if (get().mockMode) {
+      set({ mockMode: false })
     }
   },
   updateProvider: (providerId, updates) => {

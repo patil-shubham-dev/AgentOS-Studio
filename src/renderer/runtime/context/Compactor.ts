@@ -2,6 +2,7 @@ import type { CompactResult, CompactStrategy, MessageLike, BudgetState } from '.
 import { TokenEstimator } from './TokenEstimator'
 import { ContextWindowResolver } from './ContextWindowResolver'
 import { TokenBudgetTracker } from './TokenBudgetTracker'
+import type { LifecycleHookRegistry } from '@/runtime/lifecycle'
 
 export type CompactorConfig = {
   autoCompactThreshold: number
@@ -31,6 +32,7 @@ export class Compactor {
   private budgetTracker: TokenBudgetTracker
   private consecutiveCompactions: number = 0
   private lastCompactStrategy: CompactStrategy | null = null
+  private lifecycleHooks: LifecycleHookRegistry | null = null
 
   /** Callback invoked after any compaction completes with the result (for cache invalidation, observability, etc.) */
   onPostCompact: ((result: CompactResult) => void) | null = null
@@ -43,6 +45,15 @@ export class Compactor {
     this.resolver = resolver
     this.budgetTracker = budgetTracker
     this.config = { ...DEFAULT_COMPACTOR_CONFIG, ...config }
+  }
+
+  connectLifecycleRegistry(registry: LifecycleHookRegistry): void {
+    this.lifecycleHooks = registry
+  }
+
+  private firePostCompact(result: CompactResult): void {
+    this.onPostCompact?.(result)
+    this.lifecycleHooks?.dispatchAll('postCompact', { compactResult: result }).catch(() => {})
   }
 
   setConfig(config: Partial<CompactorConfig>): void {
@@ -92,7 +103,7 @@ export class Compactor {
         tokensRecovered: 0,
         retainedMessages: messages,
       }
-      this.onPostCompact?.(noopResult)
+      this.firePostCompact(noopResult)
       return noopResult
     }
 
@@ -111,7 +122,7 @@ export class Compactor {
       tokensRecovered: Math.max(0, beforeTokens - afterTokens),
       retainedMessages: retained,
     }
-    this.onPostCompact?.(autoResult)
+    this.firePostCompact(autoResult)
     return autoResult
   }
 
@@ -157,7 +168,7 @@ export class Compactor {
       tokensRecovered: Math.max(0, beforeTokens - afterTokens),
       retainedMessages: retained,
     }
-    this.onPostCompact?.(microResult)
+    this.firePostCompact(microResult)
     return microResult
   }
 
@@ -176,7 +187,7 @@ export class Compactor {
         tokensRecovered: 0,
         retainedMessages: messages,
       }
-      this.onPostCompact?.(noopResult)
+      this.firePostCompact(noopResult)
       return noopResult
     }
 
@@ -197,7 +208,7 @@ export class Compactor {
       summaryGenerated: true,
       retainedMessages: retained,
     }
-    this.onPostCompact?.(reactiveResult)
+    this.firePostCompact(reactiveResult)
     return reactiveResult
   }
 
@@ -227,7 +238,7 @@ export class Compactor {
       tokensRecovered: Math.max(0, beforeTokens - afterTokens),
       summaryGenerated: true,
     }
-    this.onPostCompact?.(smResult)
+    this.firePostCompact(smResult)
     return smResult
   }
 

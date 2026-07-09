@@ -13,6 +13,7 @@ import { ReducedMotionProvider } from '@/lib/reduced-motion'
 import { WelcomeWizard } from '@/components/workspace/WelcomeWizard'
 import { AboutDialog } from '@/components/AboutDialog'
 import { StartupTiming } from '@/lib/startup-timing'
+import { InstallWizard } from '@/pages/install-wizard'
 import { StartupStore, type StartupPhase } from '@/lib/startup-store'
 import logoSvg from '@/assets/branding/logo.svg'
 
@@ -158,6 +159,7 @@ export default function App({ startupPhase }: AppProps) {
           } />
           <Route path="/settings" element={<SafeErrorBoundary name="Settings"><RouteContainer><SettingsPage /></RouteContainer></SafeErrorBoundary>} />
           <Route path="/git" element={<SafeErrorBoundary name="Git"><RouteContainer><GitPage /></RouteContainer></SafeErrorBoundary>} />
+          <Route path="/install" element={<InstallWizard />} />
           {import.meta.env.DEV && (
             <>
               <Route path="/__health" element={<SafeErrorBoundary name="Health"><RuntimeHealthPanel /></SafeErrorBoundary>} />
