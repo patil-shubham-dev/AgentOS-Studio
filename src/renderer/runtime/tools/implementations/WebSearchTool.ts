@@ -3,6 +3,47 @@ import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
 
+interface SearchResult {
+  title: string
+  url: string
+  snippet: string
+}
+
+function parseDuckDuckGoResults(html: string, maxResults: number): SearchResult[] {
+  const results: SearchResult[] = []
+
+  // DuckDuckGo Lite returns results in a stable table format with class names.
+  // Each result row contains a link with class "result-link" and a snippet
+  // in a sibling cell with class "result-snippet".
+  const linkRegex = /<a[^>]+class="result-link"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi
+  const snippetRegex = /<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>/gi
+
+  const links: { url: string; title: string }[] = []
+  let m: RegExpExecArray | null
+  while ((m = linkRegex.exec(html)) !== null && links.length < maxResults) {
+    const url = m[1].replace(/&amp;/g, '&')
+    const title = m[2].replace(/<[^>]+>/g, '').trim()
+    if (url && title) links.push({ url, title })
+  }
+
+  const snippets: string[] = []
+  while ((m = snippetRegex.exec(html)) !== null && snippets.length < maxResults) {
+    const snippet = m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+    if (snippet) snippets.push(snippet)
+    else snippets.push('')
+  }
+
+  for (let i = 0; i < links.length; i++) {
+    results.push({
+      title: links[i].title,
+      url: links[i].url,
+      snippet: snippets[i] ?? '',
+    })
+  }
+
+  return results
+}
+
 export const WebSearchTool: AgentTool = buildTool({
   name: 'web_search',
   description: 'Search the web for a query and return summarized results',
@@ -26,14 +67,24 @@ export const WebSearchTool: AgentTool = buildTool({
     const num = Number(input.num_results ?? 5)
     if (!query) return { data: null, error: 'query is required', isError: true }
     try {
-      const resp = await fetch(`https://www.google.com/search?q=${encodeURIComponent(query)}&num=${num}`, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      })
+      const resp = await fetch(
+        `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`,
+        { headers: { 'User-Agent': 'AgenticOS/1.0' } },
+      )
+      if (!resp.ok) {
+        return { data: null, error: `Search backend returned status ${resp.status}`, isError: true }
+      }
       const html = await resp.text()
-      const titles = html.match(/<h3[^>]*>(.*?)<\/h3>/g)?.map(t => t.replace(/<[^>]+>/g, '')) ?? []
-      const snippets = html.match(/<div[^>]*class="[^"]*VwiC3b[^"]*"[^>]*>(.*?)<\/div>/g)?.map(s => s.replace(/<[^>]+>/g, '')) ?? []
-      const results = titles.map((t, i) => `${i + 1}. ${t}${snippets[i] ? ` \u2014 ${snippets[i].slice(0, 200)}` : ''}`).join('\n')
-      return { data: results || 'No results found' }
+      const results = parseDuckDuckGoResults(html, num)
+
+      if (results.length === 0) {
+        return { data: 'No results found' }
+      }
+
+      const formatted = results
+        .map((r, i) => `${i + 1}. ${r.title}\n   URL: ${r.url}\n   ${r.snippet.slice(0, 250)}`)
+        .join('\n\n')
+      return { data: formatted }
     } catch (e) {
       return { data: null, error: `Search failed: ${e}`, isError: true }
     }
