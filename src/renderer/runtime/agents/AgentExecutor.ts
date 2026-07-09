@@ -551,8 +551,10 @@ export class AgentExecutor {
               const isCommand = entry.name === 'run_command'
               const commandStr = isCommand ? (entry.args.command as string || '') : ''
 
+              const rootCwd = useWorkspaceStore.getState().rootPath ?? process.cwd()
+
               if (isCommand) {
-                yield { type: "COMMAND_START", executionId: eid, command: commandStr, cwd: ctx.cwd, timestamp: Date.now() }
+                yield { type: "COMMAND_START", executionId: eid, command: commandStr, cwd: rootCwd, timestamp: Date.now() }
               }
 
               const toolNameDisplay = entry.name.replace(/_/g, ' ')
@@ -566,6 +568,7 @@ export class AgentExecutor {
                 const streamCtx: import("@/runtime/tools/core/ToolContext").ToolContext = {
                   role: this.role,
                   signal: this.signal,
+                  cwd: rootCwd,
                   onOutput: (line: string) => {
                     if (!channel.closed) {
                       channel.push({ type: "COMMAND_OUTPUT", executionId: eid, output: line + "\n", timestamp: Date.now() })
