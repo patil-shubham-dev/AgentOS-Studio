@@ -466,19 +466,21 @@ export class UnifiedExecutor {
       executor.setScratchpad(scratchpad)
 
       let content = ""
+      let agentFailed = false
       for await (const event of executor.execute()) {
         if (ctrl.signal.aborted) break
         if (performance.now() - agentT0 > AGENT_TIMEOUT_MS) {
           throw new Error(`Agent ${runtimeRole} timed out`)
         }
         if (event.type === "MESSAGE_COMPLETE") { content = event.content; continue }
+        if (event.type === "EXECUTION_FAILED") { agentFailed = true }
         yield event
       }
 
       console.log("[FLOW:12] UnifiedExecutor.fullPath: agent for-await complete for role=" + role)
       StreamManager.getInstance().complete(stepId)
       if (!ctrl.signal.aborted) {
-        yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: content || "", finishReason: "stop", timestamp: Date.now() }
+        yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: content || "", finishReason: agentFailed ? "error" : "stop", timestamp: Date.now() }
         results.push({ role: runtimeRole, content: content || "" })
         previousOutput = content
       }

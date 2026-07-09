@@ -298,6 +298,7 @@ export class AgentExecutor {
       let responseContent = ""
       const responseToolCalls: ToolCall[] = []
       let failed = false
+      let roundError = ""
 
       const gwMessages: GatewayRequest["messages"] = msgs.map((m) => {
         const base: GatewayRequest["messages"][number] = {
@@ -349,13 +350,20 @@ export class AgentExecutor {
             break
           case "error":
             failed = true
+            roundError = event.userMessage
             yield { type: "EXECUTION_FAILED", executionId: eid, error: event.userMessage, durationMs: Math.round(performance.now() - startedAt), timestamp: Date.now() }
             break
         }
       }
       console.log("[FLOW:15] AgentExecutor.executeFull: provider for-await complete (round " + round + ", failed=" + failed + ", contentLen=" + responseContent.length + ", toolCalls=" + responseToolCalls.length + ")")
 
-      if (failed) break
+      if (failed) {
+        const errorMsg = roundError || "Request failed — provider returned an error"
+        const toolCount = msgs.filter((m) => m.role === "tool").length
+        const totalElapsedMs = performance.now() - startedAt
+        yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content: `${errorMsg}`, finishReason: "error", timestamp: Date.now(), tokensIn: totalUsage.prompt_tokens, tokensOut: totalUsage.completion_tokens }
+        return
+      }
 
       if (responseContent) {
         yield { type: "MESSAGE_UPDATE", executionId: eid, content: responseContent, timestamp: Date.now() }

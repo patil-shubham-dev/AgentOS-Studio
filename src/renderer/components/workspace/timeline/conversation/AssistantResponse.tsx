@@ -140,7 +140,7 @@ function ToolCallLineStatus({ status }: { status: ToolCallRecord["status"] }) {
   }
 }
 
-function ToolCallLine({ tc }: { tc: ToolCallRecord }) {
+function ToolCallLine({ tc, index = 0 }: { tc: ToolCallRecord; index?: number }) {
   const [showResult, setShowResult] = useState(tc.status === "error")
   const activity = mapToolToActivity(tc.name)
   const detail = getToolCallDetail(tc)
@@ -149,9 +149,9 @@ function ToolCallLine({ tc }: { tc: ToolCallRecord }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -4 }}
+      initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={getSpringConfig("gentle")}
+      transition={{ ...getSpringConfig("gentle"), delay: Math.min(index * 0.03, 0.15) }}
     >
       <button
         onClick={() => setShowResult(!showResult)}
@@ -231,8 +231,8 @@ function ToolCallAccumulator({ session, isRunning }: { session: AgentSession; is
             transition={getSpringConfig("fast")}
             className="ml-3 mt-0.5 space-y-0.5 overflow-hidden"
           >
-            {session.toolCalls.map(tc => (
-              <ToolCallLine key={tc.id} tc={tc} />
+            {session.toolCalls.map((tc, i) => (
+              <ToolCallLine key={tc.id} tc={tc} index={i} />
             ))}
           </motion.div>
         )}

@@ -215,7 +215,7 @@ export function route(
     hasCode ||
     hasFilePath ||
     category === "coding" ||
-    /\bedit\b|\bfix\b|\badd\b|\brefactor\b|\bdebug\b|\bexplain\b|\btest\b|\bwrite\b|\bimplement\b|\bcreate\b|\bupdate\b|\bremove\b|\bdelete\b|\brename\b|\boptimize\b/i.test(input)
+    /\bedit\b|\bfix\b|\badd\b|\brefactor\b|\bdebug\b|\bexplain\b|\btest\b|\bwrite\b|\bimplement\b|\bcreate\b|\bupdate\b|\bremove\b|\bdelete\b|\brename\b|\boptimize\b|\banalyz|\banalys|\bexplor|\bexamin|\binvestigat/i.test(input)
 
   if (isCodingIntent) {
     const coderAvailable = wiredRoles.includes("coder" as RuntimeRole)

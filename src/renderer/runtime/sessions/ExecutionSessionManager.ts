@@ -483,24 +483,33 @@ export class ExecutionSessionManager {
       case "MESSAGE_COMPLETE": {
         const slowTimeout = this.loadingSlowTimeouts.get(event.executionId)
         if (slowTimeout) { clearTimeout(slowTimeout); this.loadingSlowTimeouts.delete(event.executionId) }
+        const finishReason = (event as any).finishReason
+        const isError = finishReason === "error"
+
         StreamManager.getInstance().clearStep(event.stepId)
         timeline.commitStreamingText(event.stepId)
-        timeline.updateAgentSession(event.stepId, { status: "complete", streamState: "completed", completedAt: Date.now() })
+
+        if (isError) {
+          const errorMsg = (event as any).content || event.content || "Request failed — provider returned an error"
+          timeline.updateAgentSession(event.stepId, { status: "error", streamState: "failed", error: errorMsg, completedAt: Date.now() })
+        } else {
+          timeline.updateAgentSession(event.stepId, { status: "complete", streamState: "completed", completedAt: Date.now() })
+        }
         this.stepByExecId.delete(event.executionId)
-        if (event.content) {
+        if (event.content && !isError) {
           useAgentStore.getState().addMessage(options.activeRole, {
             role: "assistant",
             content: event.content,
             timestamp: Date.now(),
           })
         }
-        // Mark agent as complete
+        // Mark agent as complete/failed
         const role = this.execRoleMap.get(event.executionId)
         if (role) {
           useAgentStore.getState().setAgentStatus(role, {
-            state: "complete",
-            currentTask: "Complete",
-            lastAction: "Task finished",
+            state: isError ? "failed" : "complete",
+            currentTask: isError ? "Failed" : "Complete",
+            lastAction: isError ? "Request failed — provider error" : "Task finished",
           })
           this.execRoleMap.delete(event.executionId)
         }
