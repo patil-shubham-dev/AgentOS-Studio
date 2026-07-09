@@ -15,7 +15,7 @@ interface SchemaField {
 
 export class ToolValidator {
   validate(tool: AgentTool, input: unknown, _ctx: ToolContext): ValidationResult {
-    const schema = tool.inputSchema
+    const schema = tool.inputSchema as Record<string, unknown> | undefined
     if (!schema || Object.keys(schema).length === 0) return { valid: true }
 
     if (typeof input !== 'object' || input === null) {
@@ -24,10 +24,27 @@ export class ToolValidator {
 
     const inputRecord = input as Record<string, unknown>
 
-    for (const [key, fieldDef] of Object.entries(schema)) {
+    const properties = (schema.properties as Record<string, unknown> | undefined)
+      ?? schema
+    const requiredFields = Array.isArray(schema.required)
+      ? (schema.required as string[])
+      : null
+
+    for (const [key, fieldDef] of Object.entries(properties)) {
+      if (requiredFields === null && (key === 'type' || key === 'properties' || key === 'required')) {
+        continue
+      }
+
       const field = typeof fieldDef === 'object' && fieldDef !== null
         ? fieldDef as SchemaField
         : { type: String(fieldDef) }
+
+      if (requiredFields !== null && requiredFields.includes(key)) {
+        if (inputRecord[key] === undefined) {
+          return { valid: false, error: `Missing required field: "${key}"`, code: 422 }
+        }
+      }
+
       const val = inputRecord[key]
       if (val === undefined) continue
 
@@ -72,16 +89,32 @@ export class ToolValidator {
   }
 
   validateRequiredFields(tool: AgentTool, input: unknown): ValidationResult {
-    const schema = tool.inputSchema
+    const schema = tool.inputSchema as Record<string, unknown> | undefined
     if (!schema) return { valid: true }
-    const inputRecord = input as Record<string, unknown>
 
-    for (const [key, fieldDef] of Object.entries(schema)) {
-      const field = typeof fieldDef === 'object' && fieldDef !== null
-        ? fieldDef as SchemaField
-        : { type: String(fieldDef) }
-      if (field.required !== false && inputRecord[key] === undefined) {
-        return { valid: false, error: `Missing required field: "${key}"`, code: 422 }
+    const inputRecord = input as Record<string, unknown>
+    const requiredFields = Array.isArray(schema.required)
+      ? (schema.required as string[])
+      : null
+
+    if (requiredFields) {
+      for (const key of requiredFields) {
+        if (inputRecord[key] === undefined) {
+          return { valid: false, error: `Missing required field: "${key}"`, code: 422 }
+        }
+      }
+    } else {
+      // Fallback for flat schemas without top-level required array
+      const properties = schema.properties as Record<string, unknown> | undefined
+        ?? schema
+      for (const [key, fieldDef] of Object.entries(properties)) {
+        if (key === 'type' || key === 'properties' || key === 'required') continue
+        const field = typeof fieldDef === 'object' && fieldDef !== null
+          ? fieldDef as SchemaField
+          : { type: String(fieldDef) }
+        if (field.required !== false && inputRecord[key] === undefined) {
+          return { valid: false, error: `Missing required field: "${key}"`, code: 422 }
+        }
       }
     }
 
