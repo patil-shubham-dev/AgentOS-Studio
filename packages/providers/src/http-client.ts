@@ -96,6 +96,40 @@ export async function tauriFetch(
   return globalThis.fetch(input, init)
 }
 
+/**
+ * Fetch with configurable timeout. Logs on failure for observability.
+ * Single shared implementation — do not duplicate.
+ */
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit & { timeout?: number },
+): Promise<Response> {
+  const timeout = options.timeout ?? 10000
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeout)
+
+  try {
+    const maskedUrl = url.length > 80 ? url.slice(0, 80) + '...' : url
+    console.log(`[fetchWithTimeout] fetching ${maskedUrl} (timeout=${timeout}ms)`)
+
+    const response = await tauriFetch(url, {
+      ...options,
+      signal: options.signal ?? ctrl.signal,
+    })
+
+    console.log(`[fetchWithTimeout] ${maskedUrl} → ${response.status} ${response.statusText}`)
+    return response
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    const name = err instanceof Error ? err.name : 'Unknown'
+    const maskedUrl = url.length > 80 ? url.slice(0, 80) + '...' : url
+    console.error(`[fetchWithTimeout] FAILED ${maskedUrl}:`, { name, message: msg })
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function tauriFetchStreaming(
   input: string | URL,
   init?: RequestInit,

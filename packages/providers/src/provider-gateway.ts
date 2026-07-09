@@ -1,4 +1,4 @@
-import { tauriFetch } from "./http-client"
+import { tauriFetch, fetchWithTimeout } from "./http-client"
 import type { ProviderModel, RuntimeInfo, ValidationResult, DiscoveryResult } from "@agentic-os/shared"
 import { recordSuccess, recordFailure, addTrace } from "./provider-health"
 
@@ -230,22 +230,6 @@ export async function detectRuntime(baseUrl: string): Promise<RuntimeInfo> {
 }
 
 // ── Provider Validation (frontend-only via fetch) ──
-
-async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number }): Promise<Response> {
-  const timeout = options.timeout ?? 10000
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeout)
-  
-  try {
-    const response = await tauriFetch(url, {
-      ...options,
-      signal: options.signal ?? ctrl.signal,
-    })
-    return response
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 function getAdapterId(baseUrl: string): string {
   const url = baseUrl.toLowerCase()

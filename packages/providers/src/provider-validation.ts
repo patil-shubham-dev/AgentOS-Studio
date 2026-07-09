@@ -1,4 +1,4 @@
-import { tauriFetch } from "./http-client"
+import { tauriFetch, fetchWithTimeout } from "./http-client"
 import type { ValidationRun, ValidationStepResult } from "./provider-types"
 import type { ProviderCapabilities } from "./transport-adapters"
 import { recordValidationRun, recordSuccess, recordFailure } from "./provider-health"
@@ -9,36 +9,6 @@ let pipelineCounter = 0
 
 function generateRunId(): string {
   return `val_${Date.now()}_${++pipelineCounter}`
-}
-
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit & { timeout?: number },
-): Promise<Response> {
-  const { timeout = 10000, ...fetchOpts } = options
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeout)
-
-  try {
-    const maskedUrl = url.length > 80 ? url.slice(0, 80) + "..." : url
-    console.log(`[fetchWithTimeout] fetching ${maskedUrl} (timeout=${timeout}ms)`)
-
-    const response = await tauriFetch(url, {
-      ...fetchOpts,
-      signal: options.signal ?? ctrl.signal,
-    })
-
-    console.log(`[fetchWithTimeout] ${maskedUrl} → ${response.status} ${response.statusText}`)
-    return response
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const name = err instanceof Error ? err.name : "Unknown"
-    const maskedUrl = url.length > 80 ? url.slice(0, 80) + "..." : url
-    console.error(`[fetchWithTimeout] FAILED ${maskedUrl}:`, { name, message: msg })
-    throw err
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 function buildBaseUrl(raw: string): string {
