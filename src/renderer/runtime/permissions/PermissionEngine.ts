@@ -50,7 +50,7 @@ export class PermissionEngine {
 
     const policyResult = this.policyResolver.resolveWithMode(toolName, {}, permCtx)
 
-    if (policyResult.behavior === 'deny') {
+    if (policyResult.behavior === 'deny' || policyResult.behavior === 'hidden') {
       this.cache(cacheKey, policyResult)
       return policyResult
     }

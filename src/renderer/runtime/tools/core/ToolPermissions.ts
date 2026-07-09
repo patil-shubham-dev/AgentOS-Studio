@@ -1,4 +1,4 @@
-export type PermissionBehavior = 'allow' | 'deny' | 'ask'
+export type PermissionBehavior = 'allow' | 'deny' | 'hidden' | 'ask'
 export type PermissionMode = 'default' | 'autonomous' | 'interactive' | 'bypass'
 
 export type PermissionResult = {

@@ -91,6 +91,10 @@ export class ToolExecutionPipeline {
       }
 
       const finalPermission = await this.permissionEngine.evaluate(toolName, permResult, ctx)
+      if (finalPermission.behavior === 'hidden') {
+        // Hidden: silently return empty result — model never learns the path existed
+        return { data: null, isError: false }
+      }
       if (finalPermission.behavior === 'deny') {
         const errResult: ToolResult = { data: null, error: finalPermission.message ?? 'Permission denied', isError: true }
         return errResult
