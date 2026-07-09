@@ -144,6 +144,19 @@ export class MultiAgentOrchestrator {
     return { tasks: this.tasks, currentIndex: 0 }
   }
 
+  getReadyTasks(): AgentTask[] {
+    return this.tasks.filter((task) => {
+      if (task.status !== "pending") return false
+      if (task.dependsOn && task.dependsOn.length > 0) {
+        return task.dependsOn.every((depId) => {
+          const dep = this.tasks.find((t) => t.id === depId)
+          return dep?.status === "completed"
+        })
+      }
+      return true
+    })
+  }
+
   getNextReadyTask(): AgentTask | null {
     for (const task of this.tasks) {
       if (task.status !== "pending") continue
@@ -235,57 +248,83 @@ export class MultiAgentOrchestrator {
     let failReason = ""
 
     for (let repairLoop = 0; repairLoop <= maxRepairLoops; repairLoop++) {
-      let task: AgentTask | null
-      while ((task = this.getNextReadyTask()) !== null) {
-        if (signal?.aborted) break
-        const roleName = INTERNAL_ROLE_NAMES[task.role]
-        const stepId = `${executionId}_${task.role}_${task.id}`
+      let hasWork = true
+      while (hasWork && !signal?.aborted) {
+        const readyTasks = this.getReadyTasks()
+        if (readyTasks.length === 0) { hasWork = false; break }
 
-        this.markTaskRunning(task.id)
-        yield {
-          type: "AGENT_ASSIGNED",
-          executionId,
-          correlationId,
-          roleId: task.role,
-          roleName,
-          stepId,
-          executionStrategy: "multi-agent",
-          timestamp: Date.now(),
+        // Yield AGENT_ASSIGNED for all ready tasks before execution
+        for (const task of readyTasks) {
+          this.markTaskRunning(task.id)
         }
 
-        const agentInput = this.getContextForTask(task.id)
-        const executor = new AgentExecutor({
-          executionId: `${executionId}_${task.id}`,
-          mode: "FULL",
-          role: runtimeRole as RuntimeRole,
-          input: agentInput,
-          history: [],
-          signal,
+        // Execute all ready tasks in parallel
+        type TaskResult = { taskId: string; content: string; events: ExecutionEvent[]; error: string | null }
+        const taskExecutions = readyTasks.map(async (task): Promise<TaskResult> => {
+          const roleName = INTERNAL_ROLE_NAMES[task.role]
+          const stepId = `${executionId}_${task.role}_${task.id}`
+          const agentInput = this.getContextForTask(task.id)
+          const executor = new AgentExecutor({
+            executionId: `${executionId}_${task.id}`,
+            mode: "FULL",
+            role: runtimeRole as RuntimeRole,
+            input: agentInput,
+            history: [],
+            signal,
+          })
+
+          const collected: ExecutionEvent[] = []
+          collected.push({
+            type: "AGENT_ASSIGNED",
+            executionId,
+            correlationId,
+            roleId: task.role,
+            roleName,
+            stepId,
+            executionStrategy: "multi-agent",
+            timestamp: Date.now(),
+          })
+
+          let content = ""
+          for await (const event of executor.execute()) {
+            if (signal?.aborted) break
+            if (event.type === "MESSAGE_COMPLETE") { content = event.content; continue }
+            collected.push(event)
+          }
+
+          if (signal?.aborted) {
+            return { taskId: task.id, content: "", events: collected, error: "Cancelled" }
+          }
+
+          collected.push({
+            type: "ACTION",
+            executionId,
+            agentRole: task.role,
+            action: `${roleName} completed task ${task.id}`,
+            status: "success",
+            summary: content.slice(0, 200),
+            timestamp: Date.now(),
+          })
+
+          return { taskId: task.id, content, events: collected, error: null }
         })
 
-        let content = ""
-        for await (const event of executor.execute()) {
-          if (signal?.aborted) break
-          if (event.type === "MESSAGE_COMPLETE") { content = event.content; continue }
-          yield event
-        }
-
-        if (signal?.aborted) {
-          this.markTaskFailed(task.id, "Cancelled")
-          break
-        }
-
-        this.markTaskCompleted(task.id, content)
-        agentsResults.push({ role: task.role, content })
-
-        yield {
-          type: "ACTION",
-          executionId,
-          agentRole: task.role,
-          action: `${INTERNAL_ROLE_NAMES[task.role]} completed task ${task.id}`,
-          status: "success",
-          summary: content.slice(0, 200),
-          timestamp: Date.now(),
+        const settled = await Promise.allSettled(taskExecutions)
+        for (let i = 0; i < settled.length; i++) {
+          const s = settled[i]
+          const task = readyTasks[i]
+          if (s.status === "fulfilled") {
+            const { content, events, error } = s.value
+            for (const ev of events) yield ev
+            if (error) {
+              this.markTaskFailed(task.id, error)
+            } else {
+              this.markTaskCompleted(task.id, content)
+              agentsResults.push({ role: task.role, content })
+            }
+          } else {
+            this.markTaskFailed(task.id, (s.reason as Error)?.message ?? "Execution failed")
+          }
         }
       }
 
