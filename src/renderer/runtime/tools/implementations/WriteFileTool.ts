@@ -5,8 +5,17 @@ import { ToolCapabilities } from '../core/ToolCapabilities'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
 import { fileContentCache } from '@/lib/FileContentCache'
+import { createFile } from '@/lib/filesystem'
 
 const changesetByTrace = new Map<string, string>()
+const CHANGESET_MAP_MAX_SIZE = 200
+function setChangeSetEntry(traceId: string, changeSetId: string): void {
+  if (changesetByTrace.size >= CHANGESET_MAP_MAX_SIZE) {
+    const firstKey = changesetByTrace.keys().next().value
+    if (firstKey !== undefined) changesetByTrace.delete(firstKey)
+  }
+  changesetByTrace.set(traceId, changeSetId)
+}
 
 function recordWriteChangeSetEntry(
   ctx: ToolContext,
@@ -26,7 +35,7 @@ function recordWriteChangeSetEntry(
       sourceToolCallIds: [traceId],
     })
     changeSetId = cs.id
-    changesetByTrace.set(traceId, changeSetId)
+    setChangeSetEntry(traceId, changeSetId)
   }
 
   ChangeSetManager.getInstance().addFileToChangeSet({
@@ -51,6 +60,21 @@ async function readTextFile(path: string): Promise<string | null> {
   }
 }
 
+async function writeTextFile(path: string, content: string): Promise<void> {
+  try {
+    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+      const { writeTextFile: shimWrite } = await import('@/lib/electron-api')
+      await shimWrite(path, content)
+      return
+    }
+    const fs = await import('@/lib/electron-api')
+    await fs.writeTextFile(path, content)
+  } catch {
+    // Fall back to filesystem lib
+    await createFile(path, content)
+  }
+}
+
 function resolvePath(rootPath: string | null, inputPath: string): string {
   if (!rootPath) return inputPath
   if (/^[a-zA-Z]:[\\/]/.test(inputPath)) return inputPath
@@ -59,7 +83,7 @@ function resolvePath(rootPath: string | null, inputPath: string): string {
 
 export const WriteFileTool: AgentTool = buildTool({
   name: 'write_file',
-  description: 'Write content to a file (creates directories if needed)',
+  description: 'Write content to a file (creates directories if needed), updating the file on disk immediately',
   inputSchema: {
     type: 'object',
     properties: {
@@ -86,17 +110,24 @@ export const WriteFileTool: AgentTool = buildTool({
 
     const existingContent = await readTextFile(fullPath)
 
-    // Update in-memory cache so subsequent reads see proposed content
+    // Write to disk immediately so the file appears in the explorer
+    try {
+      await writeTextFile(fullPath, content)
+    } catch (writeErr) {
+      return { data: null, error: `Failed to write file: ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`, isError: true }
+    }
+
+    // Update in-memory cache so subsequent reads see current content
     fileContentCache.set(fullPath, content)
 
     const relativePath = path.replace(/^[/\\]/, '')
     recordWriteChangeSetEntry(ctx, relativePath, existingContent, content)
 
     return {
-      data: `Change proposed: ${relativePath} has been staged for review. Awaiting user acceptance in the diff panel.`,
+      data: `File written to ${relativePath}${existingContent !== null ? ' (modified)' : ' (created)'}`,
       meta: {
         path: relativePath,
-        status: 'pending_review',
+        status: 'written',
         changeType: existingContent !== null ? 'modify' : 'create',
       },
     }

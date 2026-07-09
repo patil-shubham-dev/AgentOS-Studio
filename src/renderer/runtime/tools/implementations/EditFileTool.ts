@@ -11,6 +11,14 @@ import { useDiffStore } from '@/stores/diff-store'
 import { createFile } from '@/lib/filesystem'
 
 const changesetByTrace = new Map<string, string>()
+const CHANGESET_MAP_MAX_SIZE = 200
+function setChangeSetEntry(traceId: string, changeSetId: string): void {
+  if (changesetByTrace.size >= CHANGESET_MAP_MAX_SIZE) {
+    const firstKey = changesetByTrace.keys().next().value
+    if (firstKey !== undefined) changesetByTrace.delete(firstKey)
+  }
+  changesetByTrace.set(traceId, changeSetId)
+}
 
 async function writeTextFile(path: string, content: string): Promise<void> {
   try {
@@ -47,7 +55,7 @@ function recordChangeSetEntry(
       sourceToolCallIds: [traceId],
     })
     changeSetId = cs.id
-    changesetByTrace.set(traceId, changeSetId)
+    setChangeSetEntry(traceId, changeSetId)
   }
 
   ChangeSetManager.getInstance().addFileToChangeSet({
