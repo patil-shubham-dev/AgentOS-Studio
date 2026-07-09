@@ -1,4 +1,4 @@
-import { resolve, normalize } from 'path'
+import { resolve, normalize, basename } from 'path'
 import { existsSync, realpathSync, appendFileSync, mkdirSync } from 'fs'
 import { log } from '../observability'
 import { app } from 'electron'
@@ -8,6 +8,42 @@ import { app } from 'electron'
  * Only paths within an explicitly opened workspace are allowed.
  * This prevents accidental file access outside the project boundary.
  */
+
+/** Sensitive file/directory patterns that should never be readable even inside the workspace */
+const SENSITIVE_PATH_PATTERNS = [
+  // Environment / secrets
+  '.env', '.env.local', '.env.production', '.env.development',
+  '.npmrc', '.yarnrc', '.pnpmrc',
+  '.gitconfig', '.git-credentials',
+  'credentials.json', 'credentials.yaml', 'credentials.yml',
+  'service-account.json', 'service-account.yaml',
+  'id_rsa', 'id_ed25519', 'id_ecdsa', 'id_dsa',
+  // Token / API key files
+  '.token', '.tokens', 'token.txt', 'tokens.txt',
+  'config.json', // common credential storage pattern
+  // Certificates
+  '*.pem', '*.key', '*.cert', '*.crt', '*.p12', '*.pfx',
+  // Private key material
+  '.ssh/', 'ssh/',
+  // Session / auth state
+  '.auth', 'auth.json', 'auth.tokens', 'session.json',
+  // Cloud provider creds
+  'aws-credentials', 'gcp-credentials', 'azure-credentials',
+  '.aws/credentials', '.gcp/credentials', '.azure/credentials',
+  'sops-age-key.txt',
+  // OS keyrings
+  '.gnupg/', '.password-store/',
+  // vault / walleth
+  '.vault', 'vault.json', 'vault.yaml',
+  // Database
+  '*.sqlite', '*.sqlite3', '*.db',
+  '*.kdbx', // Keepass databases
+  // Browser state
+  'Cookies', 'Login Data', 'Web Data', 'Local State',
+  // Windows-specific secrets
+  '.msi', '.pfx',
+]
+
 let allowedWorkspacePath: string | null = null
 let auditLogPath: string | null = null
 
@@ -46,7 +82,26 @@ function isPathAllowed(targetPath: string): boolean {
   try {
     const resolved = resolveSymlinks(targetPath)
     const allowedResolved = resolveSymlinks(allowedWorkspacePath)
-    return resolved.startsWith(allowedResolved)
+    if (!resolved.startsWith(allowedResolved)) return false
+
+    // Check against sensitive path patterns (case-insensitive on Windows)
+    const fileName = basename(resolved).toLowerCase()
+    const resolvedLower = resolved.toLowerCase()
+    for (const pattern of SENSITIVE_PATH_PATTERNS) {
+      const p = pattern.toLowerCase()
+      if (p.startsWith('*')) {
+        // Glob-like pattern: *.ext
+        if (fileName.endsWith(p.slice(1))) return false
+      } else if (p.endsWith('/')) {
+        // Directory pattern: .ssh/
+        if (resolvedLower.includes('/' + p) || resolvedLower.endsWith('/' + p.slice(0, -1))) return false
+      } else {
+        // Exact filename match
+        if (fileName === p) return false
+      }
+    }
+
+    return true
   } catch {
     return false
   }
