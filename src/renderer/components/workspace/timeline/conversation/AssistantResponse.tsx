@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import { getSpringConfig } from "@/lib/motion"
 import { ExecutionSessionManager } from "@/runtime/sessions/ExecutionSessionManager"
 import { ChangeSetManager } from "@/runtime/changeset/ChangeSetManager"
+import { classifyProviderError } from "@/runtime/providers/ProviderError"
 import { useChangeSetStore } from "@/runtime/changeset/ChangeSetStore"
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -80,23 +81,29 @@ function buildExecutionSummary(session: AgentSession): { main: string; details: 
   const termsCount = session.terminalOutputs.length
   const opsCount = session.fileOps.length
   const parts: string[] = []
+  if (toolCount > 0) parts.push(`${toolCount} step${toolCount > 1 ? "s" : ""}`)
   if (editCount > 0) parts.push(`${editCount} file${editCount > 1 ? "s" : ""} edited`)
   if (termsCount > 0) parts.push(`${termsCount} command${termsCount > 1 ? "s" : ""} run`)
   if (opsCount > 0) parts.push(`${opsCount} file op${opsCount > 1 ? "s" : ""}`)
-  if (toolCount > 0 && parts.length === 0) parts.push(`${toolCount} step${toolCount > 1 ? "s" : ""}`)
 
   const details: string[] = []
   const duration = session.completedAt && session.startedAt ? Math.round((session.completedAt - session.startedAt) / 1000) : null
-  if (duration !== null) details.push(`${duration}s`)
+  if (duration !== null) {
+    if (duration >= 60) {
+      details.push(`${Math.floor(duration / 60)}m ${duration % 60}s`)
+    } else {
+      details.push(`${duration}s`)
+    }
+  }
   if (session.modelName) details.push(session.modelName)
 
   const errors = session.toolCalls.filter(tc => tc.status === "error")
   if (errors.length > 0) details.push(`${errors.length} error${errors.length > 1 ? "s" : ""}`)
 
-  const fileList = session.fileEdits.map(e => e.path.split("/").pop() || e.path)
-  if (fileList.length > 0) details.push(fileList.join(", "))
-
-  return parts.length > 0 ? { main: parts.join(", "), details } : { main: "Completed", details }
+  if (toolCount === 0) {
+    return { main: "Completed", details }
+  }
+  return parts.length > 0 ? { main: parts.join(", "), details } : { main: `${toolCount} step${toolCount > 1 ? "s" : ""}`, details }
 }
 
 interface AssistantResponseProps {
@@ -334,6 +341,27 @@ function CodeChanges({
   )
 }
 
+function LiveTimer({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(() => Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [startedAt])
+
+  if (elapsed < 3) return null
+
+  const display = elapsed >= 60
+    ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`
+    : `${elapsed}s`
+
+  return (
+    <span className="text-[9px] text-white/15 tabular-nums ml-1.5">{display}</span>
+  )
+}
+
 export const AssistantResponse = memo(function AssistantResponse({
   stepId,
   isLatest,
@@ -359,7 +387,21 @@ export const AssistantResponse = memo(function AssistantResponse({
   const hasToolErrors = session.toolCalls.some((tc) => tc.status === "error")
   const isError = streamState === "failed"
   const isComplete = !isRunning && streamState === "completed"
+
+  // Only show reasoning block when actual reasoning content exists, or when
+  // the model has begun generating the response stream (avoids showing an
+  // empty "Show reasoning" button during the connecting phase for models that
+  // don't emit reasoning_content at all).
   const hasThinking = (session.reasoningText?.length ?? 0) > 0
+  const showReasoning = hasThinking || (isRunning && hasContent && !!session.streamingText)
+
+  // Determine whether the error appears transient (retryable) or permanent
+  const isTransientError = useMemo(() => {
+    if (!session.error) return false
+    const lower = session.error.toLowerCase()
+    return /resource.?exhausted|worker.*busy|too many requests|timeout|503|service.unavailable|capacity|rate.?limit|throttl|backoff|temp/i.test(lower)
+  }, [session.error])
+
   // Toolless turn (fast mode) → render a plain streaming bubble without chrome
   const isToolless = !hasToolCalls && !hasEdits && !hasTerminals && !hasFileOps
 
@@ -440,11 +482,12 @@ export const AssistantResponse = memo(function AssistantResponse({
               <span className="h-2 w-2 rounded-full bg-blue-400/80" />
             </span>
             <span className="text-sm text-white/50 italic font-medium">Thinking&hellip;</span>
+            {session.startedAt && <LiveTimer startedAt={session.startedAt} />}
           </motion.div>
         )}
 
-        {/* Reasoning content — collapsed by default with live indicator while streaming */}
-        {(hasThinking || isRunning) && (
+        {/* Reasoning content — only shown when actual reasoning tokens arrive */}
+        {showReasoning && (
           <ReasoningBlock content={session.reasoningText ?? ""} stepId={stepId} isStreaming={isRunning} />
         )}
 
@@ -483,11 +526,11 @@ export const AssistantResponse = memo(function AssistantResponse({
             animate={{ opacity: 1, y: 0, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={SECTION_SPRING}
-            className="flex items-center gap-2 py-1 text-[11px] text-emerald-400/60"
+            className="flex items-center gap-1.5 py-1 text-[11px] text-emerald-400/60"
           >
             <svg
               viewBox="0 0 14 14"
-              className="h-3.5 w-3.5 text-emerald-400/60 flex-shrink-0"
+              className="h-3 w-3 text-emerald-400/60 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               strokeWidth="2.5"
@@ -501,9 +544,9 @@ export const AssistantResponse = memo(function AssistantResponse({
                 transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
               />
             </svg>
-            <span>{executionSummary.main}</span>
+            <span className="font-medium tracking-tight">{executionSummary.main}</span>
             {executionSummary.details.length > 0 && (
-              <span className="text-[10px] text-white/20 ml-auto tabular-nums">
+              <span className="text-[10px] text-white/20 ml-auto tabular-nums tracking-tight">
                 {executionSummary.details.join(" · ")}
               </span>
             )}
@@ -523,7 +566,15 @@ export const AssistantResponse = memo(function AssistantResponse({
             <span className="h-2 w-2 rounded-full bg-blue-400/80" />
           </span>
           <span className="text-sm text-white/50 italic font-medium">{currentActivity}&hellip;</span>
+          {session.startedAt && <LiveTimer startedAt={session.startedAt} />}
         </motion.div>
+      )}
+
+      {/* Elapsed time counter during tool execution phase (when activity label is hidden) */}
+      {isRunning && hasContent && session.startedAt && (
+        <div className="flex items-center py-0.5">
+          <LiveTimer startedAt={session.startedAt} />
+        </div>
       )}
 
       {/* Single-line status note — replaces itself, never accumulates */}
@@ -538,8 +589,8 @@ export const AssistantResponse = memo(function AssistantResponse({
         </motion.div>
       )}
 
-      {/* Reasoning content — collapsed by default with live indicator while streaming */}
-      {(hasThinking || isRunning) && (
+      {/* Reasoning content — only shown when actual reasoning tokens arrive */}
+      {showReasoning && (
         <ReasoningBlock content={session.reasoningText ?? ""} stepId={stepId} isStreaming={isRunning} />
       )}
 
@@ -623,6 +674,7 @@ export const AssistantResponse = memo(function AssistantResponse({
           >
             <ProviderErrorCard
               error={session.error ?? "Unknown error"}
+              errorInfo={session.error ? classifyProviderError(session.error) : undefined}
               onRetry={onRetry && originalInput ? () => onRetry(originalInput!) : undefined}
             />
           </motion.div>
