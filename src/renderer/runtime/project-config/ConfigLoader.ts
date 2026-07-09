@@ -62,9 +62,9 @@ interface ConfigFileDef {
 
 const CONFIG_FILE_DEFS: ConfigFileDef[] = [
   // Managed/org-wide policies (lowest priority — loaded first, overridden by later files)
-  { source: "managed", pathTemplate: "${root}/.agentic-os/global/AGENTIC.md", priority: 0, optional: true },
+  { source: "managed", pathTemplate: "~/.agentic-os/AGENTIC.md", priority: 0, optional: true },
   // User-level preferences
-  { source: "user", pathTemplate: "${root}/.agentic-os/user/AGENTIC.md", priority: 1, optional: true },
+  { source: "user", pathTemplate: "~/.agentic/AGENTIC.md", priority: 1, optional: true },
   // Project-level AGENTIC.md (checked into git)
   { source: "project", pathTemplate: "${root}/AGENTIC.md", priority: 2, optional: true },
   { source: "project", pathTemplate: "${root}/.agentic/AGENTIC.md", priority: 2, optional: true },
@@ -119,6 +119,7 @@ export class ConfigLoader {
   private cacheDurationMs = 30_000
   private lastLoadTime = 0
   private readTimeoutMs = 3_000
+  private homeDirPromise: Promise<string> | null = null
 
   /**
    * Load all AGENTIC.md files for the given project root.
@@ -139,7 +140,7 @@ export class ConfigLoader {
 
     // Load priority-based config files
     for (const def of CONFIG_FILE_DEFS) {
-      const resolvedPath = this.resolvePath(def.pathTemplate, rootPath)
+      const resolvedPath = await this.resolvePath(def.pathTemplate, rootPath)
       const content = await withTimeoutFallback(
         this.readFile(resolvedPath),
         `read config: ${def.pathTemplate}`,
@@ -178,7 +179,7 @@ export class ConfigLoader {
     const env = getRuntimeEnvironment()
     if (env === "browser") return []
 
-    const rulesDir = this.resolvePath(RULES_DIR, rootPath)
+    const rulesDir = await this.resolvePath(RULES_DIR, rootPath)
     const allRules = await this.loadRulesDir(rulesDir)
     const globToRegex = (pattern: string) =>
       new RegExp("^" + pattern.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*").replace(/\?/g, ".") + "$")
@@ -199,8 +200,24 @@ export class ConfigLoader {
 
   // ── Private helpers ──
 
-  private resolvePath(template: string, rootPath: string): string {
-    return template.replace("${root}", rootPath)
+  private async getHomeDir(): Promise<string> {
+    if (!this.homeDirPromise) {
+      this.homeDirPromise = (async () => {
+        const { invoke } = await import("@/lib/electron-api")
+        const paths = await invoke('get_app_paths') as { home: string }
+        return paths.home
+      })()
+    }
+    return this.homeDirPromise
+  }
+
+  private async resolvePath(template: string, rootPath: string): Promise<string> {
+    let path = template.replace("${root}", rootPath)
+    if (path.startsWith("~/") || path === "~") {
+      const home = await this.getHomeDir()
+      path = path.replace(/^~/, home)
+    }
+    return path
   }
 
   private async readFile(path: string): Promise<string | null> {
