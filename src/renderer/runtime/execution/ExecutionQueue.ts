@@ -18,12 +18,13 @@ export interface QueueStatus {
   maxQueue: number
 }
 
+type ResolveReject = { resolve: () => void; reject: (err: unknown) => void }
+
 export class ExecutionQueue {
   private queue: QueuedExecution[] = []
   private active: QueuedExecution | null = null
   private maxQueue: number
-  private pendingResolver: (() => void) | null = null
-  private pendingRejecter: ((err: unknown) => void) | null = null
+  private pending: ResolveReject[] = []
 
   constructor(maxQueue = DEFAULT_MAX_QUEUE_SIZE) {
     this.maxQueue = maxQueue
@@ -54,7 +55,8 @@ export class ExecutionQueue {
 
     const promise = new Promise<void>((resolve, reject) => {
       this.queue.push(entry)
-      this.dispatch(resolve, reject)
+      this.pending.push({ resolve, reject })
+      this.activateNext()
     })
 
     return { promise, controller }
@@ -127,12 +129,6 @@ export class ExecutionQueue {
     }
   }
 
-  private dispatch(resolve: () => void, reject: (err: unknown) => void): void {
-    this.pendingResolver = resolve
-    this.pendingRejecter = reject
-    this.activateNext()
-  }
-
   private activateNext(): void {
     if (this.active) return
     const next = this.queue.shift()
@@ -141,11 +137,7 @@ export class ExecutionQueue {
     next.status = "running"
     next.startedAt = Date.now()
 
-    const res = this.pendingResolver
-    const rej = this.pendingRejecter
-    this.pendingResolver = null
-    this.pendingRejecter = null
-    if (res) res()
-    else if (rej) rej(new Error("Queue slot revoked"))
+    const slot = this.pending.shift()
+    if (slot) slot.resolve()
   }
 }
