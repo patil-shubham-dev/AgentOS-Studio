@@ -808,6 +808,12 @@ const LEGACY_ALIASES: Record<string, RuntimeRole> = {
   "Memory": "memory",
 
   "coding": "coder",
+
+  // Multi-agent internal roles (orchestrator.ts)
+  "planner": "manager",
+  "reviewer": "qa",
+  "debugger": "coder",
+  "tester": "qa",
 }
 
 export function normalizeRole(input: string): RuntimeRole | null {

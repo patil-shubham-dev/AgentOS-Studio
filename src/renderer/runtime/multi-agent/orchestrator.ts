@@ -241,7 +241,6 @@ export class MultiAgentOrchestrator {
     const plan = await this.plan(input, signal)
     yield { type: "THINKING_STARTED", executionId, label: `Plan: ${plan.tasks.length} steps`, timestamp: Date.now() }
 
-    const runtimeRole = normalizeRole("coder") ?? "coder"
     const agentsResults: { role: string; content: string }[] = []
     const maxRepairLoops = 2
 
@@ -265,10 +264,11 @@ export class MultiAgentOrchestrator {
           const roleName = INTERNAL_ROLE_NAMES[task.role]
           const stepId = `${executionId}_${task.role}_${task.id}`
           const agentInput = this.getContextForTask(task.id)
+          const runtimeRole = normalizeRole(task.role) ?? "coder"
           const executor = new AgentExecutor({
             executionId: `${executionId}_${task.id}`,
             mode: "FULL",
-            role: runtimeRole as RuntimeRole,
+            role: runtimeRole,
             input: agentInput,
             history: [],
             signal,
@@ -334,21 +334,20 @@ export class MultiAgentOrchestrator {
       // Reviewer pass
       yield { type: "THINKING_STARTED", executionId, label: "Reviewing changes", timestamp: Date.now() }
       const review = await this.runReviewer(signal)
-        if (review.overall === "blocked") {
-          yield { type: "VERIFY_FAILED", executionId, stepId: `${executionId}_review`, lintErrors: review.findings.length, typeErrors: 0, buildErrors: 0, testFailures: 0, details: [review.summary], autoFixApplied: false, timestamp: Date.now() }
-          planFailed = true
-          failReason = `Reviewer blocked the changes: ${review.summary}`
-          break
+      if (review.overall === "blocked") {
+        yield { type: "VERIFY_FAILED", executionId, stepId: `${executionId}_review`, lintErrors: review.findings.length, typeErrors: 0, buildErrors: 0, testFailures: 0, details: [review.summary], autoFixApplied: false, timestamp: Date.now() }
+        planFailed = true
+        failReason = `Reviewer blocked the changes: ${review.summary}`
+        break
+      }
+      if (review.overall === "changes_requested" && repairLoop < maxRepairLoops) {
+        yield { type: "THINKING_STARTED", executionId, label: `Repair attempt ${repairLoop + 1}`, timestamp: Date.now() }
+        const coderTask = this.tasks.find((t) => t.role === "coder")
+        if (coderTask) {
+          coderTask.status = "pending"
+          coderTask.instruction = `Fix the following issues:\n${review.summary}\n\nContext: ${coderTask.instruction}`
         }
-        if (review.overall === "changes_requested" && repairLoop < maxRepairLoops) {
-          yield { type: "THINKING_STARTED", executionId, label: `Repair attempt ${repairLoop + 1}`, timestamp: Date.now() }
-          const coderTask = this.tasks.find((t) => t.role === "coder")
-          if (coderTask) {
-            coderTask.status = "pending"
-            coderTask.instruction = `Fix the following issues:\n${review.summary}\n\nContext: ${coderTask.instruction}`
-          }
-          continue
-        }
+        continue
       }
 
       // Tester pass
