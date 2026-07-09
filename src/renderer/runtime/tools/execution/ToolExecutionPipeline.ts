@@ -6,6 +6,7 @@ import { ToolValidator } from './ToolValidation'
 import type { PreExecutionHook, PostExecutionHook, ToolExecutionEvent } from './ToolExecutionContext'
 import { PermissionEngine } from '../../permissions/PermissionEngine'
 import { ToolRegistry } from '../registry/ToolRegistry'
+import { ToolExecutionPolicy } from '../policies/ToolExecutionPolicy'
 
 export type ExecutionOptions = {
   skipValidation?: boolean
@@ -21,11 +22,16 @@ export class ToolExecutionPipeline {
   private registry: ToolRegistry
   private preHooks: PreExecutionHook[] = []
   private postHooks: PostExecutionHook[] = []
+  private policy: ToolExecutionPolicy | null = null
 
   constructor(registry: ToolRegistry, permissionEngine: PermissionEngine) {
     this.registry = registry
     this.validator = new ToolValidator()
     this.permissionEngine = permissionEngine
+  }
+
+  setPolicy(policy: ToolExecutionPolicy): void {
+    this.policy = policy
   }
 
   registerPreHook(hook: PreExecutionHook): void {
@@ -95,6 +101,16 @@ export class ToolExecutionPipeline {
         if (!askResult.approved) {
           return { data: null, error: askResult.reason ?? 'Permission denied by user', isError: true }
         }
+      }
+    }
+
+    // Check tool execution policy (role-based permissions)
+    if (this.policy) {
+      const policyCheck = this.policy.isAllowed(tool, ctx)
+      if (!policyCheck.allowed) {
+        const errResult: ToolResult = { data: null, error: policyCheck.reason ?? 'Tool not allowed by policy', isError: true }
+        this.emit(opts, { type: 'tool:error', toolName, timestamp: Date.now(), error: policyCheck.reason })
+        return errResult
       }
     }
 

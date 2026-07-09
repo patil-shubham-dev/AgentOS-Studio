@@ -72,6 +72,7 @@ export class RuntimeOS {
     this.toolExecutionPipeline = new ToolExecutionPipeline(this.toolRegistry, this.permissionEngine)
     this.toolExecutionPipeline.registerPreHook(sandboxPathMapper)
     this.toolExecutionPolicy = new ToolExecutionPolicy()
+    this.toolExecutionPipeline.setPolicy(this.toolExecutionPolicy)
     this.toolConcurrencyPolicy = new ToolConcurrencyPolicy()
 
     const mcpRegistry = new MCPRegistry()
@@ -116,12 +117,26 @@ export class RuntimeOS {
         cacheManager.invalidate('model')
       },
     )
+    const syncRolePerms = () => {
+      const roleConfigs = useAppStore.getState().roleConfigs ?? []
+      for (const rc of roleConfigs) {
+        const perms: string[] = []
+        if (rc.capabilities?.fileAccess) perms.push('read')
+        if (rc.capabilities?.coding) perms.push('write')
+        if (rc.capabilities?.toolExecution) perms.push('execute')
+        if (rc.capabilities?.browsing || rc.capabilities?.internetAccess) perms.push('network')
+        this.toolExecutionPolicy.setRolePermissions(rc.runtimeRole ?? rc.id, perms as any)
+      }
+    }
     const unsubRoles = useAppStore.subscribe(
       (state) => state.roleConfigs,
       () => {
         cacheManager.invalidate('tools')
+        syncRolePerms()
       },
     )
+    // Initial sync of role config capabilities
+    syncRolePerms()
     // Store unsubscribers for cleanup on shutdown
     this._cacheUnsubscribers = [unsubProviders, unsubRoles]
 
