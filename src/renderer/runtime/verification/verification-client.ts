@@ -16,8 +16,7 @@ async function invoke<T>(method: string, ...args: unknown[]): Promise<T> {
   if (typeof api[method] === "function") {
     return api[method](...args) as Promise<T>
   }
-  console.warn(`[verification-client] electronAPI.${method} not available`)
-  return {} as T
+  throw new Error(`[verification-client] electronAPI.${method} not available — verification cannot run (running outside Electron?)`)
 }
 
 export async function runCommand(command: string, timeout?: number): Promise<CommandResult> {
