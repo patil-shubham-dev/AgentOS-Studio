@@ -72,6 +72,32 @@ export interface ExecuteOptions {
 const FIRST_EVENT_TIMEOUT_MS = 45_000
 const PROVIDER_TIMEOUT_MS = 30_000
 const AGENT_TIMEOUT_MS = 120_000
+
+/**
+ * Resolve the effective execution mode from the routing decision and any
+ * explicitly-requested mode. The routing engine's decision is the primary signal;
+ * reqMode is a client-side override that should only force FAST (not force FULL
+ * when the routing engine decided "direct" + "fast" for a no-role greeting).
+ *
+ * Order of precedence:
+ *   1. Explicit reqMode === "fast" → FAST
+ *   2. Routing decision says "direct" + "fast" → FAST (trust routing engine)
+ *      (catches the case where Gateway defaults reqMode to "full" for a greeting)
+ *   3. Explicit reqMode === "full" | "autonomous" → FULL
+ *   4. decision.mode === "fast" → FAST
+ *   5. Default → FULL
+ *
+ * Exported for direct unit-test access (tests must call this, never simulate it).
+ */
+export function resolveExecutionMode(decision: RoutingDecision, requestedMode?: ExecutionMode): AgentMode {
+  if (requestedMode === "fast") return "FAST"
+  if (requestedMode === "autonomous") return "FULL"
+  if (decision.executionStrategy === "direct" && decision.mode === "fast") return "FAST"
+  if (requestedMode === "full") return "FULL"
+  if (decision.mode === "fast") return "FAST"
+  return "FULL"
+}
+
 export class UnifiedExecutor {
   private static instance: UnifiedExecutor
   private queue = new ExecutionQueue()
@@ -629,15 +655,7 @@ export class UnifiedExecutor {
   }
 
   private resolveMode(decision: RoutingDecision, requestedMode?: ExecutionMode): AgentMode {
-    if (requestedMode === "fast") return "FAST"
-    // When the routing engine explicitly decides "direct" + "fast" (e.g. a greeting
-    // like "Hi" with selectedRoles=[]), trust it over a default "full" reqMode.
-    // The Gateway defaults reqMode to "full", but the routing engine already knows
-    // this message doesn't need tool access, roles, or agent assignment.
-    if (decision.executionStrategy === "direct" && decision.mode === "fast") return "FAST"
-    if (requestedMode === "full" || requestedMode === "autonomous") return "FULL"
-    if (decision.mode === "fast") return "FAST"
-    return "FULL"
+    return resolveExecutionMode(decision, requestedMode)
   }
 
   private shouldGeneratePlan(input?: string): boolean {
