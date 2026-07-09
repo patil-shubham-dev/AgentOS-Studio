@@ -208,6 +208,7 @@ export interface AgentRoleConfig {
   }
   toolPermissions: string[]
   memoryScope: "none" | "session" | "project" | "global"
+  verificationRequired?: boolean
   parentRole?: string
   priority: number
   collaborationTags: string[]

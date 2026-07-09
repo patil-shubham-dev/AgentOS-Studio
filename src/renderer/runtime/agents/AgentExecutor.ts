@@ -739,6 +739,27 @@ export class AgentExecutor {
                   this.scratchpad.recordVerificationResult(f, verifyResult.passed, summary)
                 }
               }
+
+              // Blocking full verification pass when role config requires it
+              if (myRoleConfig?.verificationRequired && !verifyResult.passed) {
+                console.log(`[Agent:${this.mode}:${this.role}] verificationRequired=true, running full verifyChanges`)
+                const fullVerify = await pipeline.verifyChanges([...new Set(editedFiles)])
+                if (fullVerify && !fullVerify.passed) {
+                  const failMsg = `Blocking verification failed:\n${pipeline.formatForLLM(fullVerify)}`
+                  msgs.push({ role: "user" as const, content: failMsg })
+                  yield {
+                    type: "MESSAGE_COMPLETE",
+                    executionId: eid,
+                    stepId: eid,
+                    content: failMsg,
+                    finishReason: "error",
+                    timestamp: Date.now(),
+                    tokensIn: totalUsage.prompt_tokens,
+                    tokensOut: totalUsage.completion_tokens,
+                  }
+                  break
+                }
+              }
             }
           } catch (err) {
             console.warn("[AgentExecutor] fastVerify failed:", err)

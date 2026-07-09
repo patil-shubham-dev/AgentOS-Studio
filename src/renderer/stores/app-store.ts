@@ -62,6 +62,7 @@ function defToRoleConfig(def: RoleDefinition): AgentRoleConfig {
     capabilities: { ...def.capabilities },
     toolPermissions: [...def.toolPermissions],
     memoryScope: def.memoryScope,
+    verificationRequired: false,
     priority: def.priority,
     collaborationTags: [...def.collaborationTags],
     isBuiltIn: true,
