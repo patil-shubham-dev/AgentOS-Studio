@@ -655,12 +655,12 @@ export class VerificationPipeline {
     }
   }
 
-  private async runSpecialStage(stage: string, _changedFiles: string[], startTime: number, emit?: (stage: string, result: VerificationStageResult) => void): Promise<VerificationStageResult> {
+  private async runSpecialStage(stage: string, changedFiles: string[], startTime: number, emit?: (stage: string, result: VerificationStageResult) => void): Promise<VerificationStageResult> {
     try {
       let result: Pick<VerificationStageResult, "passed" | "errors" | "warnings" | "details" | "rawOutput" | "issues">
 
       if (stage === "security") {
-        const scanResult = await IPC.securityScan([])
+        const scanResult = await IPC.securityScan([...new Set(changedFiles)])
         const issues: StructuredIssue[] = scanResult.issues.map((i) => ({
           file: i.file,
           line: i.line,
