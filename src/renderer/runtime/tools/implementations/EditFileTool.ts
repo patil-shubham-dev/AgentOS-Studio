@@ -20,6 +20,23 @@ function setChangeSetEntry(traceId: string, changeSetId: string): void {
   changesetByTrace.set(traceId, changeSetId)
 }
 
+const MAX_FILE_SIZE_BYTES = 1_073_741_824 // 1 GiB
+
+const SMART_QUOTE_MAP: Record<string, string> = {
+  '\u2018': "'",
+  '\u2019': "'",
+  '\u201C': '"',
+  '\u201D': '"',
+}
+
+function normalizeQuotes(text: string): string {
+  return text.replace(/[\u2018\u2019\u201C\u201D]/g, (ch) => SMART_QUOTE_MAP[ch] ?? ch)
+}
+
+function sanitizeFnResult(text: string): string {
+  return text.replace(/<fnr>/g, '<function_results>').replace(/<\/fnr>/g, '</function_results>')
+}
+
 async function writeTextFile(path: string, content: string): Promise<void> {
   try {
     if (typeof window !== 'undefined' && (window as any).electronAPI) {
@@ -120,16 +137,98 @@ function toDiffEdits(input: Record<string, unknown>): DiffEdit[] {
   return []
 }
 
+interface SearchReplaceResult {
+  content: string
+  matchCount: number
+  applied: boolean
+  error?: string
+}
+
+function applySearchReplace(
+  content: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean,
+): SearchReplaceResult {
+  // Exact match first
+  let matchCount = 0
+  let idx = 0
+  const indices: number[] = []
+  while (true) {
+    const found = content.indexOf(oldString, idx)
+    if (found === -1) break
+    indices.push(found)
+    matchCount++
+    idx = found + oldString.length
+  }
+
+  // Fallback: normalized-quote matching
+  if (matchCount === 0) {
+    const normalizedContent = normalizeQuotes(content)
+    const normalizedOld = normalizeQuotes(oldString)
+    idx = 0
+    while (true) {
+      const found = normalizedContent.indexOf(normalizedOld, idx)
+      if (found === -1) break
+      indices.push(found)
+      matchCount++
+      idx = found + normalizedOld.length
+    }
+  }
+
+  // Fallback: de-sanitized matching
+  if (matchCount === 0) {
+    const sanitizedContent = sanitizeFnResult(content)
+    const sanitizedOld = sanitizeFnResult(oldString)
+    idx = 0
+    while (true) {
+      const found = sanitizedContent.indexOf(sanitizedOld, idx)
+      if (found === -1) break
+      indices.push(found)
+      matchCount++
+      idx = found + sanitizedOld.length
+    }
+  }
+
+  if (matchCount === 0) {
+    return { content, matchCount: 0, applied: false, error: 'old_string not found in file' }
+  }
+
+  if (matchCount > 1 && !replaceAll) {
+    return {
+      content,
+      matchCount,
+      applied: false,
+      error: `Found ${matchCount} occurrences of old_string. Set replace_all=true to replace all, or provide a more unique old_string with surrounding context (2-4 lines)`,
+    }
+  }
+
+  // Apply replacement(s) from right to left to preserve indices
+  let result = content
+  if (replaceAll) {
+    result = content.split(oldString).join(newString)
+  } else {
+    const pos = indices[0]
+    result = content.slice(0, pos) + newString + content.slice(pos + oldString.length)
+  }
+
+  return { content: result, matchCount, applied: true }
+}
+
 export const EditFileTool: AgentTool = buildTool({
   name: 'edit_file',
-  description: 'Apply targeted text replacements in an existing file using one or more exact old_content/new_content edits',
+  description: 'Apply targeted text replacements in a file using exact search-and-replace (old_string/new_string). For safety, read the file first. Provide enough surrounding context (2-4 lines) in old_string for a unique match.',
   inputSchema: {
     type: 'object',
     properties: {
-      path: { type: 'string', description: 'File path relative to the workspace root' },
+      file_path: { type: 'string', description: 'Path to the file to edit (relative to workspace root)' },
+      old_string: { type: 'string', description: 'Exact text to find and replace (must be unique in file). Include 2-4 lines of surrounding context for reliable matching.' },
+      new_string: { type: 'string', description: 'Replacement text' },
+      replace_all: { type: 'boolean', description: 'Replace all occurrences of old_string. Use with caution — prefer unique matches (default: false)' },
+      path: { type: 'string', description: 'Backward-compatible file path (prefer file_path)' },
       edits: {
         type: 'array',
-        description: 'Minimal exact replacements to apply in order',
+        description: 'Backward-compatible multiple edit operations (prefer old_string/new_string)',
         items: {
           type: 'object',
           properties: {
@@ -140,24 +239,22 @@ export const EditFileTool: AgentTool = buildTool({
         },
       },
       file: { type: 'string', description: 'Backward-compatible absolute file path' },
-      old_string: { type: 'string', description: 'Backward-compatible text to find' },
-      new_string: { type: 'string', description: 'Backward-compatible replacement text' },
     },
-    required: [],
+    required: ['file_path'],
   },
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
   isDestructive: () => true,
   requiredCapabilities: () => [ToolCapabilities.FILE_EDIT],
   getActivityDescription: (input) => {
-    const p = (input as any)?.path || (input as any)?.file
+    const p = (input as any)?.file_path || (input as any)?.path || (input as any)?.file
     return p ? `Editing ${p}` : 'Editing a file'
   },
   permissions: async () => ({ behavior: 'ask', reason: 'Editing files can modify project source code' }),
   execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
-    const filePath = (input.path as string) ?? (input.file as string)
+    const filePath = (input.file_path as string) ?? (input.path as string) ?? (input.file as string)
     if (!filePath) {
-      return { data: null, error: "edit_file requires either 'path' or 'file'", isError: true }
+      return { data: null, error: 'edit_file requires file_path (or path/file for backward compatibility)', isError: true }
     }
 
     const rootPath = useWorkspaceStore.getState().rootPath
@@ -166,41 +263,94 @@ export const EditFileTool: AgentTool = buildTool({
     const cachedContent = fileContentCache.get(fullPath)
     const originalContent = cachedContent ?? await readTextFile(fullPath)
 
-    const edits = toDiffEdits(input)
-    if (edits.length === 0) {
-      return { data: null, error: 'edit_file requires edits, old_string/new_string, or old_content/new_content pairs', isError: true }
+    const hasEditsArray = Array.isArray(input.edits) && (input.edits as Array<unknown>).length > 0
+    const hasOldNew = (input.old_string as string | undefined) !== undefined
+      || (input.new_string as string | undefined) !== undefined
+
+    if (!hasEditsArray && !hasOldNew) {
+      return { data: null, error: 'edit_file requires old_string/new_string (or edits array for backward compatibility)', isError: true }
     }
 
-    const engineResult: DiffEngineResult = applyEdits(originalContent, edits)
+    let modifiedContent: string
+    let diff: string
+    let totalHunks = 0
+    let changeType: 'modify' | 'create' = 'modify'
 
-    if (!engineResult.allApplied) {
-      const failureResult = engineResult.results.find(r => !r.applied)
-      const errorMsg = failureResult?.error ?? 'Edit failed: could not apply the requested changes'
-      return {
-        data: null,
-        error: errorMsg,
-        isError: true,
-        meta: {
-          editResults: engineResult.results.map(r => ({
-            applied: r.applied,
-            operation: r.operation,
-            hunks: r.hunks,
-            locations: r.locations,
-            error: r.error,
-          })),
-          appliedCount: engineResult.results.filter(r => r.applied).length,
-          failedCount: engineResult.results.filter(r => !r.applied).length,
-          diff: '',
-        },
+    if (hasOldNew) {
+      // ── Primary search-and-replace path ──
+      const oldString = String(input.old_string ?? '')
+      const newString = String(input.new_string ?? '')
+
+      // Validation: no-op
+      if (oldString === newString) {
+        return { data: null, error: 'old_string and new_string are identical — nothing to change', isError: true }
       }
+
+      // Validation: file size
+      if (originalContent.length > MAX_FILE_SIZE_BYTES) {
+        return { data: null, error: `File too large (${(originalContent.length / 1024 / 1024).toFixed(1)} MB) — max is 1 GiB`, isError: true }
+      }
+
+      // Check if file exists
+      const isNewFile = originalContent.length === 0
+
+      // Validation: empty file with old_string
+      if (isNewFile && oldString !== '') {
+        return { data: null, error: 'File is empty or does not exist. Use old_string="" to create a new file, or write_file to create it first', isError: true }
+      }
+
+      // Validation: file has content but old_string is empty
+      if (!isNewFile && oldString === '') {
+        return { data: null, error: 'old_string is empty but file has content. Provide the exact text to replace', isError: true }
+      }
+
+      const replaceAll = (input.replace_all as boolean) ?? false
+      const result = applySearchReplace(originalContent, oldString, newString, replaceAll)
+
+      if (!result.applied) {
+        return { data: null, error: result.error ?? 'Search-and-replace failed', isError: true, meta: { matchCount: result.matchCount } }
+      }
+
+      modifiedContent = result.content
+      diff = generateUnifiedDiff(originalContent, modifiedContent, fullPath)
+      totalHunks = 1
+    } else {
+      // ── Backward-compatible edits[] path ──
+      const edits = toDiffEdits(input)
+      if (edits.length === 0) {
+        return { data: null, error: 'edits array is empty', isError: true }
+      }
+
+      const engineResult: DiffEngineResult = applyEdits(originalContent, edits)
+
+      if (!engineResult.allApplied) {
+        const failureResult = engineResult.results.find(r => !r.applied)
+        const errorMsg = failureResult?.error ?? 'Edit failed: could not apply the requested changes'
+        return {
+          data: null,
+          error: errorMsg,
+          isError: true,
+          meta: {
+            editResults: engineResult.results.map(r => ({
+              applied: r.applied,
+              operation: r.operation,
+              hunks: r.hunks,
+              locations: r.locations,
+              error: r.error,
+            })),
+            appliedCount: engineResult.results.filter(r => r.applied).length,
+            failedCount: engineResult.results.filter(r => !r.applied).length,
+            diff: '',
+          },
+        }
+      }
+
+      modifiedContent = engineResult.content
+      diff = generateUnifiedDiff(originalContent, modifiedContent, fullPath)
+      totalHunks = engineResult.results.reduce((sum, r) => sum + r.hunks, 0)
     }
 
-    const modifiedContent = engineResult.content
-    const diff = generateUnifiedDiff(originalContent, modifiedContent, fullPath)
-
-    // Write to disk immediately so the file reflects the edit.
-    // This matches WriteFileTool's behavior — the AI reads the file afterward
-    // to verify its work, so the write must be visible.
+    // Write to disk
     try {
       await writeTextFile(fullPath, modifiedContent)
     } catch (writeErr) {
@@ -211,28 +361,19 @@ export const EditFileTool: AgentTool = buildTool({
       }
     }
 
-    // Update in-memory cache so subsequent reads see current content
+    // Update in-memory cache
     fileContentCache.set(fullPath, modifiedContent)
 
-    // Register the diff in the review panel so the user can see what changed
-    // and revert if needed. The diff-store tracks accepted/rejected state per hunk.
+    // Register the diff in the review panel
     const diffEntry = buildDiffFileEntry(filePath, originalContent, modifiedContent)
     useDiffStore.getState().addFileDiff(diffEntry)
 
     const relativePath = filePath.replace(/^[/\\]/, '')
-    recordChangeSetEntry(ctx, fullPath, relativePath, originalContent, modifiedContent, diff, 'modify')
+    recordChangeSetEntry(ctx, fullPath, relativePath, originalContent, modifiedContent, diff, changeType)
 
-    const totalHunks = engineResult.results.reduce((sum, r) => sum + r.hunks, 0)
     return {
-      data: `Applied ${totalHunks} edit(s) to ${relativePath}. Changes written to disk and available for review.`,
+      data: `Applied edit to ${relativePath}. Changes written to disk and available for review.`,
       meta: {
-        editResults: engineResult.results.map(r => ({
-          applied: r.applied,
-          operation: r.operation,
-          hunks: r.hunks,
-          locations: r.locations,
-        })),
-        totalHunks,
         diff,
         status: 'written',
       },
