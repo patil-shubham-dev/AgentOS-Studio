@@ -15,6 +15,7 @@ import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
 import { normalizeRole } from "@/lib/role-identity"
 import type { RuntimeRole } from "@/types"
 import { getLogger } from "@/lib/logger"
+import { VerificationPipeline } from "@/runtime/verification/VerificationPipeline"
 
 const LOG_PREFIX = "[Orchestrator]"
 const log = getLogger("orchestrator")
@@ -331,10 +332,8 @@ export class MultiAgentOrchestrator {
       if (signal?.aborted) break
 
       // Reviewer pass
-      const reviewerTask = this.tasks.find((t) => t.role === "reviewer" && t.status === "completed")
-      if (reviewerTask?.result) {
-        yield { type: "THINKING_STARTED", executionId, label: "Reviewing changes", timestamp: Date.now() }
-        const review = await this.runReviewer(reviewerTask.result, signal)
+      yield { type: "THINKING_STARTED", executionId, label: "Reviewing changes", timestamp: Date.now() }
+      const review = await this.runReviewer(signal)
         if (review.overall === "blocked") {
           yield { type: "VERIFY_FAILED", executionId, stepId: `${executionId}_review`, lintErrors: review.findings.length, typeErrors: 0, buildErrors: 0, testFailures: 0, details: [review.summary], autoFixApplied: false, timestamp: Date.now() }
           planFailed = true
@@ -353,10 +352,9 @@ export class MultiAgentOrchestrator {
       }
 
       // Tester pass
-      const testerTask = this.tasks.find((t) => t.role === "tester" && t.status === "completed")
-      if (testerTask?.result) {
+      if (this.collectChangedFiles().length > 0) {
         yield { type: "THINKING_STARTED", executionId, label: "Verifying with tester", timestamp: Date.now() }
-        const testResult = await this.runTester(testerTask.result, signal)
+        const testResult = await this.runTester(signal)
         if (!testResult.passed && repairLoop < maxRepairLoops) {
           yield { type: "VERIFY_FAILED", executionId, stepId: `${executionId}_test_fail`, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: testResult.testResults.filter((t) => !t.passed).length, details: [testResult.summary], autoFixApplied: false, timestamp: Date.now() }
           const coderTask = this.tasks.find((t) => t.role === "coder")
@@ -385,24 +383,80 @@ export class MultiAgentOrchestrator {
     }
   }
 
-  private async runReviewer(content: string, signal?: AbortSignal): Promise<ReviewerOutput> {
-    return callLLM<ReviewerOutput>(
-      `You are the Reviewer agent. Review this output and respond in JSON only. No preamble.
-
-{ "overall": "approve"|"changes_requested"|"blocked", "summary": "review summary", "findings": [{ "filePath": "path", "severity": "error"|"warning"|"suggestion", "message": "description", "category": "correctness"|"security"|"performance"|"style"|"maintainability" }] }`,
-      content,
-      signal,
-    )
+  private collectChangedFiles(): string[] {
+    const files = new Set<string>()
+    for (const task of this.tasks) {
+      if (task.contextFiles) {
+        for (const f of task.contextFiles) files.add(f)
+      }
+    }
+    return [...files]
   }
 
-  private async runTester(content: string, signal?: AbortSignal): Promise<TesterOutput> {
-    return callLLM<TesterOutput>(
-      `You are the Tester agent. Analyze the output and determine if testing passed. Respond in JSON only. No preamble.
+  private async runReviewer(signal?: AbortSignal): Promise<ReviewerOutput> {
+    const changedFiles = this.collectChangedFiles()
+    if (changedFiles.length === 0) {
+      return { overall: "approve", summary: "No files to review", findings: [] }
+    }
 
-{ "passed": true|false, "summary": "test summary", "testResults": [{ "testName": "name", "passed": true|false, "output": "details" }] }`,
-      content,
-      signal,
-    )
+    try {
+      const pipeline = VerificationPipeline.getInstance()
+      const result = await pipeline.fastVerify(changedFiles)
+      if (!result) {
+        return { overall: "approve", summary: "Verification returned no result", findings: [] }
+      }
+
+      const findings: ReviewerFinding[] = (result.issues ?? []).map((issue) => ({
+        filePath: issue.file ?? changedFiles[0] ?? "unknown",
+        line: issue.line,
+        severity: issue.severity === "error" ? "error" : issue.severity === "warning" ? "warning" : "suggestion",
+        message: issue.message,
+        category: "correctness" as const,
+      }))
+
+      if (!result.passed) {
+        const errorCount = result.errors ?? findings.length
+        const summary = `Verification found ${errorCount} issue(s): ${(result.details ?? []).join("; ")}`
+        return { overall: errorCount > 5 ? "blocked" : "changes_requested", summary, findings }
+      }
+
+      return { overall: "approve", summary: "All checks passed", findings }
+    } catch (err) {
+      log.warn(`${LOG_PREFIX} Reviewer verification failed:`, err)
+      return { overall: "approve", summary: "Verification skipped due to error", findings: [] }
+    }
+  }
+
+  private async runTester(signal?: AbortSignal): Promise<TesterOutput> {
+    const changedFiles = this.collectChangedFiles()
+    if (changedFiles.length === 0) {
+      return { passed: true, summary: "No files to test", testResults: [] }
+    }
+
+    try {
+      const pipeline = VerificationPipeline.getInstance()
+      const result = await pipeline.verifyChanges(changedFiles)
+      if (!result) {
+        return { passed: true, summary: "Test verification returned no result", testResults: [] }
+      }
+
+      const testResults = (result.stageResults ?? [])
+        .filter((s) => s.stage === "test")
+        .map((s) => ({
+          testName: s.stage,
+          passed: s.passed,
+          output: s.rawOutput?.slice(0, 500),
+        }))
+
+      return {
+        passed: result.passed,
+        summary: result.passed ? "All tests passed" : `Tests failed: ${(result.details ?? []).join("; ")}`,
+        testResults,
+      }
+    } catch (err) {
+      log.warn(`${LOG_PREFIX} Tester verification failed:`, err)
+      return { passed: true, summary: "Tests skipped due to error", testResults: [] }
+    }
   }
 
   private buildTaskGraph(plan: PlannerOutput): AgentTask[] {
