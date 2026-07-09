@@ -613,7 +613,7 @@ ${rules.map(r => r.content).join('\n\n')}`
         const type = m.type
         const scope = m.scope
         const content = m.content.length > 200 ? m.content.slice(0, 200) + "..." : m.content
-        return `[${type}/${scope}] ${content} (importance: ${m.importance}/10)`
+        return `[${type}/${scope}] ${content} (importance: ${(m.importance * 10).toFixed(1)}/10)`
       })
 
       return inputSummary === "none" || !inputSummary
