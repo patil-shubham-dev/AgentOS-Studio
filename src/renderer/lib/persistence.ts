@@ -260,7 +260,7 @@ export async function loadConfig(migrate = true): Promise<LoadResult> {
 
     const apiKeys = (result.config.providers as Array<Record<string, unknown>>)?.map((p) => ({
       id: p.id as string,
-      apiKey: p.apiKey as string | undefined,
+      apiKey: (p.apiKey ?? undefined) as string | undefined,
     })) || []
     const keyResult = await migrateApiKeysFromConfig(apiKeys)
     if (keyResult.migrated > 0) {

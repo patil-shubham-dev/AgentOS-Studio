@@ -38,11 +38,42 @@ export interface RuntimeInfo {
   isLocal: boolean
 }
 
+/**
+ * Opaque string wrapper that redacts its content on JSON serialization
+ * and toString(). Prevents API keys and secrets from leaking into logs,
+ * error traces, IPC messages, or disk serialization.
+ */
+export class SecureString {
+  private value: string
+
+  constructor(value: string) {
+    this.value = value
+  }
+
+  /** Access the raw value — explicit opt-in, never automatic */
+  unwrap(): string {
+    return this.value
+  }
+
+  toString(): string {
+    return '[REDACTED]'
+  }
+
+  toJSON(): string {
+    return '[REDACTED]'
+  }
+
+  [Symbol.for('nodejs.util.inspect.custom')](): string {
+    return '[REDACTED]'
+  }
+}
+
 export interface GatewayProvider {
   id: string
   name: string
   baseUrl: string
-  apiKey: string
+  /** Use SecureString to prevent accidental credential leakage via serialization */
+  apiKey: string | null
   runtime: string | null
   isLocal: boolean
   isOpenAiCompatible: boolean
