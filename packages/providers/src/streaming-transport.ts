@@ -91,7 +91,7 @@ export function parseOpenAiStreamChunk(data: string): ParsedChunk | null {
     }
 
     const choice = parsed.choices?.[0]
-    if (!choice) return { content: "", finishReason: null }
+    if (!choice) return null
 
     const delta = choice.delta ?? {}
     const result: ParsedChunk = {}
@@ -329,7 +329,7 @@ export class SseParser {
       }
     }
 
-    if (parsed.finishReason !== undefined) {
+    if (parsed.finishReason !== undefined && parsed.finishReason !== null) {
       this.options.onFinishReason?.(parsed.finishReason)
     }
   }
