@@ -110,8 +110,8 @@ export class ProviderTransport {
     let models: { models: Array<{ id: string; name: string }> }
     try {
       models = adapter.parseModelsResponse(resp.body)
-    } catch {
-      // Discovery failed (404/connection error) — return empty list so caller falls back to presets
+    } catch (err) {
+      console.warn(`[ProviderTransport] Model discovery parse failed for ${adapterConfig.baseUrl}: ${err instanceof Error ? err.message : String(err)}`)
       return { models: [], latencyMs: Math.round(performance.now() - t0) }
     }
     return { models: models.models, latencyMs: Math.round(performance.now() - t0) }
