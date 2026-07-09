@@ -85,7 +85,7 @@ export class ToolExecutionPolicy {
       }
     }
 
-    if (tool.isReadOnly === undefined) return { allowed: true }
+    if (tool.isReadOnly === undefined) return { allowed: false, reason: `Tool "${tool.name}" not recognized — default-deny` }
 
     if (policy.requireApproval && tool.isDestructive?.(ctx)) {
       return { allowed: false, reason: 'Destructive operation requires explicit approval' }
