@@ -33,8 +33,16 @@ export class SkillRegistry {
   private sourceCounts = { bundled: 0, user: 0, project: 0, plugin: 0 }
 
   register(skill: SkillDefinition): void {
+    if (this.skills.has(skill.name)) {
+      const existing = this.skills.get(skill.name)!
+      console.warn(`[SkillRegistry] overwriting skill "${skill.name}": "${existing.source}/${existing.description}" ← "${skill.source}/${skill.description}"`)
+    }
     this.skills.set(skill.name, skill)
     for (const alias of skill.aliases) {
+      if (this.skills.has(alias)) {
+        const existing = this.skills.get(alias)!
+        console.warn(`[SkillRegistry] alias "${alias}" collision: "${existing.source}/${existing.name}" ← "${skill.source}/${skill.name}"`)
+      }
       this.skills.set(alias, skill)
     }
     this.sourceCounts[skill.source]++
