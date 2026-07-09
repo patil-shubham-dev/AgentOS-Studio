@@ -248,18 +248,17 @@ export class UnifiedExecutor {
 
       try {
         // ── Fast mode: skip plan phase entirely ──
-        // Use the routing decision's mode as the primary signal. The activeRole shortcut
-        // ("fast-inference") is NOT used here: a coding/research intent must still get
-        // the correct role-specific prompt and tool access even if the default channel
-        // is set to fast-inference.
-        const isFastMode = reqMode === "fast" || decision.mode === "fast"
-        if (!isFastMode && this.shouldGeneratePlan(input)) {
+        // Use resolveMode() as the SINGLE source of truth for path selection.
+        // Previously this had a duplicate inline check (reqMode === "fast" || decision.mode === "fast")
+        // that could disagree with resolveMode() — e.g., reqMode="full" + decision.mode="fast"
+        // would cause resolveMode() → "FULL" but the inline check → true (wrong path).
+        if (agentMode !== "FAST" && this.shouldGeneratePlan(input)) {
           yield* this.runPlanPhase(input, executionId, ctrl, t0)
         }
         profileStage("impact-preview", stageStart)
         stageStart = performance.now()
-        console.log("[FLOW:2] UnifiedExecutor.execute: entering path (mode=" + (reqMode ?? "full") + ", activeRole=" + activeRole + ")")
-        if (isFastMode) {
+        console.log("[FLOW:2] UnifiedExecutor.execute: entering path (mode=" + agentMode + ", activeRole=" + activeRole + ")")
+        if (agentMode === "FAST") {
           yield* this.fastPath(input, activeRole, ctrl, executionId, correlationId, t0)
         } else if (reqMode === "autonomous") {
           yield* this.autonomousPath.execute(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId, goalId, goalObjective)

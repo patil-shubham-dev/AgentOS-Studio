@@ -102,9 +102,8 @@ describe("Mode dispatch — resolveMode() is single source of truth", () => {
       { reqMode: "fast", decisionMode: "full", expectedResolved: "FAST", expectedInlineFast: true },
       // reqMode=fast + decision.fast → FAST, inline=true (both agree)
       { reqMode: "fast", decisionMode: "fast", expectedResolved: "FAST", expectedInlineFast: true },
-      // reqMode=full + decision.fast → FULL (resolveMode checks reqMode first), but inline=true (BUG)
-      // This is the dangerous case: resolveMode says FULL but inline says fastPath
-      { reqMode: "full", decisionMode: "fast", expectedResolved: "FULL", expectedInlineFast: true },
+      // reqMode=full + decision.fast → FULL (resolveMode checks reqMode first), inline=false (after fix: no duplicate check)
+      { reqMode: "full", decisionMode: "fast", expectedResolved: "FULL", expectedInlineFast: false },
       // reqMode=full + decision.full → FULL, inline=false (both agree)
       { reqMode: "full", decisionMode: "full", expectedResolved: "FULL", expectedInlineFast: false },
     ]
@@ -118,18 +117,9 @@ describe("Mode dispatch — resolveMode() is single source of truth", () => {
 
       expect(resolvedMode).toBe(expectedResolved)
 
-      // Simulate the inline isFastMode check
-      const inlineIsFast = reqMode === "fast" || decisionMode === "fast"
-
-      // If they disagree (resolvedMode says FULL but inline says fastPath),
-      // the wrong execution path would be chosen.
-      if (expectedResolved === "FULL" && expectedInlineFast) {
-        // This case is a known bug: resolveMode returns FULL but isFastMode returns true.
-        // The inline check would direct execution to fastPath while the AgentExecutor
-        // runs in FULL mode. This test documents the discrepancy — fixing it requires
-        // replacing the inline check with resolveMode().published.
-        console.warn(`[KNOWN BUG] resolveMode("${reqMode}", "${decisionMode}") → ${expectedResolved} but isFastMode → ${expectedInlineFast}`)
-      }
+      // After the fix: the inline check is replaced with agentMode === "FAST",
+      // so it always agrees with resolveMode() and there is no second source of truth.
+      const inlineIsFast = resolvedMode === "FAST"
       expect(inlineIsFast).toBe(expectedInlineFast)
     }
   })

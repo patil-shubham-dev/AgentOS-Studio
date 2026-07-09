@@ -63,17 +63,14 @@ describe("Coding-intent routing — analysis/exploration queries go to coder", (
     "what is this project about",
     "tell me about this codebase",
     "give me an overview of the project",
+    "summarize this repo",
+    "summarize the codebase",
+    "summarize the project",
     "walk me through the structure",
     "how is the project organized",
     "what does this app do",
     "explain the architecture",
   ]
-
-  // "summarize this repo" is intentionally NOT included here: the conversation
-  // pattern /^(summarize|tl;dr|tldr|gist|brief)/i matches "summarize*" before
-  // the research-specific /summarize (the |this )?(project|codebase|repo|code)/
-  // pattern fires. This is a known-order issue that exists independently of
-  // the coding-intent routing tests.
 
   for (const query of PROJECT_QUERIES) {
     it(`routes '${query}' to mode:full (never fast)`, () => {

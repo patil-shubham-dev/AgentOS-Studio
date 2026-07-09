@@ -44,7 +44,7 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
       /^(what is this(?! (project|app|codebase|repo|code))|what is agentic|what does this do)\b/i,
       /^(does .* work|how does .* work|can you .*)\b/i,
       /^(i have a question|question|quick question)\b/i,
-      /^(summarize|tl;dr|tldr|gist|brief)/i,
+      /^(tl;dr|tldr|gist|brief)/i,
       /^(what did I just|what was I|where was I)/i,
     ],
     roles: ["fast-inference"],
@@ -88,6 +88,7 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
       /tell me about (this|the) (project|app|codebase|repo|codebase)/i,
       /give (me )?an? overview/i,
       /summarize (the |this )?(project|codebase|repo|code)/i,
+      /\bsummarize\b/i,
       // "what is this project about" — 'project about' as a phrase
       /project (about|description|purpose|goal)/i,
     ],
