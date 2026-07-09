@@ -51,10 +51,10 @@ describe('CommandExecutionPolicy', () => {
       expect(result.requiresApproval).toBe(false)
     })
 
-    it('allows generic unknown commands as read-only', () => {
+    it('requires approval for unknown commands', () => {
       const result = policy.isAllowed('some-custom-tool --flag')
       expect(result.allowed).toBe(true)
-      expect(result.requiresApproval).toBe(false)
+      expect(result.requiresApproval).toBe(true)
     })
   })
 
@@ -181,6 +181,34 @@ describe('CommandExecutionPolicy', () => {
       const originalLength = rules.length
       rules.push({ pattern: /test/, tier: 'deny', reason: 'test' })
       expect(policy.getRules().length).toBe(originalLength)
+    })
+  })
+
+  describe('output redirection with inspection commands', () => {
+    it('requires approval for cat with output redirection', () => {
+      const result = policy.isAllowed('cat > /etc/shadow')
+      expect(result.requiresApproval).toBe(true)
+    })
+
+    it('requires approval for echo with output redirection', () => {
+      const result = policy.isAllowed('echo "hacked" > /etc/passwd')
+      expect(result.requiresApproval).toBe(true)
+    })
+
+    it('allows cat without redirection as read-only', () => {
+      expect(policy.isAllowed('cat package.json').requiresApproval).toBe(false)
+    })
+  })
+
+  describe('chained dangerous commands', () => {
+    it('blocks chained sudo via &&', () => {
+      const result = policy.isAllowed('echo "hello" && sudo rm -rf /')
+      expect(result.allowed).toBe(false)
+    })
+
+    it('blocks chained rm via pipe', () => {
+      const result = policy.isAllowed('ls | rm -rf /')
+      expect(result.allowed).toBe(false)
     })
   })
 
