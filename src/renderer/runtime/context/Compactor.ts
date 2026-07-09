@@ -32,6 +32,9 @@ export class Compactor {
   private consecutiveCompactions: number = 0
   private lastCompactStrategy: CompactStrategy | null = null
 
+  /** Callback invoked after any compaction completes (for cache invalidation, etc.) */
+  onCompactFinish: (() => void) | null = null
+
   constructor(
     resolver: ContextWindowResolver,
     budgetTracker: TokenBudgetTracker,
@@ -207,6 +210,7 @@ export class Compactor {
 
     this.consecutiveCompactions++
     this.lastCompactStrategy = 'session-memory'
+    this.onCompactFinish?.()
 
     return {
       strategy: 'session-memory',
@@ -233,16 +237,24 @@ export class Compactor {
     const strategy = this.decideStrategy(model, messages, betas)
     if (!strategy) return null
 
+    let result: CompactResult | null = null
     switch (strategy) {
       case 'auto':
-        return this.autoCompact(messages, model, betas)
+        result = this.autoCompact(messages, model, betas)
+        break
       case 'micro':
-        return this.microCompact(messages)
+        result = this.microCompact(messages)
+        break
       case 'reactive':
-        return this.reactiveCompact(messages)
+        result = this.reactiveCompact(messages)
+        break
       case 'session-memory':
-        return null
+        result = null
+        break
     }
+
+    this.onCompactFinish?.()
+    return result
   }
 
   getLastCompactStrategy(): CompactStrategy | null {

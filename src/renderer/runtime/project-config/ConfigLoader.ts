@@ -60,6 +60,12 @@ interface ConfigFileDef {
   optional: boolean
 }
 
+/** Max bytes for combined instruction file content (~6K tokens at 4 bytes/token) */
+export const MAX_INSTRUCTION_BYTES = 24_000
+
+/** Max parent directories to walk upward looking for instruction files */
+const MAX_PARENT_WALK_DEPTH = 10
+
 const CONFIG_FILE_DEFS: ConfigFileDef[] = [
   // Managed/org-wide policies (lowest priority — loaded first, overridden by later files)
   { source: "managed", pathTemplate: "~/.agentic-os/AGENTIC.md", priority: 0, optional: true },
@@ -68,11 +74,15 @@ const CONFIG_FILE_DEFS: ConfigFileDef[] = [
   // Project-level AGENTIC.md (checked into git)
   { source: "project", pathTemplate: "${root}/AGENTIC.md", priority: 2, optional: true },
   { source: "project", pathTemplate: "${root}/.agentic/AGENTIC.md", priority: 2, optional: true },
+  // AGENTS.md — community-standard instruction file (same priority as AGENTIC.md)
+  { source: "project", pathTemplate: "${root}/AGENTS.md", priority: 2, optional: true },
+  { source: "project", pathTemplate: "${root}/.agentic/AGENTS.md", priority: 2, optional: true },
   // CLAUDE.md — legacy project-level instructions (same priority as AGENTIC.md)
   { source: "project", pathTemplate: "${root}/CLAUDE.md", priority: 2, optional: true },
   // Local (git-ignored personal overrides) — highest priority
   { source: "local", pathTemplate: "${root}/AGENTIC.local.md", priority: 3, optional: true },
   { source: "local", pathTemplate: "${root}/.agentic/AGENTIC.local.md", priority: 3, optional: true },
+  { source: "local", pathTemplate: "${root}/AGENTS.local.md", priority: 3, optional: true },
   { source: "local", pathTemplate: "${root}/CLAUDE.local.md", priority: 3, optional: true },
 ]
 
@@ -157,11 +167,37 @@ export class ConfigLoader {
       }
     }
 
+    // Parent-directory walking: look for instruction files in ancestor directories
+    const ancestorFiles = await this.loadAncestorInstructions(rootPath)
+    configs.push(...ancestorFiles)
+
     // Sort by priority (ascending) so lower-priority files come first
     // Later files can override earlier ones
     configs.sort((a, b) => a.priority - b.priority)
 
-    const combined = configs.map((c) => c.content).join("\n\n")
+    // Join all content
+    let combined = configs.map((c) => c.content).join("\n\n")
+
+    // Enforce byte budget — truncate from the top (lowest-priority / most general) content
+    const encoder = new TextEncoder()
+    if (encoder.encode(combined).length > MAX_INSTRUCTION_BYTES) {
+      const truncated: string[] = []
+      let budget = MAX_INSTRUCTION_BYTES
+      for (let i = configs.length - 1; i >= 0; i--) {
+        const bytes = encoder.encode(configs[i].content).length
+        if (bytes <= budget) {
+          truncated.unshift(configs[i].content)
+          budget -= bytes
+        } else if (budget > 200) {
+          // Take a prefix of this file within remaining budget
+          truncated.unshift(configs[i].content.slice(0, budget))
+          budget = 0
+        }
+        if (budget <= 0) break
+      }
+      combined = truncated.join("\n\n")
+    }
+
     const hash = simpleHash(combined)
     const structured = combined ? parseProjectConfig(combined) : null
 
@@ -209,6 +245,43 @@ export class ConfigLoader {
       })()
     }
     return this.homeDirPromise
+  }
+
+  /**
+   * Walk parent directories of rootPath looking for instruction files (AGENTS.md, AGENTIC.md, CLAUDE.md).
+   * Stops at filesystem root or after MAX_PARENT_WALK_DEPTH levels.
+   */
+  private async loadAncestorInstructions(rootPath: string): Promise<ConfigFile[]> {
+    const candidates = ["AGENTS.md", "AGENTIC.md", "CLAUDE.md", ".agentic/AGENTS.md", ".agentic/AGENTIC.md"]
+    const found: ConfigFile[] = []
+    let depth = 0
+    let currentDir = rootPath.replace(/\\/g, "/")
+
+    while (depth < MAX_PARENT_WALK_DEPTH) {
+      // Get parent directory
+      const parentIdx = currentDir.lastIndexOf("/")
+      if (parentIdx <= 0) break
+      const parentDir = currentDir.slice(0, parentIdx)
+      if (parentDir === currentDir) break
+
+      for (const fileName of candidates) {
+        const filePath = `${parentDir}/${fileName}`
+        const content = await this.readFile(filePath)
+        if (content) {
+          found.push({
+            source: "project",
+            path: filePath,
+            content,
+            priority: 1.5, // Between user (1) and project (2)
+          })
+        }
+      }
+
+      currentDir = parentDir
+      depth++
+    }
+
+    return found
   }
 
   private async resolvePath(template: string, rootPath: string): Promise<string> {
