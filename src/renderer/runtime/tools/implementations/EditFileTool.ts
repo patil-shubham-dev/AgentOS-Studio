@@ -6,8 +6,25 @@ import { useWorkspaceStore } from '@/stores/workspace-store'
 import { applyEdits, generateUnifiedDiff, type DiffEdit, type DiffEngineResult } from '@/lib/diff-engine'
 import { fileContentCache } from '@/lib/FileContentCache'
 import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
+import { buildDiffFileEntry } from '@/lib/diff-review'
+import { useDiffStore } from '@/stores/diff-store'
+import { createFile } from '@/lib/filesystem'
 
 const changesetByTrace = new Map<string, string>()
+
+async function writeTextFile(path: string, content: string): Promise<void> {
+  try {
+    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+      const { writeTextFile: shimWrite } = await import('@/lib/electron-api')
+      await shimWrite(path, content)
+      return
+    }
+    const fs = await import('@/lib/electron-api')
+    await fs.writeTextFile(path, content)
+  } catch {
+    await createFile(path, content)
+  }
+}
 
 function recordChangeSetEntry(
   ctx: ToolContext,
@@ -173,16 +190,33 @@ export const EditFileTool: AgentTool = buildTool({
     const modifiedContent = engineResult.content
     const diff = generateUnifiedDiff(originalContent, modifiedContent, fullPath)
 
-    // Update in-memory cache so subsequent reads see proposed content.
-    // NOTE: This does NOT write to disk. The ChangeSet review panel gates disk mutation.
+    // Write to disk immediately so the file reflects the edit.
+    // This matches WriteFileTool's behavior — the AI reads the file afterward
+    // to verify its work, so the write must be visible.
+    try {
+      await writeTextFile(fullPath, modifiedContent)
+    } catch (writeErr) {
+      return {
+        data: null,
+        error: `Failed to write edited file: ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`,
+        isError: true,
+      }
+    }
+
+    // Update in-memory cache so subsequent reads see current content
     fileContentCache.set(fullPath, modifiedContent)
+
+    // Register the diff in the review panel so the user can see what changed
+    // and revert if needed. The diff-store tracks accepted/rejected state per hunk.
+    const diffEntry = buildDiffFileEntry(filePath, originalContent, modifiedContent)
+    useDiffStore.getState().addFileDiff(diffEntry)
 
     const relativePath = filePath.replace(/^[/\\]/, '')
     recordChangeSetEntry(ctx, fullPath, relativePath, originalContent, modifiedContent, diff, 'modify')
 
     const totalHunks = engineResult.results.reduce((sum, r) => sum + r.hunks, 0)
     return {
-      data: `Change proposed: ${totalHunks} edit(s) applied to ${relativePath}. Awaiting user review in the diff panel.`,
+      data: `Applied ${totalHunks} edit(s) to ${relativePath}. Changes written to disk and available for review.`,
       meta: {
         editResults: engineResult.results.map(r => ({
           applied: r.applied,
@@ -192,7 +226,7 @@ export const EditFileTool: AgentTool = buildTool({
         })),
         totalHunks,
         diff,
-        status: 'pending_review',
+        status: 'written',
       },
     }
   },
