@@ -5,6 +5,7 @@ import { ToolCapabilities } from '../core/ToolCapabilities'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { toolResultCache } from '../core/ToolResultCache'
 import { fileContentCache } from '@/lib/FileContentCache'
+import { FileStateCache } from '../storage/FileStateCache'
 
 const BINARY_NULL_BYTES_CHECK = 512
 const DEFAULT_MAX_LINES = 500
@@ -132,6 +133,16 @@ export const ReadFileTool: AgentTool = buildTool({
     if (cached) return cached
 
     const content = await readTextFileWithCache(fullPath)
+
+    // Record the read for stale-read detection in edit tools
+    try {
+      const { stat: fsStat } = await import('@/lib/electron-api')
+      const stats = await fsStat(fullPath)
+      const mtime = typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now()
+      FileStateCache.getInstance().recordRead(fullPath, content, mtime)
+    } catch {
+      FileStateCache.getInstance().recordRead(fullPath, content, Date.now())
+    }
 
     if (detectBinary(content)) {
       return { data: null, error: `Binary file detected: "${path}". Use workspace actions for binary or image files.`, isError: true }

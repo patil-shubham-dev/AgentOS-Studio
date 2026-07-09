@@ -9,6 +9,7 @@ import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
 import { buildDiffFileEntry } from '@/lib/diff-review'
 import { useDiffStore } from '@/stores/diff-store'
 import { createFile } from '@/lib/filesystem'
+import { FileStateCache } from '../storage/FileStateCache'
 
 const changesetByTrace = new Map<string, string>()
 const CHANGESET_MAP_MAX_SIZE = 200
@@ -259,6 +260,26 @@ export const EditFileTool: AgentTool = buildTool({
 
     const rootPath = useWorkspaceStore.getState().rootPath
     const fullPath = resolvePath(rootPath, filePath)
+
+    // Read-before-edit enforcement (P1.2)
+    const fileState = FileStateCache.getInstance()
+    if (!fileState.wasRead(fullPath)) {
+      return { data: null, error: `File "${filePath}" has not been read yet. Use read_file to read it first before editing.`, isError: true }
+    }
+    try {
+      const { stat: fsStat } = await import('@/lib/electron-api')
+      const stats = await fsStat(fullPath)
+      const currentMtime = typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now()
+      if (fileState.isStale(fullPath, currentMtime)) {
+        const currentContent = await readTextFile(fullPath)
+        if (currentContent !== fileState.getContent(fullPath)) {
+          return { data: null, error: `File "${filePath}" has been modified since it was read. Use read_file to see the latest content before editing.`, isError: true }
+        }
+        fileState.recordRead(fullPath, currentContent, currentMtime)
+      }
+    } catch {
+      // mtime not available — skip staleness check
+    }
 
     const cachedContent = fileContentCache.get(fullPath)
     const originalContent = cachedContent ?? await readTextFile(fullPath)

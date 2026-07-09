@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/stores/workspace-store'
 import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
 import { fileContentCache } from '@/lib/FileContentCache'
 import { createFile } from '@/lib/filesystem'
+import { FileStateCache } from '../storage/FileStateCache'
 
 const changesetByTrace = new Map<string, string>()
 const CHANGESET_MAP_MAX_SIZE = 200
@@ -107,6 +108,26 @@ export const WriteFileTool: AgentTool = buildTool({
     if (!path) return { data: null, error: 'path is required', isError: true }
     const rootPath = useWorkspaceStore.getState().rootPath
     const fullPath = resolvePath(rootPath, path)
+
+    // Read-before-write enforcement (P1.2)
+    const fileState = FileStateCache.getInstance()
+    if (!fileState.wasRead(fullPath)) {
+      return { data: null, error: `File "${path}" has not been read yet. Use read_file to read it first before writing.`, isError: true }
+    }
+    try {
+      const { stat: fsStat } = await import('@/lib/electron-api')
+      const stats = await fsStat(fullPath)
+      const currentMtime = typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now()
+      if (fileState.isStale(fullPath, currentMtime)) {
+        const currentContent = await readTextFile(fullPath)
+        if (currentContent !== fileState.getContent(fullPath)) {
+          return { data: null, error: `File "${path}" has been modified since it was read. Use read_file to see the latest content before writing.`, isError: true }
+        }
+        fileState.recordRead(fullPath, currentContent, currentMtime)
+      }
+    } catch {
+      // mtime not available — skip staleness check
+    }
 
     const existingContent = await readTextFile(fullPath)
 
