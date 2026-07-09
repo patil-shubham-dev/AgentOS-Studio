@@ -32,6 +32,7 @@ import { sandboxPathMapper } from '@/runtime/tools/execution/SandboxPathMapper'
 import { pluginRegistry } from '@/runtime/plugins/PluginRegistry'
 import { pluginLoader } from '@/runtime/plugins/PluginLoader'
 import { sessionMemoryExtractor } from '@/runtime/memory/SessionMemoryExtractor'
+import { correctionCapture } from '@/runtime/memory/CorrectionCapture'
 import { liveGraphEngine } from '@/runtime/intelligence/LiveGraphEngine'
 import { ExecutionReliabilitySuite } from '@/runtime/execution/ExecutionReliabilitySuite'
 
@@ -232,6 +233,7 @@ export class RuntimeOS {
     // Start listening for session completions for cross-session memory
     if (isFeatureEnabled('sessionMemory')) {
       sessionMemoryExtractor.startListening()
+      correctionCapture.startListening()
     }
 
     if (isFeatureEnabled('plugins')) {
@@ -282,7 +284,8 @@ export class RuntimeOS {
     // Stop config file watcher
     configWatcher.stop()
     // Stop session memory listening
-    sessionMemoryExtractor.stopListening()
+      sessionMemoryExtractor.stopListening()
+      correctionCapture.stopListening()
     this.initialized = false
   }
 

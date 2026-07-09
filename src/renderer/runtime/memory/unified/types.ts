@@ -141,7 +141,7 @@ export interface MemoryConfig {
   extractionTriggers: ExtractionTrigger[]
 }
 
-export type ExtractionTrigger = "execution_complete" | "goal_achieved" | "compaction" | "manual"
+export type ExtractionTrigger = "execution_complete" | "goal_achieved" | "compaction" | "manual" | "user_correction"
 
 export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
   ephemeralMaxEntries: 50,
