@@ -1,6 +1,8 @@
 import { RepositoryKnowledgeGraph } from "@/runtime/intelligence/RepositoryKnowledgeGraph"
 import { FailureAnalysisEngine, type FailureAnalysis } from "@/runtime/execution/FailureAnalysisEngine"
 import type { VerificationResult } from "@/runtime/verification/types"
+import { ToolExecutionPipeline } from "@/runtime/tools/execution/ToolExecutionPipeline"
+import { ToolExecutionSandbox } from "@/runtime/tools/ToolExecutionSandbox"
 
 export interface RepairEdit {
   file: string
@@ -154,11 +156,14 @@ export class RepairExecutor {
 
   private async runLintFix(): Promise<RepairResult> {
     try {
-      const { execSync } = await import("child_process")
-      execSync("npx eslint --fix --quiet --ext .ts,.tsx 2>&1 || true", { timeout: 30_000, stdio: "pipe" })
+      const pipeline = ToolExecutionPipeline.getInstance()
+      const result = await pipeline.execute("run_command", { command: "npx eslint --fix --quiet --ext .ts,.tsx", timeout: 30_000 }, { role: "repair", signal: new AbortController().signal })
+      if (result.isError) {
+        return { attempted: true, success: false, editsApplied: [], message: `Lint auto-fix failed: ${result.error}` }
+      }
       return { attempted: true, success: true, editsApplied: [], message: "Lint auto-fix applied" }
-    } catch {
-      return { attempted: true, success: false, editsApplied: [], message: "Lint auto-fix failed" }
+    } catch (err) {
+      return { attempted: true, success: false, editsApplied: [], message: `Lint auto-fix failed: ${err}` }
     }
   }
 
@@ -183,14 +188,23 @@ export class RepairExecutor {
 
   private async applyAllEdits(): Promise<void> {
     if (this.fileEdits.size === 0) return
-    try {
-      const fs = await import("fs")
-      for (const [file, content] of this.fileEdits) {
-        fs.writeFileSync(file, content, "utf-8")
+    const pipeline = ToolExecutionPipeline.getInstance()
+    const sandbox = ToolExecutionSandbox.getInstance()
+    for (const [file, content] of this.fileEdits) {
+      try {
+        await sandbox.assertAllowed(
+          { id: "repair-auto", name: "write_file", args: { path: file, content } },
+          { role: "repair" },
+        )
+        const result = await pipeline.execute("write_file", { path: file, content }, { role: "repair", signal: new AbortController().signal })
+        if (result.isError) {
+          console.error(`[RepairExecutor] write_file failed for ${file}: ${result.error}`)
+        }
+      } catch (err) {
+        console.error(`[RepairExecutor] write_file blocked for ${file}:`, err)
       }
-      this.fileEdits.clear()
-    } catch {
     }
+    this.fileEdits.clear()
   }
 
   private findClosestModule(modulePath: string): string[] {

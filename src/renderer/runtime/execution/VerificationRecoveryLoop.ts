@@ -3,6 +3,8 @@ import { VerificationPipeline } from "@/runtime/verification/VerificationPipelin
 import { FailureAnalysisEngine, type FailureAnalysis } from "@/runtime/execution/FailureAnalysisEngine"
 import { RepairPlanner, type RepairPlan, type RepairAction } from "@/runtime/execution/RepairPlanner"
 import { FailurePatternMemory } from "@/runtime/execution/FailurePatternMemory"
+import { ToolExecutionPipeline } from "@/runtime/tools/execution/ToolExecutionPipeline"
+import type { ToolContext } from "@/runtime/tools/core/ToolContext"
 
 export interface RecoveryAttempt {
   attemptNumber: number
@@ -120,12 +122,14 @@ export class VerificationRecoveryLoop {
   }
 
   private async applyRepairs(actions: RepairAction[]): Promise<void> {
+    const pipeline = ToolExecutionPipeline.getInstance()
     for (const action of actions) {
       if (action.type === "run-command" && action.command) {
         try {
-          const { execSync } = await import("child_process")
-          execSync(action.command, { timeout: 30_000, stdio: "pipe" })
-        } catch {
+          const ctx: ToolContext = { role: "repair", signal: new AbortController().signal }
+          await pipeline.execute("run_command", { command: action.command, timeout: 30_000 }, ctx)
+        } catch (err) {
+          console.error(`[VerificationRecoveryLoop] Command failed: ${action.command}`, err)
         }
       }
     }
