@@ -44,6 +44,7 @@ interface WorkspaceStore {
   workspaceLoaded: boolean
 
   setRootPath: (path: string | null) => void
+  closeWorkspace: () => void
   setFileTree: (tree: FileEntry[]) => void
   loadDirectory: (path: string) => Promise<FileEntry[]>
   setLoading: (loading: boolean) => void
@@ -328,6 +329,27 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       await get().loadWorkspaceConfig(path)
       requestRefresh("workspace_change")
     }
+  },
+
+  closeWorkspace: () => {
+    const state = get()
+    state.persistWorkspaceState()
+    set({
+      rootPath: null,
+      fileTree: [],
+      openFiles: [],
+      activeFilePath: null,
+      aiContextFiles: [],
+      suggestedFiles: [],
+      recentlyModified: [],
+      changedFiles: new Set(),
+      pinnedFiles: [],
+      recentlyOpened: [],
+      workspaceLoaded: false,
+      isLoading: false,
+    })
+    localStorage.removeItem('agentic-workspace-root')
+    requestRefresh("workspace_change")
   },
 
   setFileTree: (tree) => {
