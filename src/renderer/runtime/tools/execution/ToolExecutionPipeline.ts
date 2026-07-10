@@ -7,6 +7,8 @@ import type { PreExecutionHook, PostExecutionHook, ToolExecutionEvent } from './
 import { PermissionEngine } from '../../permissions/PermissionEngine'
 import { ToolRegistry } from '../registry/ToolRegistry'
 import { ToolExecutionPolicy } from '../policies/ToolExecutionPolicy'
+import { classifyToolCall } from '../../permissions/speculativeClassifier'
+import type { ClassifierResult } from '../../permissions/speculativeClassifier'
 
 export type ExecutionOptions = {
   skipValidation?: boolean
@@ -57,6 +59,12 @@ export class ToolExecutionPipeline {
       return errResult
     }
 
+    const classificationPromise: Promise<ClassifierResult | null> = Promise.resolve(
+      toolName === 'bash' || toolName === 'command_run'
+        ? classifyToolCall(toolName, input)
+        : null,
+    )
+
     if (!opts.skipValidation) {
       const validation = this.validator.validate(tool, input, ctx)
       if (!validation.valid) {
@@ -101,9 +109,16 @@ export class ToolExecutionPipeline {
       }
 
       if (finalPermission.behavior === 'ask' && !opts.skipPermission) {
-        const askResult = await this.permissionEngine.requestApproval(toolName, processedInput, ctx)
-        if (!askResult.approved) {
-          return { data: null, error: askResult.reason ?? 'Permission denied by user', isError: true }
+        const classifierResult = await classificationPromise
+        if (classifierResult?.behavior === 'allow') {
+          this.emit(opts, { type: 'tool:permission', toolName, timestamp: Date.now(), meta: { classifier: 'allow', reason: classifierResult.reason } })
+        } else if (classifierResult?.behavior === 'block') {
+          return { data: null, error: `Blocked by classifier: ${classifierResult.reason}`, isError: true }
+        } else {
+          const askResult = await this.permissionEngine.requestApproval(toolName, processedInput, ctx)
+          if (!askResult.approved) {
+            return { data: null, error: askResult.reason ?? 'Permission denied by user', isError: true }
+          }
         }
       }
     }

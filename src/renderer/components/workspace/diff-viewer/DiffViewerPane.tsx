@@ -298,7 +298,7 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
         </AnimatePresence>
 
         {/* Diff content */}
-        <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-3">
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden p-3">
           {selectedFile ? (
             <SideBySideDiff
               key={selectedFile.path}
@@ -310,7 +310,7 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
               expanded={true}
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-[11px] text-white/20">
+            <div className="flex items-center justify-center flex-1 text-[11px] text-white/20">
               Select a file from the sidebar to view its diff
             </div>
           )}

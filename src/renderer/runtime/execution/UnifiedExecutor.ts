@@ -29,6 +29,7 @@ import { FastPathExecutor } from "./FastPathExecutor"
 import { AgentPipelineOrchestrator } from "./AgentPipelineOrchestrator"
 import { autoCompact, shouldAutoCompact } from "@/runtime/context/autoCompact"
 import { TokenEstimator } from "@/runtime/context/TokenEstimator"
+import { BackgroundTaskManager } from "@/runtime/BackgroundTaskManager"
 
 export type ExecutionMode = "fast" | "full" | "autonomous"
 
@@ -90,6 +91,7 @@ export class UnifiedExecutor {
   cancel(): void {
     this.queue.cancelAll()
     StreamManager.getInstance().clearAll()
+    BackgroundTaskManager.getInstance().cancelAll()
   }
 
   isBusy(): boolean {

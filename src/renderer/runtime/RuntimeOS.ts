@@ -1,7 +1,7 @@
 import { ToolRegistry } from './tools/registry/ToolRegistry'
 import { ToolPoolAssembler } from './tools/registry/ToolPoolAssembler'
 import { ToolExecutionPipeline } from './tools/execution/ToolExecutionPipeline'
-import { createMicroCompactPostHook } from './tools/execution/compactPostHook'
+import { createMicroCompactPostHook, createPersistPostHook } from './tools/execution'
 import { ToolExecutionPolicy } from './tools/policies/ToolExecutionPolicy'
 import { ToolConcurrencyPolicy } from './tools/policies/ToolConcurrencyPolicy'
 
@@ -77,6 +77,7 @@ export class RuntimeOS {
     this.toolExecutionPipeline = new ToolExecutionPipeline(this.toolRegistry, this.permissionEngine)
     this.toolExecutionPipeline.registerPreHook(sandboxPathMapper)
     this.toolExecutionPipeline.registerPostHook(createMicroCompactPostHook())
+    this.toolExecutionPipeline.registerPostHook(createPersistPostHook())
     this.toolExecutionPolicy = new ToolExecutionPolicy()
     this.toolExecutionPipeline.setPolicy(this.toolExecutionPolicy)
     this.toolConcurrencyPolicy = new ToolConcurrencyPolicy()

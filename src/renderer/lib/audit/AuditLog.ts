@@ -60,7 +60,7 @@ const SUBSCRIBERS_KEY = "audit:subscribers"
 
 // ── AuditLog Class ──
 
-class AuditLog {
+export class AuditLog {
   private static instance: AuditLog
   private events: AuditEvent[] = []
   private listeners = new Set<() => void>()

@@ -2,6 +2,8 @@ import type { PermissionResult, PermissionBehavior } from '../tools/core/ToolPer
 import type { ToolContext } from '../tools/core/ToolContext'
 import { PolicyResolver } from './PolicyResolver'
 import { ApprovalManager } from './ApprovalManager'
+import { AuditLog } from '@/lib/audit/AuditLog'
+import { createRolePermissionContext } from './PermissionContext'
 
 export type ApprovalDecision = {
   approved: boolean
@@ -43,19 +45,20 @@ export class PermissionEngine {
       return result
     }
 
-    const permCtx: PermissionContext = createPermissionContext({
+    const permCtx: PermissionContext = createRolePermissionContext(ctx.role, {
       mode: (ctx.executionMode as any) ?? 'default',
-      role: ctx.role,
     })
 
     const policyResult = this.policyResolver.resolveWithMode(toolName, {}, permCtx)
 
     if (policyResult.behavior === 'deny' || policyResult.behavior === 'hidden') {
       this.cache(cacheKey, policyResult)
+      this.logDenied(toolName, policyResult, ctx)
       return policyResult
     }
 
     if (toolResult.behavior === 'deny') {
+      this.logDenied(toolName, toolResult, ctx)
       return { behavior: 'deny', reason: toolResult.reason ?? 'Denied by tool permission check' }
     }
 
@@ -67,14 +70,31 @@ export class PermissionEngine {
   }
 
   async requestApproval(toolName: string, input: unknown, ctx: ToolContext): Promise<ApprovalDecision> {
-    return this.approvalManager.requestApproval(toolName, input, {
+    const result = await this.approvalManager.requestApproval(toolName, input, {
       role: ctx.role,
       mode: ctx.executionMode ?? 'default',
     })
+    if (!result.approved) {
+      this.logDenied(toolName, { behavior: 'deny', reason: result.reason ?? 'Denied by user' }, ctx)
+    }
+    return result
   }
 
   setAutoApprove(enabled: boolean): void {
     this.approvalManager.setAutoApprove(enabled)
+  }
+
+  private logDenied(toolName: string, result: PermissionResult, ctx: ToolContext): void {
+    try {
+      AuditLog.getInstance().recordPermissionDenied(
+        ctx.role ?? 'unknown',
+        toolName,
+        result.reason ?? 'Permission denied',
+        { executionMode: ctx.executionMode }
+      )
+    } catch {
+      // audit log unavailable — skip
+    }
   }
 
   private cache(key: string, result: PermissionResult): void {

@@ -157,26 +157,69 @@ function ClickablePath({ path, text }: { path: string; text: string }) {
   )
 }
 
+function parseDiffInline(diffText: string): Array<{ header: string; lines: Array<{ type: 'add' | 'del' | 'context'; content: string }> }> {
+  if (!diffText) return []
+  const lines = diffText.split('\n')
+  const hunks: Array<{ header: string; lines: Array<{ type: 'add' | 'del' | 'context'; content: string }> }> = []
+  let current: { header: string; lines: Array<{ type: 'add' | 'del' | 'context'; content: string }> } | null = null
+  for (const line of lines) {
+    const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/)
+    if (hunkMatch) {
+      if (current) hunks.push(current)
+      current = { header: line, lines: [] }
+      continue
+    }
+    if (!current) {
+      if (line.startsWith('---') || line.startsWith('+++')) continue
+      if (!current) {
+        current = { header: '', lines: [] }
+      }
+    }
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      current.lines.push({ type: 'add', content: line.slice(1) })
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      current.lines.push({ type: 'del', content: line.slice(1) })
+    } else if (line.startsWith(' ')) {
+      current.lines.push({ type: 'context', content: line.slice(1) })
+    } else if (line.startsWith('\\')) {
+      continue
+    }
+  }
+  if (current) hunks.push(current)
+  return hunks
+}
+
 function InlineDiff({ preview }: { preview?: string }) {
   if (!preview) return null
+  const hunks = parseDiffInline(preview)
+  if (hunks.length === 0) {
+    return (
+      <div className="mt-1.5 rounded-lg bg-black/30 border border-white/[0.04] overflow-hidden">
+        <div className="px-2 py-1 text-[9px] font-medium text-white/25 border-b border-white/[0.04]">Diff Preview</div>
+        <pre className="text-[10px] font-mono whitespace-pre-wrap break-all leading-relaxed max-h-[80px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-white/[0.03] scrollbar-track-transparent text-white/20">{preview}</pre>
+      </div>
+    )
+  }
   return (
     <div className="mt-1.5 rounded-lg bg-black/30 border border-white/[0.04] overflow-hidden">
       <div className="px-2 py-1 text-[9px] font-medium text-white/25 border-b border-white/[0.04]">Diff Preview</div>
       <pre className="text-[10px] font-mono whitespace-pre-wrap break-all leading-relaxed max-h-[80px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-white/[0.03] scrollbar-track-transparent">
-        {preview.split("\n").map((line, i) => {
-          const type = line.startsWith("- ") ? "del" : line.startsWith("+ ") ? "add" : "ctx"
-          const content = line.slice(2)
-          return (
-            <span key={i} className={cn(
-              "block",
-              type === "del" && "text-red-400/60 bg-red-500/[0.04]",
-              type === "add" && "text-emerald-400/60 bg-emerald-500/[0.04]",
-              type === "ctx" && "text-white/20",
+        {hunks.flatMap((hunk, hi) => [
+          hunk.header ? <div key={`hdr-${hi}`} className="text-[9px] text-white/15 font-mono py-0.5">{hunk.header}</div> : null,
+          ...hunk.lines.map((line, li) => (
+            <span key={`l-${hi}-${li}`} className={cn(
+              "block text-[10px] font-mono leading-[1.4]",
+              line.type === "del" && "text-red-400/60 bg-red-500/[0.04]",
+              line.type === "add" && "text-emerald-400/60 bg-emerald-500/[0.04]",
+              line.type === "context" && "text-white/20",
             )}>
-              {line[0] === "-" ? "−" : line[0] === "+" ? "+" : " "} {content}
+              <span className="inline-block w-4 shrink-0 text-center">
+                {line.type === "del" ? "−" : line.type === "add" ? "+" : " "}
+              </span>
+              {line.content}
             </span>
-          )
-        })}
+          )),
+        ])}
       </pre>
     </div>
   )

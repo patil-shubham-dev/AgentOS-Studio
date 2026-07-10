@@ -8,6 +8,7 @@ import type { StreamCallbacks } from "./streaming-transport"
 import { streamingTransportFetch } from "./streaming-transport"
 import { TransportError } from "./transport-errors"
 import { tauriFetch } from "./http-client"
+import { TokenBucketRateLimiter, getRateLimitForProvider } from "./rate-limiter"
 
 
 export interface TransportOptions {
@@ -15,14 +16,17 @@ export interface TransportOptions {
   getApiKey?: (providerId?: string) => string | undefined
   onDiagnosticsEvent?: (event: import("./transport-types").TransportTraceEvent) => void
   onTimelineComplete?: (timeline: TransportTimeline) => void
+  rateLimiter?: TokenBucketRateLimiter
 }
 
 export class ProviderTransport {
   private config: TransportConfig
   private middleware: TransportMiddleware
+  private rateLimiter: TokenBucketRateLimiter | null
 
   constructor(opts: TransportOptions = {}) {
     this.config = { ...DEFAULT_TRANSPORT_CONFIG, ...opts.config }
+    this.rateLimiter = opts.rateLimiter ?? null
 
     const middlewareList: TransportMiddleware[] = [
       new RequestIdMiddleware(),
@@ -41,7 +45,15 @@ export class ProviderTransport {
     this.middleware = composeMiddleware(middlewareList)
   }
 
+  setRateLimiter(limiter: TokenBucketRateLimiter | null): void {
+    this.rateLimiter = limiter
+  }
+
   async execute(req: TransportRequest): Promise<TransportResponse> {
+    if (this.rateLimiter) {
+      await this.rateLimiter.acquire()
+    }
+
     const t0 = performance.now()
 
     const adaptedReq: TransportRequest = {
@@ -177,6 +189,10 @@ export class ProviderTransport {
     console.log("[DEBUG_REQ_BODY]", JSON.stringify(body).slice(0, 2000))
     const requestId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
+    if (this.rateLimiter) {
+      await this.rateLimiter.acquire()
+    }
+
     const streamCallbacks: StreamCallbacks = {
       onToken: callbacks.onToken,
       onReasoning: callbacks.onReasoning,
@@ -206,6 +222,7 @@ export class ProviderTransport {
         firstChunkTimeoutMs: this.config.streamHeadTimeoutMs,
         idleChunkTimeoutMs: this.config.streamIdleTimeoutMs,
         maxDurationMs: this.config.maxStreamDurationMs,
+        watchdogWarnThresholdMs: this.config.streamIdleTimeoutMs / 2,
         onMetrics: callbacks.onMetrics,
         onStateChange: callbacks.onStateChange,
         requestId,

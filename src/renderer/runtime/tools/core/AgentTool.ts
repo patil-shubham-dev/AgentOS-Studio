@@ -10,6 +10,28 @@ export type ToolPhase = 'core' | 'advanced' | 'future'
 
 export type ToolInputSchema = Record<string, unknown>
 
+export type ToolRenderOutput<I = ToolInputSchema, O = unknown> = {
+  usePreview?: {
+    type: 'code' | 'file' | 'terminal' | 'diff' | 'search' | 'web'
+    label: string
+    language?: string
+    content?: string
+    path?: string
+    command?: string
+    lines?: number
+  }
+  resultPreview?: {
+    type: 'code' | 'file' | 'terminal' | 'diff' | 'search' | 'web'
+    label: string
+    language?: string
+    content?: string
+    path?: string
+    exitCode?: number
+    truncated?: boolean
+    totalChars?: number
+  }
+}
+
 export type AgentTool<I = ToolInputSchema, O = unknown> = {
   name: string
   aliases?: string[]
@@ -29,10 +51,12 @@ export type AgentTool<I = ToolInputSchema, O = unknown> = {
   isEnabled(): boolean
   isMcp?: boolean
   mcpInfo?: { serverName: string; toolName: string }
+  maxResultSizeChars?: number
 
   supportedModes(): string[]
   requiredCapabilities(): ToolCapabilities[]
   getActivityDescription?(input: Partial<I>): string | null
+  getRenderOutput?(input: Partial<I>, result?: ToolResult<O>): ToolRenderOutput<I, O>
 }
 
 export function buildTool<I, O>(
@@ -43,6 +67,7 @@ export function buildTool<I, O>(
     promptPriority: 60,
     namespace: 'coding',
     phase: 'core',
+    maxResultSizeChars: 100_000,
     isReadOnly: () => false,
     isConcurrencySafe: () => false,
     isEnabled: () => true,

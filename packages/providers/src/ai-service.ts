@@ -1,14 +1,23 @@
 import { ProviderTransport } from "./transport"
 import type { CompletionRequest, TransportAdapterConfig } from "./transport-adapters"
 import type { ChatRequest, ChatResponse, ToolCall } from "./provider-gateway"
+import { estimateCost, globalCostTracker, formatCost } from "./cost-tracking"
 
 export type { ChatMessage, ToolCall, ToolDef, ChatRequest, ChatResponse, UsageInfo } from "./provider-gateway"
+
+export interface UsageRecord {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}
+
 export interface StreamCallbacks {
   onToken: (token: string) => void
   onReasoning?: (text: string) => void
   onReady: () => void
   onDone: (fullContent: string, meta?: { toolCalls?: ToolCall[]; finishReason?: string | null }) => void
   onError: (error: Error) => void
+  onUsage?: (usage: UsageRecord) => void
 }
 
 const LOG_PREFIX = "[AIService]"
@@ -67,6 +76,20 @@ export async function chatCompletion(
     signal,
   })
 
+  const usage = result.usage
+    ? {
+        prompt_tokens: result.usage.promptTokens,
+        completion_tokens: result.usage.completionTokens,
+        total_tokens: result.usage.totalTokens,
+      }
+    : undefined
+
+  if (usage) {
+    const cost = estimateCost(req.model, usage.prompt_tokens, usage.completion_tokens)
+    globalCostTracker.track(cost)
+    console.log(`[COST] ${req.model} | ${usage.total_tokens} tokens | ${formatCost(cost.totalCost)}`)
+  }
+
   return {
     message: {
       role: "assistant",
@@ -78,13 +101,7 @@ export async function chatCompletion(
       })),
     },
     finish_reason: result.finishReason,
-    usage: result.usage
-      ? {
-          prompt_tokens: result.usage.promptTokens,
-          completion_tokens: result.usage.completionTokens,
-          total_tokens: result.usage.totalTokens,
-        }
-      : undefined,
+    usage,
   }
 }
 
@@ -124,6 +141,7 @@ export async function streamChatCompletion(
   let collectedToolCalls: ToolCall[] = []
   let finishReason: string | null = null
   let readyFired = false
+  let streamCharCount = 0
 
   await transport.streamChatCompletion(adapterConfig, completionRequest, {
     onStateChange: (state) => {
@@ -138,6 +156,7 @@ export async function streamChatCompletion(
         callbacks.onReady()
       }
       fullContent += token
+      streamCharCount += token.length
       callbacks.onToken(token)
     },
     onReasoning: callbacks.onReasoning,
@@ -162,6 +181,18 @@ export async function streamChatCompletion(
         readyFired = true
         callbacks.onReady()
       }
+
+      const approxTokens = Math.round(streamCharCount / 4)
+      const usageRecord: UsageRecord = {
+        promptTokens: 0,
+        completionTokens: approxTokens,
+        totalTokens: approxTokens,
+      }
+      const cost = estimateCost(req.model, 0, approxTokens)
+      globalCostTracker.track(cost)
+      console.log(`[COST] ${req.model} ~${approxTokens} out-tokens (approx) | ${formatCost(cost.totalCost)}`)
+      callbacks.onUsage?.(usageRecord)
+
       callbacks.onDone(fullContent, {
         toolCalls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined,
         finishReason,
@@ -287,6 +318,18 @@ export async function directChatCompletion(
 
   console.log(`[PROVIDER] response OK`, { model, latencyMs: result.latencyMs })
 
+  const usage: UsageRecord = result.usage
+    ? {
+        prompt_tokens: result.usage.promptTokens,
+        completion_tokens: result.usage.completionTokens,
+        total_tokens: result.usage.totalTokens,
+      }
+    : { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+
+  const cost = estimateCost(req.model, usage.prompt_tokens, usage.completion_tokens)
+  globalCostTracker.track(cost)
+  console.log(`[COST] ${req.model} | ${usage.total_tokens} tokens | ${formatCost(cost.totalCost)}`)
+
   return {
     message: {
       role: "assistant",
@@ -298,12 +341,6 @@ export async function directChatCompletion(
       })),
     },
     finish_reason: result.finishReason,
-    usage: result.usage
-      ? {
-          prompt_tokens: result.usage.promptTokens,
-          completion_tokens: result.usage.completionTokens,
-          total_tokens: result.usage.totalTokens,
-        }
-      : { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    usage,
   }
 }

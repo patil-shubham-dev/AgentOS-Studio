@@ -183,7 +183,7 @@ export class ContextManager {
     const rootPath = getWorkspaceContextSnapshot()?.rootPath
     if (!rootPath) return null
     try {
-      const { gitStatus } = await import('@/lib/git')
+      const { gitStatus, gitDiff } = await import('@/lib/git')
       const status = await gitStatus(rootPath)
       if (!status || (status.changes.length === 0 && !status.branch)) return null
       const lines: string[] = [`Branch: ${status.branch || 'unknown'}`]
@@ -195,6 +195,14 @@ export class ContextManager {
       }
       if (status.ahead && status.ahead > 0) {
         lines.push(`Ahead of remote: ${status.ahead} commits`)
+      }
+      const diffText = await gitDiff(rootPath, '').catch(() => null)
+      if (diffText && diffText.length > 0) {
+        const MAX_DIFF_CHARS = 4000
+        const truncated = diffText.length > MAX_DIFF_CHARS
+          ? diffText.slice(0, MAX_DIFF_CHARS) + `\n... [diff truncated: ${diffText.length} total chars]`
+          : diffText
+        lines.push(`\nUncommitted changes (diff):\n${truncated}`)
       }
       return lines.join('\n')
     } catch {

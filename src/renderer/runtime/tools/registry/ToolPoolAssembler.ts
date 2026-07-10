@@ -2,7 +2,7 @@ import type { AgentTool, ToolNamespace } from '../core/AgentTool'
 import type { ToolPermissions } from '../core/ToolPermissions'
 import type { ToolRegistry } from './ToolRegistry'
 import { auditLog } from '@/lib/audit/AuditLog'
-import { getAllowedToolsForRole, isRoleKnown } from '@/runtime/permissions/role-tool-allowlist'
+import { getAllowedToolsForRole, isRoleKnown, isBypassRole } from '@/runtime/permissions/role-tool-allowlist'
 
 export type PoolAssemblyOptions = {
   mode?: string
@@ -81,7 +81,7 @@ export class ToolPoolAssembler {
    *
    * Uses default-deny when defaultDeny is true or when the role has an entry
    * in ROLE_TOOL_ALLOWLIST. Unknown roles get NO tools (not all tools).
-   * The 'superadmin' role gets all tools.
+   * Bypass roles (configured via setBypassRoles) get all tools.
    */
   assembleForRole(role: string, options?: PoolAssemblyOptions): AgentTool[] {
     const pool = this.assemble(options)
@@ -90,8 +90,9 @@ export class ToolPoolAssembler {
       ...options,
     }
 
-    // Superadmin bypass — all tools available
-    if (role === 'superadmin') {
+    // Configurable bypass — all tools available (logged for audit)
+    if (isBypassRole(role)) {
+      auditLog.recordPermissionDenied(role, '*', `Bypass role "${role}" granted access to all tools`)
       return pool
     }
 
@@ -110,7 +111,7 @@ export class ToolPoolAssembler {
       return pool
     }
 
-    // superadmin returns null from getAllowedToolsForRole, already handled above
+    // bypass roles handled above via isBypassRole
     if (allowedTools === null) return pool
 
     // Filter pool to only allowed tools

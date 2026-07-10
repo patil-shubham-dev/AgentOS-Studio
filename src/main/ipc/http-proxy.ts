@@ -176,15 +176,9 @@ export function registerHttpProxyHandler(): void {
     const ctrl = new AbortController()
     activeStreams.set(streamId, ctrl)
 
-    // Connection timeout: prevent indefinite hang if provider is unreachable
-    const STREAM_CONNECT_TIMEOUT_MS = 30_000
-    const connectTimer = setTimeout(() => {
-      if (!ctrl.signal.aborted) {
-        ctrl.abort()
-        log(`✗ [stream ${streamId}] connection timed out after ${STREAM_CONNECT_TIMEOUT_MS}ms`)
-      }
-    }, STREAM_CONNECT_TIMEOUT_MS)
-
+    // Connection timeout is handled by the renderer-side streaming transport
+    // which propagates via the abort signal → proxy-http-stream-abort.
+    // This avoids two independent 30s timers that could disagree on timing.
     try {
       const fetchOpts: RequestInit = {
         method,
@@ -198,7 +192,6 @@ export function registerHttpProxyHandler(): void {
 
       // fetch() resolves when headers arrive — no body buffering
       let response = await fetch(url, fetchOpts)
-      clearTimeout(connectTimer)
 
       const ms = Math.round(performance.now() - t0)
       const responseHeaders: Record<string, string> = {}
@@ -275,7 +268,6 @@ export function registerHttpProxyHandler(): void {
 
       return headerResult
     } catch (err) {
-      clearTimeout(connectTimer)
       activeStreams.delete(streamId)
       const elapsed = Math.round(performance.now() - t0)
       const msg = err instanceof Error ? err.message : String(err)
@@ -287,7 +279,7 @@ export function registerHttpProxyHandler(): void {
 
       if (msg.includes('abort') || name === 'AbortError') {
         status = 504
-        classifiedMsg = `Connection timed out after ${STREAM_CONNECT_TIMEOUT_MS}ms`
+        classifiedMsg = 'Connection timed out'
       } else if (msg.includes('ENOTFOUND') || msg.includes('EAI_AGAIN') || msg.includes('getaddrinfo')) {
         status = 502
         classifiedMsg = 'DNS Resolution Error: The hostname could not be resolved'

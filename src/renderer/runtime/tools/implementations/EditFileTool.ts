@@ -249,6 +249,28 @@ export const EditFileTool: AgentTool = buildTool({
     const p = (input as any)?.file_path || (input as any)?.path || (input as any)?.file
     return p ? `Editing ${p}` : 'Editing a file'
   },
+  getRenderOutput: (input, result) => {
+    const p = (input as any)?.file_path || (input as any)?.path || (input as any)?.file
+    const oldStr = (input as any)?.old_string ?? (input as any)?.oldStr ?? ''
+    const newStr = (input as any)?.new_string ?? (input as any)?.newStr ?? ''
+    const ext = p ? p.split('.').pop() ?? '' : ''
+    return {
+      usePreview: {
+        type: 'diff',
+        label: p ? `Editing ${p}` : 'Editing a file',
+        path: p,
+        content: oldStr ? `- ${oldStr.slice(0, 200)}\n+ ${newStr.slice(0, 200)}` : undefined,
+      },
+      resultPreview: result?.data
+        ? {
+            type: 'file',
+            label: `Edited ${p}`,
+            path: p,
+            content: undefined,
+          }
+        : undefined,
+    }
+  },
   permissions: async () => ({ behavior: 'ask', reason: 'Editing files can modify project source code' }),
   execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const filePath = (input.file_path as string) ?? (input.path as string) ?? (input.file as string)

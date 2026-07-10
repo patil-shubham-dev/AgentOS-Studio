@@ -30,7 +30,7 @@ These are verified bugs in AgenticOS that break core functionality. Fix them fir
 
 ---
 
-### P0.1 EditFileTool never writes to disk
+### P0.1 EditFileTool never writes to disk ✅
 
 **Severity:** CATASTROPHIC — the AI believes it edited files, but nothing was written
 
@@ -69,7 +69,7 @@ changesetByTrace.get(ctx.traceId)?.push({
 
 ---
 
-### P0.2 workspace-store.ts calls undefined saveSession()
+### P0.2 workspace-store.ts calls undefined saveSession() ✅
 
 **Severity:** HIGH — workspace state is never persisted on close
 
@@ -107,7 +107,7 @@ const saveSession = () => {
 
 ---
 
-### P0.3 CommandExecutionPolicy catch-all regex makes downstream rules unreachable
+### P0.3 CommandExecutionPolicy catch-all regex makes downstream rules unreachable ✅
 
 **Severity:** HIGH — network download command safety checks are dead code  
 
@@ -138,7 +138,7 @@ const COMMAND_TIER_RULES = [
 
 ---
 
-### P0.4 ToolValidation.ts does not check required fields
+### P0.4 ToolValidation.ts does not check required fields ✅
 
 **Severity:** HIGH — tools with required fields silently accept missing values  
 
@@ -170,7 +170,7 @@ if (requiredResult !== true) {
 
 ---
 
-### P0.5 WebSearchTool scrapes Google HTML directly (fragile + against ToS)
+### P0.5 WebSearchTool scrapes Google HTML directly (fragile + against ToS) ✅
 
 **Severity:** HIGH — will break without warning, violates Google ToS  
 
@@ -215,7 +215,7 @@ switch (ctx.searchProvider) {
 
 ---
 
-### P0.6 changesetByTrace module-level Map never garbage-collected
+### P0.6 changesetByTrace module-level Map never garbage-collected ✅
 
 **Severity:** MEDIUM-HIGH — memory leak over long sessions  
 
@@ -263,7 +263,7 @@ These are not bugs but missing capabilities that directly impact code quality, u
 
 ---
 
-### P1.1 Add search-and-replace FileEditTool (modeled on Claude Code)
+### P1.1 Add search-and-replace FileEditTool (modeled on Claude Code) ✅
 
 **Impact:** Core coding ability — safer editing, fewer file corruptions  
 **Effort:** Large (new tool + validation + UI integration)  
@@ -324,7 +324,7 @@ These are not bugs but missing capabilities that directly impact code quality, u
 
 ---
 
-### P1.2 Add read-before-edit enforcement with timestamp tracking
+### P1.2 Add read-before-edit enforcement with timestamp tracking ✅
 
 **Impact:** Prevents editing wrong files, race conditions, and external-edit conflicts  
 **Effort:** Medium (file state cache + validation hook)  
@@ -516,7 +516,7 @@ function timeBasedMicroCompact(messages: Message[], thresholdMs = 60000): Messag
 
 ---
 
-### P1.5 Add auto-compact (conversation summarization)
+### P1.5 Add auto-compact (conversation summarization) ✅
 
 **Impact:** Enables indefinite sessions, prevents context-window overflow  
 **Effort:** Large (summarizer agent, compact prompt, state restoration)  
@@ -594,7 +594,7 @@ async function reAttachFileContext(messages: Message[]): Promise<void> {
 
 ---
 
-### P1.6 Add Assembly-Time Tool Filtering by Deny Rules
+### P1.6 Add Assembly-Time Tool Filtering by Deny Rules ✅
 
 **Impact:** Security — denied tools don't even appear in the model's tool list  
 **Effort:** Small  
@@ -631,7 +631,7 @@ function assemble(options: AssembleOptions): Tool[] {
 
 ---
 
-### P1.7 Fix cross-layer coupling: tools should not import Zustand stores
+### P1.7 Fix cross-layer coupling: tools should not import Zustand stores ✅
 
 **Impact:** Testability, modularity, separation of concerns  
 **Effort:** Medium (refactoring across ~8 tools)  
@@ -676,7 +676,7 @@ These are valuable features that improve user experience, safety, and performanc
 
 ---
 
-### P2.1 Add streaming tool executor
+### P2.1 Add streaming tool executor ✅
 
 **Impact:** Perceived speed — tools start running before the model finishes responding  
 **Effort:** Very large (streaming infrastructure + executor)  
@@ -772,7 +772,7 @@ class StreamingToolExecutor {
 
 ---
 
-### P2.2 Add speculative permission classifier
+### P2.2 Add speculative permission classifier ✅
 
 **Impact:** Speed — permission checks don't block tool execution  
 **Effort:** Medium (classifier API call + integration)  
@@ -814,7 +814,7 @@ return await showPermissionDialog(tool, input)
 
 ---
 
-### P2.3 Add stream idle watchdog
+### P2.3 Add stream idle watchdog ✅
 
 **Impact:** Reliability — prevents silent hangs when AI stops responding  
 **Effort:** Small  
@@ -858,7 +858,7 @@ function streamWithWatchdog(request: Request, signal: AbortSignal): AsyncGenerat
 
 ---
 
-### P2.4 Add tool result disk persistence for large outputs
+### P2.4 Add tool result disk persistence for large outputs ✅
 
 **Impact:** Prevents OOM from large tool results, saves tokens  
 **Effort:** Medium  
@@ -906,7 +906,7 @@ async function maybePersistResult(tool: AgentTool, output: string, traceId: stri
 
 ---
 
-### P2.5 Add per-tool UI rendering
+### P2.5 Add per-tool UI rendering ✅
 
 **Impact:** Visual quality — each tool has a tailored UI representation  
 **Effort:** Medium (add `renderToolUseMessage` and `renderToolResultMessage` to tools)  
@@ -961,7 +961,7 @@ renderToolUseProgressMessage?(progress: P[]): React.ReactNode
 
 ---
 
-### P2.6 Add per-rule always-allow (not one-bit toggle)
+### P2.6 Add per-rule always-allow (not one-bit toggle) ✅
 
 **Impact:** Safety UX — users can permanently allow specific commands  
 **Effort:** Medium  
@@ -992,7 +992,7 @@ type AlwaysAllowRule = {
 
 ---
 
-### P2.7 Add cost tracking per provider
+### P2.7 Add cost tracking per provider ✅
 
 **Impact:** User awareness — shows how many tokens each provider/model consumes  
 **Effort:** Small  
@@ -1026,7 +1026,7 @@ function estimateCost(model: string, inputTokens: number, outputTokens: number):
 
 ---
 
-### P2.8 Make role definitions data-driven, not hardcoded
+### P2.8 Make role definitions data-driven, not hardcoded ✅
 
 **Impact:** Extensibility — users can define custom agent roles  
 **Effort:** Medium  
@@ -1061,7 +1061,7 @@ roleRegistry.loadBuiltinFallbacks()  // The 6 hardcoded roles as fallback
 
 ---
 
-### P2.9 Add client-side rate limiting
+### P2.9 Add client-side rate limiting ✅
 
 **Impact:** Prevents silent API failures from rate limit exceeded errors  
 **Effort:** Small  

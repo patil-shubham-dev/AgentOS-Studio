@@ -18,7 +18,7 @@ export type CompactorConfig = {
 const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
   autoCompactThreshold: 0.75,
   autoCompactBuffer: 13000,
-  microCompactThreshold: 0.85,
+  microCompactThreshold: 0.65,
   reactiveCompactThreshold: 0.10,
   sessionMemoryMinTokens: 10_000,
   sessionMemoryMaxTokens: 40_000,

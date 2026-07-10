@@ -126,6 +126,11 @@ export function SideBySideDiff({
   const isAllRejected = file.status === "rejected"
   const isPending = file.status === "pending"
 
+  const maxComputationTime = useMemo(() => {
+    const totalChars = (file.originalContent?.length ?? 0) + (getReviewedContent(file)?.length ?? 0)
+    return Math.max(5000, Math.min(30000, Math.round(totalChars / 100) * 100))
+  }, [file.originalContent, file])
+
   const diffEditorOptions = useMemo(() => ({
     ...MONACO_COMMON_OPTIONS,
     originalEditable: false,
@@ -134,14 +139,17 @@ export function SideBySideDiff({
     diffCodeLens: false,
     renderIndicators: true,
     ignoreTrimWhitespace: true,
-    maxComputationTime: 5000,
-  }), [])
+    maxComputationTime,
+  }), [maxComputationTime])
 
   return (
     <motion.div
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-xl border border-white/[0.06] bg-black/20 overflow-hidden"
+      className={cn(
+        "rounded-xl border border-white/[0.06] bg-black/20 overflow-hidden",
+        expanded && "flex flex-col flex-1 min-h-0",
+      )}
     >
       {/* File header */}
       <div className={cn(
@@ -234,8 +242,8 @@ export function SideBySideDiff({
 
       {/* Monaco DiffEditor */}
       {expanded && (
-        <div className="relative">
-          <div className="h-[300px] min-h-[200px] max-h-[500px]">
+        <div className="relative flex flex-col flex-1 min-h-0">
+          <div className="flex-1 min-h-[200px]">
             <DiffEditor
               original={file.originalContent}
               modified={getReviewedContent(file)}

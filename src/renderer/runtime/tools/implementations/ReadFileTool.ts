@@ -117,6 +117,28 @@ export const ReadFileTool: AgentTool = buildTool({
     const p = (input as any)?.path
     return p ? `Reading ${p}` : 'Reading a file'
   },
+  getRenderOutput: (input, result) => {
+    const path = String((input as any)?.path ?? '')
+    const content = result?.data ? String(result.data) : undefined
+    const ext = path.split('.').pop() ?? ''
+    return {
+      usePreview: {
+        type: 'file',
+        label: path,
+        path,
+      },
+      resultPreview: content
+        ? {
+            type: 'code',
+            label: `${path} — ${content.length} chars`,
+            content: content.length > 5000 ? content.slice(0, 5000) + '\n... [truncated]' : content,
+            language: ext,
+            truncated: content.length > 5000,
+            totalChars: content.length,
+          }
+        : undefined,
+    }
+  },
   execute: async (_ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const path = String(input.path ?? '')
     if (!path) return { data: null, error: 'path is required', isError: true }

@@ -1,6 +1,7 @@
 import type { StreamState, StreamMetrics } from "./transport-types"
 import { TransportError } from "./transport-errors"
 import { tauriFetchStreaming } from "./http-client"
+import { StreamWatchdog } from "./stream-watchdog"
 
 export const TOOL_CALL_BUFFER_LIMIT = 100
 
@@ -42,6 +43,7 @@ export interface StreamingTransportOptions {
   requestId?: string
   onMetrics?: (metrics: StreamMetrics) => void
   onStateChange?: (state: StreamState) => void
+  watchdogWarnThresholdMs?: number
 }
 
 export function parseSseLine(line: string, lineNumber: number): SseChunk | null {
@@ -398,7 +400,8 @@ export async function streamingTransportFetch(
     options.onStateChange?.("errored")
     const msg = err instanceof Error ? err.message : String(err)
     const elapsed = Math.round(performance.now() - t0)
-    console.log(`${STREAM_LOG} ✗ connection failed (${elapsed}ms): ${msg}`)
+    const bodySize = options.body?.length ?? 0
+    console.log(`${STREAM_LOG} ✗ connection failed (${elapsed}ms, body=${bodySize} chars): ${msg}`)
     if (msg.includes("abort") && abortCtrl.signal.aborted) {
       callbacks.onError(new TransportError("CONNECTION_TIMEOUT", `Connection timed out after ${timeoutMs}ms`))
     } else {
@@ -502,6 +505,21 @@ export async function streamingTransportFetch(
     callbacks.onError(new TransportError("STREAM_DURATION_EXCEEDED", `Stream exceeded max duration of ${maxDuration}ms`))
   }, maxDuration)
 
+  const watchdog = options.watchdogWarnThresholdMs
+    ? new StreamWatchdog({
+        timeoutMs: idleChunkTimeout,
+        warnThresholdMs: options.watchdogWarnThresholdMs,
+        onWarn: (elapsed) => {
+          console.warn(`${STREAM_LOG} ⚠ stream stalled ${elapsed}ms since last event (${Math.round(performance.now() - t0)}ms total)`)
+        },
+        onTimeout: () => {
+          abortCtrl.abort()
+          callbacks.onError(new TransportError("IDLE_CHUNK_TIMEOUT", `No data for ${idleChunkTimeout}ms after watchdog timeout`))
+        },
+      })
+    : null
+  watchdog?.start()
+
   try {
     while (true) {
       console.log("[FLOW:9] streamingTransportFetch: read loop iteration (tokens=" + metrics.totalTokens + ")")
@@ -521,11 +539,13 @@ export async function streamingTransportFetch(
         result = await Promise.race([readPromise, timeoutPromise])
       } catch {
         if (abortCtrl.signal.aborted) break
-        if (metrics.totalTokens > 0) {
-          console.log(`${STREAM_LOG} ✗ idle timeout ${idleTimeout}ms after ${metrics.totalTokens} tokens (${Math.round(performance.now() - t0)}ms)`)
-          callbacks.onError(new TransportError("IDLE_CHUNK_TIMEOUT", `No data for ${idleTimeout}ms after ${metrics.totalTokens} tokens`))
+        if (firstChunkReceived) {
+          const bodySize = options.body?.length ?? 0
+          console.log(`${STREAM_LOG} ✗ idle timeout ${idleTimeout}ms after ${metrics.totalChunks} chunks, ${metrics.totalTokens} tokens (${Math.round(performance.now() - t0)}ms, body=${bodySize} chars)`)
+          callbacks.onError(new TransportError("IDLE_CHUNK_TIMEOUT", `No data for ${idleTimeout}ms after ${metrics.totalChunks} chunks`))
         } else {
-          console.log(`${STREAM_LOG} ✗ first chunk timeout ${firstChunkTimeout}ms (${Math.round(performance.now() - t0)}ms)`)
+          const bodySize = options.body?.length ?? 0
+          console.log(`${STREAM_LOG} ✗ first chunk timeout ${firstChunkTimeout}ms (${Math.round(performance.now() - t0)}ms, body=${bodySize} chars)`)
           callbacks.onError(new TransportError("FIRST_CHUNK_TIMEOUT", `No data received within ${firstChunkTimeout}ms`))
         }
         break
@@ -550,6 +570,8 @@ export async function streamingTransportFetch(
         metrics.ttfbMs = performance.now() - t0
         console.log(`${STREAM_LOG} ✓ first chunk received at ${Math.round(metrics.ttfbMs)}ms (${value.byteLength} bytes)`)
       }
+
+      watchdog?.pet()
 
       const text = decoder.decode(value, { stream: true })
       console.log("[DEBUG_RAW_CHUNK]", JSON.stringify({ bytes: value.byteLength, text: text.slice(0, 500) }))
@@ -579,6 +601,7 @@ export async function streamingTransportFetch(
       return
     }
   } finally {
+    watchdog?.stop()
     clearTimeout(overallDeadline)
     reader.cancel().catch(() => {})
   }

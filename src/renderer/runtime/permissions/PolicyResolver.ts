@@ -1,5 +1,6 @@
 import type { PermissionResult, PermissionBehavior } from '../tools/core/ToolPermissions'
 import type { PermissionContext } from './PermissionContext'
+import { matchRule, cleanupExpiredRules } from './always-allow-rules'
 import { auditLog } from '@/lib/audit/AuditLog'
 
 export type PolicyRule = {
@@ -54,8 +55,19 @@ export class PolicyResolver {
   }
 
   resolveWithMode(toolName: string, input: unknown, ctx: PermissionContext): PermissionResult {
+    if (ctx.alwaysAllowRules && ctx.alwaysAllowRules.length > 0) {
+      const activeRules = cleanupExpiredRules(ctx.alwaysAllowRules)
+      ctx.alwaysAllowRules = activeRules
+      for (const rule of activeRules) {
+        if (matchRule(rule, toolName, input)) {
+          return { behavior: 'allow', reason: `Matched always-allow rule: ${rule.toolName}` }
+        }
+      }
+    }
     if (ctx.permissions.alwaysAllow.includes(toolName)) {
-      return { behavior: 'allow', reason: 'In always-allow list' }
+      // Tool is permitted for this role — return 'ask' so the tool's own
+      // per-invocation permission tier (allow/ask/deny) is still respected.
+      return { behavior: 'ask', reason: 'In always-allow list' }
     }
     if (ctx.permissions.alwaysDeny.includes(toolName)) {
       return { behavior: 'deny', reason: 'In always-deny list' }

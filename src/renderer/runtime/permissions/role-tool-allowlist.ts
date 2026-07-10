@@ -1,5 +1,4 @@
 export const ROLE_TOOL_ALLOWLIST: Record<string, string[]> = {
-  superadmin: [],
   manager: ['delegate_task', 'spawn_agent', 'run_skill', 'think', 'reasoning',
     'read_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
     'query_graph',
@@ -30,13 +29,26 @@ export const ROLE_TOOL_ALLOWLIST: Record<string, string[]> = {
     'bash', 'run_command', 'think', 'reasoning'],
 }
 
+let bypassRoles: Set<string> = new Set(['superadmin'])
+
+export function setBypassRoles(roles: string[]): void {
+  bypassRoles = new Set(roles)
+}
+
+export function getBypassRoles(): string[] {
+  return Array.from(bypassRoles)
+}
+
 export function getAllowedToolsForRole(role: string): string[] | null {
   const entry = ROLE_TOOL_ALLOWLIST[role]
   if (entry === undefined) return null
-  if (role === 'superadmin') return null // null = all tools allowed
   return entry
 }
 
 export function isRoleKnown(role: string): boolean {
-  return role in ROLE_TOOL_ALLOWLIST
+  return role in ROLE_TOOL_ALLOWLIST || bypassRoles.has(role)
+}
+
+export function isBypassRole(role: string): boolean {
+  return bypassRoles.has(role)
 }

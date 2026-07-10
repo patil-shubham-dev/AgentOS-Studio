@@ -96,15 +96,9 @@ function NavItemButton({
   return button
 }
 
-function useCodingMode(): boolean {
-  const location = useLocation()
-  return location.pathname === '/' || location.pathname === '/code-canvas'
-}
-
 export function NavigationRail() {
   const navigate = useNavigate()
   const location = useLocation()
-  const codingMode = useCodingMode()
   const [isHovered, setIsHovered] = useState(false)
   const [isPinned, setIsPinned] = useState(false)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -180,7 +174,7 @@ export function NavigationRail() {
 
       {/* Navigation items */}
       <div className="flex flex-col gap-0.5 px-2 pt-1 pb-2 flex-1">
-        {NAV_ITEMS.filter(item => !codingMode || item.id === 'workspace').map((item) => (
+        {NAV_ITEMS.map((item) => (
           <NavItemButton
             key={item.id}
             item={item}

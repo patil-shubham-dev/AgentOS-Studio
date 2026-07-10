@@ -151,60 +151,61 @@ function formatRelativeTime(ms: number): string {
  * Respects depth and count limits to protect the context window.
  */
 function formatFileTree(tree: FileEntry[], rootPath: string | null): string {
-  let entryCount = 0
-
-  function renderNode(entry: FileEntry, prefix: string, isLast: boolean, currentDepth: number): string[] {
-    if (entryCount >= MAX_TREE_ENTRIES) return []
-    if (currentDepth > MAX_TREE_DEPTH) {
-      entryCount++
-      const line = entry.is_dir
-        ? `${prefix}${isLast ? '└── ' : '├── '}${entry.name}/ (${entry.children.length} items)`
-        : `${prefix}${isLast ? '└── ' : '├── '}${entry.name}`
-      return [line]
-    }
-
-    entryCount++
-    const connector = isLast ? '└── ' : '├── '
-
-    // Build metadata suffix — compact and informative for AI prioritization
-    const metaParts: string[] = []
-    if (!entry.is_dir && entry.size !== undefined) {
-      metaParts.push(formatSize(entry.size))
-    }
-    if (entry.lastModified !== undefined) {
-      metaParts.push(formatRelativeTime(entry.lastModified))
-    }
-    const meta = metaParts.length > 0 ? ` [${metaParts.join(', ')}]` : ''
-
-    const line = `${prefix}${connector}${entry.name}${entry.is_dir ? '/' : ''}${meta}`
-    const result = [line]
-
-    if (entry.is_dir && entry.children.length > 0) {
-      const childPrefix = prefix + (isLast ? '    ' : '│   ')
-      const sorted = [...entry.children].sort((a, b) => {
-        if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
-        return a.name.localeCompare(b.name)
-      })
-      for (let i = 0; i < sorted.length; i++) {
-        result.push(...renderNode(sorted[i], childPrefix, i === sorted.length - 1, currentDepth + 1))
-      }
-    }
-
-    return result
-  }
-
   if (tree.length === 0) return ''
 
   const header = rootPath ? `Workspace root: ${rootPath}` : 'Workspace files'
   const lines: string[] = [header]
+  let entryCount = 0
 
-  const sorted = [...tree].sort((a, b) => {
-    if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
-    return a.name.localeCompare(b.name)
-  })
+  interface StackFrame {
+    entries: FileEntry[]
+    prefix: string
+    depth: number
+  }
 
-  for (let i = 0; i < sorted.length; i++) {
-    lines.push(...renderNode(sorted[i], '', i === sorted.length - 1, 0))
+  const stack: StackFrame[] = [
+    { entries: tree, prefix: '', depth: 0 },
+  ]
+
+  while (stack.length > 0) {
+    const { entries, prefix, depth } = stack.pop()!
+    const sorted = [...entries].sort((a, b) => {
+      if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (entryCount >= MAX_TREE_ENTRIES) break
+      const entry = sorted[i]
+      const isLast = i === sorted.length - 1
+      const connector = isLast ? '└── ' : '├── '
+
+      if (depth > MAX_TREE_DEPTH) {
+        entryCount++
+        const line = entry.is_dir
+          ? `${prefix}${connector}${entry.name}/ (${entry.children.length} items)`
+          : `${prefix}${connector}${entry.name}`
+        lines.push(line)
+        continue
+      }
+
+      entryCount++
+      const metaParts: string[] = []
+      if (!entry.is_dir && entry.size !== undefined) {
+        metaParts.push(formatSize(entry.size))
+      }
+      if (entry.lastModified !== undefined) {
+        metaParts.push(formatRelativeTime(entry.lastModified))
+      }
+      const meta = metaParts.length > 0 ? ` [${metaParts.join(', ')}]` : ''
+
+      lines.push(`${prefix}${connector}${entry.name}${entry.is_dir ? '/' : ''}${meta}`)
+
+      if (entry.is_dir && entry.children.length > 0) {
+        const childPrefix = prefix + (isLast ? '    ' : '│   ')
+        stack.push({ entries: entry.children, prefix: childPrefix, depth: depth + 1 })
+      }
+    }
   }
 
   const truncated = entryCount >= MAX_TREE_ENTRIES
@@ -358,54 +359,65 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   insertFileEntry: (parentPath: string, entry: FileEntry) => {
     set((state) => {
-      function insert(entries: FileEntry[]): FileEntry[] {
-        return entries.map((e) => {
+      const stack = [{ entries: state.fileTree, parent: null as FileEntry[] | null, idx: -1 }]
+      while (stack.length > 0) {
+        const frame = stack.pop()!
+        for (let i = 0; i < frame.entries.length; i++) {
+          const e = frame.entries[i]
           if (e.path === parentPath && e.is_dir) {
             const exists = e.children.some(c => c.path === entry.path)
-            if (exists) return e
-            return { ...e, children: [...e.children, entry] }
+            if (!exists) {
+              frame.entries[i] = { ...e, children: [...e.children, entry] }
+            }
+            return { fileTree: state.fileTree, isLoading: false }
           }
           if (e.is_dir && e.children.length > 0) {
-            return { ...e, children: insert(e.children) }
+            stack.push({ entries: e.children, parent: frame.entries, idx: i })
           }
-          return e
-        })
+        }
       }
-      return { fileTree: insert(state.fileTree), isLoading: false }
+      return { fileTree: state.fileTree, isLoading: false }
     })
   },
 
   removeFileEntry: (targetPath: string) => {
     set((state) => {
-      function remove(entries: FileEntry[]): FileEntry[] {
-        return entries
-          .filter(e => e.path !== targetPath)
-          .map(e => {
-            if (e.is_dir && e.children.length > 0) {
-              return { ...e, children: remove(e.children) }
-            }
-            return e
-          })
+      const stack = [{ entries: state.fileTree, parent: null as FileEntry[] | null }]
+      while (stack.length > 0) {
+        const frame = stack.pop()!
+        const filtered = frame.entries.filter(e => e.path !== targetPath)
+        if (filtered.length < frame.entries.length) {
+          frame.entries.length = 0
+          frame.entries.push(...filtered)
+        }
+        for (const e of frame.entries) {
+          if (e.is_dir && e.children.length > 0) {
+            stack.push({ entries: e.children, parent: null })
+          }
+        }
       }
-      return { fileTree: remove(state.fileTree), isLoading: false }
+      return { isLoading: false }
     })
   },
 
   renameFileEntry: (oldPath: string, newPath: string) => {
     set((state) => {
-      function rename(entries: FileEntry[]): FileEntry[] {
-        return entries.map((e) => {
+      const stack = [{ entries: state.fileTree, parent: null as FileEntry[] | null }]
+      while (stack.length > 0) {
+        const frame = stack.pop()!
+        for (let i = 0; i < frame.entries.length; i++) {
+          const e = frame.entries[i]
           if (e.path === oldPath) {
             const name = newPath.split('/').pop() || newPath
-            return { ...e, name, path: newPath }
+            frame.entries[i] = { ...e, name, path: newPath }
+            return { isLoading: false }
           }
           if (e.is_dir && e.children.length > 0) {
-            return { ...e, children: rename(e.children) }
+            stack.push({ entries: e.children, parent: null })
           }
-          return e
-        })
+        }
       }
-      return { fileTree: rename(state.fileTree), isLoading: false }
+      return { isLoading: false }
     })
   },
 

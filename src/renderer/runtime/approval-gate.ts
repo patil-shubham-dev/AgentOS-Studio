@@ -10,7 +10,8 @@ export interface PendingApproval {
 }
 
 interface ApprovalStore {
-  pending: PendingApproval | null
+  queue: PendingApproval[]
+  current: PendingApproval | null
   alwaysAllow: boolean
   expiredMessage: string | null
   requestApproval: (opts: {
@@ -25,62 +26,84 @@ interface ApprovalStore {
   clearExpired: () => void
 }
 
+let approvalIdCounter = 0
+
 export const useApprovalStore = create<ApprovalStore>((set, get) => ({
-  pending: null,
+  queue: [],
+  current: null,
   alwaysAllow: false,
   expiredMessage: null,
   requestApproval: (opts) => {
-    // Auto-approve if alwaysAllow is set
     if (get().alwaysAllow) {
       return Promise.resolve(true)
     }
 
     return new Promise<boolean>((resolve) => {
       const timeoutId = setTimeout(() => {
+        const state = get()
         set({
-          pending: null,
+          current: null,
           expiredMessage: `Approval request timed out after 60s for operation: ${opts.command.slice(0, 100)}`,
         })
-        // Clear the expired message after 8 seconds
         setTimeout(() => {
           set({ expiredMessage: null })
         }, 8000)
-        resolve(false)
+        const item = state.queue.find((q) => q.id === id)
+        if (item) {
+          clearTimeout(timeoutId)
+          resolve(false)
+          set({ queue: state.queue.filter((q) => q.id !== id) })
+          processQueue()
+        }
       }, 60_000)
 
-      set({
+      const id = `ap_${++approvalIdCounter}`
+      const entry: PendingApproval = {
+        id,
+        command: opts.command,
+        operationType: opts.operationType,
+        toolName: opts.toolName,
+        args: opts.args,
+        resolve: (result: boolean) => {
+          clearTimeout(timeoutId)
+          resolve(result)
+        },
+      }
+
+      set((s) => ({
         expiredMessage: null,
-        pending: {
-          id: Date.now().toString(),
-          command: opts.command,
-          operationType: opts.operationType,
-          toolName: opts.toolName,
-          args: opts.args,
-          resolve: (result: boolean) => {
-            clearTimeout(timeoutId)
-            resolve(result)
-          }
-        }
-      })
+        queue: [...s.queue, entry],
+      }))
+      processQueue()
     })
   },
   approve: () => {
-    const { pending } = get()
-    if (pending) {
-      pending.resolve(true)
-      set({ pending: null, expiredMessage: null })
+    const { current } = get()
+    if (current) {
+      current.resolve(true)
+      set({ current: null, expiredMessage: null })
+      processQueue()
     }
   },
   reject: () => {
-    const { pending } = get()
-    if (pending) {
-      pending.resolve(false)
-      set({ pending: null, expiredMessage: null })
+    const { current } = get()
+    if (current) {
+      current.resolve(false)
+      set({ current: null, expiredMessage: null })
+      processQueue()
     }
   },
   setAlwaysAllow: (value) => set({ alwaysAllow: value }),
   clearExpired: () => set({ expiredMessage: null }),
 }))
+
+function processQueue(): void {
+  const state = useApprovalStore.getState()
+  if (state.current) return
+  const next = state.queue[0]
+  if (!next) return
+  useApprovalStore.setState({ current: next, queue: state.queue.slice(1) })
+}
 
 export async function requestCommandApproval(opts: {
   command: string

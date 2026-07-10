@@ -21,6 +21,13 @@ export { TransportError, classifyHttpError, classifyNetworkError, isRetryable } 
 export { RetryMiddleware, AuthMiddleware, DiagnosticsMiddleware, composeMiddleware } from "./transport-middleware"
 export { OpenAITransportAdapter, NvidiaNimAdapter, OllamaAdapter, AnthropicTransportAdapter, resolveAdapter } from "./transport-adapters"
 export { observabilityStore, createDiagnosticsHandler, formatTimelineSummary, formatStreamMetrics } from "./transport-observability"
+export { estimateCost, formatCost, CostTracker, globalCostTracker, getModelPricing } from "./cost-tracking"
+export type { CostEstimate, ModelPricing } from "./cost-tracking"
+export type { UsageRecord } from "./ai-service"
+export { TokenBucketRateLimiter, createRateLimiter, getRateLimitForProvider, DEFAULT_RATE_LIMITS } from "./rate-limiter"
+export type { RateLimitConfig } from "./rate-limiter"
+export { StreamWatchdog } from "./stream-watchdog"
+export type { WatchdogConfig } from "./stream-watchdog"
 export { DEFAULT_TRANSPORT_CONFIG } from "./transport-types"
 
 export type {

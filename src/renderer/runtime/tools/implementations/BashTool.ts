@@ -9,6 +9,7 @@ import { validateReadOnly } from './bash/ReadOnlyValidator'
 import { SandboxAdapter } from './bash/SandboxAdapter'
 import { truncateOutput } from './bash/OutputTruncator'
 import { DiskBackedResultStore } from '../storage/DiskBackedResultStore'
+import { parseSedEditCommand, isSedCommand, applySedEdit } from '../../sedsitter'
 
 const sandboxAdapter = new SandboxAdapter({ enabled: true })
 
@@ -40,6 +41,28 @@ export const BashTool: AgentTool = buildTool({
     const truncated = cmd.slice(0, 80)
     return `Running ${label} \`${truncated}${truncated.length >= 80 ? '...' : ''}\``
   },
+  getRenderOutput: (input, result) => {
+    const cmd = String((input as any)?.command ?? '')
+    const output = result?.data ? String(result.data) : undefined
+    const totalChars = output?.length ?? 0
+    return {
+      usePreview: {
+        type: 'terminal',
+        label: cmd.slice(0, 80),
+        command: cmd.slice(0, 500),
+      },
+      resultPreview: output
+        ? {
+            type: 'terminal',
+            label: `${cmd.slice(0, 60)} — ${output.length} chars`,
+            content: output.length > 2000 ? output.slice(0, 2000) + '\n... [truncated]' : output,
+            exitCode: (result?.meta as any)?.exitCode ?? 0,
+            truncated: output.length > 2000,
+            totalChars,
+          }
+        : undefined,
+    }
+  },
   permissions: async (input) => {
     const cmd = String((input as any)?.command ?? '')
     if (!cmd) return { behavior: 'deny', reason: 'No command provided' }
@@ -65,6 +88,27 @@ export const BashTool: AgentTool = buildTool({
     const validation = validateReadOnly(command)
     if (validation.canModifySystem) {
       return { data: null, error: `Command blocked for safety: ${command.slice(0, 100)}`, isError: true }
+    }
+
+    if (isSedCommand(command)) {
+      const sedEdit = parseSedEditCommand(command)
+      if (sedEdit) {
+        const rootPath = ctx.workspaceStore?.rootPath ?? ctx.cwd
+        const filePath = sedEdit.filePath.startsWith('/') || sedEdit.filePath.match(/^[a-zA-Z]:/)
+          ? sedEdit.filePath
+          : rootPath ? `${rootPath}/${sedEdit.filePath}` : sedEdit.filePath
+        try {
+          const { readTextFile } = await import('@/lib/electron-api')
+          const content = await readTextFile(filePath)
+          const newContent = applySedEdit(content, sedEdit)
+          return {
+            data: `[sed intercepted] Applied sed transformation to ${sedEdit.filePath}\ns/${sedEdit.pattern}/${sedEdit.replacement}/${sedEdit.flags}\n\nPreview:\n${newContent.slice(0, 2000)}${newContent.length > 2000 ? '\n...' : ''}`,
+            meta: { sedIntercepted: true, filePath: sedEdit.filePath },
+          }
+        } catch {
+          return { data: null, error: `sed intercepted: could not read file "${sedEdit.filePath}"`, isError: true }
+        }
+      }
     }
 
     const rootPath = ctx.workspaceStore?.rootPath ?? ctx.cwd

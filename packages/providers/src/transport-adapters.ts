@@ -17,6 +17,7 @@ export interface CompletionRequest {
   topP?: number
   tools?: Array<{ type: string; function: { name: string; description: string; parameters: Record<string, unknown> } }>
   signal?: AbortSignal
+  enablePromptCaching?: boolean
 }
 
 export interface ToolCallData {
@@ -535,12 +536,17 @@ export class AnthropicTransportAdapter implements TransportAdapter {
     return `${base}/v1/models`
   }
 
+  private latchedHeaders: Record<string, string> | null = null
+
   buildHeaders(): Record<string, string> {
-    return {
+    if (this.latchedHeaders) return this.latchedHeaders
+    this.latchedHeaders = {
       "Content-Type": "application/json",
       "x-api-key": this.config.apiKey,
       "anthropic-version": "2023-06-01",
+      "anthropic-beta": ["prompt-caching-2024-07-31", "tools-2024-04-04"].join(","),
     }
+    return this.latchedHeaders
   }
 
   buildCompletionBody(req: CompletionRequest): Record<string, unknown> {
@@ -558,7 +564,14 @@ export class AnthropicTransportAdapter implements TransportAdapter {
     if (req.stream !== undefined) body.stream = req.stream
     if (req.temperature !== undefined) body.temperature = req.temperature
     if (systemMessages.length > 0) {
-      body.system = systemMessages.map((m) => m.content).join("\n")
+      const systemText = systemMessages.map((m) => m.content).join("\n")
+      if (req.enablePromptCaching) {
+        body.system = [
+          { type: "text", text: systemText, cache_control: { type: "ephemeral" } },
+        ]
+      } else {
+        body.system = systemText
+      }
     }
     if (req.tools && req.tools.length > 0) {
       body.tools = req.tools.map((t) => ({

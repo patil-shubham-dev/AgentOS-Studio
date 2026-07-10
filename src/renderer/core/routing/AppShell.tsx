@@ -15,7 +15,7 @@ import { fadeInUp } from '@/lib/motion'
 import { useReducedMotion } from '@/lib/reduced-motion'
 
 function ApprovalToast() {
-  const { pending, approve, reject } = useApprovalStore()
+  const { current: pending, queue, approve, reject } = useApprovalStore()
   if (!pending) return null
 
   return (
@@ -36,6 +36,7 @@ function ApprovalToast() {
       }}>{pending.command}</div>
       <p style={{ color: '#888', fontSize: '12px', marginBottom: '14px', margin: '0 0 14px' }}>
         This command requires your approval before execution.
+        {queue.length > 0 && <span style={{ color: '#f59e0b', marginLeft: '8px' }}>+{queue.length} queued</span>}
       </p>
       <div style={{ display: 'flex', gap: '8px' }}>
         <button onClick={() => approve()} style={{

@@ -8,7 +8,8 @@ import {
 } from "lucide-react"
 
 export const ApprovalGate = memo(function ApprovalGate() {
-  const pending = useApprovalStore((s) => s.pending)
+  const current = useApprovalStore((s) => s.current)
+  const queueSize = useApprovalStore((s) => s.queue.length)
   const expiredMessage = useApprovalStore((s) => s.expiredMessage)
   const approve = useApprovalStore((s) => s.approve)
   const reject = useApprovalStore((s) => s.reject)
@@ -19,7 +20,7 @@ export const ApprovalGate = memo(function ApprovalGate() {
   const [countdown, setCountdown] = useState(60)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const needsApproval = pending !== null
+  const needsApproval = current !== null
   const hasExpired = expiredMessage !== null
 
   // Countdown timer (60s timeout = auto-reject)
@@ -60,6 +61,21 @@ export const ApprovalGate = memo(function ApprovalGate() {
     reject()
   }, [reject])
 
+  // Keyboard shortcuts: Enter = Approve, Escape = Reject
+  useEffect(() => {
+    if (!needsApproval) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        if (e.key === 'Enter') handleApprove()
+        else handleReject()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
+  }, [needsApproval, handleApprove, handleReject])
+
   const countdownPercent = (countdown / 60) * 100
   const isUrgent = countdown <= 15
 
@@ -92,7 +108,7 @@ export const ApprovalGate = memo(function ApprovalGate() {
   if (!needsApproval) return null
 
   // Extract details from the pending command
-  const pendingCommand = pending?.command ?? ""
+  const pendingCommand = current?.command ?? ""
   const isDangerous = pendingCommand.includes("rm -") || pendingCommand.includes("sudo") || pendingCommand.includes("git push --force")
 
   return (
@@ -134,9 +150,14 @@ export const ApprovalGate = memo(function ApprovalGate() {
                 <span className="text-xs font-semibold text-white/80">
                   {isDangerous ? "⚠️ Dangerous Operation" : "Approval Required"}
                 </span>
-                <span className="text-[9px] text-white/30 bg-white/[0.04] px-1.5 py-0.5 rounded-md font-mono">
-                  {pending?.operationType?.replace(/_/g, " ") || "tool execution"}
+              <span className="text-[9px] text-white/30 bg-white/[0.04] px-1.5 py-0.5 rounded-md font-mono">
+                {current?.operationType?.replace(/_/g, " ") || "tool execution"}
+              </span>
+              {queueSize > 0 && (
+                <span className="text-[9px] text-amber-400/60 bg-amber-500/10 px-1.5 py-0.5 rounded-md font-mono">
+                  +{queueSize} queued
                 </span>
+              )}
               </div>
               <p className={cn(
                 "text-[10px] mt-0.5",

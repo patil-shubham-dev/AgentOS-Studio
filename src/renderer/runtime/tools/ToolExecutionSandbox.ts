@@ -6,6 +6,7 @@ import { TerminalRuntime, type TerminalStreamOptions } from "@/runtime/terminal/
 import { EventBus } from "@/runtime/EventBus"
 import { emitTelemetry } from "@/lib/telemetry"
 import { sandboxCommand, generatePolicy, isSandboxEnabled, getCommandCategory } from "@/runtime/sandbox"
+import { BackgroundTaskManager } from "@/runtime/BackgroundTaskManager"
 
 const ALLOWED_COMMANDS = new Set([
   'git', 'node', 'npm', 'npx', 'yarn', 'pnpm',
@@ -235,14 +236,55 @@ export class ToolExecutionSandbox {
       },
     }
 
-    for await (const event of this.terminalRuntime.runStream(command, cwd, streamOptions)) {
-      if (event.type === "OUTPUT_LINE" && event.line) {
-        // Already handled via onOutput callback
+    const ASSISTANT_BLOCKING_BUDGET_MS = 15_000
+    let backgrounded = false
+    let backgroundTaskId: string | null = null
+
+    const streamPromise = (async () => {
+      for await (const event of this.terminalRuntime.runStream(command, cwd, streamOptions)) {
+        if (event.type === "OUTPUT_LINE" && event.line) {
+          // Already handled via onOutput callback
+        }
       }
+    })()
+
+    const result = await Promise.race([
+      streamPromise.then(() => 'COMPLETED' as const),
+      new Promise<'TIMEOUT'>((resolve) =>
+        setTimeout(() => resolve('TIMEOUT'), ASSISTANT_BLOCKING_BUDGET_MS),
+      ),
+    ])
+
+    if (result === 'TIMEOUT') {
+      backgrounded = true
+      backgroundTaskId = BackgroundTaskManager.getInstance().spawn(
+        `Command: ${command.slice(0, 80)}`,
+        command,
+        async () => {
+          let bgOutput = ''
+          for await (const event of this.terminalRuntime.runStream(command, cwd, streamOptions)) {
+            if (event.type === "OUTPUT_LINE" && event.line) {
+              bgOutput += event.line + '\n'
+            }
+          }
+          return bgOutput
+        },
+      )
     }
 
     const durationMs = Math.round(performance.now() - startedAt)
     const output = lines.join("\n")
+
+    if (backgrounded && backgroundTaskId) {
+      return {
+        content: `[BACKGROUND] Task ID: ${backgroundTaskId}\nCommand moved to background after ${ASSISTANT_BLOCKING_BUDGET_MS}ms.\nPartial output:\n${output}`,
+        telemetry: {
+          durationMs,
+          commandOutput: output,
+          backgroundTaskId,
+        },
+      }
+    }
 
     return {
       content: output,
