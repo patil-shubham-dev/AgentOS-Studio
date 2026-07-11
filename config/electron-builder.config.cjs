@@ -1,0 +1,81 @@
+const config = {
+  appId: 'com.agenticos.studio',
+  productName: 'AgenticOS',
+  copyright: 'Copyright © 2026 AgenticOS',
+  directories: {
+    buildResources: 'resources',
+    output: 'release',
+  },
+  files: [
+    'out/**/*',
+    '!apps/**/src/**/*',
+    '!packages/**/src/**/*',
+    '!.git/**/*',
+  ],
+  npmRebuild: false,
+  asar: true,
+  asarUnpack: [
+    '**/*.node',
+    '**/node_modules/node-pty/**/*',
+    '**/node_modules/@playwright/**/*',
+  ],
+  win: {
+    icon: 'resources/branding/icon.ico',
+    target: [
+      { target: 'nsis', arch: ['x64'] },
+      { target: 'portable', arch: ['x64'] },
+    ],
+  },
+  nsis: {
+    oneClick: false,
+    perMachine: false,
+    allowToChangeInstallationDirectory: false,
+    installerIcon: 'resources/branding/icon.ico',
+    uninstallerIcon: 'resources/branding/icon.ico',
+    installerHeader: 'build/assets/header.bmp',
+    installerSidebar: 'build/assets/sidebar.bmp',
+    createDesktopShortcut: false,
+    createStartMenuShortcut: true,
+    shortcutName: 'AgenticOS',
+    include: 'build/installer.nsh',
+    uninstallDisplayName: 'AgenticOS ${version}',
+    menuCategory: true,
+    warningsAsErrors: false,
+  },
+  publish: {
+    provider: 'generic',
+    url: 'https://releases.agenticos.ai/update/',
+    channel: 'latest',
+    useMultipleRangeRequest: true,
+  },
+  releaseInfo: {
+    releaseNotes: null,
+    releaseDate: null,
+  },
+  extraResources: [
+    { from: 'resources/', to: 'resources/', filter: ['**/*'] },
+    { from: 'build/', to: 'build/', filter: ['**/*'] },
+    { from: 'agent-instructions/', to: 'agent-instructions/', filter: ['**/*'] },
+  ],
+  protocols: {
+    name: 'AgenticOS Protocol',
+    schemes: ['agenticos'],
+  },
+  fileAssociations: [
+    { ext: 'md', name: 'Markdown', description: 'Markdown document' },
+    { ext: 'json', name: 'JSON', description: 'JSON configuration' },
+    { ext: 'ts', name: 'TypeScript', description: 'TypeScript source' },
+    { ext: 'tsx', name: 'TypeScript React', description: 'TypeScript React source' },
+    { ext: 'js', name: 'JavaScript', description: 'JavaScript source' },
+    { ext: 'py', name: 'Python', description: 'Python source' },
+    { ext: 'rs', name: 'Rust', description: 'Rust source' },
+    { ext: 'toml', name: 'TOML', description: 'TOML configuration' },
+    { ext: 'yaml', name: 'YAML', description: 'YAML configuration' },
+    { ext: 'yml', name: 'YAML', description: 'YAML configuration' },
+    { ext: 'jsx', name: 'JSX', description: 'React JSX source' },
+    { ext: 'tsx', name: 'TypeScript React', description: 'TypeScript React source' },
+    { ext: 'code-workspace', name: 'VS Code Workspace', description: 'Visual Studio Code workspace file' },
+  ],
+}
+
+module.exports = config
