@@ -6,9 +6,27 @@ import { ALL_ROLES, type RoleDefinition } from "@/runtime/runtime-role-registry"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
 import { setApiKey, removeApiKey } from "@/lib/secure-storage"
 
+export interface ThinkingConfig {
+  budget: number
+  visualizationMode: "rainbow" | "classic"
+  collapseBehavior: "auto" | "always_expanded" | "always_collapsed"
+  showTokenCount: boolean
+  showElapsedTime: boolean
+}
+
 const LOG_PREFIX = "[AppStore]"
 const PLAN_MODE_KEY = 'agentic-plan-mode'
 const SANDBOX_MODE_KEY = 'agentic-sandbox-mode'
+const THINKING_CONFIG_KEY = 'agentic-thinking-config'
+const OUTPUT_STYLE_KEY = 'agentic-output-style'
+
+const DEFAULT_THINKING_CONFIG: ThinkingConfig = {
+  budget: 0,
+  visualizationMode: "rainbow",
+  collapseBehavior: "auto",
+  showTokenCount: true,
+  showElapsedTime: true,
+}
 
 function loadPlanMode(): 'auto' | 'always' | 'never' {
   try {
@@ -36,6 +54,39 @@ function persistSandboxMode(mode: 'on' | 'off'): void {
   try {
     localStorage.setItem(SANDBOX_MODE_KEY, mode)
   } catch { console.warn("[Store] Failed to persist sandbox mode") }
+}
+
+function loadThinkingConfig(): ThinkingConfig {
+  try {
+    const stored = localStorage.getItem(THINKING_CONFIG_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      return { ...DEFAULT_THINKING_CONFIG, ...parsed }
+    }
+  } catch { console.warn("[Store] Failed to load thinking config") }
+  return { ...DEFAULT_THINKING_CONFIG }
+}
+
+function persistThinkingConfig(config: ThinkingConfig): void {
+  try {
+    localStorage.setItem(THINKING_CONFIG_KEY, JSON.stringify(config))
+  } catch { console.warn("[Store] Failed to persist thinking config") }
+}
+
+export type OutputStyle = "default" | "explanatory" | "learning"
+
+function loadOutputStyle(): OutputStyle {
+  try {
+    const stored = localStorage.getItem(OUTPUT_STYLE_KEY)
+    if (stored === "default" || stored === "explanatory" || stored === "learning") return stored
+  } catch { console.warn("[Store] Failed to load output style") }
+  return "default"
+}
+
+function persistOutputStyle(style: OutputStyle): void {
+  try {
+    localStorage.setItem(OUTPUT_STYLE_KEY, style)
+  } catch { console.warn("[Store] Failed to persist output style") }
 }
 
 function log(...args: unknown[]) {
@@ -88,6 +139,12 @@ interface AppStore {
   setPlanMode: (mode: "auto" | "always" | "never") => void
   sandboxMode: "on" | "off"
   setSandboxMode: (mode: "on" | "off") => void
+  thinkingConfig: ThinkingConfig
+  setThinkingConfig: (config: ThinkingConfig) => void
+  outputStyle: OutputStyle
+  setOutputStyle: (style: OutputStyle) => void
+  debugMode: boolean
+  setDebugMode: (enabled: boolean) => void
   mockMode: boolean
   setMockMode: (enabled: boolean) => void
   setAppState: (state: AppState) => void
@@ -141,6 +198,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
     persistSandboxMode(mode)
     set({ sandboxMode: mode })
   },
+  thinkingConfig: loadThinkingConfig(),
+  setThinkingConfig: (config) => {
+    persistThinkingConfig(config)
+    set({ thinkingConfig: config })
+  },
+  outputStyle: loadOutputStyle(),
+  setOutputStyle: (style) => {
+    persistOutputStyle(style)
+    set({ outputStyle: style })
+  },
+  debugMode: false,
+  setDebugMode: (enabled) => set({ debugMode: enabled }),
   mockMode: true,
   setMockMode: (enabled) => set({ mockMode: enabled }),
   setAppState: (state) => set({ appState: state }),

@@ -2,13 +2,14 @@ import { useShallow } from "zustand/shallow"
 import { useState, useRef, useEffect, useCallback, useMemo, startTransition } from "react"
 import { motion } from "framer-motion"
 import { useNavigate } from "react-router-dom"
+import { execTrace, execTraceId } from "@/runtime/execution-tracer"
 import { useAgentStore } from "@/stores/agent-store"
 import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useTimelineStore, type StreamState } from "./timeline/timeline-store"
 import { ExecutionSessionManager, type ExecutionSession } from "@/runtime/sessions/ExecutionSessionManager"
 import { cn } from "@/lib/utils"
-import { ConversationTimeline, Composer } from "./timeline/conversation"
+import { ConversationTimeline, Composer } from "./chat"
 import { PlanViewer } from "./planning/PlanViewer"
 import { SandboxMergeUI } from "./sandbox/SandboxMergeUI"
 import { PersonaSelector } from "./personas/PersonaSelector"
@@ -29,7 +30,7 @@ import { loadFileTree } from "@/lib/filesystem"
 import {
   Bot, AlertTriangle, Settings2, Plus, CheckCircle2, ArrowRight,
   Loader2, CheckCircle, XCircle, Terminal as TerminalIcon, GitBranch, ChevronDown,
-  Shield, FileText, Edit3, FolderOpen,
+  Shield, FileText, Edit3, FolderOpen, Sparkles, Bug,
 } from "lucide-react"
 
 const executionSessionManager = ExecutionSessionManager.getInstance()
@@ -169,7 +170,16 @@ function SetupRequired() {
   )
 }
 
+let _chatPanelMountCount = 0
 export function ChatPanel() {
+  useEffect(() => {
+    _chatPanelMountCount++
+    console.log(`%c[ChatPanel] MOUNT #${_chatPanelMountCount}`, "font-size:16px;font-weight:bold;color:red;background:yellow;")
+    return () => {
+      _chatPanelMountCount--
+      console.log(`[ChatPanel] UNMOUNT (remaining=${_chatPanelMountCount})`)
+    }
+  }, [])
   const activeRole = useAgentStore((s) => s.activeRole)
   const isProcessing = useAgentStore((s) => s.isProcessing)
   const addMessage = useAgentStore((s) => s.addMessage)
@@ -196,6 +206,7 @@ export function ChatPanel() {
   const sessionRef = useRef<ExecutionSession | null>(null)
   const sendingRef = useRef(false)
   const correlationIdsRef = useRef(new Set<string>())
+  const inputKeysRef = useRef(new Set<string>())
   const inputStateRef = useRef(input)
   inputStateRef.current = input
 
@@ -223,13 +234,20 @@ export function ChatPanel() {
   }, [])
 
   const sendMessage = useCallback(async (prompt?: string) => {
+    const _traceId = execTraceId()
+    const _caller = prompt ? `sendMessage(prompt="${prompt.slice(0, 40)}")` : "sendMessage()"
+    execTrace("chat-panel.sendMessage", _traceId, { caller: _caller, hasPrompt: !!prompt, sendingRef: sendingRef.current, isProcessing: useAgentStore.getState().isProcessing, canSend })
+    console.trace(`[XTRACE:${_traceId}] sendMessage CALL STACK`)
     const rawInput = prompt ?? inputStateRef.current
     if (typeof rawInput !== "string") {
       console.warn("[ChatPanel] sendMessage called with non-string input:", typeof rawInput, rawInput)
       return
     }
     const currentInput = rawInput
-    if (!currentInput.trim() || sendingRef.current || useAgentStore.getState().isProcessing || !canSend) return
+    if (!currentInput.trim() || sendingRef.current || useAgentStore.getState().isProcessing || !canSend) {
+      execTrace("chat-panel.sendMessage-guard-blocked", _traceId, { reason: sendingRef.current ? "sendingRef" : useAgentStore.getState().isProcessing ? "isProcessing" : !canSend ? "!canSend" : "empty" })
+      return
+    }
 
     sendingRef.current = true
     const userInput = currentInput.trim()
@@ -243,6 +261,17 @@ export function ChatPanel() {
       return
     }
     correlationIdsRef.current.add(correlationId)
+
+    // Dedup: guard against double-send of the same input content
+    // Catches cases where two different correlationIds are generated for identical input
+    const inputKey = `send:${userInput}`
+    if (inputKeysRef.current.has(inputKey)) {
+      console.warn(`[ChatPanel] Duplicate send detected for input content (hash=${inputKey.slice(0, 60)}...) — ignoring`)
+      sendingRef.current = false
+      correlationIdsRef.current.delete(correlationId)
+      return
+    }
+    inputKeysRef.current.add(inputKey)
 
     const optimisticStepId = `optimistic_${correlationId}`
 
@@ -324,6 +353,7 @@ export function ChatPanel() {
       useAgentStore.getState().setProcessing(false)
       sendingRef.current = false
       correlationIdsRef.current.delete(correlationId)
+      inputKeysRef.current.delete(inputKey)
       // Safety: finalize any remaining optimistic sessions that weren't upgraded
       const timeline = useTimelineStore.getState()
       for (const [stepId, session] of timeline.agentSessions) {
@@ -424,6 +454,10 @@ export function ChatPanel() {
 
   const sandboxMode = useAppStore((s) => s.sandboxMode)
   const setSandboxMode = useAppStore((s) => s.setSandboxMode)
+  const thinkingConfig = useAppStore((s) => s.thinkingConfig)
+  const debugMode = useAppStore((s) => s.debugMode)
+  const setDebugMode = useAppStore((s) => s.setDebugMode)
+  const navigate = useNavigate()
 
   // Close plan menu on outside click
   useEffect(() => {
@@ -602,6 +636,36 @@ ${currentPlan.verificationCriteria.map((c) => `- ${c}`).join("\n")}`
               </div>
             )}
           </div>
+
+          {/* Thinking toggle button */}
+          <button
+            onClick={() => navigate("/settings?tab=thinking")}
+            className={cn(
+              "flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-medium transition-all",
+              thinkingConfig.visualizationMode === "rainbow"
+                ? "text-purple-400 border-purple-500/20 bg-purple-500/8 hover:bg-purple-500/12"
+                : "text-white/30 border-white/[0.06] hover:text-white/50 hover:bg-white/[0.03]",
+            )}
+            title="Thinking visualization settings"
+          >
+            <Sparkles className="h-2.5 w-2.5" />
+            <span>Thinking</span>
+          </button>
+
+          {/* Debug mode toggle */}
+          <button
+            onClick={() => setDebugMode(!debugMode)}
+            className={cn(
+              "flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-medium transition-all",
+              debugMode
+                ? "text-orange-400 border-orange-500/20 bg-orange-500/8 hover:bg-orange-500/12"
+                : "text-white/30 border-white/[0.06] hover:text-white/50 hover:bg-white/[0.03]",
+            )}
+            title="Toggle debug mode to see agent internals"
+          >
+            <Bug className="h-2.5 w-2.5" />
+            <span>Debug</span>
+          </button>
 
           {pipelineStage && (
             <div className="flex items-center gap-1 ml-auto">
