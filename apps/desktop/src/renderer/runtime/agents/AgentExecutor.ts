@@ -834,6 +834,27 @@ export class AgentExecutor {
           consecutiveToolOnlyRounds = 0
         }
       } else {
+        // Blocking verification gate: LLM says it's done — verify before allowing completion
+        if (editedFiles.length > 0) {
+          try {
+            const pipeline = VerificationPipeline.getInstance()
+            const gateResult = await pipeline.verifyChanges([...new Set(editedFiles)])
+            if (!gateResult.passed) {
+              const failMsg = `Blocking verification failed — task cannot be marked complete:\n${pipeline.formatForLLM(gateResult)}`
+              msgs.push({ role: "user" as const, content: failMsg })
+              console.warn(
+                "%c[AgentExecutor]",
+                "color:#ff8800;font-weight:bold;font-size:14px",
+                `Blocking verification rejected done state — ${gateResult.lintErrors + gateResult.typeErrors + gateResult.buildErrors + gateResult.testFailures} error(s) remain`,
+              )
+              // Don't break — give LLM a chance to fix issues
+              continue
+            }
+            console.log("[AgentExecutor] Blocking verification passed — task may complete")
+          } catch (err) {
+            console.warn("[AgentExecutor] Blocking verification failed to run — allowing completion as fallback", err)
+          }
+        }
         finalResponse = responseContent
         break
       }
