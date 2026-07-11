@@ -147,6 +147,17 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         }
       }
 
+      // Guard: never add two assistant messages in a row without a user message between them.
+      // This prevents duplicate MESSAGE_COMPLETE events from creating multiple assistant
+      // messages for a single user prompt.
+      if (msg.role === "assistant") {
+        const lastMsg = existing[existing.length - 1]
+        if (lastMsg && lastMsg.role === "assistant") {
+          console.warn(`[AgentStore] Dropped consecutive assistant message (duplicate response). Last: "${lastMsg.content.slice(0, 60)}...", New: "${(msg.content as string).slice(0, 60)}..."`)
+          return s
+        }
+      }
+
       const messages = existing.length >= MAX_MESSAGES_PER_ROLE
         ? [...existing.slice(-(MAX_MESSAGES_PER_ROLE - 1)), msg]
         : [...existing, msg]

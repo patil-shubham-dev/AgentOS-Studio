@@ -13,6 +13,8 @@ import { RuntimeCleanupManager } from "@/runtime/RuntimeCleanupManager"
 import { ReliabilityManager } from "@/runtime/reliability/ReliabilityManager"
 import { WatchdogTargetType } from "@/runtime/reliability/Watchdog"
 import { compressConversationHistory } from "@/runtime/context/HistoryCompressor"
+import { execTrace } from "@/runtime/execution-tracer"
+import { traceStage as reqTraceStage, assertSingleExecution } from "@/runtime/RequestTracer"
 import { summarizeMessages, getMemoryPressure } from "@/runtime/memory-manager"
 import { RUNTIME_TOKEN_LIMITS } from "@/runtime/runtime-token-config"
 import { startTrace, trace, endTrace } from "@/lib/execution-trace"
@@ -41,6 +43,7 @@ export interface ExecuteOptions {
   signal?: AbortSignal
   goalId?: string
   goalObjective?: string
+  requestId?: string
 }
 
 const AGENT_TIMEOUT_MS = 120_000
@@ -103,8 +106,16 @@ export class UnifiedExecutor {
   }
 
   async *execute(options: ExecuteOptions): AsyncGenerator<ExecutionEvent> {
-    const { input, activeRole, correlationId, mode: reqMode, signal: sig, goalId, goalObjective } = options
+    const { input, activeRole, correlationId, mode: reqMode, signal: sig, goalId, goalObjective, requestId } = options
     const executionId = `exec_${Date.now()}_${++this.executionCount}`
+    const _traceId = correlationId ?? `unknown-${executionId}`
+    const _reqId = requestId ?? _traceId
+    execTrace("UnifiedExecutor.execute", _traceId, { inputLen: input.length, role: activeRole, mode: reqMode, correlationId, executionId })
+    console.trace(`[XTRACE:${_traceId}] UnifiedExecutor.execute CALL STACK`)
+    if (requestId) {
+      reqTraceStage(requestId, "Planner", { executionId, mode: reqMode })
+      assertSingleExecution(requestId)
+    }
     const traceId = `msg_${Date.now()}`
     const t0 = performance.now()
     const ctrl = new AbortController()
@@ -257,12 +268,16 @@ export class UnifiedExecutor {
         }
 
         console.log("[FLOW:2] UnifiedExecutor.execute: entering path (mode=" + agentMode + ", activeRole=" + activeRole + ")")
+        if (requestId) {
+          reqTraceStage(requestId, "Provider", { agentMode, executionId })
+          reqTraceStage(requestId, "Streaming", { agentMode, executionId })
+        }
         if (agentMode === "FAST") {
-          yield* this.fastPathExecutor.execute(input, activeRole, ctrl, executionId, correlationId, t0)
+          yield* this.fastPathExecutor.execute(input, activeRole, ctrl, executionId, correlationId, t0, _reqId)
         } else if (reqMode === "autonomous") {
           yield* this.autonomousPath.execute(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId, goalId, goalObjective)
         } else {
-          yield* this.fullPath(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId)
+          yield* this.fullPath(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId, _reqId)
         }
 
         if (usePlanStore.getState().currentPlan?.status === "executing") {
@@ -316,8 +331,9 @@ export class UnifiedExecutor {
     providers: any[],
     t0: number,
     correlationId?: string,
+    requestId?: string,
   ): AsyncGenerator<ExecutionEvent> {
-    yield* this.orchestrator.execute(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId)
+    yield* this.orchestrator.execute(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId, requestId)
   }
 
   private getProcessedHistory(activeRole: RuntimeRole): any[] {

@@ -6,6 +6,8 @@ import { StreamManager } from "@/runtime/streaming/StreamManager"
 import { matchErrorToCode, getStructuredError, formatErrorForUser } from "@/lib/error-schema"
 import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
 import type { RuntimeRole } from "@/types"
+import { execTrace } from "@/runtime/execution-tracer"
+import { traceStage as reqTraceStage } from "@/runtime/RequestTracer"
 
 export interface GatewayOptions {
   input: string
@@ -15,6 +17,7 @@ export interface GatewayOptions {
   mode?: ExecutionMode
   signal?: AbortSignal
   correlationId?: string
+  requestId?: string
 }
 
 const MAX_BUFFERED_EVENTS = 1000
@@ -42,7 +45,14 @@ export class UnifiedExecutionGateway {
     options: GatewayOptions,
     onEvent?: (event: ExecutionEvent) => void,
   ): Promise<{ engineeringResult: EngineeringResult; events: ExecutionEvent[] }> {
-    const { input, activeRole, editedFiles, mode, signal, correlationId } = options
+    const { input, activeRole, editedFiles, mode, signal, correlationId, requestId } = options
+    const _traceId = correlationId ?? "no-id"
+    const _reqId = requestId ?? _traceId
+    execTrace("UnifiedExecutionGateway.execute", _traceId, { inputLen: input.length, role: activeRole, mode, correlationId })
+    console.trace(`[XTRACE:${_traceId}] Gateway.execute CALL STACK`)
+    if (requestId) {
+      reqTraceStage(requestId, "UnifiedExecutionGateway.execute", { mode, role: activeRole })
+    }
 
     if (signal?.aborted) {
       return {
@@ -74,7 +84,7 @@ export class UnifiedExecutionGateway {
     const executor = UnifiedExecutor.getInstance()
     const events: ExecutionEvent[] = []
     for await (const event of executor.execute({
-      input, activeRole, correlationId, goalId: options.goalId,
+      input, activeRole, correlationId, requestId, goalId: options.goalId,
       mode: mode ?? "full", signal,
     })) {
       if (events.length < MAX_BUFFERED_EVENTS) {

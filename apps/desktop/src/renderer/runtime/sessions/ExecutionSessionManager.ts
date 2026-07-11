@@ -13,9 +13,11 @@ import { normalizeError } from "@/lib/normalize-error"
 import { emitTelemetry } from "@/lib/telemetry"
 import { getStateForToolCall, getActivityForToolCall, getAgentLabel } from "@/components/workspace/agent-visibility/AgentActivityMapper"
 import { ReliabilityManager } from "@/runtime/reliability/ReliabilityManager"
+import { execTrace } from "@/runtime/execution-tracer"
 import { FeatureFlagManager } from "@/runtime/feature-flags/FeatureFlagManager"
 import { ObservabilityManager } from "@/runtime/observability/ObservabilityManager"
 import { DeterministicToolRecorder } from "@/runtime/tools/execution/DeterministicToolRecord"
+import { createRequestTrace, traceStage, assertSingleExecution, clearRequestTrace } from "@/runtime/RequestTracer"
 import { EventBus } from "@/runtime/EventBus"
 import type { SessionCompletedEvent } from "@/runtime/RuntimeTypes"
 import { useWorkspaceStore } from "@/stores/workspace-store"
@@ -52,6 +54,7 @@ function extractEditedFiles(input: string): string[] {
 export interface ExecutionSession {
   id: string
   traceId: string
+  requestId: string
   startedAt: number
   completedAt?: number
   status: "running" | "completed" | "failed" | "cancelled"
@@ -77,6 +80,10 @@ export class ExecutionSessionManager {
   private forceStopTimer: ReturnType<typeof setTimeout> | null = null
   /** Tracks correlationIds that are currently being executed — prevents duplicate sends */
   private activeCorrelationIds = new Set<string>()
+  /** Tracks input content hashes being executed — prevents duplicate sends with different correlationIds */
+  private activeInputs = new Set<string>()
+  /** Guards: only the first MESSAGE_COMPLETE per correlationId adds to agent store */
+  private committedCorrelationIds = new Set<string>()
   private loadingSlowTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
   // ── Observability ──
@@ -146,7 +153,18 @@ export class ExecutionSessionManager {
   async start(options: ExecuteOptions): Promise<ExecutionSession> {
     const mgrTag = "[SessionManager]"
     const sessionStartTime = Date.now()
+    const _traceId = options.correlationId ?? generateId()
+    const requestId = createRequestTrace(options.input)
+    traceStage(requestId, "ExecutionSessionManager.start", { inputLen: options.input.length, role: options.activeRole, correlationId: options.correlationId })
+    execTrace("ExecutionSessionManager.start", _traceId, { inputLen: options.input.length, role: options.activeRole, correlationId: options.correlationId })
+    console.trace(`[XTRACE:${_traceId}] SessionManager.start CALL STACK`)
     console.log(`${mgrTag} ▶ start (inputLen=${options.input.length}, role=${options.activeRole}, correlationId=${options.correlationId})`)
+
+    // Clear committed set for this correlationId
+    const reqCorrId = options.correlationId
+    if (reqCorrId) {
+      this.committedCorrelationIds.delete(reqCorrId)
+    }
 
     // Dedup: reject if same correlationId is already executing
     if (options.correlationId) {
@@ -156,10 +174,20 @@ export class ExecutionSessionManager {
       }
       this.activeCorrelationIds.add(options.correlationId)
     }
+    // Dedup: reject if same input content is already executing
+    // Catches cases where the input is identical but correlationIds differ
+    const inputKey = `input:${options.input}`
+    if (this.activeInputs.has(inputKey)) {
+      if (options.correlationId) this.activeCorrelationIds.delete(options.correlationId)
+      console.log(`${mgrTag} ✗ duplicate input content (len=${options.input.length})`)
+      throw new Error("This message is already being processed")
+    }
+    this.activeInputs.add(inputKey)
     if (this.activeSessionId) {
       const existing = this.sessions.get(this.activeSessionId)
       if (existing?.status === "running") {
         if (options.correlationId) this.activeCorrelationIds.delete(options.correlationId)
+        this.activeInputs.delete(inputKey)
         console.log(`${mgrTag} ✗ already executing`)
         throw new Error("An execution is already in progress. Please wait for it to complete or cancel it.")
       }
@@ -173,6 +201,7 @@ export class ExecutionSessionManager {
     this.activeSessionId = id
     const session: ExecutionSession = {
       id,
+      requestId,
       traceId: `msg_${Date.now()}`,
       startedAt: sessionStartTime,
       status: "running",
@@ -198,8 +227,10 @@ export class ExecutionSessionManager {
 
     try {
       const editedFiles = extractEditedFiles(options.input)
+      traceStage(requestId, "Conversation Store", { message: "user message stored", role: options.activeRole })
 
       if (options.onPreview && editedFiles.length > 0) {
+        traceStage(requestId, "Preview", { files: editedFiles })
         const approved = await options.onPreview(editedFiles)
         if (!approved) {
           session.status = "cancelled"
@@ -221,11 +252,13 @@ export class ExecutionSessionManager {
 
       let eventCount = 0
       try {
+        traceStage(requestId, "Execution Manager", { gateway: true, mode: options.mode ?? "full" })
         const result = await this.gateway.execute(
           {
             input: options.input,
             activeRole: options.activeRole,
             correlationId: options.correlationId,
+            requestId,
             goalId: options.goalId,
             mode: options.mode ?? "full",
             signal: options.signal,
@@ -377,6 +410,7 @@ export class ExecutionSessionManager {
       }
     } finally {
       if (options.correlationId) this.activeCorrelationIds.delete(options.correlationId)
+      this.activeInputs.delete(inputKey)
     }
 
     // Prune old sessions to prevent unbounded map growth
@@ -389,6 +423,8 @@ export class ExecutionSessionManager {
 
   private handleEvent(event: ExecutionEvent, options: ExecuteOptions): void {
     const timeline = useTimelineStore.getState()
+    const _traceId = options.correlationId ?? event.correlationId ?? "no-id"
+    execTrace("ExecutionSessionManager.handleEvent", _traceId, { eventType: event.type, eventId: (event as any).id, executionId: (event as any).executionId })
 
     // ── Buffer event for cross-session memory extraction ──
     this.bufferEvent(event)
@@ -485,6 +521,7 @@ export class ExecutionSessionManager {
         if (slowTimeout) { clearTimeout(slowTimeout); this.loadingSlowTimeouts.delete(event.executionId) }
         const finishReason = (event as any).finishReason
         const isError = finishReason === "error"
+        const corrId = options.correlationId ?? event.correlationId
 
         timeline.commitStreamingText(event.stepId)
         StreamManager.getInstance().clearStep(event.stepId)
@@ -496,7 +533,15 @@ export class ExecutionSessionManager {
           timeline.updateAgentSession(event.stepId, { status: "complete", streamState: "completed", completedAt: Date.now() })
         }
         this.stepByExecId.delete(event.executionId)
-        if (event.content && !isError) {
+        // CRITICAL DEDUP: Only the first MESSAGE_COMPLETE per correlationId adds to the agent store.
+        // Subsequent MESSAGE_COMPLETE events (from multi-role pipelines) are ignored to prevent
+        // duplicate assistant messages in the conversation.
+        if (corrId && this.committedCorrelationIds.has(corrId)) {
+          console.log(`[SessionManager] DUPLICATE MESSAGE_COMPLETE blocked for correlationId=${corrId} — already committed`)
+        } else if (event.content && !isError) {
+          if (corrId) this.committedCorrelationIds.add(corrId)
+          const reqId = this.activeSessionId ? this.sessions.get(this.activeSessionId)?.requestId : undefined
+          if (reqId) traceStage(reqId, "Conversation Commit", { contentLen: event.content.length })
           useAgentStore.getState().addMessage(options.activeRole, {
             role: "assistant",
             content: event.content,

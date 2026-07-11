@@ -14,6 +14,8 @@ import { normalizeRole } from "@/lib/role-identity"
 import { safeCapitalize } from "@/lib/safeCapitalize"
 import { WorktreeSandboxManager } from "@/lib/git/WorktreeSandbox"
 import { orderPipelineRoles, checkMultiAgentEligibility } from "./ExecutionRouter"
+import { execTrace } from "@/runtime/execution-tracer"
+import { traceStage as reqTraceStage } from "@/runtime/RequestTracer"
 
 type GetHistoryFn = (role: RuntimeRole) => any[]
 
@@ -33,7 +35,15 @@ export class AgentPipelineOrchestrator {
     providers: any[],
     t0: number,
     correlationId?: string,
+    requestId?: string,
   ): AsyncGenerator<ExecutionEvent> {
+    const _traceId = correlationId ?? executionId
+    const _reqId = requestId ?? _traceId
+    execTrace("AgentPipelineOrchestrator.execute", _traceId, { inputLen: input.length, role: activeRole, executionId, correlationId, selectedRoles: decision.selectedRoles, mode: decision.mode })
+    if (requestId) {
+      reqTraceStage(requestId, "Planner", { selectedRoles: decision.selectedRoles, strategy: decision.executionStrategy })
+    }
+    console.trace(`[XTRACE:${_traceId}] AgentPipelineOrchestrator.execute CALL STACK`)
     const scratchpad = new ExecutionScratchpad(input.slice(0, 200))
     const orderedRoles = orderPipelineRoles(decision.selectedRoles)
     const results: { role: string; content: string }[] = []
