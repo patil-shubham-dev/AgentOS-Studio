@@ -27,6 +27,8 @@ export const ROLE_TOOL_ALLOWLIST: Record<string, string[]> = {
   'fast-inference': ['read_file', 'grep_files', 'think', 'reasoning'],
   verification: ['read_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
     'bash', 'run_command', 'think', 'reasoning'],
+  repair: ['read_file', 'write_file', 'edit_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
+    'bash', 'run_command', 'think', 'reasoning'],
 }
 
 let bypassRoles: Set<string> = new Set(['superadmin'])
