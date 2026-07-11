@@ -5,7 +5,9 @@ import { cn } from "@/lib/utils"
 import {
   Command, File, Settings, PanelLeft, PanelRight, X,
   Globe, Palette, RefreshCw, Search, GitBranch, LayoutDashboard,
+  History, MessageSquare, Layers, HelpCircle,
 } from "lucide-react"
+import { ShortcutHint } from "@/components/ui/ShortcutHint"
 
 interface CommandItem {
   id: string
@@ -31,19 +33,81 @@ interface CommandPaletteProps {
   }
 }
 
+const SHORTCUT_ALIASES: Record<string, string> = {
+  "⌘b": "ctrl+b",
+  "⌘j": "ctrl+j",
+  "⌘p": "ctrl+p",
+  "⌘w": "ctrl+w",
+  "⌘s": "ctrl+s",
+  "⌘;": "ctrl+;",
+  "⌘⇧p": "ctrl+shift+p",
+  "⌘⇧f": "ctrl+shift+f",
+  "⌘⇧e": "ctrl+shift+e",
+  "⌘⇧b": "ctrl+shift+b",
+  "⌘⇧m": "ctrl+shift+m",
+  "⌘⇧s": "ctrl+shift+s",
+  "⌘⇧z": "ctrl+shift+z",
+  "⌘⇧n": "ctrl+shift+n",
+}
+
 function fuzzyMatch(query: string, text: string): boolean {
-  const lower = query.toLowerCase()
+  const q = query.toLowerCase()
   const haystack = text.toLowerCase()
   let qi = 0
-  for (let ti = 0; ti < haystack.length && qi < lower.length; ti++) {
-    if (lower[qi] === haystack[ti]) qi++
+  for (let ti = 0; ti < haystack.length && qi < q.length; ti++) {
+    if (q[qi] === haystack[ti]) qi++
   }
-  return qi === lower.length
+  return qi === q.length
+}
+
+function matchShortcut(query: string, shortcut?: string): boolean {
+  if (!shortcut) return false
+  const q = query.toLowerCase().replace(/ /g, "+")
+  const s = shortcut.toLowerCase()
+  if (s.includes(q)) return true
+  const alias = SHORTCUT_ALIASES[q]
+  if (alias && s.includes(alias)) return true
+  if (q.includes(s.replace("ctrl+", ""))) return true
+  return false
+}
+
+function HelpOverlay() {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="px-3 py-3 space-y-2"
+    >
+      <p className="text-[9px] text-white/30 font-medium uppercase tracking-wider">Keyboard Shortcuts</p>
+      <div className="space-y-1.5">
+        {[
+          { keys: "⌘P", desc: "Quick open files" },
+          { keys: "⌘⇧P", desc: "Command palette" },
+          { keys: "⌘B", desc: "Toggle explorer" },
+          { keys: "⌘J", desc: "Toggle panel" },
+          { keys: "⌘;", desc: "Toggle side chat" },
+          { keys: "⌘⇧S", desc: "Session sidebar" },
+          { keys: "⌘⇧Z", desc: "Checkpoint history" },
+          { keys: "⌘⇧F", desc: "Search in files" },
+          { keys: "⌘W", desc: "Close tab" },
+          { keys: "⌘S", desc: "Save file" },
+          { keys: "F5", desc: "Refresh file tree" },
+        ].map(({ keys, desc }) => (
+          <div key={keys} className="flex items-center justify-between">
+            <span className="text-[10px] text-white/40">{desc}</span>
+            <ShortcutHint keys={keys} size="sm" />
+          </div>
+        ))}
+      </div>
+      <p className="text-[9px] text-white/20 mt-3 text-center">Press Esc to close</p>
+    </motion.div>
+  )
 }
 
 export function CommandPalette({ open, onClose, context }: CommandPaletteProps) {
   const [query, setQuery] = useState("")
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [showHelp, setShowHelp] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
 
@@ -144,12 +208,44 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
       action: () => { context.refreshTree(); onClose() },
       category: "File",
     },
+    {
+      id: "open-side-chat",
+      label: "Toggle Side Chat",
+      description: "Open chat for contextual questions without derailing",
+      shortcut: "Ctrl+;",
+      icon: <MessageSquare className="h-3.5 w-3.5" />,
+      action: () => {
+        import("@/stores/pane-store").then(({ usePaneStore }) => {
+          usePaneStore.getState().toggleSideChat()
+        })
+        onClose()
+      },
+      category: "View",
+    },
+    {
+      id: "toggle-history",
+      label: "Checkpoint History",
+      description: "View and restore file snapshots",
+      shortcut: "Ctrl+Shift+Z",
+      icon: <History className="h-3.5 w-3.5" />,
+      action: () => {
+        import("@/stores/checkpoint-store").then(({ useCheckpointStore }) => {
+          useCheckpointStore.getState().togglePanel()
+        })
+        onClose()
+      },
+      category: "System",
+    },
   ], [context, onClose])
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return commands
-    return commands.filter((cmd) => fuzzyMatch(query, cmd.label + " " + cmd.description + " " + cmd.category))
-  }, [query, commands])
+    if (!query.trim() || showHelp) return []
+    return commands.filter((cmd) => {
+      const textMatch = fuzzyMatch(query, cmd.label + " " + cmd.description + " " + cmd.category)
+      const shortcutMatch = matchShortcut(query, cmd.shortcut)
+      return textMatch || shortcutMatch
+    })
+  }, [query, commands, showHelp])
 
   const groups = useMemo(() => {
     const map = new Map<string, CommandItem[]>()
@@ -165,6 +261,7 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
     if (open) {
       setQuery("")
       setSelectedIndex(0)
+      setShowHelp(false)
       const timer = setTimeout(() => inputRef.current?.focus(), 50)
       return () => clearTimeout(timer)
     }
@@ -184,9 +281,16 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
       e.preventDefault()
+      if (showHelp) { setShowHelp(false); return }
       onClose()
       return
     }
+    if (e.key === "?" && !query.trim()) {
+      e.preventDefault()
+      setShowHelp(!showHelp)
+      return
+    }
+    if (showHelp) return
     if (e.key === "ArrowDown") {
       e.preventDefault()
       setSelectedIndex((prev) => Math.min(prev + 1, filtered.length - 1))
@@ -201,7 +305,7 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
       e.preventDefault()
       filtered[selectedIndex].action()
     }
-  }, [filtered, selectedIndex, onClose])
+  }, [filtered, selectedIndex, onClose, showHelp])
 
   const totalResults = filtered.length
 
@@ -215,90 +319,119 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
       transition={{ duration: 0.1 }}
       className="absolute inset-0 z-50 flex"
     >
-      <div className="absolute inset-0 bg-[var(--surface-overlay)]/30" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
 
       <motion.div
         initial={{ opacity: 0, y: -8, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.97 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        className="relative mx-auto mt-16 w-full max-w-lg bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl shadow-black/50 overflow-hidden flex flex-col max-h-[60vh]"
+        className="relative mx-auto mt-16 w-full max-w-lg bg-[#111114] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/50 overflow-hidden flex flex-col max-h-[60vh]"
       >
         {/* Input */}
-        <div className="flex items-center gap-2 border-b border-[var(--border-default)] px-3 py-2.5">
-          <Command className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
+        <div className="flex items-center gap-2 border-b border-white/[0.04] px-3 py-2.5">
+          <Command className="h-4 w-4 text-white/30 shrink-0" />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a command..."
-            className="flex-1 bg-transparent border-none outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-quaternary)] font-mono"
+            placeholder={showHelp ? "" : "Type a command or shortcut..."}
+            className="flex-1 bg-transparent border-none outline-none text-sm text-white/80 placeholder:text-white/20 font-mono"
           />
+          {!showHelp && !query.trim() && (
+            <button
+              onClick={() => setShowHelp(true)}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-white/20 hover:text-white/40 hover:bg-white/[0.04] transition-all shrink-0"
+            >
+              <HelpCircle className="h-3 w-3" />
+              <span>?</span>
+            </button>
+          )}
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
+            className="rounded-md p-1.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
           >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        {/* Results */}
+        {/* Results / Help */}
         <div ref={resultsRef} className="flex-1 overflow-y-auto min-h-0 py-1">
-          {groups.length === 0 && (
+          {showHelp ? (
+            <HelpOverlay />
+          ) : groups.length === 0 && query.trim() ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Command className="h-6 w-6 text-[var(--text-quaternary)] mb-2" />
-              <p className="text-xs text-[var(--text-tertiary)]">No commands found</p>
-              <p className="text-[10px] text-[var(--text-quaternary)] mt-1">Try a different search term</p>
+              <Command className="h-6 w-6 text-white/10 mb-2" />
+              <p className="text-xs text-white/30">No commands found</p>
+              <p className="text-[10px] text-white/20 mt-1">Try a different term or type "<span className="font-mono">?</span>" for shortcuts</p>
             </div>
-          )}
-
-          {groups.map(([category, items]) => (
-            <div key={category}>
-              <div className="px-3 py-1 text-[9px] font-medium text-[var(--text-quaternary)] uppercase tracking-wider">
-                {category}
-              </div>
-              {items.map((cmd, idx) => {
-                const globalIdx = filtered.indexOf(cmd)
-                return (
-                  <button
-                    key={cmd.id}
-                    data-index={globalIdx}
-                    onClick={() => cmd.action()}
-                    onMouseEnter={() => setSelectedIndex(globalIdx)}
-                    className={cn(
-                      "flex items-center gap-2 w-full px-3 py-1.5 text-left transition-all",
-                      selectedIndex === globalIdx ? "bg-[var(--accent-code)]/10" : "hover:bg-[var(--border-subtle)]",
-                    )}
-                  >
-                    <span className="text-[var(--accent-code)]/50 shrink-0">{cmd.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-xs font-medium text-[var(--text-primary)]">{cmd.label}</span>
-                      {query.trim() && (
-                        <span className="text-[9px] text-[var(--text-tertiary)] ml-2">{cmd.description}</span>
+          ) : groups.length === 0 ? null : (
+            groups.map(([category, items]) => (
+              <div key={category}>
+                <div className="px-3 py-1 text-[9px] font-medium text-white/20 uppercase tracking-wider">
+                  {category}
+                </div>
+                {items.map((cmd) => {
+                  const globalIdx = filtered.indexOf(cmd)
+                  return (
+                    <button
+                      key={cmd.id}
+                      data-index={globalIdx}
+                      onClick={() => cmd.action()}
+                      onMouseEnter={() => setSelectedIndex(globalIdx)}
+                      className={cn(
+                        "flex items-center gap-2 w-full px-3 py-1.5 text-left transition-all",
+                        selectedIndex === globalIdx ? "bg-blue-500/10" : "hover:bg-white/[0.03]",
                       )}
-                    </div>
-                    {cmd.shortcut && (
-                      <span className="text-[9px] font-mono text-[var(--text-quaternary)] bg-[var(--border-subtle)] px-1.5 py-0.5 rounded shrink-0">
-                        {cmd.shortcut}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          ))}
+                    >
+                      <span className="text-blue-400/50 shrink-0">{cmd.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-medium text-white/70">{cmd.label}</span>
+                        {!query.trim() && (
+                          <span className="text-[9px] text-white/30 ml-2">{cmd.description}</span>
+                        )}
+                      </div>
+                      {cmd.shortcut && (
+                        <ShortcutHint
+                          keys={cmd.shortcut
+                            .replace("Ctrl+Shift+", "⌘⇧")
+                            .replace("Ctrl+", "⌘")
+                            .replace("Shift+", "⇧+")
+                          }
+                          size="sm"
+                        />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            ))
+          )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-3 px-3 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--surface-overlay)]/50">
-          <span className="text-[9px] text-[var(--text-quaternary)] font-mono">
-            {totalResults} command{totalResults !== 1 ? "s" : ""}
+        <div className="flex items-center gap-3 px-3 py-1.5 border-t border-white/[0.04] bg-white/[0.02]">
+          <span className="text-[9px] text-white/20 font-mono">
+            {showHelp ? "Keyboard shortcuts" : `${totalResults} command${totalResults !== 1 ? "s" : ""}`}
           </span>
-          <div className="flex items-center gap-2 ml-auto text-[9px] text-[var(--text-quaternary)] font-mono">
-            <span className="bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">↑↓</span> Navigate
-            <span className="bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">Enter</span> Execute
-            <span className="bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">Esc</span> Close
+          <div className="flex items-center gap-2 ml-auto text-[9px] text-white/20 font-mono">
+            <span className="flex items-center gap-0.5 bg-white/[0.04] px-1 py-0.5 rounded">
+              ↑↓
+            </span>
+            <span className="hidden sm:inline">Navigate</span>
+            <span className="flex items-center gap-0.5 bg-white/[0.04] px-1 py-0.5 rounded">
+              ↵
+            </span>
+            <span className="hidden sm:inline">Execute</span>
+            <span className="flex items-center gap-0.5 bg-white/[0.04] px-1 py-0.5 rounded">
+              ⎋
+            </span>
+            <span className="hidden sm:inline">Close</span>
+            <span className="flex items-center gap-0.5 bg-white/[0.04] px-1 py-0.5 rounded text-blue-400/50">
+              ?
+            </span>
+            <span>Help</span>
           </div>
         </div>
       </motion.div>

@@ -186,23 +186,34 @@ export function Composer({
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); guardedSend("enter") }
   }
 
+  const showHintPills = !isProcessing && !input
+  const charCount = input.length
+  const showCharCount = charCount > 0
+  const isNearLimit = charCount > 3000
+  const isAtLimit = charCount > 3800
+
   return (
     <div className="relative">
+      {/* Slash Commands Menu */}
       <AnimatePresence>
         {showCommands && filteredCommands.length > 0 && (
-          <motion.div {...ANIM.springUp}
+          <motion.div
+            initial={{ opacity: 0, y: 6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.96 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             ref={menuRef}
             role="listbox" aria-label="Slash commands"
-            className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border overflow-hidden z-50"
-            style={{ backgroundColor: "var(--surface-elevated)", borderColor: "var(--border-default)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}
+            className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-white/[0.08] overflow-hidden z-50 shadow-2xl shadow-black/50"
+            style={{ backgroundColor: "var(--surface-elevated)" }}
           >
-            <div className="px-3 py-1.5 text-[8px] font-medium uppercase tracking-wider border-b flex items-center"
-              style={{ color: "var(--text-quaternary)", borderColor: "var(--border-subtle)" }}
+            <div className="px-3 py-1.5 text-[8px] font-medium uppercase tracking-widest border-b border-white/[0.04] flex items-center"
+              style={{ color: "var(--text-quaternary)" }}
             >
               Commands
-              <span className="ml-auto font-normal normal-case" style={{ color: "var(--text-quaternary)" }}>Tab to select</span>
+              <span className="ml-auto font-normal normal-case text-[7px]" style={{ color: "var(--text-quaternary)" }}>Tab to select</span>
             </div>
-            <div className="max-h-48 overflow-y-auto p-1">
+            <div className="max-h-48 overflow-y-auto p-1 space-y-0.5">
               {filteredCommands.map((cmd, idx) => {
                 const Icon = cmd.icon
                 return (
@@ -219,7 +230,6 @@ export function Composer({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[11px] font-semibold font-mono" style={{ color: "var(--text-secondary)" }}>{cmd.id}</span>
-                        <span className="text-[9px]" style={{ color: "var(--text-quaternary)" }}>{cmd.label}</span>
                       </div>
                       <p className="text-[8px] mt-0.5 truncate" style={{ color: "var(--text-quaternary)" }}>{cmd.description}</p>
                     </div>
@@ -231,6 +241,7 @@ export function Composer({
         )}
       </AnimatePresence>
 
+      {/* Reference Autocomplete */}
       <ReferenceAutocomplete
         isOpen={autocompleteState.isOpen}
         filter={autocompleteState.filter}
@@ -241,21 +252,26 @@ export function Composer({
         onClose={() => setAutocompleteState({ isOpen: false, filter: "", mode: "all" })}
       />
 
+      {/* Context References Menu */}
       <AnimatePresence>
         {!autocompleteState.isOpen && showMentions && filteredContextRefs.length > 0 && (
-          <motion.div {...ANIM.springUp}
+          <motion.div
+            initial={{ opacity: 0, y: 6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.96 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             ref={menuRef}
             role="listbox" aria-label="Context references"
-            className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border overflow-hidden z-50"
-            style={{ backgroundColor: "var(--surface-elevated)", borderColor: "var(--border-default)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}
+            className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-white/[0.08] overflow-hidden z-50 shadow-2xl shadow-black/50"
+            style={{ backgroundColor: "var(--surface-elevated)" }}
           >
-            <div className="px-3 py-1.5 text-[8px] font-medium uppercase tracking-wider border-b"
-              style={{ color: "var(--text-quaternary)", borderColor: "var(--border-subtle)" }}
+            <div className="px-3 py-1.5 text-[8px] font-medium uppercase tracking-widest border-b border-white/[0.04]"
+              style={{ color: "var(--text-quaternary)" }}
             >
               Context References
-              <span className="ml-2 font-normal normal-case">Inject files, code, web, git</span>
+              <span className="ml-2 font-normal normal-case text-[7px]">Inject files, code, web, git</span>
             </div>
-            <div className="max-h-48 overflow-y-auto p-1">
+            <div className="max-h-48 overflow-y-auto p-1 space-y-0.5">
               {filteredContextRefs.map((ref, idx) => {
                 const Icon = ref.icon
                 return (
@@ -272,7 +288,6 @@ export function Composer({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[11px] font-semibold font-mono" style={{ color: "var(--text-secondary)" }}>{ref.id}</span>
-                        <span className="text-[9px]" style={{ color: "var(--text-quaternary)" }}>{ref.label}</span>
                       </div>
                       <p className="text-[8px] mt-0.5 truncate" style={{ color: "var(--text-quaternary)" }}>{ref.description}</p>
                     </div>
@@ -284,20 +299,44 @@ export function Composer({
         )}
       </AnimatePresence>
 
+      {/* Main Input Container */}
       <motion.div
         animate={{
-          borderColor: isFocused ? "var(--color-accent-brand-border)" : "var(--border-default)",
+          borderColor: isFocused ? "var(--color-accent-brand-border)" : "rgba(255,255,255,0.06)",
         }}
-        className="relative rounded-2xl border transition-shadow duration-200"
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="relative rounded-xl border transition-shadow duration-200"
         style={{
           backgroundColor: "var(--surface-panel)",
-          boxShadow: isFocused ? "0 0 0 1px var(--color-accent-brand-border)" : "none",
+          boxShadow: isFocused
+            ? "0 0 0 1px var(--color-accent-brand-border), 0 4px 20px rgba(0,0,0,0.15)"
+            : "0 1px 2px rgba(0,0,0,0.08)",
         }}
       >
-        <div className="relative px-3 pt-2 pb-1">
+        {/* Textarea area */}
+        <div className="relative px-3 pt-2.5 pb-1">
           {isProcessing && (
-            <div className="absolute top-2.5 right-3">
-              <div className="thinking-dots"><span /><span /><span /></div>
+            <div className="absolute top-3 right-3">
+              <div className="flex gap-1">
+                <motion.span
+                  className="h-1 w-1 rounded-full"
+                  style={{ backgroundColor: "var(--text-quaternary)" }}
+                  animate={{ opacity: [0.2, 1, 0.2] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: 0 }}
+                />
+                <motion.span
+                  className="h-1 w-1 rounded-full"
+                  style={{ backgroundColor: "var(--text-quaternary)" }}
+                  animate={{ opacity: [0.2, 1, 0.2] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: 0.2 }}
+                />
+                <motion.span
+                  className="h-1 w-1 rounded-full"
+                  style={{ backgroundColor: "var(--text-quaternary)" }}
+                  animate={{ opacity: [0.2, 1, 0.2] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: 0.4 }}
+                />
+              </div>
             </div>
           )}
 
@@ -311,7 +350,7 @@ export function Composer({
             placeholder={isProcessing ? "" : placeholder}
             disabled={isProcessing}
             aria-label="Message input"
-            className="w-full resize-none bg-transparent outline-none transition-colors text-[13px] font-normal leading-snug min-h-[22px] scrollbar-thin"
+            className="w-full resize-none bg-transparent outline-none transition-colors text-[13px] font-normal leading-relaxed min-h-[22px] scrollbar-thin placeholder:text-white/[0.2]"
             style={{
               color: isProcessing ? "var(--text-tertiary)" : "var(--text-primary)",
             }}
@@ -319,107 +358,137 @@ export function Composer({
           />
         </div>
 
-        {pinnedFiles.length > 0 && !isProcessing && (
-          <div className="flex flex-wrap items-center gap-1 px-3 pb-1">
-            {pinnedFiles.map((filePath) => {
-              const fileName = filePath.split(/[\\/]/).pop() ?? ""
-              return (
-                <span key={filePath} className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] font-medium"
-                  style={{ backgroundColor: "var(--surface-elevated)", border: "1px solid var(--border-default)", color: "var(--text-tertiary)" }}
-                >
-                  <FileText className="h-2.5 w-2.5 shrink-0" style={{ color: "var(--text-quaternary)" }} />
-                  <span className="truncate max-w-[120px]">{fileName}</span>
-                  <button onClick={() => togglePinFile(filePath)} className="ml-0.5 rounded p-0.5 transition-colors"
-                    style={{ color: "var(--text-quaternary)" }}
-                    aria-label={`Unpin ${fileName}`}
+        {/* Pinned Files */}
+        <AnimatePresence>
+          {pinnedFiles.length > 0 && !isProcessing && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              className="flex flex-wrap items-center gap-1 px-3 pb-1"
+            >
+              {pinnedFiles.map((filePath) => {
+                const fileName = filePath.split(/[\\/]/).pop() ?? ""
+                return (
+                  <span key={filePath} className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] font-medium"
+                    style={{ backgroundColor: "var(--surface-elevated)", border: "1px solid var(--border-default)", color: "var(--text-tertiary)" }}
                   >
-                    <X className="h-2 w-2" />
-                  </button>
-                </span>
-              )
-            })}
-          </div>
-        )}
+                    <FileText className="h-2.5 w-2.5 shrink-0" style={{ color: "var(--text-quaternary)" }} />
+                    <span className="truncate max-w-[120px]">{fileName}</span>
+                    <button onClick={() => togglePinFile(filePath)} className="ml-0.5 rounded p-0.5 transition-colors hover:bg-white/[0.06]"
+                      style={{ color: "var(--text-quaternary)" }}
+                      aria-label={`Unpin ${fileName}`}
+                    >
+                      <X className="h-2 w-2" />
+                    </button>
+                  </span>
+                )
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        <div className="flex items-center justify-between px-3 pb-1.5">
-          <div className="flex items-center gap-1.5">
-            {!isProcessing && !input && (
+        {/* Bottom Toolbar */}
+        <div className="flex items-center justify-between px-2.5 pb-1.5 pt-1">
+          <div className="flex items-center gap-1">
+            {showHintPills && (
               <>
-                <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5"
-                  style={{ backgroundColor: "var(--surface-elevated)", border: "1px solid var(--border-subtle)" }}
+                <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-all duration-150 hover:bg-white/[0.03]"
+                  style={{ border: "1px solid rgba(255,255,255,0.04)" }}
                 >
-                  <Slash className="h-2 w-2" style={{ color: "var(--text-quaternary)" }} />
+                  <Slash className="h-2.5 w-2.5" style={{ color: "var(--text-quaternary)" }} />
                   <span className="text-[8px] font-medium" style={{ color: "var(--text-quaternary)" }}>commands</span>
                 </span>
-                <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5"
-                  style={{ backgroundColor: "var(--surface-elevated)", border: "1px solid var(--border-subtle)" }}
+                <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-all duration-150 hover:bg-white/[0.03]"
+                  style={{ border: "1px solid rgba(255,255,255,0.04)" }}
                 >
-                  <AtSign className="h-2 w-2" style={{ color: "var(--text-quaternary)" }} />
+                  <AtSign className="h-2.5 w-2.5" style={{ color: "var(--text-quaternary)" }} />
                   <span className="text-[8px] font-medium" style={{ color: "var(--text-quaternary)" }}>refs</span>
                 </span>
+                <button className="rounded-md p-1 transition-all duration-150 hover:bg-white/[0.04]" aria-label="Attach file"
+                  style={{ color: "var(--text-quaternary)" }}
+                >
+                  <Paperclip className="h-3 w-3" />
+                </button>
               </>
             )}
-            {!isProcessing && input.length === 0 && (
-              <button className="rounded p-0.5 transition-colors" aria-label="Attach file"
-                style={{ color: "var(--text-quaternary)" }}
-              >
-                <Paperclip className="h-3 w-3" />
-              </button>
-            )}
             {isCancelling && (
-              <span className="text-[9px] font-medium animate-pulse mr-1" style={{ color: "var(--color-accent-red)" }} role="status" aria-live="polite">Cancelling...</span>
-            )}
-            {input.length > 0 && (
-              <span className="text-[9px] font-mono transition-colors"
-                style={{
-                  color: input.length > 3800 ? "var(--color-accent-red)" : input.length > 3000 ? "var(--color-accent-amber)" : "var(--text-quaternary)"
-                }}
-                aria-live="polite"
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-[9px] font-medium ml-0.5"
+                style={{ color: "rgba(239, 68, 68, 0.7)" }}
+                role="status" aria-live="polite"
               >
-                {input.length}/4000
-              </span>
+                Cancelling
+              </motion.span>
             )}
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {input.length > 0 && (
-              <span className="flex items-center gap-1 text-[8px] font-mono" style={{ color: "var(--text-quaternary)" }} aria-hidden="true">
-                <kbd className="h-4 min-w-[16px] px-1 rounded flex items-center justify-center text-[7px]"
-                  style={{ backgroundColor: "var(--surface-elevated)", border: "1px solid var(--border-default)", color: "var(--text-quaternary)" }}
-                >⌘</kbd>
-                <kbd className="h-4 min-w-[16px] px-1 rounded flex items-center justify-center text-[7px]"
-                  style={{ backgroundColor: "var(--surface-elevated)", border: "1px solid var(--border-default)", color: "var(--text-quaternary)" }}
-                >↵</kbd>
-              </span>
+          <div className="flex items-center gap-2">
+            {/* Character count - only shows when typing and subtle until near limit */}
+            {showCharCount && (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className={`text-[9px] font-mono transition-colors duration-200 ${
+                  isAtLimit ? "text-red-400/80" : isNearLimit ? "text-amber-400/60" : "text-white/[0.15]"
+                }`}
+                aria-live="polite"
+              >
+                {charCount}
+              </motion.span>
             )}
+
+            {/* Keyboard hint */}
+            {showCharCount && (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center gap-1 text-[8px] font-mono text-white/[0.12]" aria-hidden="true"
+              >
+                <kbd className="h-3.5 min-w-[14px] px-1 rounded flex items-center justify-center text-[7px]"
+                  style={{ backgroundColor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", color: "var(--text-quaternary)" }}
+                >⌘</kbd>
+                <kbd className="h-3.5 min-w-[14px] px-1 rounded flex items-center justify-center text-[7px]"
+                  style={{ backgroundColor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", color: "var(--text-quaternary)" }}
+                >↵</kbd>
+              </motion.span>
+            )}
+
+            {/* Send / Cancel Button */}
             <AnimatePresence mode="wait">
               <motion.button
                 key={isCancelling ? "cancelling" : isProcessing ? "cancel" : "send"}
-                initial={{ scale: 0.85, opacity: 0 }}
+                initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.85, opacity: 0 }}
-                transition={{ duration: 0.12 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                transition={{ duration: 0.12, ease: "easeOut" }}
                 onClick={handleSendClick}
                 disabled={!isProcessing && !isCancelling && !input.trim()}
                 aria-label={isCancelling ? "Cancelling" : isProcessing ? "Cancel" : "Send"}
-                className="flex items-center justify-center h-7 w-7 rounded-xl transition-all duration-150"
+                className="flex items-center justify-center h-7 min-w-[28px] rounded-lg transition-all duration-150 active:scale-[0.95]"
                 style={{
                   backgroundColor: isProcessing || isCancelling
-                    ? "var(--color-accent-red)"
+                    ? "rgba(239, 68, 68, 0.15)"
                     : input.trim()
                       ? "var(--color-accent-brand)"
-                      : "var(--surface-elevated)",
-                  color: isProcessing || isCancelling || input.trim() ? "#fff" : "var(--text-quaternary)",
-                  border: isProcessing || isCancelling || input.trim() ? "none" : "1px solid var(--border-default)",
-                  opacity: input.trim() && !isProcessing ? 1 : 0.6,
+                      : "rgba(255,255,255,0.04)",
+                  color: isProcessing || isCancelling
+                    ? "rgba(239, 68, 68, 0.8)"
+                    : input.trim()
+                      ? "#fff"
+                      : "var(--text-quaternary)",
+                  border: isProcessing || isCancelling || input.trim()
+                    ? "none"
+                    : "1px solid rgba(255,255,255,0.06)",
                 }}
-                onMouseEnter={(e) => { if (!isProcessing && !isCancelling && input.trim()) e.currentTarget.style.opacity = "0.85" }}
-                onMouseLeave={(e) => { if (!isProcessing && !isCancelling) e.currentTarget.style.opacity = input.trim() ? "1" : "0.6" }}
               >
                 {isCancelling ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : isProcessing ? (
-                  <Square className="h-3.5 w-3.5" />
+                  <Square className="h-3 w-3" />
                 ) : (
                   <Send className="h-3.5 w-3.5" />
                 )}

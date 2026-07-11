@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 import * as Sentry from '@sentry/react'
@@ -181,13 +181,11 @@ if (!rootEl) {
 } else {
   try {
     createRoot(rootEl).render(
-      <StrictMode>
-        <HashRouter>
-          <SafeErrorBoundary name="Root">
-            <Root />
-          </SafeErrorBoundary>
-        </HashRouter>
-      </StrictMode>,
+      <HashRouter>
+        <SafeErrorBoundary name="Root">
+          <Root />
+        </SafeErrorBoundary>
+      </HashRouter>,
     )
     console.log('[Startup] React root rendered')
   } catch (err) {

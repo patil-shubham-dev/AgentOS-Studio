@@ -117,6 +117,7 @@
   --surface-panel: #0c0c0d;
   --surface-elevated: #111113;
   --surface-overlay: #1a1a1f;
+  --surface-tooltip: #1e1e22;
 
   --text-primary: rgba(255, 255, 255, 0.95);
   --text-secondary: rgba(255, 255, 255, 0.65);
@@ -134,11 +135,24 @@
   --color-accent-amber-hover: hsl(35 100% 50%);
   --color-accent-red: #ef4444;
 
-  /* Signature accent — muted clay */
-  --color-accent-brand: #C47156;
-  --color-accent-brand-muted: rgba(196, 113, 86, 0.12);
-  --color-accent-brand-border: rgba(196, 113, 86, 0.3);
-  --color-accent-brand-text: #C47156;
+  /* Signature accent — Signal Blue */
+  --color-accent-brand: #5B9BFF;
+  --color-accent-brand-muted: rgba(91, 155, 255, 0.12);
+  --color-accent-brand-border: rgba(91, 155, 255, 0.3);
+  --color-accent-brand-text: #5B9BFF;
+
+  /* Tool identity colors */
+  --tool-read: #5B9BFF;
+  --tool-write: #34D399;
+  --tool-edit: #A78BFA;
+  --tool-terminal: #22D3EE;
+  --tool-search: #FBBF24;
+  --tool-browser: #FB923C;
+  --tool-git: #F472B6;
+  --tool-build: #38BDF8;
+  --tool-thinking: #A78BFA;
+  --tool-memory: #FBBF24;
+  --tool-diagnostics: #FB923C;
 
   /* Git status */
   --color-git-added: hsl(140 70% 45%);
@@ -178,10 +192,22 @@
   --color-accent-amber-hover: #B45309;
   --color-accent-red: #DC2626;
 
-  --color-accent-brand: #C47156;
-  --color-accent-brand-muted: #F5E6E0;
-  --color-accent-brand-border: #DBAF9F;
-  --color-accent-brand-text: #9F5A42;
+  --color-accent-brand: #5B9BFF;
+  --color-accent-brand-muted: rgba(91, 155, 255, 0.1);
+  --color-accent-brand-border: rgba(91, 155, 255, 0.25);
+  --color-accent-brand-text: #4A7FCC;
+
+  --tool-read: #4A7FCC;
+  --tool-write: #2DAF7A;
+  --tool-edit: #8B6FCF;
+  --tool-terminal: #1BAEC9;
+  --tool-search: #D99A1A;
+  --tool-browser: #D9772E;
+  --tool-git: #D45A9E;
+  --tool-build: #2B9FD4;
+  --tool-thinking: #8B6FCF;
+  --tool-memory: #D99A1A;
+  --tool-diagnostics: #D9772E;
 
   --color-git-added: hsl(140 65% 40%);
   --color-git-modified: hsl(35 85% 50%);

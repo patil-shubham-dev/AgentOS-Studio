@@ -22,14 +22,21 @@ import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
 
 import { dirtyBufferManager, type DirtyBuffer } from "@/lib/dirty-buffer-manager"
 import { DirtyBufferRecoveryDialog } from "@/components/workspace/DirtyBufferRecoveryDialog"
+import { PremiumGeometricEmptyState } from "@/components/workspace/PremiumGeometricEmptyState"
+import { WorkflowModeIndicator } from "@/components/workspace/WorkflowModeIndicator"
 import { GlobalSearch } from "@/components/workspace/global-search"
+import { ShortcutHint } from "@/components/ui/ShortcutHint"
 import { CommandPalette } from "@/components/workspace/command-palette"
 import { QuickOpen } from "@/components/workspace/QuickOpen"
 
 import { ErrorBoundary } from "@/components/runtime/ErrorBoundary"
 import { WorkspaceErrorBoundary } from "@/components/workspace/WorkspaceErrorBoundary"
-import { ContextUsageIndicator } from "@/components/workspace/context-indicator/ContextUsageIndicator"
+import { ContextRadar } from "@/components/workspace/context-indicator/ContextRadar"
 import { SideChat } from "@/components/workspace/side-chat/SideChat"
+import { SessionSidebar } from "@/components/workspace/timeline/SessionSidebar"
+import { CheckpointTimeline } from "@/components/workspace/CheckpointTimeline"
+import { useSessionStore } from "@/stores/session-store"
+import { useCheckpointStore } from "@/stores/checkpoint-store"
 import { usePaneStore } from "@/stores/pane-store"
 import { usePanelCoordinator } from "@/stores/panel-coordinator"
 import { useDiffStore } from "@/stores/diff-store"
@@ -166,6 +173,7 @@ export function CodeCanvasPage() {
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel>(() => loadPanelState("workspacePanel", "code"))
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(() => loadPanelState("workspacePanelOpen", true))
   const [workspacePanelWidth, setWorkspacePanelWidth] = useState(() => loadPanelState("workspacePanelWidth", 420))
+  const [sessionSidebarOpen, setSessionSidebarOpen] = useState(() => loadPanelState("sessionSidebarOpen", false))
   const [windowWidth, setWindowWidth] = useState(window.innerWidth)
   const isNarrow = windowWidth < 900
   const searchOpen = useWorkspaceStore((s) => s.searchOpen)
@@ -650,10 +658,37 @@ export function CodeCanvasPage() {
         e.preventDefault()
         setSearchOpen(!useWorkspaceStore.getState().searchOpen)
       }
+      // Esc — dismiss open panels when not in an input
+      if (e.key === "Escape" && !["TEXTAREA", "INPUT"].includes((e.target as HTMLElement).tagName)) {
+        if (explorerOpen) { setExplorerOpen(false); e.preventDefault(); return }
+        if (sessionSidebarOpen) { setSessionSidebarOpen(false); e.preventDefault(); return }
+        if (searchOpen) { setSearchOpen(false); e.preventDefault(); return }
+      }
+      // ⌘K — command palette (table-stakes, unless Monaco is editing inline)
+      if ((e.metaKey || e.ctrlKey) && e.key === "k" && !e.shiftKey) {
+        const target = e.target as HTMLElement
+        const isMonaco = target.closest('.monaco-editor')
+        if (!isMonaco) {
+          e.preventDefault()
+          setCommandPaletteOpen((p) => !p)
+        }
+        // If Monaco is focused, its inline-edit action handles Cmd+K with selection
+        return
+      }
+      // ⌘⇧S — session sidebar
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "s") {
+        e.preventDefault()
+        setSessionSidebarOpen((p) => !p)
+      }
+      // ⌘⇧Z — checkpoint timeline
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "z") {
+        e.preventDefault()
+        useCheckpointStore.getState().togglePanel()
+      }
     }
     window.addEventListener("keydown", handleKey)
     return () => window.removeEventListener("keydown", handleKey)
-  }, [rootPath])
+  }, [rootPath, setSessionSidebarOpen])
 
   // ── Auto-collapse explorer on narrow screens ──
   useEffect(() => {
@@ -673,6 +708,7 @@ export function CodeCanvasPage() {
   useEffect(() => { persistPanelState("workspacePanel", workspacePanel) }, [workspacePanel])
   useEffect(() => { persistPanelState("workspacePanelOpen", workspacePanelOpen) }, [workspacePanelOpen])
   useEffect(() => { persistPanelState("workspacePanelWidth", workspacePanelWidth) }, [workspacePanelWidth])
+  useEffect(() => { persistPanelState("sessionSidebarOpen", sessionSidebarOpen) }, [sessionSidebarOpen])
 
   // ── Resize drag cleanup on unmount — guarantees no leaked listeners or body styles ──
   useEffect(() => {
@@ -751,6 +787,19 @@ export function CodeCanvasPage() {
       <WorkspaceErrorBoundary onOpenFolder={openWorkspace}>
       {rootPath && typeof rootPath === 'string' && rootPath.length > 0 ? (
       <div className="flex flex-1 overflow-hidden min-h-0">
+        {/* Session Sidebar */}
+        {sessionSidebarOpen && (
+          <SessionSidebar
+            open={sessionSidebarOpen}
+            onClose={() => setSessionSidebarOpen(false)}
+            onSessionChange={(sessionId) => {
+              useSessionStore.getState().selectTab(sessionId)
+            }}
+          />
+        )}
+        {/* Checkpoint Timeline */}
+        <CheckpointTimeline />
+
         {/* PANEL 0: Explorer — flex-based split pane, animated width */}
         <div
           style={{ width: explorerOpen ? explorerWidth : 0 }}
@@ -787,6 +836,7 @@ export function CodeCanvasPage() {
                 {explorerOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
               </button>
               <span className="text-[10px] font-medium text-[var(--text-quaternary)]">Chat</span>
+              <WorkflowModeIndicator />
               {/* Runtime dot */}
               <span className={cn(
                 "inline-block h-1.5 w-1.5 rounded-full",
@@ -799,7 +849,7 @@ export function CodeCanvasPage() {
 
             <div className="flex items-center gap-1.5">
               {/* Context usage indicator */}
-              <ContextUsageIndicator />
+              <ContextRadar />
 
               {/* Toggle diff viewer pane */}
               <button
@@ -810,7 +860,7 @@ export function CodeCanvasPage() {
                     ? "text-[var(--color-accent-blue)] bg-[var(--color-accent-blue)]/10"
                     : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]"
                 )}
-                title="Toggle diff viewer"
+                title="Toggle diff viewer (⌘⇧D)"
               >
                 <FileDiff className="h-3.5 w-3.5" />
               </button>
@@ -826,6 +876,7 @@ export function CodeCanvasPage() {
                 title="Toggle workspace panel (⌘J)"
               >
                 {workspacePanelOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
+                <ShortcutHint keys="⌘J" className="ml-0.5 hidden sm:inline-flex" />
               </button>
             </div>
           </div>
@@ -906,49 +957,7 @@ export function CodeCanvasPage() {
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             className="flex flex-col items-center gap-5 max-w-sm w-full"
           >
-            <div className="relative h-16 w-16">
-              <svg viewBox="0 0 64 64" fill="none" className="absolute inset-0 h-full w-full">
-                <motion.rect
-                  x="8" y="12" width="48" height="40" rx="4"
-                  stroke="currentColor" strokeWidth="1.5" fill="none"
-                  className="text-[var(--accent-code)]/40"
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                />
-                <motion.path
-                  d="M22 28L18 32L22 36"
-                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                  className="text-[var(--accent-code)]"
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.4, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                />
-                <motion.path
-                  d="M42 28L46 32L42 36"
-                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                  className="text-[var(--accent-browser)]"
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.4, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                />
-                <motion.path
-                  d="M34 22L30 42"
-                  stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                  className="text-[var(--accent-design)]"
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.3, delay: 0.8, ease: [0.16, 1, 0.3, 1] }}
-                />
-                <motion.circle
-                  cx="32" cy="32" r="2"
-                  fill="currentColor" className="text-[var(--accent-code)]"
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 0.3 }}
-                  transition={{ duration: 0.3, delay: 0.3 }}
-                />
-              </svg>
-            </div>
+            <PremiumGeometricEmptyState />
             <div>
               <h2 className="text-lg font-semibold text-[var(--text-secondary)]">No workspace open</h2>
               <p className="text-sm text-[var(--text-tertiary)] mt-1.5 max-w-xs mx-auto leading-relaxed">
@@ -973,6 +982,7 @@ export function CodeCanvasPage() {
                   { keys: "⌘J", desc: "Toggle panel" },
                   { keys: "⌘S", desc: "Save file" },
                   { keys: "⌘W", desc: "Close tab" },
+                  { keys: "⌘⇧S", desc: "Toggle session sidebar" },
                 ].map(({ keys, desc }) => (
                   <div key={keys} className="flex items-center justify-between">
                     <span className="text-[10px] text-[var(--text-quaternary)]">{desc}</span>

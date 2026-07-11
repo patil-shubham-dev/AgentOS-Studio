@@ -133,6 +133,10 @@ export interface ToolCallRecord {
   completedAt?: number
   /** Optional parallel group index — tools with the same index were executed in parallel */
   parallelGroup?: number
+  /** Confidence level of the decision to use this tool */
+  confidence?: "high" | "medium" | "low"
+  /** Reason why this tool was selected */
+  reason?: string
 }
 
 export type TimelineEvent =

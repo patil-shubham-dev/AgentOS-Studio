@@ -1,3 +1,4 @@
+import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 
 interface SkeletonProps {
@@ -56,6 +57,69 @@ export function DesignPreviewSkeleton() {
         <Skeleton className="h-2" width="20%" />
         <Skeleton className="h-2" width="25%" />
       </div>
+    </div>
+  )
+}
+
+function SkeletonCard({ variant, delay }: { variant: "tool" | "thinking" | "message"; delay: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay, ease: [0.16, 1, 0.32, 1] }}
+    >
+      {variant === "thinking" && (
+        <div className="rounded-xl border border-white/[0.04] bg-white/[0.02] p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-3 w-3 rounded-full" />
+            <Skeleton className="h-2" width={80} />
+          </div>
+          <div className="flex gap-2 pl-5">
+            <Skeleton className="h-2 flex-1" />
+            <Skeleton className="h-2" width={60} />
+          </div>
+          <div className="flex gap-2 pl-5">
+            <Skeleton className="h-2" width="40%" />
+            <Skeleton className="h-2" width="30%" />
+          </div>
+        </div>
+      )}
+
+      {variant === "tool" && (
+        <div className="rounded-xl border border-white/[0.04] bg-white/[0.02] p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-4 w-4 rounded" />
+            <div className="flex-1 space-y-1">
+              <Skeleton className="h-2" width={120} />
+              <Skeleton className="h-2" width={80} />
+            </div>
+            <Skeleton className="h-3 w-12 rounded" />
+          </div>
+          <Skeleton className="h-1 w-full rounded-full" />
+        </div>
+      )}
+
+      {variant === "message" && (
+        <div className="flex gap-2 px-3 py-2">
+          <Skeleton className="h-5 w-5 rounded-full shrink-0" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-2" width={160} />
+            <Skeleton className="h-2" width="80%" />
+            <Skeleton className="h-2" width="60%" />
+          </div>
+        </div>
+      )}
+    </motion.div>
+  )
+}
+
+export function ChatTimelineSkeleton({ count = 3 }: { count?: number }) {
+  const variants: Array<"tool" | "thinking" | "message"> = ["thinking", "tool", "message", "tool", "thinking", "message"]
+  return (
+    <div className="px-3 py-2 space-y-2">
+      {Array.from({ length: count }, (_, i) => (
+        <SkeletonCard key={i} variant={variants[i % variants.length]} delay={i * 0.08} />
+      ))}
     </div>
   )
 }

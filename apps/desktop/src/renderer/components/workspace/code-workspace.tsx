@@ -34,6 +34,7 @@ import { CheckpointPanel } from "@/components/workspace/checkpoint-panel"
 import { useCheckpointStore } from "@/stores/checkpoint-store"
 
 import { requestRefresh } from "@/runtime/runtime-coordinator"
+import { ShortcutHint } from "@/components/ui/ShortcutHint"
 import { useHaptic } from "@/lib/haptics"
 import {
   WrapText, Minus, Plus, X, FileCode,
@@ -153,9 +154,9 @@ export function CodeWorkspace() {
   const setEditorMode = useWorkspaceStore((s) => s.setEditorMode)
   const diffReviewFile = useWorkspaceStore((s) => s.diffReviewFile)
 
-  const MODE_OPTIONS: { id: EditorMode; label: string; icon: React.ElementType }[] = [
-    { id: "editor", label: "Editor", icon: Code2 },
-    { id: "diff", label: "Diff", icon: GitCompare },
+  const MODE_OPTIONS: { id: EditorMode; label: string; icon: React.ElementType; shortcut?: string }[] = [
+    { id: "editor", label: "Editor", icon: Code2, shortcut: "⌘⇧E" },
+    { id: "diff", label: "Diff", icon: GitCompare, shortcut: "⌘⇧D" },
     { id: "history", label: "History", icon: History },
     { id: "problems", label: "Problems", icon: ListTodo },
     { id: "search", label: "Search", icon: Search },
@@ -1000,7 +1001,7 @@ export function CodeWorkspace() {
           <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
 
           {/* Problems badge */}
-          <Tooltip content={`${errorCount} errors, ${warningCount} warnings — click to toggle problems panel`}>
+          <Tooltip content={`${errorCount} errors, ${warningCount} warnings — click to toggle`}>
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -1156,7 +1157,7 @@ export function CodeWorkspace() {
           </Tooltip>
 
           {/* File History toggle */}
-          <Tooltip content="File History — view snapshots before agent edits">
+          <Tooltip content="File History">
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -1193,7 +1194,7 @@ export function CodeWorkspace() {
 
           <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
 
-          <Tooltip content="Debug (⌘⇧D)">
+          <Tooltip content="Toggle debug panel">
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -1280,6 +1281,7 @@ export function CodeWorkspace() {
             >
               <Icon className="h-3 w-3" />
               <span>{opt.label}</span>
+              {opt.shortcut && <ShortcutHint keys={opt.shortcut} className="ml-1" />}
             </button>
           )
         })}

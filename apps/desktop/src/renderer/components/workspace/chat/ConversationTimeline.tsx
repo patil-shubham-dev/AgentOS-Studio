@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { ChevronDown, Terminal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTimelineStore } from "../timeline/timeline-store"
-import { AssistantResponse } from "./AssistantResponse"
+import { UnifiedAssistantResponse } from "./UnifiedAssistantResponse"
 import { UserPill } from "./UserPill"
 import { TerminalPane } from "./TerminalPane"
 import { ReferenceChipRow } from "@/components/workspace/context-refs/ReferenceChip"
@@ -133,7 +133,7 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
                         {currentPack && <ContextBreakdown pack={currentPack} />}
                       </>
                     )}
-                    <AssistantResponse key={turn.userEvent?.id ?? `turn-${idx}`}
+                    <UnifiedAssistantResponse key={turn.userEvent?.id ?? `turn-${idx}`}
                       stepIds={turn.sessionIds}
                       isLatest={isLatestTurn}
                       onRetry={onSendMessage}

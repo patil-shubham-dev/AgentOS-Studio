@@ -2,31 +2,47 @@ import type { Transition, Variants } from "framer-motion"
 
 // ── Duration tokens ──
 export const DURATION = {
-  /** 80ms — instant feedback */
+  /** 80ms — instant feedback (button press) */
   instant: 0.08,
-  /** 100ms — quick transitions (browser tab open/close etc.) */
+  /** 100ms — quick transitions */
   quick: 0.1,
-  /** 120ms — fast, subtle transitions */
+  /** 120ms — fast, subtle (tooltip appear) */
   fast: 0.12,
+  /** 150ms — dropdowns, menus */
+  dropdown: 0.15,
   /** 180ms — standard micro-interaction */
   standard: 0.18,
-  /** 200ms — normal UI transitions */
+  /** 200ms — normal UI (thinking step, focus ring) */
   normal: 0.2,
+  /** 250ms — modals, page transitions */
+  modal: 0.25,
   /** 260ms — deliberate, noticeable */
   deliberate: 0.26,
+  /** 300ms — card entry, container collapse */
+  card: 0.3,
   /** 350ms — slow, emphasis */
   slow: 0.35,
+  /** 400ms — completion ripple, celebrations */
+  expressive: 0.4,
   /** 500ms — expressive, celebratory */
-  expressive: 0.5,
+  celebratory: 0.5,
 } as const
 
 // ── Easing tokens ──
 export const EASING = {
-  default: [0.25, 0.1, 0.25, 1] as const,
+  /** cubic-bezier(0.23, 1, 0.32, 1) — strong ease-out for UI */
+  default: [0.23, 1, 0.32, 1] as const,
+  /** cubic-bezier(0.16, 1, 0.3, 1) — entrance */
   entrance: [0.16, 1, 0.3, 1] as const,
+  /** cubic-bezier(0.77, 0, 0.175, 1) — ease-in-out for on-screen movement */
+  inOut: [0.77, 0, 0.175, 1] as const,
+  /** cubic-bezier(0.3, 0, 0.7, 0.3) — exit */
   exit: [0.3, 0, 0.7, 0.3] as const,
+  /** cubic-bezier(0.4, 0, 0.2, 1) — hover color changes */
+  hover: [0.4, 0, 0.2, 1] as const,
+  /** cubic-bezier(0.34, 1.56, 0.64, 1) — gentle spring for delight moments */
+  springGentle: [0.34, 1.56, 0.64, 1] as const,
   spring: { type: "spring" as const, stiffness: 400, damping: 30 },
-  springGentle: { type: "spring" as const, stiffness: 200, damping: 20 },
   springBouncy: { type: "spring" as const, stiffness: 500, damping: 15 },
 }
 

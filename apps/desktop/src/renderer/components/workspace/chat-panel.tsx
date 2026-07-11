@@ -12,12 +12,9 @@ import { cn } from "@/lib/utils"
 import { ConversationTimeline, Composer } from "./chat"
 import { PlanViewer } from "./planning/PlanViewer"
 import { SandboxMergeUI } from "./sandbox/SandboxMergeUI"
-import { PersonaSelector } from "./personas/PersonaSelector"
-import { ToolFilterBadge } from "./tool-filter/ToolFilterBadge"
 import { referenceParser } from "@/lib/context-references/ReferenceParser"
 import { referenceResolver } from "@/lib/context-references/ReferenceResolver"
 import { ContextBar } from "./timeline/context-bar"
-import { SessionBar } from "./timeline/SessionBar"
 import { ApprovalGate } from "./approval-gate"
 import { EditPreviewModal } from "./execution/EditPreviewModal"
 import { XtermTerminal, type XtermTerminalHandle } from "./xterm-terminal"
@@ -29,8 +26,8 @@ import { usePlanStore } from "@/stores/plan-store"
 import { loadFileTree } from "@/lib/filesystem"
 import {
   Bot, AlertTriangle, Settings2, Plus, CheckCircle2, ArrowRight,
-  Loader2, CheckCircle, XCircle, Terminal as TerminalIcon, GitBranch, ChevronDown,
-  Shield, FileText, Edit3, FolderOpen, Sparkles, Bug,
+  Loader2, CheckCircle, XCircle, Terminal as TerminalIcon,
+  Edit3, FolderOpen, Sparkles,
 } from "lucide-react"
 
 const executionSessionManager = ExecutionSessionManager.getInstance()
@@ -552,131 +549,50 @@ ${currentPlan.verificationCriteria.map((c) => `- ${c}`).join("\n")}`
 
   return (
     <div className="flex h-full flex-col bg-gradient-to-b from-[#0a0a0b] to-[#09090a]">
-      {/* Minimal header with pipeline diagnostics and plan mode toggle */}
+      {/* Minimal header - no internal agent labels visible */}
       <div className="relative border-b border-white/[0.05]">
         <div className="flex items-center gap-2 px-3 py-2">
           <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-blue-500/8">
-            <Bot className="h-3 w-3 text-blue-400/50" />
+            <Sparkles className="h-3 w-3 text-blue-400/60" />
           </div>
-          <span className="text-[11px] font-semibold text-white/65">Chat</span>
+          <span className="text-[11px] font-semibold text-white/65">AgenticOS</span>
 
-          {/* Generate AGENTIC.md — only show when workspace is open */}
-          {rootPath && (
-            <button
-              onClick={handleGenerateAgenticMd}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-medium transition-all text-white/30 border-white/[0.06] hover:text-white/50 hover:bg-white/[0.03]"
-              title="Generate AGENTIC.md project configuration from project scan"
-            >
-              <FileText className="h-2.5 w-2.5" />
-              <span>Init</span>
-            </button>
-          )}
-
-          {/* Tool filter badge — shows relevance filtering stats */}
-          <ToolFilterBadge />
-
-          {/* Persona selector */}
-          <PersonaSelector />
-
-          {/* Sandbox mode toggle */}
-          <button
-            onClick={() => setSandboxMode(sandboxMode === 'on' ? 'off' : 'on')}
-            className={cn(
-              "flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-medium transition-all",
-              sandboxMode === 'on'
-                ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/8 hover:bg-emerald-500/12"
-                : "text-white/30 border-white/[0.06] hover:text-white/50 hover:bg-white/[0.03]",
-            )}
-          >
-            <Shield className="h-2.5 w-2.5" />
-            <span>Sandbox</span>
-          </button>
-
-          {/* Plan mode toggle */}
-          <div className="relative" ref={planMenuRef}>
-            <button
-              onClick={() => setPlanMenuOpen((v) => !v)}
-              className={cn(
-                "flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-medium transition-all",
-                PLAN_MODE_BG[planMode],
-                PLAN_MODE_COLORS[planMode],
-              )}
-            >
-              <GitBranch className="h-2.5 w-2.5" />
-              {PLAN_MODE_LABELS[planMode]}
-              <ChevronDown className={cn("h-2.5 w-2.5 transition-transform", planMenuOpen && "rotate-180")} />
-            </button>
-
-            {/* Dropdown menu */}
-            {planMenuOpen && (
-              <div className="absolute top-full left-0 mt-1 w-28 rounded-lg border border-white/[0.08] bg-[#0f0f10] shadow-xl shadow-black/40 overflow-hidden z-50">
-                {["auto", "always", "never"].map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => {
-                      setPlanMode(mode as "auto" | "always" | "never")
-                      setPlanMenuOpen(false)
-                    }}
-                    className={cn(
-                      "flex items-center gap-2 w-full px-3 py-1.5 text-[10px] font-medium text-left transition-colors",
-                      planMode === mode
-                        ? "text-blue-400 bg-blue-500/10"
-                        : "text-white/50 hover:text-white/80 hover:bg-white/[0.04]",
-                    )}
-                  >
-                    <div className={cn(
-                      "h-1.5 w-1.5 rounded-full",
-                      mode === "auto" ? "bg-blue-400" :
-                      mode === "always" ? "bg-amber-400" :
-                      "bg-white/20"
-                    )} />
-                    {PLAN_MODE_LABELS[mode]}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Thinking toggle button */}
-          <button
-            onClick={() => navigate("/settings?tab=thinking")}
-            className={cn(
-              "flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-medium transition-all",
-              thinkingConfig.visualizationMode === "rainbow"
-                ? "text-purple-400 border-purple-500/20 bg-purple-500/8 hover:bg-purple-500/12"
-                : "text-white/30 border-white/[0.06] hover:text-white/50 hover:bg-white/[0.03]",
-            )}
-            title="Thinking visualization settings"
-          >
-            <Sparkles className="h-2.5 w-2.5" />
-            <span>Thinking</span>
-          </button>
-
-          {/* Debug mode toggle */}
-          <button
-            onClick={() => setDebugMode(!debugMode)}
-            className={cn(
-              "flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-medium transition-all",
-              debugMode
-                ? "text-orange-400 border-orange-500/20 bg-orange-500/8 hover:bg-orange-500/12"
-                : "text-white/30 border-white/[0.06] hover:text-white/50 hover:bg-white/[0.03]",
-            )}
-            title="Toggle debug mode to see agent internals"
-          >
-            <Bug className="h-2.5 w-2.5" />
-            <span>Debug</span>
-          </button>
-
-          {pipelineStage && (
-            <div className="flex items-center gap-1 ml-auto">
-              <pipelineStage.icon className={cn("h-3 w-3", pipelineStage.color, pipelineStage.icon === Loader2 && "animate-spin")} />
-              <span className={cn("text-[9px] font-medium", pipelineStage.color)}>{pipelineStage.label}</span>
+          {/* Processing status - subtle */}
+          {isProcessing && (
+            <div className="flex items-center gap-1.5 ml-2">
+              <span className="flex gap-[2px]">
+                <motion.span
+                  className="h-[4px] w-[4px] rounded-full bg-blue-400"
+                  animate={{ scale: [0.6, 1, 0.6], opacity: [0.3, 1, 0.3] }}
+                  transition={{ duration: 1.2, repeat: Infinity, delay: 0, ease: "easeInOut" }}
+                />
+                <motion.span
+                  className="h-[4px] w-[4px] rounded-full bg-blue-400"
+                  animate={{ scale: [0.6, 1, 0.6], opacity: [0.3, 1, 0.3] }}
+                  transition={{ duration: 1.2, repeat: Infinity, delay: 0.2, ease: "easeInOut" }}
+                />
+                <motion.span
+                  className="h-[4px] w-[4px] rounded-full bg-blue-400"
+                  animate={{ scale: [0.6, 1, 0.6], opacity: [0.3, 1, 0.3] }}
+                  transition={{ duration: 1.2, repeat: Infinity, delay: 0.4, ease: "easeInOut" }}
+                />
+              </span>
+              <span className="text-[9px] font-medium text-blue-400/60">Working</span>
             </div>
           )}
+
+          {/* Compact settings menu (advanced options hidden behind gear) */}
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={() => navigate("/settings")}
+              className="flex items-center justify-center h-6 w-6 rounded-md transition-colors text-white/20 hover:text-white/50 hover:bg-white/[0.04]"
+              title="Settings"
+            >
+              <Settings2 className="h-3 w-3" />
+            </button>
+          </div>
         </div>
       </div>
-
-      <SessionBar />
 
       {/* Conversation area - takes remaining space */}
       <div className="flex-1 overflow-hidden relative">

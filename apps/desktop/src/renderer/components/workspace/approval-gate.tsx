@@ -61,10 +61,19 @@ export const ApprovalGate = memo(function ApprovalGate() {
     reject()
   }, [reject])
 
-  // Keyboard shortcuts: Enter = Approve, Escape = Reject
+  // Keyboard shortcuts: Enter = Approve, Tab = focus Approve, Escape = Reject
+  const approveRef = useRef<HTMLButtonElement>(null)
+
   useEffect(() => {
     if (!needsApproval) return
+    approveRef.current?.focus()
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        e.stopPropagation()
+        approveRef.current?.focus()
+        return
+      }
       if (e.key === 'Enter' || e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
@@ -250,15 +259,18 @@ export const ApprovalGate = memo(function ApprovalGate() {
             >
               <X className="h-3 w-3" />
               Reject
+              <span className="text-[7px] text-[var(--color-accent-red)]/40 font-mono ml-0.5">⎋</span>
             </button>
 
             {/* Approve button */}
             <button
+              ref={approveRef}
               onClick={handleApprove}
               className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[var(--accent-code)] to-[var(--accent-design)] px-3 py-1.5 text-[10px] font-medium text-white shadow-lg shadow-[var(--accent-code)]/20 hover:from-[var(--color-accent-blue)] hover:to-[var(--accent-design)] transition-all"
             >
               <Check className="h-3 w-3" />
               Approve
+              <span className="text-[7px] text-white/40 font-mono ml-0.5">↩</span>
             </button>
           </div>
         </motion.div>

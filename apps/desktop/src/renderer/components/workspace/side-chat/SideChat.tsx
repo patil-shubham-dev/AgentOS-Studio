@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { usePaneStore } from "@/stores/pane-store"
-import { useAgentStore } from "@/stores/agent-store"
 import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
-import { SendHorizontal, MessageSquare, X, Loader2 } from "lucide-react"
+import { providerGateway } from "@/runtime/providers/ProviderGateway"
+import { SendHorizontal, MessageSquare, X, Loader2, Trash2, AlertCircle, WifiOff } from "lucide-react"
 
 interface SideChatMessage {
   id: string
@@ -11,14 +11,42 @@ interface SideChatMessage {
   content: string
 }
 
+const STORAGE_KEY_PREFIX = "aos-sidechat-msgs"
+
+function loadMessages(): SideChatMessage[] {
+  try {
+    const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}-global`)
+    if (!raw) return []
+    return JSON.parse(raw) as SideChatMessage[]
+  } catch {
+    return []
+  }
+}
+
+function persistMessages(messages: SideChatMessage[]): void {
+  try {
+    if (messages.length === 0) {
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}-global`)
+    } else {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}-global`, JSON.stringify(messages.slice(-50)))
+    }
+  } catch { /* quota exceeded — ignore */ }
+}
+
 export function SideChat() {
   const sideChatOpen = usePaneStore((s) => s.sideChatOpen)
   const setSideChatOpen = usePaneStore((s) => s.setSideChatOpen)
-  const [messages, setMessages] = useState<SideChatMessage[]>([])
+  const [messages, setMessages] = useState<SideChatMessage[]>(() =>
+    sideChatOpen ? loadMessages() : []
+  )
   const [input, setInput] = useState("")
   const [isThinking, setIsThinking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const isConfigured = providerGateway.isConfigured()
 
   useEffect(() => {
     if (sideChatOpen) {
@@ -32,6 +60,19 @@ export function SideChat() {
       listRef.current.scrollTop = listRef.current.scrollHeight
     }
   }, [messages])
+
+  useEffect(() => {
+    persistMessages(messages)
+  }, [messages])
+
+  useEffect(() => {
+    if (sideChatOpen && messages.length === 0) {
+      const restored = loadMessages()
+      if (restored.length > 0) {
+        setMessages(restored)
+      }
+    }
+  }, [sideChatOpen])
 
   // Keyboard shortcut: Cmd+;
   useEffect(() => {
@@ -47,6 +88,7 @@ export function SideChat() {
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || isThinking) return
+
     const userMsg: SideChatMessage = {
       id: `sc_${Date.now()}`,
       role: "user",
@@ -55,31 +97,72 @@ export function SideChat() {
     setMessages((prev) => [...prev, userMsg])
     setInput("")
     setIsThinking(true)
+    setError(null)
 
-    // Get session context from timeline and agent store
+    // Gather context from current session
     const timeline = useTimelineStore.getState()
-    const sessionContext = Array.from(timeline.agentSessions.values())
-      .slice(-3)
+    const recentContext = Array.from(timeline.agentSessions.values())
+      .slice(-2)
       .map((s) => s.streamingText || "")
       .filter(Boolean)
       .join("\n")
 
+    const contextMsg = recentContext
+      ? `Current session context (for reference):\n${recentContext.slice(0, 2000)}`
+      : ""
+
     try {
-      // Use the existing provider infrastructure for a quick answer
-      // For now, simulate a response
-      setTimeout(() => {
+      abortRef.current = new AbortController()
+
+      const result = await providerGateway.chat({
+        messages: [
+          ...(contextMsg
+            ? [{ role: "system" as const, content: `You are a helpful side-chat assistant in an AI coding tool. Answer the user's question concisely based on their current work context.\n\n${contextMsg}` }]
+            : [{ role: "system" as const, content: "You are a helpful side-chat assistant in an AI coding tool. Answer the user's question concisely." }]
+          ),
+          ...messages.slice(-10).map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          })),
+          { role: "user" as const, content: userMsg.content },
+        ],
+        signal: abortRef.current.signal,
+        maxTokens: 1024,
+        temperature: 0.3,
+      })
+
+      if (result.error) {
+        setError(result.error.userMessage || result.error.message)
+        return
+      }
+
+      if (result.content) {
         const assistantMsg: SideChatMessage = {
           id: `sc_${Date.now()}`,
           role: "assistant",
-          content: `I see you're asking about "${userMsg.content.substring(0, 50)}...". The current session has ${sessionContext.length} characters of context available. This side chat lets you ask questions without derailing your main conversation.`,
+          content: result.content,
         }
         setMessages((prev) => [...prev, assistantMsg])
-        setIsThinking(false)
-      }, 800)
-    } catch {
+      }
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") return
+      setError(err instanceof Error ? err.message : "Failed to get response")
+    } finally {
       setIsThinking(false)
+      abortRef.current = null
     }
-  }, [input, isThinking])
+  }, [input, isThinking, messages])
+
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort()
+    setIsThinking(false)
+  }, [])
+
+  const handleClear = useCallback(() => {
+    setMessages([])
+    persistMessages([])
+    setError(null)
+  }, [])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -87,8 +170,11 @@ export function SideChat() {
         e.preventDefault()
         handleSend()
       }
+      if (e.key === "Escape" && isThinking) {
+        handleCancel()
+      }
     },
-    [handleSend]
+    [handleSend, handleCancel, isThinking]
   )
 
   if (!sideChatOpen) return null
@@ -101,16 +187,33 @@ export function SideChat() {
           <div className="flex items-center gap-1.5">
             <MessageSquare className="h-3.5 w-3.5 text-blue-400" />
             <span className="text-[11px] font-medium text-white/60">Side Chat</span>
-            <span className="text-[9px] text-white/20 px-1 py-0.5 rounded bg-white/[0.04]">
+            <span className="text-[9px] text-white/20 px-1 py-0.5 rounded bg-white/[0.04] font-mono">
               {";"}
             </span>
+            {!isConfigured && (
+              <span className="text-[9px] text-amber-400/60 flex items-center gap-0.5">
+                <WifiOff className="h-2.5 w-2.5" />
+                no provider
+              </span>
+            )}
           </div>
-          <button
-            onClick={() => setSideChatOpen(false)}
-            className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {messages.length > 0 && (
+              <button
+                onClick={handleClear}
+                className="rounded p-0.5 text-white/20 hover:text-white/50 hover:bg-white/[0.06] transition-all"
+                title="Clear conversation"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
+            <button
+              onClick={() => setSideChatOpen(false)}
+              className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Messages */}
@@ -119,9 +222,12 @@ export function SideChat() {
           className="overflow-y-auto max-h-80 min-h-[120px] px-3 py-2 space-y-2"
         >
           {messages.length === 0 ? (
-            <p className="text-[10px] text-white/20 text-center py-6">
-              Ask a question without derailing your main conversation
-            </p>
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <MessageSquare className="h-5 w-5 text-white/10 mb-2" />
+              <p className="text-[10px] text-white/20 max-w-[180px] leading-relaxed">
+                Ask a question without derailing your main conversation
+              </p>
+            </div>
           ) : (
             messages.map((msg) => (
               <div
@@ -137,10 +243,24 @@ export function SideChat() {
               </div>
             ))
           )}
+
           {isThinking && (
             <div className="flex items-center gap-1.5 text-[10px] text-white/30 px-2.5 py-1">
               <Loader2 className="h-2.5 w-2.5 animate-spin" />
               Thinking...
+              <button
+                onClick={handleCancel}
+                className="ml-auto text-[9px] text-white/20 hover:text-white/50 transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] text-red-400/80 bg-red-500/5 mr-6">
+              <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
         </div>
@@ -153,18 +273,33 @@ export function SideChat() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask a side question..."
+              placeholder={isConfigured ? "Ask a side question..." : "No provider configured"}
               rows={1}
-              className="flex-1 bg-transparent text-[11px] text-white/70 placeholder:text-white/20 outline-none resize-none min-h-[20px] max-h-[80px]"
+              disabled={!isConfigured}
+              className="flex-1 bg-transparent text-[11px] text-white/70 placeholder:text-white/20 outline-none resize-none min-h-[20px] max-h-[80px] disabled:opacity-30"
             />
             <button
-              onClick={handleSend}
-              disabled={!input.trim() || isThinking}
-              className="rounded p-0.5 text-white/30 hover:text-blue-400 hover:bg-blue-500/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              onClick={isThinking ? handleCancel : handleSend}
+              disabled={(!input.trim() || !isConfigured) && !isThinking}
+              className={cn(
+                "rounded p-0.5 transition-all",
+                isThinking
+                  ? "text-red-400/50 hover:text-red-400 hover:bg-red-500/10"
+                  : "text-white/30 hover:text-blue-400 hover:bg-blue-500/10 disabled:opacity-30 disabled:cursor-not-allowed"
+              )}
             >
-              <SendHorizontal className="h-3.5 w-3.5" />
+              {isThinking ? (
+                <X className="h-3.5 w-3.5" />
+              ) : (
+                <SendHorizontal className="h-3.5 w-3.5" />
+              )}
             </button>
           </div>
+          {!isConfigured && (
+            <p className="text-[8px] text-amber-400/40 mt-1 px-1">
+              Add a provider in Settings to use side chat
+            </p>
+          )}
         </div>
       </div>
     </div>
