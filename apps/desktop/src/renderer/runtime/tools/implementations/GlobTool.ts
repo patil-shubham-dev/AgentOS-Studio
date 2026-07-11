@@ -2,6 +2,7 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
+import { filterDeniedPaths } from '@/runtime/permissions/PathVisibilityFilter'
 
 const DEFAULT_MAX_RESULTS = 200
 const ABSOLUTE_MAX_RESULTS = 500
@@ -36,7 +37,7 @@ export const GlobTool: AgentTool = buildTool({
     const result = await globFiles(pattern)
     if (result.count === 0) return { data: 'No files found.' }
 
-    let files = result.files
+    let files = filterDeniedPaths(result.files)
 
     if (directory) {
       const normalizedDir = directory.replace(/\\/g, '/').replace(/\/$/, '')

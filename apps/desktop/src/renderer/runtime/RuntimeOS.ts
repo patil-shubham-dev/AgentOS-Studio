@@ -27,6 +27,8 @@ import { RuntimeCleanupManager } from "./RuntimeCleanupManager"
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { PromptCacheManager } from '@/runtime/caching/PromptCacheManager'
 import { useAppStore } from '@/stores/app-store'
+import { useWorkspaceRuntime } from './workspace-runtime'
+import { setDeniedPaths } from './permissions/PathVisibilityFilter'
 import { configWatcher } from '@/runtime/project-config/ConfigWatcher'
 import { configLoader } from '@/runtime/project-config/ConfigLoader'
 import { sandboxPathMapper } from '@/runtime/tools/execution/SandboxPathMapper'
@@ -125,6 +127,11 @@ export class RuntimeOS {
         cacheManager.invalidate('model')
       },
     )
+    const syncDeniedPaths = () => {
+      const config = (useAppStore.getState() as any).security ?? {}
+      const denied: string[] = config.deniedPaths ?? []
+      setDeniedPaths(denied)
+    }
     const syncRolePerms = () => {
       const roleConfigs = useAppStore.getState().roleConfigs ?? []
       for (const rc of roleConfigs) {
@@ -143,8 +150,9 @@ export class RuntimeOS {
         syncRolePerms()
       },
     )
-    // Initial sync of role config capabilities
+    // Initial sync of role config capabilities and denied paths
     syncRolePerms()
+    syncDeniedPaths()
     // Store unsubscribers for cleanup on shutdown
     this._cacheUnsubscribers = [unsubProviders, unsubRoles]
 

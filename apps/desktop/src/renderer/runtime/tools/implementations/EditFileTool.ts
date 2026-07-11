@@ -8,6 +8,7 @@ import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
 import { buildDiffFileEntry } from '@/lib/diff-review'
 import { createFile } from '@/lib/filesystem'
 import { FileStateCache } from '../storage/FileStateCache'
+import { isPathDenied } from '@/runtime/permissions/PathVisibilityFilter'
 
 const changesetByTrace = new Map<string, string>()
 const CHANGESET_MAP_MAX_SIZE = 200
@@ -280,6 +281,10 @@ export const EditFileTool: AgentTool = buildTool({
 
     const rootPath = ctx.workspaceStore?.rootPath ?? null
     const fullPath = resolvePath(rootPath, filePath)
+
+    if (isPathDenied(fullPath)) {
+      return { data: null, error: `File not found: "${filePath}". The file may not exist at this location.`, isError: true }
+    }
 
     // Read-before-edit enforcement (P1.2)
     const fileState = FileStateCache.getInstance()

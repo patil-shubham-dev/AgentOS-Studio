@@ -5,6 +5,7 @@ import { ToolCapabilities } from '../core/ToolCapabilities'
 import { toolResultCache } from '../core/ToolResultCache'
 import { fileContentCache } from '@/lib/FileContentCache'
 import { FileStateCache } from '../storage/FileStateCache'
+import { isPathDenied } from '@/runtime/permissions/PathVisibilityFilter'
 
 const BINARY_NULL_BYTES_CHECK = 512
 const DEFAULT_MAX_LINES = 500
@@ -148,6 +149,10 @@ export const ReadFileTool: AgentTool = buildTool({
 
     const validationError = validatePath(fullPath, rootPath)
     if (validationError) return { data: null, error: validationError, isError: true }
+
+    if (isPathDenied(fullPath)) {
+      return { data: null, error: `File not found: "${path}". The file may not exist at this location.`, isError: true }
+    }
 
     const cacheKey = toolResultCache.key('read_file', input)
     const cached = toolResultCache.get(cacheKey)

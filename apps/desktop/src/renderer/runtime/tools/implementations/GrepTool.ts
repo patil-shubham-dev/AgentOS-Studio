@@ -2,6 +2,7 @@ import { buildTool, type AgentTool } from '../core/AgentTool'
 import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
+import { isPathDenied } from '@/runtime/permissions/PathVisibilityFilter'
 
 const DEFAULT_MAX_RESULTS = 50
 const ABSOLUTE_MAX_RESULTS = 200
@@ -48,12 +49,16 @@ export const GrepTool: AgentTool = buildTool({
       return { data: 'No matches found.' }
     }
 
+    const deniedFiltered = result.matches.filter(
+      (m: { file: string }) => !isPathDenied(m.file)
+    )
+
     const filtered = path
-      ? result.matches.filter((m: { file: string }) => {
+      ? deniedFiltered.filter((m: { file: string }) => {
           const normalized = m.file.replace(/\\/g, '/')
           return normalized.startsWith(path.replace(/\\/g, '/').replace(/\/$/, '') + '/') || normalized === path.replace(/\\/g, '/')
         })
-      : result.matches
+      : deniedFiltered
 
     if (filtered.length === 0) {
       return { data: `No matches found in path "${path}".` }

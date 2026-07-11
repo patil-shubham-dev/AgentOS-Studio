@@ -6,6 +6,7 @@ import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
 import { fileContentCache } from '@/lib/FileContentCache'
 import { createFile } from '@/lib/filesystem'
 import { FileStateCache } from '../storage/FileStateCache'
+import { isPathDenied } from '@/runtime/permissions/PathVisibilityFilter'
 
 const changesetByTrace = new Map<string, string>()
 const CHANGESET_MAP_MAX_SIZE = 200
@@ -107,6 +108,10 @@ export const WriteFileTool: AgentTool = buildTool({
     if (!path) return { data: null, error: 'path is required', isError: true }
     const rootPath = ctx.workspaceStore?.rootPath ?? null
     const fullPath = resolvePath(rootPath, path)
+
+    if (isPathDenied(fullPath)) {
+      return { data: null, error: `Cannot write to "${path}". The path is not accessible.`, isError: true }
+    }
 
     // Read-before-write enforcement (P1.2)
     const fileState = FileStateCache.getInstance()

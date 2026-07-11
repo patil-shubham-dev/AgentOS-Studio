@@ -12,4 +12,21 @@ export type ToolPermissions = {
   alwaysAllow: string[]
   alwaysDeny: string[]
   alwaysAsk: string[]
+  deniedPaths?: string[]
+}
+
+export function matchDeniedPath(filePath: string, deniedPatterns: string[]): boolean {
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase()
+  for (const pattern of deniedPatterns) {
+    const normalizedPattern = pattern.replace(/\\/g, '/').toLowerCase()
+    if (normalizedPattern.endsWith('*')) {
+      const prefix = normalizedPattern.slice(0, -1)
+      if (normalized.startsWith(prefix)) return true
+    } else if (normalized === normalizedPattern) {
+      return true
+    } else if (normalized.startsWith(normalizedPattern + '/') || normalized.startsWith(normalizedPattern + '\\')) {
+      return true
+    }
+  }
+  return false
 }
