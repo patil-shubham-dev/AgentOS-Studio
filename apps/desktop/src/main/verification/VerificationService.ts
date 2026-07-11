@@ -49,7 +49,7 @@ export class VerificationService {
 
   async verifyChanges(changedFiles: string[], projectRoot: string, _signal?: AbortSignal): Promise<VerificationResult> {
     if (changedFiles.length === 0) {
-      return { passed: true, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"], issues: [] }
+      return { passed: true, verificationStatus: "not_checkable", lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"], issues: [] }
     }
 
     const details: string[] = []
@@ -90,7 +90,7 @@ export class VerificationService {
     }
 
     const passed = lintErrors === 0 && typeErrors === 0 && buildErrors === 0 && testFailures === 0
-    return { passed, lintErrors, typeErrors, buildErrors, testFailures, details, issues: allIssues }
+    return { passed, verificationStatus: passed ? "passed" : "failed", lintErrors, typeErrors, buildErrors, testFailures, details, issues: allIssues }
   }
 
   async runStage(stage: string, command: string, projectRoot: string): Promise<VerificationStageResult> {

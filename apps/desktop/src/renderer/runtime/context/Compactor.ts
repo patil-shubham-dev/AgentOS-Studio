@@ -256,6 +256,8 @@ export class Compactor {
   }
 
   compact(model: string, messages: MessageLike[], betas?: string[]): CompactResult | null {
+    this.lifecycleHooks?.dispatchAll('preCompact', { model, input: JSON.stringify(messages).slice(0, 500) }).catch(() => {})
+
     const strategy = this.decideStrategy(model, messages, betas)
     if (!strategy) return null
 

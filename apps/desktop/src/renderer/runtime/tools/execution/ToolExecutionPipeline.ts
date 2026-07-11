@@ -9,6 +9,8 @@ import { ToolRegistry } from '../registry/ToolRegistry'
 import { ToolExecutionPolicy } from '../policies/ToolExecutionPolicy'
 import { classifyToolCall } from '../../permissions/speculativeClassifier'
 import type { ClassifierResult } from '../../permissions/speculativeClassifier'
+import type { LifecycleHookRegistry } from '../../lifecycle/LifecycleHookRegistry'
+import { RuntimeOS } from '../../RuntimeOS'
 
 export type ExecutionOptions = {
   skipValidation?: boolean
@@ -80,6 +82,12 @@ export class ToolExecutionPipeline {
 
     let processedInput = input
 
+    // ── Lifecycle: preToolUse ──
+    const lifecycleHooks: LifecycleHookRegistry | undefined = RuntimeOS.getInstance()?.lifecycleHooks
+    if (lifecycleHooks) {
+      await lifecycleHooks.dispatch('preToolUse', { toolName, toolArgs: input, sessionId: ctx.sessionId }).catch(() => {})
+    }
+
     for (const hook of allPreHooks) {
       const result = await hook(ctx, tool, processedInput)
       if (result === null) continue
@@ -104,6 +112,11 @@ export class ToolExecutionPipeline {
         return { data: null, isError: false }
       }
       if (finalPermission.behavior === 'deny') {
+        console.warn(
+          `%c⚠️ PERMISSION DENIED — Tool "${toolName}" blocked by permission policy. ` +
+          `Message: ${finalPermission.message ?? '(no message)'}.`,
+          'background: #ff8800; color: white; font-weight: bold; padding: 2px 4px; border-radius: 2px; font-size: 13px;'
+        )
         const errResult: ToolResult = { data: null, error: finalPermission.message ?? 'Permission denied', isError: true }
         return errResult
       }
@@ -146,12 +159,23 @@ export class ToolExecutionPipeline {
         result = await hook(ctx, tool, processedInput, result)
       }
 
+      // ── Lifecycle: postToolUse ──
+      if (lifecycleHooks) {
+        await lifecycleHooks.dispatchAll('postToolUse', { toolName, toolArgs: input, toolResult: result, sessionId: ctx.sessionId }).catch(() => {})
+      }
+
       const durationMs = Math.round(performance.now() - startTime)
       this.emit(opts, { type: 'tool:end', toolName, timestamp: Date.now(), durationMs })
 
       return result
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
+
+      // ── Lifecycle: errorEscalation ──
+      if (lifecycleHooks) {
+        await lifecycleHooks.dispatchAll('errorEscalation', { error: err instanceof Error ? err : new Error(errMsg), toolName, sessionId: ctx.sessionId }).catch(() => {})
+      }
+
       const errResult: ToolResult = { data: null, error: errMsg, isError: true }
       this.emit(opts, { type: 'tool:error', toolName, timestamp: Date.now(), error: errMsg })
       return errResult

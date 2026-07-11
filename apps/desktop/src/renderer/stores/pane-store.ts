@@ -23,6 +23,7 @@ export interface PaneState {
   panes: PaneInstance[]
   focusedPaneId: string | null
   sideChatOpen: boolean
+  sessionSidebarOpen: boolean
 
   registerPane: (pane: PaneInstance) => void
   unregisterPane: (id: string) => void
@@ -35,6 +36,8 @@ export interface PaneState {
   focusPane: (id: string) => void
   toggleSideChat: () => void
   setSideChatOpen: (open: boolean) => void
+  toggleSessionSidebar: () => void
+  setSessionSidebarOpen: (open: boolean) => void
   getPane: (type: PaneType) => PaneInstance | undefined
   getVisiblePanes: () => PaneInstance[]
 }
@@ -53,6 +56,7 @@ export const usePaneStore = create<PaneState>()(
       panes: DEFAULT_PANES,
       focusedPaneId: null,
       sideChatOpen: false,
+      sessionSidebarOpen: false,
 
       registerPane: (pane) =>
         set((s) => {
@@ -135,6 +139,11 @@ export const usePaneStore = create<PaneState>()(
         set((s) => ({ sideChatOpen: !s.sideChatOpen })),
 
       setSideChatOpen: (open) => set({ sideChatOpen: open }),
+
+      toggleSessionSidebar: () =>
+        set((s) => ({ sessionSidebarOpen: !s.sessionSidebarOpen })),
+
+      setSessionSidebarOpen: (open) => set({ sessionSidebarOpen: open }),
 
       getPane: (type) => get().panes.find((p) => p.type === type),
 

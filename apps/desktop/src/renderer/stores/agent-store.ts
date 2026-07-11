@@ -156,6 +156,16 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
           console.warn(`[AgentStore] Dropped consecutive assistant message (duplicate response). Last: "${lastMsg.content.slice(0, 60)}...", New: "${(msg.content as string).slice(0, 60)}..."`)
           return s
         }
+        // Content-based dedup: if any previous assistant message has the exact same
+        // content, drop it. Catches cases where non-assistant messages (tool results,
+        // errors) were inserted between two identical assistant messages, bypassing
+        // the consecutive-role guard above.
+        for (const prev of existing) {
+          if (prev.role === "assistant" && prev.content === msg.content) {
+            console.warn(`[AgentStore] Dropped assistant message with duplicate content (len=${(msg.content as string).length})`)
+            return s
+          }
+        }
       }
 
       const messages = existing.length >= MAX_MESSAGES_PER_ROLE

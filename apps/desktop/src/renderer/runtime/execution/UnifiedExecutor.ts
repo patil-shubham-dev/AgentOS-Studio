@@ -61,6 +61,10 @@ export class UnifiedExecutor {
   private static instance: UnifiedExecutor
   private queue = new ExecutionQueue()
   private executionCount = 0
+  /** Tracks active execution IDs to prevent duplicate execution of the same request */
+  private activeExecutionIds = new Set<string>()
+  /** Tracks active correlation IDs — first line of defence against duplicate sends */
+  private activeCorrelationIds = new Set<string>()
   private autonomousPath: AutonomousExecutionPath
   private fastPathExecutor: FastPathExecutor
   private orchestrator: AgentPipelineOrchestrator
@@ -110,6 +114,18 @@ export class UnifiedExecutor {
     const executionId = `exec_${Date.now()}_${++this.executionCount}`
     const _traceId = correlationId ?? `unknown-${executionId}`
     const _reqId = requestId ?? _traceId
+
+    // ── HARD DEDUP: reject if this correlationId is already executing ──
+    if (correlationId) {
+      if (this.activeCorrelationIds.has(correlationId)) {
+        const err = `[FATAL DEDUP] Execution for correlationId=${correlationId} is already active — denying duplicate. Call stack: ${new Error().stack?.split("\n").slice(2, 6).join(" → ")}`
+        console.error(err)
+        yield { type: "EXECUTION_FAILED", executionId, error: err, durationMs: 0, timestamp: Date.now() }
+        return
+      }
+      this.activeCorrelationIds.add(correlationId)
+    }
+
     execTrace("UnifiedExecutor.execute", _traceId, { inputLen: input.length, role: activeRole, mode: reqMode, correlationId, executionId })
     console.trace(`[XTRACE:${_traceId}] UnifiedExecutor.execute CALL STACK`)
     if (requestId) {
@@ -191,7 +207,7 @@ export class UnifiedExecutor {
       const runtimeState = useWorkspaceRuntime.getState()
       const providers = useAppStore.getState().providers ?? []
 
-      yield { type: "THINKING_STARTED", executionId, label: "Routing", timestamp: Date.now() }
+      yield { type: "THINKING_STARTED", executionId, label: "Thinking", timestamp: Date.now() }
       trace(traceId, "routing_start")
 
       const runtimeRoles = runtimeState.wiredRuntimeRoles
@@ -311,6 +327,9 @@ export class UnifiedExecutor {
         durationMs: Math.round(performance.now() - t0), timestamp: Date.now(),
       }
     } finally {
+      if (correlationId) {
+        this.activeCorrelationIds.delete(correlationId)
+      }
       if (sig && !sig.aborted) sig.removeEventListener("abort", onSigAbort)
       if (!sdSignal.aborted) sdSignal.removeEventListener("abort", onSdAbort)
       if (queueSlotAcquired) {

@@ -67,8 +67,22 @@ export interface VerificationStageResult {
   issues?: StructuredIssue[]
 }
 
+export type VerificationStatus = "passed" | "failed" | "not_checkable"
+
 export interface VerificationResult {
   passed: boolean
+  /**
+   * What kind of verification outcome this is:
+   * - "passed": at least one check ran and all passed
+   * - "failed": at least one check ran and some failed
+   * - "not_checkable": no checks were run (no applicable files,
+   *   no changes to verify, or tooling unavailable)
+   *
+   * Consumers should check this instead of relying on `passed` alone,
+   * since `passed: true + not_checkable` means "nothing to check"
+   * (not "everything passed").
+   */
+  verificationStatus: VerificationStatus
   lintErrors: number
   typeErrors: number
   buildErrors: number

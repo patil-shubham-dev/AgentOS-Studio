@@ -17,7 +17,7 @@ export { ExecutionConfidenceEngine } from "./ExecutionConfidenceEngine"
 export type { ExecutionConfidence, SymbolConfidence, ConfidenceInput } from "./ExecutionConfidenceEngine"
 
 export { VerificationRecoveryLoop } from "./VerificationRecoveryLoop"
-export type { RecoveryAttempt, RecoveryLoopResult } from "./VerificationRecoveryLoop"
+export type { RecoveryAttempt, RecoveryLoopResult, UnhandledRepairAction } from "./VerificationRecoveryLoop"
 
 export { PatchQualityAnalyzer } from "./PatchQualityAnalyzer"
 export type { PatchScore, PatchQualityReport } from "./PatchQualityAnalyzer"

@@ -117,7 +117,9 @@ export class AutonomousEngineeringLoop {
     emit("recovery-loop", recoveryResult
       ? recoveryResult.recovered
         ? `Recovered after ${recoveryResult.attempts.length} attempt(s)`
-        : `Failed after ${recoveryResult.attempts.length} attempt(s)`
+        : recoveryResult.escalated
+          ? `Escalated — ${recoveryResult.unhandledActions.length} repair(s) require manual action`
+          : `Failed after ${recoveryResult.attempts.length} attempt(s)`
       : "No recovery needed"
     )
 
@@ -199,12 +201,17 @@ export class AutonomousEngineeringLoop {
       `Dependency layers: ${dependencyPlan.layers.length}`,
     ]
 
-    if (verificationResult.passed) {
+    if (verificationResult.verificationStatus === "not_checkable") {
+      parts.push("Verification: no applicable checks")
+    } else if (verificationResult.passed) {
       parts.push("Verification: passed")
     } else {
       parts.push(`Verification: ${verificationResult.lintErrors + verificationResult.typeErrors + verificationResult.buildErrors + verificationResult.testFailures} error(s)`)
       if (recoveryResult?.recovered) {
         parts.push(`Recovered: yes (${recoveryResult.attempts.length} attempt(s))`)
+      }
+      if (recoveryResult?.escalated) {
+        parts.push(`Escalated: ${recoveryResult.unhandledActions.length} repair(s) require manual action`)
       }
     }
 

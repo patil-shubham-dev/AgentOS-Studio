@@ -139,6 +139,10 @@ export class ToolExecutionSandbox {
   async assertAllowed(toolCall: SandboxedToolCall, context: ToolSandboxContext): Promise<void> {
     if (!this.hasPermission(context.role, toolCall.name)) {
       emitTelemetry({ type: "tool_failure", timestamp: Date.now(), error: `Permission denied for ${toolCall.name}`, metadata: { role: context.role, toolName: toolCall.name } })
+      console.warn(
+        `%c⚠️ SANDBOX PERMISSION DENIED — Role "${context.role}" not allowed to use tool "${toolCall.name}".`,
+        'background: #ff8800; color: white; font-weight: bold; padding: 2px 4px; border-radius: 2px; font-size: 13px;'
+      )
       throw new Error(`Role "${context.role}" is not allowed to use tool "${toolCall.name}"`)
     }
 
@@ -152,6 +156,10 @@ export class ToolExecutionSandbox {
       )
       if (blocked) {
         emitTelemetry({ type: "tool_failure", timestamp: Date.now(), error: `Command blocked by workspace runtime policy: ${command}`, metadata: { role: context.role, toolName, command: command.slice(0, 120) } })
+        console.warn(
+          `%c⚠️ COMMAND BLOCKED — Workspace runtime policy blocked: "${command.slice(0, 200)}".`,
+          'background: #ff8800; color: white; font-weight: bold; padding: 2px 4px; border-radius: 2px; font-size: 13px;'
+        )
         throw new Error(`Command blocked by workspace runtime policy: ${command}`)
       }
     }
@@ -160,6 +168,10 @@ export class ToolExecutionSandbox {
       const check = isCommandAllowed(command)
       if (!check.allowed) {
         emitTelemetry({ type: "tool_failure", timestamp: Date.now(), error: `Command not in allowlist: ${command}`, metadata: { role: context.role, toolName, command: command.slice(0, 120), reason: check.reason } })
+        console.warn(
+          `%c⚠️ COMMAND NOT ALLOWED — "${command.slice(0, 200)}". Reason: ${check.reason}`,
+          'background: #ff8800; color: white; font-weight: bold; padding: 2px 4px; border-radius: 2px; font-size: 13px;'
+        )
         throw new Error(`Command not allowed: ${check.reason}`)
       }
     }

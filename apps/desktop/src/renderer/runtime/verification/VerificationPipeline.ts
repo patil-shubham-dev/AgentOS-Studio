@@ -457,7 +457,7 @@ export class VerificationPipeline {
 
   async fastVerify(changedFiles: string[], signal?: AbortSignal): Promise<VerificationResult> {
     if (changedFiles.length === 0) {
-      return { passed: true, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"], issues: [] }
+      return { passed: true, verificationStatus: "not_checkable", lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"], issues: [] }
     }
 
     const checks = this.determineRequiredChecks(changedFiles)
@@ -467,7 +467,7 @@ export class VerificationPipeline {
     let typeErrors = 0
 
     if (!checks.runTypecheck && !checks.runLint) {
-      return { passed: true, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No typecheck or lint needed — skipped"], issues: [] }
+      return { passed: true, verificationStatus: "not_checkable", lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No typecheck or lint needed — skipped"], issues: [] }
     }
 
     const promises: Promise<void>[] = []
@@ -513,6 +513,7 @@ export class VerificationPipeline {
     const passed = lintErrors === 0 && typeErrors === 0
     const result: VerificationResult = {
       passed,
+      verificationStatus: passed ? "passed" : "failed",
       lintErrors,
       typeErrors,
       buildErrors: 0,
@@ -527,7 +528,7 @@ export class VerificationPipeline {
 
   async verifyChanges(changedFiles: string[], signal?: AbortSignal): Promise<VerificationResult> {
     if (changedFiles.length === 0) {
-      return { passed: true, lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"], issues: [] }
+      return { passed: true, verificationStatus: "not_checkable", lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"], issues: [] }
     }
 
     const checks = this.determineRequiredChecks(changedFiles)
@@ -592,8 +593,10 @@ export class VerificationPipeline {
     }
 
     const relatedTests = await this.findRelatedTests(changedFiles)
+    const checksRan = allResults.length > 0
     const result: VerificationResult = {
       passed: allPassed,
+      verificationStatus: checksRan ? (allPassed ? "passed" : "failed") : "not_checkable",
       lintErrors,
       typeErrors,
       buildErrors,
@@ -618,7 +621,7 @@ export class VerificationPipeline {
   ): Promise<VerificationResult & { goalAchieved: boolean }> {
     if (changedFiles.length === 0) {
       return {
-        passed: true, goalAchieved: true,
+        passed: true, goalAchieved: true, verificationStatus: "not_checkable",
         lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0,
         details: ["No changed files to verify — goal achieved by default"],
         issues: [],
@@ -772,6 +775,16 @@ export class VerificationPipeline {
 
   formatForLLM(result: VerificationResult & { stageResults?: VerificationStageResult[] }): string {
     const parts: string[] = ["━━━ Verification Results ━━━"]
+
+    if (result.verificationStatus === "not_checkable") {
+      parts.push("— No checks applicable for these changes.")
+      if (result.details.length > 0) {
+        parts.push(`  Reason: ${result.details[0]}`)
+      }
+      parts.push(`\nLanguage: ${this.language}`)
+      parts.push("━━━━━━━━━━━━━━━━━━━━━━━━━━")
+      return parts.join("\n")
+    }
 
     if (result.passed) {
       parts.push("✅ All checks passed!")

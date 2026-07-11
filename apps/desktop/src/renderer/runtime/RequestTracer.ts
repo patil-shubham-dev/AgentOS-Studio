@@ -75,7 +75,9 @@ export function assertSingleExecution(requestId: string): void {
   if (!trace) return
   const executeStages = trace.stages.filter(s => s.stage === "UnifiedExecutor.execute")
   if (executeStages.length > 1) {
-    console.error(`[REQ:${requestId}] CRITICAL: ${executeStages.length} executions detected for single request!`)
-    console.error(`[REQ:${requestId}] Stages:`, trace.stages.map(s => `${s.stage}@${s.timestamp}`).join(" → "))
+    const error = new Error(`CRITICAL: ${executeStages.length} executions detected for single request ${requestId}! This means the pipeline is running twice for the same prompt. Trace: ${trace.stages.map(s => `${s.stage}@${s.timestamp}`).join(" → ")}`)
+    console.error(`[REQ:${requestId}] ${error.message}`)
+    console.error(`[REQ:${requestId}] Call stack:`, new Error().stack)
+    throw error
   }
 }

@@ -32,6 +32,7 @@ export interface GatewayRequest {
   temperature?: number
   tools?: ToolDef[]
   signal?: AbortSignal
+  fallbackModel?: string
 }
 
 interface ActiveProvider {
@@ -133,7 +134,7 @@ export class ProviderGateway {
       const active = this.resolveActiveProvider(pid)
       if (!active) continue
 
-      const model = request.model || active.model
+      let model = request.model || active.model
 
       if (!this.modelSupportsStreaming(active.provider, model)) {
         yield* this.pacedNonStreaming({ ...request, model })
@@ -150,94 +151,125 @@ export class ProviderGateway {
         }),
       ]
 
-      for (let attempt = 0; attempt < 3; attempt++) {
-        console.log("[FLOW:4] ProviderGateway.stream: attempt " + attempt + " for provider " + pid)
-        yield { type: "status", status: "connecting", model }
+      // Try primary model, then fallback if configured
+      const modelsToTry = [model]
+      if (request.fallbackModel && request.fallbackModel !== model) {
+        modelsToTry.push(request.fallbackModel)
+      }
 
-        const tokenQueue: string[] = []
-        const reasoningQueue: string[] = []
-        let done = false
-        let fullText = ""
-        let toolCalls: ToolCall[] = []
-        const streamErrorHolder: { value: ProviderErrorInfo | null } = { value: null }
-        let streamResolve: (() => void) | null = null
+      let primaryFailedWithRetryable = false
 
-        try {
-          console.log("[FLOW:5] ProviderGateway.stream: calling streamChatCompletion")
-          const streamPromise = streamChatCompletion(
-            active.baseUrl,
-            active.apiKey,
-            active.runtime,
-            { model, messages, tools: request.tools, maxTokens: request.maxTokens ?? DEFAULT_MAX_TOKENS },
-            {
-              onReady: () => {},
-              onToken: (token: string) => {
-                tokenQueue.push(token)
-                if (streamResolve) { streamResolve(); streamResolve = null }
-              },
-              onReasoning: (text: string) => {
-                reasoningQueue.push(text)
-                if (streamResolve) { streamResolve(); streamResolve = null }
-              },
-              onDone: (content: string, meta?: { toolCalls?: ToolCall[] }) => {
-                fullText = content; if (meta?.toolCalls) toolCalls = meta.toolCalls
-                done = true
-                if (streamResolve) { streamResolve(); streamResolve = null }
-              },
-              onError: (err: Error) => {
-                streamErrorHolder.value = classifyProviderError(err)
-                done = true
-                if (streamResolve) { streamResolve(); streamResolve = null }
-              },
-            },
-            request.signal,
-          )
+      for (const currentModel of modelsToTry) {
+        model = currentModel
 
-          while (!done || tokenQueue.length > 0 || reasoningQueue.length > 0) {
-            console.log("[FLOW:6] ProviderGateway.stream: while loop iteration (done=" + done + ", queueLen=" + tokenQueue.length + ", reasoningLen=" + reasoningQueue.length + ")")
-            if (request.signal?.aborted) {
-              done = true; tokenQueue.length = 0; reasoningQueue.length = 0
-              yield { type: "error", code: "cancelled", message: "Request was cancelled", userMessage: "Request cancelled", retryable: false }
-              return
+        for (let attempt = 0; attempt < 3; attempt++) {
+          console.log("[FLOW:4] ProviderGateway.stream: attempt " + attempt + " for model " + model + " on provider " + pid)
+          yield { type: "status", status: "connecting", model }
+
+          const tokenQueue: string[] = []
+          const reasoningQueue: string[] = []
+          let done = false
+          let fullText = ""
+          let toolCalls: ToolCall[] = []
+          const streamErrorHolder: { value: ProviderErrorInfo | null } = { value: null }
+          let streamResolve: (() => void) | null = null
+
+          try {
+            console.log("[FLOW:5] ProviderGateway.stream: calling streamChatCompletion")
+            const streamPromise = streamChatCompletion(
+              active.baseUrl,
+              active.apiKey,
+              active.runtime,
+              { model, messages, tools: request.tools, maxTokens: request.maxTokens ?? DEFAULT_MAX_TOKENS },
+              {
+                onReady: () => {},
+                onToken: (token: string) => {
+                  tokenQueue.push(token)
+                  if (streamResolve) { streamResolve(); streamResolve = null }
+                },
+                onReasoning: (text: string) => {
+                  reasoningQueue.push(text)
+                  if (streamResolve) { streamResolve(); streamResolve = null }
+                },
+                onDone: (content: string, meta?: { toolCalls?: ToolCall[] }) => {
+                  fullText = content; if (meta?.toolCalls) toolCalls = meta.toolCalls
+                  done = true
+                  if (streamResolve) { streamResolve(); streamResolve = null }
+                },
+                onError: (err: Error) => {
+                  streamErrorHolder.value = classifyProviderError(err)
+                  done = true
+                  if (streamResolve) { streamResolve(); streamResolve = null }
+                },
+              },
+              request.signal,
+            )
+
+            while (!done || tokenQueue.length > 0 || reasoningQueue.length > 0) {
+              console.log("[FLOW:6] ProviderGateway.stream: while loop iteration (done=" + done + ", queueLen=" + tokenQueue.length + ", reasoningLen=" + reasoningQueue.length + ")")
+              if (request.signal?.aborted) {
+                done = true; tokenQueue.length = 0; reasoningQueue.length = 0
+                yield { type: "error", code: "cancelled", message: "Request was cancelled", userMessage: "Request cancelled", retryable: false }
+                return
+              }
+              if (reasoningQueue.length > 0) {
+                yield { type: "reasoning_token", text: reasoningQueue.shift()! }
+              } else if (tokenQueue.length > 0) {
+                yield { type: "token", text: tokenQueue.shift()! }
+              } else {
+                await new Promise<void>((resolve) => { streamResolve = resolve })
+              }
             }
-            if (reasoningQueue.length > 0) {
-              yield { type: "reasoning_token", text: reasoningQueue.shift()! }
-            } else if (tokenQueue.length > 0) {
-              yield { type: "token", text: tokenQueue.shift()! }
-            } else {
-              await new Promise<void>((resolve) => { streamResolve = resolve })
-            }
-          }
-          console.log("[FLOW:7] ProviderGateway.stream: while loop exited (done=" + done + ", error=" + !!streamErrorHolder.value + ")")
+            console.log("[FLOW:7] ProviderGateway.stream: while loop exited (done=" + done + ", error=" + !!streamErrorHolder.value + ")")
 
-          if (streamErrorHolder.value) {
-            lastError = streamErrorHolder.value
-            if (!streamErrorHolder.value.retryable || attempt >= 2) break
+            if (streamErrorHolder.value) {
+              lastError = streamErrorHolder.value
+              if (!streamErrorHolder.value.retryable || attempt >= 2) {
+                if (streamErrorHolder.value.retryable) {
+                  primaryFailedWithRetryable = true
+                }
+                break
+              }
+              const delay = Math.min(1000 * Math.pow(2, attempt), 8000)
+              yield { type: "status", status: "connecting", model: `${model} (retry ${attempt + 1})` }
+              await new Promise((r) => setTimeout(r, delay))
+              continue
+            }
+
+            for (const tc of toolCalls) yield { type: "tool_call", toolCall: tc }
+
+            const durationMs = Math.round(performance.now() - startTime)
+            const usage: ProviderUsage = {
+              tokensIn: messages.reduce((sum, m) => sum + m.content.length / 4, 0),
+              tokensOut: Math.ceil(fullText.length / 4),
+              durationMs, model, providerId: active.provider.id,
+            }
+            this.usageLog.push(usage)
+            yield { type: "done", fullText, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage }
+            yield { type: "status", status: "completed", model }
+            await streamPromise
+            return
+          } catch (err) {
+            lastError = classifyProviderError(err)
+            if (!lastError.retryable || attempt >= 2) {
+              if (lastError.retryable) {
+                primaryFailedWithRetryable = true
+              }
+              break
+            }
             const delay = Math.min(1000 * Math.pow(2, attempt), 8000)
             yield { type: "status", status: "connecting", model: `${model} (retry ${attempt + 1})` }
             await new Promise((r) => setTimeout(r, delay))
-            continue
           }
+        }
 
-          for (const tc of toolCalls) yield { type: "tool_call", toolCall: tc }
-
-          const durationMs = Math.round(performance.now() - startTime)
-          const usage: ProviderUsage = {
-            tokensIn: messages.reduce((sum, m) => sum + m.content.length / 4, 0),
-            tokensOut: Math.ceil(fullText.length / 4),
-            durationMs, model, providerId: active.provider.id,
-          }
-          this.usageLog.push(usage)
-          yield { type: "done", fullText, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage }
-          yield { type: "status", status: "completed", model }
-          await streamPromise
-          return
-        } catch (err) {
-          lastError = classifyProviderError(err)
-          if (!lastError.retryable || attempt >= 2) break
-          const delay = Math.min(1000 * Math.pow(2, attempt), 8000)
-          yield { type: "status", status: "connecting", model: `${model} (retry ${attempt + 1})` }
-          await new Promise((r) => setTimeout(r, delay))
+        // If primary model exhausted retries and fallback is available, log the fallback attempt
+        if (primaryFailedWithRetryable && currentModel === modelsToTry[0] && modelsToTry.length > 1) {
+          console.warn(
+            "%c[ProviderGateway]",
+            "color:#ff8800;font-weight:bold;font-size:14px",
+            `Primary model "${model}" exhausted retries — trying fallback model "${modelsToTry[1]}" on same provider`,
+          )
         }
       }
     }

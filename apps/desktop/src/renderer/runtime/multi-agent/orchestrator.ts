@@ -420,8 +420,13 @@ export class MultiAgentOrchestrator {
 
       return { overall: "approve", summary: "All checks passed", findings }
     } catch (err) {
-      log.warn(`${LOG_PREFIX} Reviewer verification failed:`, err)
-      return { overall: "approve", summary: "Verification skipped due to error", findings: [] }
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(
+        `%c⚠️ REVIEWER FAILED — Verification pipeline threw an error: ${msg}. ` +
+        `Returning "changes_requested" instead of silently approving.`,
+        'background: #ff4444; color: white; font-weight: bold; padding: 2px 4px; border-radius: 2px; font-size: 13px;'
+      )
+      return { overall: "changes_requested", summary: "Verification failed with an error", findings: [] }
     }
   }
 
@@ -452,8 +457,13 @@ export class MultiAgentOrchestrator {
         testResults,
       }
     } catch (err) {
-      log.warn(`${LOG_PREFIX} Tester verification failed:`, err)
-      return { passed: true, summary: "Tests skipped due to error", testResults: [] }
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(
+        `%c⚠️ TESTER FAILED — Test verification pipeline threw an error: ${msg}. ` +
+        `Returning "passed: false" instead of silently passing.`,
+        'background: #ff4444; color: white; font-weight: bold; padding: 2px 4px; border-radius: 2px; font-size: 13px;'
+      )
+      return { passed: false, summary: "Tests could not be completed due to an error", testResults: [] }
     }
   }
 

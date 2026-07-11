@@ -71,7 +71,13 @@ export class ExecutionSessionManager {
   private static instance: ExecutionSessionManager
   private sessions: Map<string, ExecutionSession> = new Map()
   private gateway = UnifiedExecutionGateway.getInstance()
+  /** Maps executionId → stepId for the CURRENTLY ACTIVE step in a pipeline.
+   *  Multi-role pipelines produce one AGENT_ASSIGNED per role, and this tracks
+   *  which stepId is currently the target for events. Previous steps are preserved
+   *  in stepHistoryByExecId for safety net force-completion. */
   private stepByExecId = new Map<string, string>()
+  /** Full history of all stepIds per executionId (for force-complete safety net) */
+  private stepHistoryByExecId = new Map<string, Set<string>>()
   private initStepIds = new Map<string, string>()
   private sessionToExecId = new Map<string, string>()
   private execRoleMap = new Map<string, string>()
@@ -290,7 +296,10 @@ export class ExecutionSessionManager {
       // MESSAGE_COMPLETE event was never emitted (e.g. swallowed error, silent empty
       // response, or unexpected stream termination).
       const tlAfter = useTimelineStore.getState()
-      for (const [, stepId] of this.stepByExecId) {
+      const allStuckSteps = new Set<string>()
+      for (const [, stepId] of this.stepByExecId) { allStuckSteps.add(stepId) }
+      for (const [, stepIds] of this.stepHistoryByExecId) { for (const sid of stepIds) allStuckSteps.add(sid) }
+      for (const stepId of allStuckSteps) {
         const sess = tlAfter.agentSessions.get(stepId)
         if (sess && (sess.streamState === "streaming" || sess.streamState === "loading_slowly")) {
           console.warn(`[SessionManager] Force-completing stuck agent session ${stepId} (state=${sess.streamState})`)
@@ -300,6 +309,7 @@ export class ExecutionSessionManager {
         }
       }
       this.stepByExecId.clear()
+      this.stepHistoryByExecId.clear()
 
       if (session.status !== "cancelled") {
         session.status = "completed"
@@ -379,11 +389,13 @@ export class ExecutionSessionManager {
       if (msg.includes("abort") || msg.includes("cancel")) {
         emitTelemetry({ type: "cancellation", timestamp: Date.now(), metadata: { sessionId: id, reason: msg } })
       }
-      // Safety net: finalize any remaining timeline sessions
+      // Safety net: finalize any remaining timeline sessions (including step history)
       const timeline = useTimelineStore.getState()
-      for (const [execId, stepId] of this.stepByExecId) {
+      const allErrorSteps = new Set<string>()
+      for (const [, stepId] of this.stepByExecId) { allErrorSteps.add(stepId) }
+      for (const [, stepIds] of this.stepHistoryByExecId) { for (const sid of stepIds) allErrorSteps.add(sid) }
+      for (const stepId of allErrorSteps) {
         StreamManager.getInstance().clearStep(stepId)
-        // pendingStreamTexts recovery buffer preserves text if session doesn't exist yet
         timeline.commitStreamingText(stepId)
         timeline.flushPendingText(stepId)
         timeline.updateAgentSession(stepId, { status: "complete", streamState: "cancelled" })
@@ -393,6 +405,7 @@ export class ExecutionSessionManager {
         this.initStepIds.delete(execId)
       }
       this.stepByExecId.clear()
+      this.stepHistoryByExecId.clear()
       this.sessionToExecId.clear()
       this.pendingToolArgs.clear()
       // Clean up optimistic session via correlationId
@@ -471,7 +484,7 @@ export class ExecutionSessionManager {
             providerName: event.providerName,
             executionStrategy: event.executionStrategy,
             currentPhase: undefined,
-            phaseHistory: [{ label: "Thinking", timestamp: Date.now() }, { label: "Connecting", timestamp: Date.now() }],
+            phaseHistory: [{ label: "Thinking", timestamp: Date.now() }],
           })
         } else {
           // No optimistic session — create fresh, but remove the init stub
@@ -499,6 +512,10 @@ export class ExecutionSessionManager {
           }, event.correlationId)
         }
         this.stepByExecId.set(event.executionId, event.stepId)
+        // Record in step history for force-complete safety net
+        const execSteps = this.stepHistoryByExecId.get(event.executionId) ?? new Set()
+        execSteps.add(event.stepId)
+        this.stepHistoryByExecId.set(event.executionId, execSteps)
 
         // Start a 5-second timeout: if no TOKEN arrives, mark as loading_slowly
         const slowTimeout = setTimeout(() => {
@@ -533,15 +550,29 @@ export class ExecutionSessionManager {
           timeline.updateAgentSession(event.stepId, { status: "complete", streamState: "completed", completedAt: Date.now() })
         }
         this.stepByExecId.delete(event.executionId)
-        // CRITICAL DEDUP: Only the first MESSAGE_COMPLETE per correlationId adds to the agent store.
-        // Subsequent MESSAGE_COMPLETE events (from multi-role pipelines) are ignored to prevent
-        // duplicate assistant messages in the conversation.
-        if (corrId && this.committedCorrelationIds.has(corrId)) {
-          console.log(`[SessionManager] DUPLICATE MESSAGE_COMPLETE blocked for correlationId=${corrId} — already committed`)
+        // CRITICAL DEDUP: Mark correlationId as committed on the FIRST MESSAGE_COMPLETE,
+        // BEFORE the content check. This ensures subsequent MESSAGE_COMPLETE events
+        // (from multi-role pipelines or provider re-delivery) are always blocked,
+        // even if the first completion has empty content. Without this, an empty
+        // first completion never marks committedCorrelationIds, allowing a second
+        // non-empty completion to bypass the guard and produce duplicate messages.
+        if (corrId) {
+          if (this.committedCorrelationIds.has(corrId)) {
+            console.log(`[SessionManager] DUPLICATE MESSAGE_COMPLETE blocked for correlationId=${corrId} — already committed`)
+          } else {
+            this.committedCorrelationIds.add(corrId)
+            if (event.content && !isError) {
+              const reqId = this.activeSessionId ? this.sessions.get(this.activeSessionId)?.requestId : undefined
+              if (reqId) traceStage(reqId, "Conversation Commit", { contentLen: event.content.length })
+              useAgentStore.getState().addMessage(options.activeRole, {
+                role: "assistant",
+                content: event.content,
+                timestamp: Date.now(),
+              })
+            }
+          }
         } else if (event.content && !isError) {
-          if (corrId) this.committedCorrelationIds.add(corrId)
-          const reqId = this.activeSessionId ? this.sessions.get(this.activeSessionId)?.requestId : undefined
-          if (reqId) traceStage(reqId, "Conversation Commit", { contentLen: event.content.length })
+          // No correlationId available — guard by content dedup in AgentStore.addMessage
           useAgentStore.getState().addMessage(options.activeRole, {
             role: "assistant",
             content: event.content,
@@ -902,6 +933,9 @@ export class ExecutionSessionManager {
           currentPhase: "Preparing...",
         }, options.correlationId)
         this.stepByExecId.set(event.executionId, initStepId)
+        const execInitSteps = this.stepHistoryByExecId.get(event.executionId) ?? new Set()
+        execInitSteps.add(initStepId)
+        this.stepHistoryByExecId.set(event.executionId, execInitSteps)
         // Don't overwrite agent status here — sendMessage already set it
         // AGENT_ASSIGNED will set the correct role-specific status
         break
@@ -951,7 +985,12 @@ export class ExecutionSessionManager {
       case "PROVIDER_CONNECTING": {
         const pcnStepId = this.stepByExecId.get(event.executionId)
         if (pcnStepId) {
-          timeline.setNote(pcnStepId, `Connecting to ${event.provider}...`)
+          // Use a unified "Thinking..." label instead of leaking internal agent
+          // routing ("Connecting to coder..."). Claude Code Desktop hides this
+          // entirely — one continuous thinking state, no hand-off labels.
+          // For multi-agent or complex flows, the AGENT_ASSIGNED phase history
+          // already provides meaningful phase transitions.
+          timeline.setNote(pcnStepId, "Thinking...")
         }
         break
       }
@@ -959,7 +998,7 @@ export class ExecutionSessionManager {
       case "PROVIDER_CONNECTED": {
         const pcdStepId = this.stepByExecId.get(event.executionId)
         if (pcdStepId) {
-          timeline.setNote(pcdStepId, `Connected to ${event.provider}`)
+          // Connected status is internal — no user-facing state change needed
         }
         break
       }
@@ -1276,9 +1315,12 @@ export class ExecutionSessionManager {
     // 2. Abort any active runtime
     this.gateway.cancel()
 
-    // 3. Finalize all store state immediately
+    // 3. Finalize all store state immediately (including step history from multi-role pipelines)
     const timeline = useTimelineStore.getState()
-    for (const [execId, stepId] of this.stepByExecId) {
+    const allCancelSteps = new Set<string>()
+    for (const [, stepId] of this.stepByExecId) { allCancelSteps.add(stepId) }
+    for (const [, stepIds] of this.stepHistoryByExecId) { for (const sid of stepIds) allCancelSteps.add(sid) }
+    for (const stepId of allCancelSteps) {
       timeline.commitStreamingText(stepId)
       timeline.flushPendingText(stepId)
       timeline.updateAgentSession(stepId, { status: "complete", streamState: "cancelled", completedAt: Date.now() })
@@ -1288,6 +1330,7 @@ export class ExecutionSessionManager {
     }
 
     this.stepByExecId.clear()
+    this.stepHistoryByExecId.clear()
     this.initStepIds.clear()
     this.sessionToExecId.delete(sessionId)
     this.activeSessionId = null
@@ -1326,6 +1369,7 @@ export class ExecutionSessionManager {
         }
       }
       this.stepByExecId.clear()
+      this.stepHistoryByExecId.clear()
       this.initStepIds.clear()
       this.sessionToExecId.clear()
     }, 2000)
@@ -1342,6 +1386,7 @@ export class ExecutionSessionManager {
         this.sessionToExecId.delete(sid)
         if (eid) {
           this.stepByExecId.delete(eid)
+          this.stepHistoryByExecId.delete(eid)
           this.initStepIds.delete(eid)
         }
       }

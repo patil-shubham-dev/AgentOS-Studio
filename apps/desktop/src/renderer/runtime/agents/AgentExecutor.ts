@@ -107,10 +107,18 @@ export class AgentExecutor {
     const _traceId = this.correlationId ?? this.executionId
     execTrace("AgentExecutor.execute", _traceId, { mode: this.mode, role: this.role, executionId: this.executionId, correlationId: this.correlationId })
     console.trace(`[XTRACE:${_traceId}] AgentExecutor.execute CALL STACK`)
-    if (this.mode === "FAST") {
-      yield* this.executeFast()
-    } else {
-      yield* this.executeFull()
+    try {
+      if (this.mode === "FAST") {
+        yield* this.executeFast()
+      } else {
+        yield* this.executeFull()
+      }
+    } catch (err) {
+      const lifecycleHooks = RuntimeOS.getInstance()?.lifecycleHooks
+      if (lifecycleHooks) {
+        await lifecycleHooks.dispatchAll('errorEscalation', { error: err instanceof Error ? err : new Error(String(err)), sessionId: this.executionId }).catch(() => {})
+      }
+      throw err
     }
   }
 
@@ -332,6 +340,17 @@ export class AgentExecutor {
       }
 
       console.log("[FLOW:14] AgentExecutor.executeFull: calling providerGateway.stream (round " + round + ")")
+
+      // ── Lifecycle: preModelCall ──
+      const lifecycleHooks = RuntimeOS.getInstance()?.lifecycleHooks
+      if (lifecycleHooks) {
+        await lifecycleHooks.dispatchAll('preModelCall', {
+          modelRequest: gwRequest,
+          sessionId: this.executionId,
+          input: this.input,
+        }).catch(() => {})
+      }
+
       const stream = providerGateway.stream(gwRequest)
       for await (const event of stream) {
         switch (event.type) {
@@ -369,6 +388,15 @@ export class AgentExecutor {
         }
       }
       console.log("[FLOW:15] AgentExecutor.executeFull: provider for-await complete (round " + round + ", failed=" + failed + ", contentLen=" + responseContent.length + ", toolCalls=" + responseToolCalls.length + ")")
+
+      // ── Lifecycle: postModelCall ──
+      if (lifecycleHooks) {
+        await lifecycleHooks.dispatchAll('postModelCall', {
+          modelRequest: gwRequest,
+          modelResponse: { content: responseContent, toolCalls: responseToolCalls, failed },
+          sessionId: this.executionId,
+        }).catch(() => {})
+      }
 
       if (failed) {
         const errorMsg = roundError || "Request failed — provider returned an error"
@@ -689,7 +717,12 @@ export class AgentExecutor {
 
               // ── Plugin: onAfterTool hook ──
               pluginRegistry.dispatchOnAfterTool(entry.name, entry.args, result.data).catch((err) => {
-                console.warn(`[AgentExecutor] Plugin onAfterTool hook failed for ${entry.name}:`, err)
+                const msg = err instanceof Error ? err.message : String(err)
+                console.warn(
+                  `%c⚠️ PLUGIN HOOK FAILED — onAfterTool for "${entry.name}": ${msg}. ` +
+                  `Execution continues, but plugin did not receive the result.`,
+                  'background: #ff8800; color: white; font-weight: bold; padding: 2px 4px; border-radius: 2px; font-size: 13px;'
+                )
               })
 
               if (isCommand) {

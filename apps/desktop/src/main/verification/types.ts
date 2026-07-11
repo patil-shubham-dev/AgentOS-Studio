@@ -67,8 +67,11 @@ export interface VerificationStageResult {
   issues?: StructuredIssue[]
 }
 
+export type VerificationStatus = "passed" | "failed" | "not_checkable"
+
 export interface VerificationResult {
   passed: boolean
+  verificationStatus: VerificationStatus
   lintErrors: number
   typeErrors: number
   buildErrors: number

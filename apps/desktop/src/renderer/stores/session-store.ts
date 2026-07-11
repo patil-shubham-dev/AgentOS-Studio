@@ -8,6 +8,9 @@ export interface SessionTab {
   toolCount: number
   errorCount: number
   createdAt: number
+  summary?: string
+  lastActive?: number
+  parallelGroup?: string
 }
 
 const STORAGE_KEY = "aos-session-tabs"
@@ -23,6 +26,9 @@ function persistTabs(tabs: SessionTab[]): void {
       toolCount: t.toolCount,
       errorCount: t.errorCount,
       createdAt: t.createdAt,
+      summary: t.summary,
+      lastActive: t.lastActive,
+      parallelGroup: t.parallelGroup,
     }))))
   } catch (err) {
     console.warn("[session-store] Failed to persist session tabs:", err)
@@ -51,6 +57,9 @@ interface SessionStoreState {
   destroyTab: (id: string) => void
   updateTab: (id: string, updates: Partial<SessionTab>) => void
   getActive: () => SessionTab | undefined
+  duplicateSession: (id: string) => SessionTab | undefined
+  sessionsByGroup: (group: string) => SessionTab[]
+  parallelGroups: () => string[]
 }
 
 export const useSessionStore = create<SessionStoreState>((set, get) => {
@@ -63,6 +72,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => {
 
     createTab: (label?: string) => {
       const id = generateId()
+      const now = Date.now()
       const tab: SessionTab = {
         id,
         label: label ?? `Session ${get().tabs.length + 1}`,
@@ -70,7 +80,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => {
         state: "Idle",
         toolCount: 0,
         errorCount: 0,
-        createdAt: Date.now(),
+        createdAt: now,
+        lastActive: now,
       }
       const next = [...get().tabs, tab].slice(-MAX_TABS)
       set({ tabs: next, activeId: id })
@@ -79,7 +90,12 @@ export const useSessionStore = create<SessionStoreState>((set, get) => {
     },
 
     selectTab: (id: string) => {
-      set({ activeId: id })
+      const now = Date.now()
+      const next = get().tabs.map((t) =>
+        t.id === id ? { ...t, lastActive: now } : t,
+      )
+      set({ activeId: id, tabs: next })
+      persistTabs(next)
     },
 
     destroyTab: (id: string) => {
@@ -94,13 +110,47 @@ export const useSessionStore = create<SessionStoreState>((set, get) => {
     },
 
     updateTab: (id: string, updates: Partial<SessionTab>) => {
-      const next = get().tabs.map((t) => (t.id === id ? { ...t, ...updates } : t))
+      const next = get().tabs.map((t) => (t.id === id ? { ...t, ...updates, lastActive: Date.now() } : t))
       set({ tabs: next })
       persistTabs(next)
     },
 
     getActive: () => {
       return get().tabs.find((t) => t.id === get().activeId)
+    },
+
+    duplicateSession: (id: string) => {
+      const source = get().tabs.find((t) => t.id === id)
+      if (!source) return undefined
+      const newId = generateId()
+      const now = Date.now()
+      const tab: SessionTab = {
+        id: newId,
+        label: `${source.label} (copy)`,
+        status: "idle",
+        state: "Idle",
+        toolCount: 0,
+        errorCount: 0,
+        createdAt: now,
+        lastActive: now,
+        parallelGroup: source.parallelGroup,
+      }
+      const next = [...get().tabs, tab].slice(-MAX_TABS)
+      set({ tabs: next, activeId: newId })
+      persistTabs(next)
+      return tab
+    },
+
+    sessionsByGroup: (group: string) => {
+      return get().tabs.filter((t) => t.parallelGroup === group)
+    },
+
+    parallelGroups: () => {
+      const groups = new Set<string>()
+      for (const t of get().tabs) {
+        if (t.parallelGroup) groups.add(t.parallelGroup)
+      }
+      return Array.from(groups)
     },
   }
 })
