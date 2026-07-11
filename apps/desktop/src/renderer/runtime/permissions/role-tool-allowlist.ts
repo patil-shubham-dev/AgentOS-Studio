@@ -29,6 +29,17 @@ export const ROLE_TOOL_ALLOWLIST: Record<string, string[]> = {
     'bash', 'run_command', 'think', 'reasoning'],
   repair: ['read_file', 'write_file', 'edit_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
     'bash', 'run_command', 'think', 'reasoning'],
+  planner: ['delegate_task', 'spawn_agent', 'run_skill', 'think', 'reasoning',
+    'read_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
+    'query_graph',
+    'web_search', 'web_fetch'],
+  reviewer: ['read_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
+    'bash', 'run_command', 'think', 'reasoning'],
+  debugger: ['read_file', 'write_file', 'edit_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
+    'bash', 'run_command', 'think', 'reasoning',
+    'query_graph'],
+  tester: ['read_file', 'grep_files', 'glob_files', 'search_files', 'find_files', 'file_tree', 'workspace_index',
+    'bash', 'run_command', 'think', 'reasoning'],
 }
 
 let bypassRoles: Set<string> = new Set(['superadmin'])
