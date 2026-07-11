@@ -1,10 +1,11 @@
-import { type ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { motion as _motion, AnimatePresence } from 'framer-motion'
 const motion = _motion
 export { motion }
 import { NavigationRail } from '@/components/layout/navigation-rail'
 import { Toasts } from '@/components/ui/Toasts'
+import { Button } from '@/components/ui/Button'
 import { SafeErrorBoundary, SidebarBoundary, WorkspaceBoundary } from '../error-boundaries'
 import { SandboxStatusIndicator } from '@/components/workspace/sandbox/SandboxStatusIndicator'
 import { useApprovalStore } from '../../runtime/approval-gate'
@@ -19,34 +20,59 @@ function ApprovalToast() {
   if (!pending) return null
 
   return (
-    <div style={{
-      position: 'fixed', bottom: '80px', right: '24px', zIndex: 9999,
-      width: '420px', background: '#1a1a1f', border: '1px solid #f59e0b',
-      borderRadius: '12px', padding: '16px',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <span style={{ color: '#f59e0b', fontWeight: 600, fontSize: '13px' }}>Agent needs approval</span>
-        <button onClick={() => reject()} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '18px' }}>x</button>
+    <div
+      className="fixed bottom-20 right-6 z-[9999] w-[420px] rounded-xl p-4 shadow-2xl"
+      style={{
+        backgroundColor: "var(--surface-overlay)",
+        border: "1px solid #f59e0b",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+      }}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[13px] font-semibold" style={{ color: "#f59e0b" }}>
+          Agent needs approval
+        </span>
+        <button
+          onClick={() => reject()}
+          className="flex items-center justify-center h-5 w-5 rounded transition-colors"
+          style={{ color: "var(--text-quaternary)" }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-secondary)" }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-quaternary)" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
       </div>
-      <div style={{
-        background: '#0d0d10', borderRadius: '8px', padding: '10px 12px',
-        marginBottom: '14px', fontFamily: 'monospace', fontSize: '13px',
-        color: '#e2e8f0', wordBreak: 'break-all',
-      }}>{pending.command}</div>
-      <p style={{ color: '#888', fontSize: '12px', marginBottom: '14px', margin: '0 0 14px' }}>
+      <div
+        className="rounded-lg px-3 py-2.5 mb-3 font-mono text-[13px] break-all"
+        style={{
+          backgroundColor: "var(--surface-elevated)",
+          color: "var(--text-primary)",
+        }}
+      >
+        {pending.command}
+      </div>
+      <p className="text-[12px] mb-3" style={{ color: "var(--text-tertiary)" }}>
         This command requires your approval before execution.
-        {queue.length > 0 && <span style={{ color: '#f59e0b', marginLeft: '8px' }}>+{queue.length} queued</span>}
+        {queue.length > 0 && (
+          <span style={{ color: "#f59e0b", marginLeft: "8px" }}>+{queue.length} queued</span>
+        )}
       </p>
-      <div style={{ display: 'flex', gap: '8px' }}>
-        <button onClick={() => approve()} style={{
-          flex: 1, background: '#16a34a', color: '#fff', border: 'none',
-          borderRadius: '8px', padding: '8px 0', cursor: 'pointer', fontWeight: 600, fontSize: '13px',
-        }}>Allow</button>
-        <button onClick={() => reject()} style={{
-          flex: 1, background: '#dc2626', color: '#fff', border: 'none',
-          borderRadius: '8px', padding: '8px 0', cursor: 'pointer', fontWeight: 600, fontSize: '13px',
-        }}>Deny</button>
+      <div className="flex gap-2">
+        <Button variant="primary" size="default" onClick={() => approve()} className="flex-1">
+          Allow
+        </Button>
+        <button
+          onClick={() => reject()}
+          className="flex-1 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-all"
+          style={{
+            borderColor: "var(--border-default)",
+            color: "var(--text-secondary)",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--text-quaternary)"; e.currentTarget.style.color = "var(--text-primary)" }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-default)"; e.currentTarget.style.color = "var(--text-secondary)" }}
+        >
+          Deny
+        </button>
       </div>
     </div>
   )
@@ -57,24 +83,35 @@ function AgentActivityBadge() {
   if (!isProcessing) return null
 
   return (
-    <div style={{
-      position: 'fixed', bottom: '24px', right: '24px', zIndex: 9998,
-      background: '#1a1a1f', border: '1px solid #3b82f6', borderRadius: '24px',
-      padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '8px',
-      boxShadow: '0 4px 16px rgba(0,0,0,0.4)', fontSize: '13px',
-      color: '#e2e8f0', cursor: 'default', userSelect: 'none',
-    }}>
-      <span style={{
-        width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6',
-        display: 'inline-block', animation: 'pulse 1.5s infinite',
-      }} />
-      <span>
-        Agent working...
-      </span>
-      <button onClick={() => ExecutionSessionManager.cancelCurrent()} style={{
-        background: 'none', border: '1px solid #555', borderRadius: '12px',
-        color: '#888', cursor: 'pointer', fontSize: '11px', padding: '2px 8px',
-      }}>Cancel</button>
+    <div
+      className="fixed bottom-6 right-6 z-[9998] flex items-center gap-2 rounded-full px-3.5 py-2 text-[13px] shadow-lg select-none"
+      style={{
+        backgroundColor: "var(--surface-overlay)",
+        border: "1px solid var(--color-accent-brand-border)",
+        color: "var(--text-primary)",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+      }}
+    >
+      <span
+        className="h-2 w-2 rounded-full"
+        style={{
+          backgroundColor: "var(--color-accent-brand)",
+          animation: "pulse 1.5s infinite",
+        }}
+      />
+      <span>Agent working...</span>
+      <button
+        onClick={() => ExecutionSessionManager.cancelCurrent()}
+        className="rounded-full border px-2 py-0.5 text-[11px] transition-colors"
+        style={{
+          borderColor: "var(--border-default)",
+          color: "var(--text-quaternary)",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--text-quaternary)"; e.currentTarget.style.color = "var(--text-secondary)" }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-default)"; e.currentTarget.style.color = "var(--text-quaternary)" }}
+      >
+        Cancel
+      </button>
     </div>
   )
 }
