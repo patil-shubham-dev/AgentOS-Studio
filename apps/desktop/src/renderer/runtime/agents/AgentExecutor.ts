@@ -32,6 +32,7 @@ import { toolResultCache } from "@/runtime/tools/core/ToolResultCache"
 import { pluginRegistry } from "@/runtime/plugins/PluginRegistry"
 import { providerGateway } from "@/runtime/providers/ProviderGateway"
 import type { GatewayRequest } from "@/runtime/providers/ProviderGateway"
+import { SkillMatcher } from "@/runtime/skills/SkillMatcher"
 
 const TOOL_OUTPUT_MAX_CHARS = 50000
 
@@ -260,6 +261,24 @@ export class AgentExecutor {
       ? [{ role: "system" as const, content: contextResult.promptBlock }]
       : []
     let msgs: ChatMessage[] = [systemMessage, ...contextMessage, ...this.history, { role: "user", content: this.input }]
+
+    // ── Phase 3b: Automatic skill triggering — if user input matches a skill, inject it ──
+    const skillRegistry = runtimeOS.skillRegistry
+    if (skillRegistry) {
+      const matcher = new SkillMatcher(skillRegistry)
+      const matches = matcher.match(this.input, 1)
+      if (matches.length > 0 && matches[0].score >= 0.15) {
+        const top = matches[0]
+        const resolved = await skillRegistry.resolvePrompt(top.skill)
+        const skillMsg = `[SKILL: ${top.skill.name}] The following skill matches your request. Apply its workflow:\n\n${resolved}`
+        msgs.splice(-1, 0, { role: "system", content: skillMsg })
+        console.log(
+          "%c[AgentExecutor]",
+          "color:#00cc88;font-weight:bold;font-size:13px",
+          `Auto-triggered skill "${top.skill.name}" (score=${top.score.toFixed(2)})`,
+        )
+      }
+    }
 
     yield { type: "CONTEXT_READY", executionId: eid, source: "workspace", tokens: 0, timestamp: Date.now() }
 
