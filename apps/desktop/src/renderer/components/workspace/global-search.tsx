@@ -288,7 +288,7 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
       className="absolute inset-0 z-40 flex"
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-[var(--surface-overlay)]/30" onClick={onClose} />
 
       {/* Search panel */}
       <motion.div
@@ -296,26 +296,26 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.97 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        className="relative mx-auto mt-16 w-full max-w-2xl bg-[#0d0d0e] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/50 overflow-hidden flex flex-col max-h-[70vh]"
+        className="relative mx-auto mt-16 w-full max-w-2xl bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl shadow-black/50 overflow-hidden flex flex-col max-h-[70vh]"
       >
         {/* Search input */}
-        <div className="flex items-center gap-2 border-b border-white/[0.06] px-3 py-2.5">
-          <Search className="h-4 w-4 text-white/30 shrink-0" />
+        <div className="flex items-center gap-2 border-b border-[var(--border-default)] px-3 py-2.5">
+          <Search className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={mode === "filename" ? "Search filenames (partial match)..." : "Search file contents..."}
-            className="flex-1 bg-transparent border-none outline-none text-sm text-white placeholder:text-white/20 font-mono"
+            className="flex-1 bg-transparent border-none outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-quaternary)] font-mono"
           />
           {/* Mode toggle */}
-          <div className="flex items-center gap-1 bg-white/[0.04] rounded-lg p-0.5 border border-white/[0.06]">
+          <div className="flex items-center gap-1 bg-[var(--border-subtle)] rounded-lg p-0.5 border border-[var(--border-default)]">
             <button
               onClick={() => setMode("filename")}
               className={cn(
                 "rounded-md px-2 py-1 text-[10px] font-medium transition-all",
-                mode === "filename" ? "bg-blue-500/15 text-blue-400" : "text-white/30 hover:text-white/60",
+                mode === "filename" ? "bg-[var(--accent-code)]/15 text-[var(--accent-code)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
               )}
             >
               <FileType className="h-3 w-3 inline mr-1" />
@@ -324,7 +324,7 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
             <button
               onClick={() => setMode("content")}
               className={cn(
-                "rounded-md px-2 py-1 text-[10px] font-medium transition-all",            mode === "content" ? "bg-blue-500/15 text-blue-400" : "text-white/30 hover:text-white/60",
+                "rounded-md px-2 py-1 text-[10px] font-medium transition-all",            mode === "content" ? "bg-[var(--accent-code)]/15 text-[var(--accent-code)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
             )}
           >
             <File className="h-3 w-3 inline mr-1" />
@@ -334,7 +334,7 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
             onClick={() => setMode("semantic")}
             className={cn(
               "rounded-md px-2 py-1 text-[10px] font-medium transition-all",
-              mode === "semantic" ? "bg-purple-500/15 text-purple-400" : "text-white/30 hover:text-white/60",
+              mode === "semantic" ? "bg-[var(--accent-design)]/15 text-[var(--accent-design)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
             )}
           >
             <Sparkles className="h-3 w-3 inline mr-1" />
@@ -348,7 +348,7 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
               onClick={() => setUseRegex(!useRegex)}
               className={cn(
                 "rounded-md p-1.5 transition-all",
-                useRegex ? "bg-amber-500/15 text-amber-400" : "text-white/30 hover:text-white/60",
+                useRegex ? "bg-[var(--color-accent-amber)]/15 text-[var(--color-accent-amber)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
               )}
               title="Use regex pattern"
             >
@@ -360,7 +360,7 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
             onClick={() => setCaseSensitive(!caseSensitive)}
             className={cn(
               "rounded-md p-1.5 transition-all",
-              caseSensitive ? "bg-blue-500/15 text-blue-400" : "text-white/30 hover:text-white/60",
+              caseSensitive ? "bg-[var(--accent-code)]/15 text-[var(--accent-code)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
             )}
             title="Case sensitive"
           >
@@ -370,8 +370,8 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
             value={extension}
             onChange={(e) => setExtension(e.target.value)}
             className={cn(
-              "rounded-md px-1.5 py-1 text-[10px] font-mono bg-transparent border border-white/[0.06] transition-all",
-              extension ? "text-blue-400" : "text-white/30 hover:text-white/60",
+              "rounded-md px-1.5 py-1 text-[10px] font-mono bg-transparent border border-[var(--border-default)] transition-all",
+              extension ? "text-[var(--accent-code)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
             )}
             title="Filter by extension"
           >
@@ -391,7 +391,7 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
           </select>
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+            className="rounded-md p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -399,14 +399,14 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
 
         {/* Status bar */}
         {hasSearched && (
-          <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
-            <span className="text-[10px] text-white/40">
+          <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--border-subtle)] border-b border-[var(--border-subtle)]">
+            <span className="text-[10px] text-[var(--text-tertiary)]">
               {searching && <Loader2 className="h-3 w-3 animate-spin inline mr-1.5" />}
               {status}
             </span>
-            <span className="text-[9px] text-white/20 font-mono flex items-center gap-2">
-              {useRegex && <span className="text-amber-400/40">Regex</span>}
-              {mode === "semantic" && <span className="text-purple-400/40">TF-IDF</span>}
+            <span className="text-[9px] text-[var(--text-quaternary)] font-mono flex items-center gap-2">
+              {useRegex && <span className="text-[var(--color-accent-amber)]/40">Regex</span>}
+              {mode === "semantic" && <span className="text-[var(--accent-design)]/40">TF-IDF</span>}
               <span>
                 {workspaceIndex.isReady
                   ? `${workspaceIndex.getFileCount()} files indexed`
@@ -420,9 +420,9 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
         <div ref={resultsRef} className="flex-1 overflow-y-auto min-h-0 max-h-[50vh]">
           {hasSearched && flatResults.length === 0 && !searching && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              {mode === "semantic" ? <Sparkles className="h-8 w-8 text-purple-500/10 mb-3" /> : <Search className="h-8 w-8 text-white/10 mb-3" />}
-              <p className="text-xs text-white/30">No results found</p>
-              <p className="text-[10px] text-white/15 mt-1">
+              {mode === "semantic" ? <Sparkles className="h-8 w-8 text-[var(--accent-design)]/10 mb-3" /> : <Search className="h-8 w-8 text-[var(--text-quaternary)] mb-3" />}
+              <p className="text-xs text-[var(--text-tertiary)]">No results found</p>
+              <p className="text-[10px] text-[var(--text-quaternary)] mt-1">
                 {mode === "semantic" ? "Try different keywords or check the semantic index" : mode === "filename" ? "Try a different filename" : "Try a different search term"}
               </p>
             </div>
@@ -430,15 +430,15 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
 
           {!hasSearched && !query.trim() && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Search className="h-8 w-8 text-white/10 mb-3" />
-              <p className="text-xs text-white/30">Search across files</p>
-              <p className="text-[10px] text-white/15 mt-1">
+              <Search className="h-8 w-8 text-[var(--text-quaternary)] mb-3" />
+              <p className="text-xs text-[var(--text-tertiary)]">Search across files</p>
+              <p className="text-[10px] text-[var(--text-quaternary)] mt-1">
                 {mode === "filename" ? "Type to search filenames" : "Type to search file contents"}
               </p>
-              <div className="flex items-center gap-2 mt-4 text-[9px] text-white/20 font-mono">
-                <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">↑↓</span> Navigate
-                <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">Enter</span> Open
-                <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">Esc</span> Close
+              <div className="flex items-center gap-2 mt-4 text-[9px] text-[var(--text-quaternary)] font-mono">
+                <span className="bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">↑↓</span> Navigate
+                <span className="bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">Enter</span> Open
+                <span className="bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">Esc</span> Close
               </div>
             </div>
           )}
@@ -452,23 +452,23 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
                   onClick={() => handleResultClick(item)}
                   className={cn(
                     "flex items-center gap-2 w-full px-3 py-1.5 text-left transition-all",
-                    selectedIndex === idx ? mode === "semantic" ? "bg-purple-500/10" : "bg-blue-500/10" : "hover:bg-white/[0.03]",
+                    selectedIndex === idx ? mode === "semantic" ? "bg-[var(--accent-design)]/10" : "bg-[var(--accent-code)]/10" : "hover:bg-[var(--border-subtle)]",
                   )}
                 >
                   {mode === "semantic" ? (
-                    <Sparkles className="h-3.5 w-3.5 text-purple-400/50 shrink-0" />
+                    <Sparkles className="h-3.5 w-3.5 text-[var(--accent-design)]/50 shrink-0" />
                   ) : (
-                    <File className="h-3.5 w-3.5 text-blue-400/50 shrink-0" />
+                    <File className="h-3.5 w-3.5 text-[var(--accent-code)]/50 shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <span className="text-xs font-medium text-white/80">{item.fileName}</span>
-                    <span className="text-[10px] text-white/30 ml-2">{item.filePath}</span>
+                    <span className="text-xs font-medium text-[var(--text-primary)]">{item.fileName}</span>
+                    <span className="text-[10px] text-[var(--text-tertiary)] ml-2">{item.filePath}</span>
                   </div>
                   {item.score != null && (
-                    <span className="text-[9px] text-purple-400/50 font-mono">{item.score.toFixed(1)}</span>
+                    <span className="text-[9px] text-[var(--accent-design)]/50 font-mono">{item.score.toFixed(1)}</span>
                   )}
                   {mode === "content" && item.matchCount != null && (
-                    <span className="text-[9px] text-white/20 font-mono">{item.matchCount} match{item.matchCount !== 1 ? "es" : ""}</span>
+                    <span className="text-[9px] text-[var(--text-quaternary)] font-mono">{item.matchCount} match{item.matchCount !== 1 ? "es" : ""}</span>
                   )}
                 </button>
               )
@@ -484,18 +484,18 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
                   onClick={() => handleResultClick(item)}
                   className={cn(
                     "flex items-start gap-2 w-full pl-8 pr-3 py-1 text-left transition-all",
-                    selectedIndex === idx ? "bg-purple-500/8" : "hover:bg-white/[0.02]",
+                    selectedIndex === idx ? "bg-[var(--accent-design)]/8" : "hover:bg-[var(--border-subtle)]/50",
                   )}
                 >
                   {isSemanticSnippet ? (
                     <span className="flex flex-col w-full gap-0.5">
-                      <span className="text-[10px] text-purple-400/30 font-mono">Best match snippet</span>
-                      <code className="text-[10px] font-mono text-white/50 leading-relaxed whitespace-pre-wrap line-clamp-3">{(m as any).snippet}</code>
+                      <span className="text-[10px] text-[var(--accent-design)]/30 font-mono">Best match snippet</span>
+                      <code className="text-[10px] font-mono text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap line-clamp-3">{(m as any).snippet}</code>
                     </span>
                   ) : (
                     <>
-                      <span className="text-[10px] text-blue-400/40 font-mono w-8 text-right shrink-0">{m.line}</span>
-                      <span className="text-[11px] font-mono text-white/70 truncate">{m.lineContent}</span>
+                      <span className="text-[10px] text-[var(--accent-code)]/40 font-mono w-8 text-right shrink-0">{m.line}</span>
+                      <span className="text-[11px] font-mono text-[var(--text-primary)]/70 truncate">{m.lineContent}</span>
                     </>
                   )}
                 </button>
@@ -507,8 +507,8 @@ export function GlobalSearch({ open, onClose, onOpenFile }: GlobalSearchProps) {
 
           {searching && (
             <div className="flex items-center justify-center py-4">
-              <Loader2 className="h-4 w-4 animate-spin text-blue-400/60" />
-              <span className="ml-2 text-xs text-white/30">Searching...</span>
+              <Loader2 className="h-4 w-4 animate-spin text-[var(--accent-code)]/60" />
+              <span className="ml-2 text-xs text-[var(--text-tertiary)]">Searching...</span>
             </div>
           )}
         </div>

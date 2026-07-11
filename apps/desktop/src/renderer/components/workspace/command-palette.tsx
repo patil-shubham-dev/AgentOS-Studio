@@ -215,29 +215,29 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
       transition={{ duration: 0.1 }}
       className="absolute inset-0 z-50 flex"
     >
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-[var(--surface-overlay)]/30" onClick={onClose} />
 
       <motion.div
         initial={{ opacity: 0, y: -8, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.97 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        className="relative mx-auto mt-16 w-full max-w-lg bg-[#0d0d0e] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/50 overflow-hidden flex flex-col max-h-[60vh]"
+        className="relative mx-auto mt-16 w-full max-w-lg bg-[var(--surface-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl shadow-black/50 overflow-hidden flex flex-col max-h-[60vh]"
       >
         {/* Input */}
-        <div className="flex items-center gap-2 border-b border-white/[0.06] px-3 py-2.5">
-          <Command className="h-4 w-4 text-white/30 shrink-0" />
+        <div className="flex items-center gap-2 border-b border-[var(--border-default)] px-3 py-2.5">
+          <Command className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type a command..."
-            className="flex-1 bg-transparent border-none outline-none text-sm text-white placeholder:text-white/20 font-mono"
+            className="flex-1 bg-transparent border-none outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-quaternary)] font-mono"
           />
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+            className="rounded-md p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -247,15 +247,15 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
         <div ref={resultsRef} className="flex-1 overflow-y-auto min-h-0 py-1">
           {groups.length === 0 && (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Command className="h-6 w-6 text-white/10 mb-2" />
-              <p className="text-xs text-white/30">No commands found</p>
-              <p className="text-[10px] text-white/15 mt-1">Try a different search term</p>
+              <Command className="h-6 w-6 text-[var(--text-quaternary)] mb-2" />
+              <p className="text-xs text-[var(--text-tertiary)]">No commands found</p>
+              <p className="text-[10px] text-[var(--text-quaternary)] mt-1">Try a different search term</p>
             </div>
           )}
 
           {groups.map(([category, items]) => (
             <div key={category}>
-              <div className="px-3 py-1 text-[9px] font-medium text-white/20 uppercase tracking-wider">
+              <div className="px-3 py-1 text-[9px] font-medium text-[var(--text-quaternary)] uppercase tracking-wider">
                 {category}
               </div>
               {items.map((cmd, idx) => {
@@ -268,18 +268,18 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
                     onMouseEnter={() => setSelectedIndex(globalIdx)}
                     className={cn(
                       "flex items-center gap-2 w-full px-3 py-1.5 text-left transition-all",
-                      selectedIndex === globalIdx ? "bg-blue-500/10" : "hover:bg-white/[0.03]",
+                      selectedIndex === globalIdx ? "bg-[var(--accent-code)]/10" : "hover:bg-[var(--border-subtle)]",
                     )}
                   >
-                    <span className="text-blue-400/50 shrink-0">{cmd.icon}</span>
+                    <span className="text-[var(--accent-code)]/50 shrink-0">{cmd.icon}</span>
                     <div className="flex-1 min-w-0">
-                      <span className="text-xs font-medium text-white/80">{cmd.label}</span>
+                      <span className="text-xs font-medium text-[var(--text-primary)]">{cmd.label}</span>
                       {query.trim() && (
-                        <span className="text-[9px] text-white/30 ml-2">{cmd.description}</span>
+                        <span className="text-[9px] text-[var(--text-tertiary)] ml-2">{cmd.description}</span>
                       )}
                     </div>
                     {cmd.shortcut && (
-                      <span className="text-[9px] font-mono text-white/20 bg-white/[0.04] px-1.5 py-0.5 rounded shrink-0">
+                      <span className="text-[9px] font-mono text-[var(--text-quaternary)] bg-[var(--border-subtle)] px-1.5 py-0.5 rounded shrink-0">
                         {cmd.shortcut}
                       </span>
                     )}
@@ -291,14 +291,14 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-3 px-3 py-1.5 border-t border-white/[0.04] bg-white/[0.02]">
-          <span className="text-[9px] text-white/20 font-mono">
+        <div className="flex items-center gap-3 px-3 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--surface-overlay)]/50">
+          <span className="text-[9px] text-[var(--text-quaternary)] font-mono">
             {totalResults} command{totalResults !== 1 ? "s" : ""}
           </span>
-          <div className="flex items-center gap-2 ml-auto text-[9px] text-white/20 font-mono">
-            <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">↑↓</span> Navigate
-            <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">Enter</span> Execute
-            <span className="bg-white/[0.04] px-1.5 py-0.5 rounded">Esc</span> Close
+          <div className="flex items-center gap-2 ml-auto text-[9px] text-[var(--text-quaternary)] font-mono">
+            <span className="bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">↑↓</span> Navigate
+            <span className="bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">Enter</span> Execute
+            <span className="bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">Esc</span> Close
           </div>
         </div>
       </motion.div>

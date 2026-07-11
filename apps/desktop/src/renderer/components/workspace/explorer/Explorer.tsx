@@ -117,13 +117,23 @@ export const Explorer = forwardRef<ExplorerHandle, ExplorerProps>(function Explo
 
   if (!rootPath) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center p-6 gap-3 select-none">
-        <FolderOpen className="h-8 w-8 text-white/10" />
-        <span className="text-[11px] text-white/20">No workspace open</span>
-        <span className="text-[9px] text-white/10">Open a folder to start exploring</span>
+      <div className="flex flex-col items-center justify-center h-full text-center p-6 gap-3 select-none"
+        style={{ background: "var(--surface-panel)" }}>
+        <FolderOpen className="h-8 w-8" style={{ color: "var(--text-quaternary)" }} />
+        <span className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>No workspace open</span>
+        <span className="text-[9px]" style={{ color: "var(--text-quaternary)" }}>Open a folder to start exploring</span>
         <button
           onClick={onOpenWorkspace}
-          className="mt-2 flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-medium text-white/60 bg-white/[0.04] hover:bg-white/[0.08] hover:text-white/80 transition-all border border-white/[0.06]"
+          className="mt-2 flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-medium transition-all"
+          style={{
+            color: "var(--text-secondary)",
+            background: "var(--border-subtle)",
+            border: "1px solid var(--border-default)",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--border-default)"; e.currentTarget.style.color = "var(--text-primary)" }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--border-subtle)"; e.currentTarget.style.color = "var(--text-secondary)" }}
+          onFocus={(e) => { e.currentTarget.style.outline = "2px solid var(--color-accent-brand)"; e.currentTarget.style.outlineOffset = "2px" }}
+          onBlur={(e) => { e.currentTarget.style.outline = "" }}
         >
           <FolderPlus className="h-3 w-3" />
           Open Folder
@@ -134,9 +144,10 @@ export const Explorer = forwardRef<ExplorerHandle, ExplorerProps>(function Explo
 
   if (isLoading && !fileTree) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 select-none">
-        <Loader2 className="h-5 w-5 text-blue-400/60 animate-spin" />
-        <span className="text-[11px] text-white/30">Loading workspace...</span>
+      <div className="flex flex-col items-center justify-center h-full gap-3 select-none"
+        style={{ background: "var(--surface-panel)" }}>
+        <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--color-accent-blue)" }} />
+        <span className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>Loading workspace...</span>
       </div>
     )
   }
@@ -144,7 +155,8 @@ export const Explorer = forwardRef<ExplorerHandle, ExplorerProps>(function Explo
   const fileCount = fileTree ? countFiles(fileTree) : 0
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" ref={fileTreeRef}>
+    <div className="flex flex-col h-full overflow-hidden" ref={fileTreeRef}
+      style={{ background: "var(--surface-panel)" }}>
       <WorkspaceHeader
         rootPath={rootPath}
         fileCount={fileCount}
@@ -169,7 +181,8 @@ export const Explorer = forwardRef<ExplorerHandle, ExplorerProps>(function Explo
           <CreateInline type="folder" onSubmit={commitCreateFolder} onCancel={() => setCreatingFolder(null)} />
         )}
         {!searchQuery && fileCount === 0 && (
-          <div className="flex flex-col items-center justify-center py-8 text-white/15 text-[10px] gap-1 select-none">
+          <div className="flex flex-col items-center justify-center py-8 text-[10px] gap-1 select-none"
+            style={{ color: "var(--text-quaternary)" }}>
             <Files className="h-4 w-4" />
             <span>Empty workspace</span>
           </div>
@@ -189,7 +202,9 @@ function CreateInline({ type, onSubmit, onCancel }: { type: "file" | "folder"; o
 
   return (
     <div className="flex items-center gap-1 px-3 py-0.5">
-      <span className="text-[10px] text-white/40">{type === "file" ? "📄" : "📁"}</span>
+      <span className="text-[10px] shrink-0" style={{ color: "var(--text-tertiary)" }}>
+        {type === "file" ? "📄" : "📁"}
+      </span>
       <input
         ref={inputRef}
         data-create-file-input={type === "file" ? "" : undefined}
@@ -202,7 +217,13 @@ function CreateInline({ type, onSubmit, onCancel }: { type: "file" | "folder"; o
         }}
         onBlur={() => { if (value) onSubmit(value); else onCancel() }}
         placeholder={`New ${type}...`}
-        className="flex-1 bg-transparent text-[11px] text-white/70 outline-none placeholder:text-white/20 border-b border-blue-400/40"
+        className="flex-1 bg-transparent text-[11px] outline-none border-b"
+        style={{
+          color: "var(--text-primary)",
+          borderColor: "var(--color-accent-brand)",
+          outline: "none",
+        }}
+        onFocus={(e) => { e.currentTarget.style.borderColor = "var(--color-accent-brand)" }}
       />
     </div>
   )

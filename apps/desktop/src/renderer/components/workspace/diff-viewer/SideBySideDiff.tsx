@@ -49,25 +49,25 @@ function detectLanguage(filePath: string): string {
 
 function getFileStatusColor(status: DiffFileEntry["status"]): string {
   switch (status) {
-    case "accepted": return "text-green-400 border-green-500/20 bg-green-500/8"
-    case "rejected": return "text-red-400 border-red-500/20 bg-red-500/8"
-    default: return "text-amber-400 border-amber-500/20 bg-amber-500/8"
+    case "accepted": return "text-[var(--color-accent-green)] border-[var(--color-accent-green)]/20 bg-green-500/8"
+    case "rejected": return "text-[var(--color-accent-red)] border-[var(--color-accent-red)]/20 bg-red-500/8"
+    default: return "text-[var(--color-accent-amber)] border-[var(--color-accent-amber)]/20 bg-amber-500/8"
   }
 }
 
 function getHunkStatusIcon(status: DiffHunkStatus["status"]) {
   switch (status) {
-    case "accepted": return <Check className="h-2.5 w-2.5 text-green-400" />
-    case "rejected": return <X className="h-2.5 w-2.5 text-red-400" />
-    default: return <div className="h-2 w-2 rounded-full bg-amber-400/60" />
+    case "accepted": return <Check className="h-2.5 w-2.5 text-[var(--color-accent-green)]" />
+    case "rejected": return <X className="h-2.5 w-2.5 text-[var(--color-accent-red)]" />
+    default: return <div className="h-2 w-2 rounded-full bg-[var(--color-accent-amber)]/60" />
   }
 }
 
 function getHunkStatusColor(status: DiffHunkStatus["status"]): string {
   switch (status) {
-    case "accepted": return "bg-green-500/10 border-green-500/20"
-    case "rejected": return "bg-red-500/10 border-red-500/20"
-    default: return "bg-white/[0.02] border-white/[0.06]"
+    case "accepted": return "bg-[var(--color-accent-green)]/10 border-[var(--color-accent-green)]/20"
+    case "rejected": return "bg-[var(--color-accent-red)]/10 border-[var(--color-accent-red)]/20"
+    default: return "bg-[var(--border-subtle)] border-[var(--border-default)]"
   }
 }
 
@@ -147,22 +147,22 @@ export function SideBySideDiff({
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "rounded-xl border border-white/[0.06] bg-black/20 overflow-hidden",
+        "rounded-xl border border-[var(--border-default)] bg-[var(--surface-panel)]/50 overflow-hidden",
         expanded && "flex flex-col flex-1 min-h-0",
       )}
     >
       {/* File header */}
       <div className={cn(
         "flex items-center gap-2 px-3 py-2 border-b transition-colors",
-        isAllAccepted ? "border-green-500/10 bg-green-500/[0.02]" :
-        isAllRejected ? "border-red-500/10 bg-red-500/[0.02]" :
-        "border-white/[0.06] bg-white/[0.02]",
+        isAllAccepted ? "border-[var(--color-accent-green)]/10 bg-[var(--color-accent-green)]/[0.02]" :
+        isAllRejected ? "border-[var(--color-accent-red)]/10 bg-[var(--color-accent-red)]/[0.02]" :
+        "border-[var(--border-default)] bg-[var(--border-subtle)]",
       )}>
         {/* Expand/collapse */}
         {onToggleExpand && (
           <button
             onClick={() => onToggleExpand(file.path)}
-            className="rounded p-0.5 text-white/20 hover:text-white/50 transition-colors"
+            className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] transition-colors"
           >
             {expanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -173,8 +173,8 @@ export function SideBySideDiff({
         )}
 
         {/* File icon + name */}
-        <FileText className="h-3.5 w-3.5 text-white/30 shrink-0" />
-        <span className="text-xs font-medium text-white/70 truncate flex-1 min-w-0">
+        <FileText className="h-3.5 w-3.5 text-[var(--text-tertiary)] shrink-0" />
+        <span className="text-xs font-medium text-[var(--text-secondary)] truncate flex-1 min-w-0">
           {fileName}
         </span>
 
@@ -188,18 +188,18 @@ export function SideBySideDiff({
 
         {/* Additions/deletions counts */}
         {totalAdditions > 0 && (
-          <span className="text-[10px] text-green-400/70 font-mono shrink-0">
+          <span className="text-[10px] text-[var(--color-accent-green)]/70 font-mono shrink-0">
             +{totalAdditions}
           </span>
         )}
         {totalDeletions > 0 && (
-          <span className="text-[10px] text-red-400/70 font-mono shrink-0">
+          <span className="text-[10px] text-[var(--color-accent-red)]/70 font-mono shrink-0">
             -{totalDeletions}
           </span>
         )}
 
         {/* Language */}
-        <span className="text-[9px] text-white/20 font-mono hidden sm:inline shrink-0">
+        <span className="text-[9px] text-[var(--text-quaternary)] font-mono hidden sm:inline shrink-0">
           {language}
         </span>        {/* Accept All / Reject All — only when pending and callbacks provided */}
           {isPending && (onAcceptAll || onRejectAll) && (
@@ -207,7 +207,7 @@ export function SideBySideDiff({
               {onRejectAll && (
                 <button
                   onClick={() => onRejectAll(file.path)}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all border border-transparent hover:border-red-500/20"
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] text-[var(--color-accent-red)]/60 hover:text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/10 transition-all border border-transparent hover:border-[var(--color-accent-red)]/20"
                   title="Reject all changes in this file"
                 >
                   <XCircle className="h-2.5 w-2.5" />
@@ -217,7 +217,7 @@ export function SideBySideDiff({
               {onAcceptAll && (
                 <button
                   onClick={() => onAcceptAll(file.path)}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] text-green-400/60 hover:text-green-400 hover:bg-green-500/10 transition-all border border-transparent hover:border-green-500/20"
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] text-[var(--color-accent-green)]/60 hover:text-[var(--color-accent-green)] hover:bg-[var(--color-accent-green)]/10 transition-all border border-transparent hover:border-[var(--color-accent-green)]/20"
                   title="Accept all changes in this file"
                 >
                   <CheckCheck className="h-2.5 w-2.5" />
@@ -229,12 +229,12 @@ export function SideBySideDiff({
 
         {/* Completed status indicators */}
         {isAllAccepted && (
-          <span className="text-[9px] text-green-400/50 shrink-0">
+          <span className="text-[9px] text-[var(--color-accent-green)]/50 shrink-0">
             ✓ {acceptedHunks}/{file.hunks.length} hunks
           </span>
         )}
         {isAllRejected && (
-          <span className="text-[9px] text-red-400/50 shrink-0">
+          <span className="text-[9px] text-[var(--color-accent-red)]/50 shrink-0">
             ✗ All rejected
           </span>
         )}
@@ -256,14 +256,14 @@ export function SideBySideDiff({
 
           {/* Hunk-level action bar — shows per-hunk accept/reject */}
           {file.hunks.length > 0 && (
-            <div className="border-t border-white/[0.06] bg-white/[0.01]">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-white/[0.04]">
-                <span className="text-[9px] font-medium text-white/20 uppercase tracking-wider">
+            <div className="border-t border-[var(--border-default)] bg-[var(--surface-panel)]/20">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-[var(--border-subtle)]">
+                <span className="text-[9px] font-medium text-[var(--text-quaternary)] uppercase tracking-wider">
                   Changes ({file.hunks.length})
                 </span>
-                <span className="text-[9px] text-green-400/50">✓ {acceptedHunks}</span>
-                <span className="text-[9px] text-red-400/50">✗ {rejectedHunks}</span>
-                <span className="text-[9px] text-amber-400/50">○ {pendingHunks}</span>
+                <span className="text-[9px] text-[var(--color-accent-green)]/50">✓ {acceptedHunks}</span>
+                <span className="text-[9px] text-[var(--color-accent-red)]/50">✗ {rejectedHunks}</span>
+                <span className="text-[9px] text-[var(--color-accent-amber)]/50">○ {pendingHunks}</span>
               </div>
 
               {/* Hunk list */}
@@ -287,15 +287,15 @@ export function SideBySideDiff({
                       </div>
 
                       {/* Hunk header */}
-                      <code className="text-[10px] font-mono text-white/40 flex-1 min-w-0 truncate">
+                      <code className="text-[10px] font-mono text-[var(--text-tertiary)] flex-1 min-w-0 truncate">
                         {hunk.header}
                       </code>
 
                       {/* Line counts */}
-                      <span className="text-[9px] text-green-400/50 font-mono shrink-0">
+                      <span className="text-[9px] text-[var(--color-accent-green)]/50 font-mono shrink-0">
                         +{hunk.additions}
                       </span>
-                      <span className="text-[9px] text-red-400/50 font-mono shrink-0">
+                      <span className="text-[9px] text-[var(--color-accent-red)]/50 font-mono shrink-0">
                         -{hunk.deletions}
                       </span>
 
@@ -305,7 +305,7 @@ export function SideBySideDiff({
                           {onRejectHunk && (
                             <button
                               onClick={() => onRejectHunk(file.path, hunk.hunkIndex)}
-                              className="rounded p-0.5 text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                              className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/10 transition-all"
                               title="Reject this hunk"
                             >
                               <X className="h-3 w-3" />
@@ -314,7 +314,7 @@ export function SideBySideDiff({
                           {onAcceptHunk && (
                             <button
                               onClick={() => onAcceptHunk(file.path, hunk.hunkIndex)}
-                              className="rounded p-0.5 text-white/20 hover:text-green-400 hover:bg-green-500/10 transition-all"
+                              className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--color-accent-green)] hover:bg-[var(--color-accent-green)]/10 transition-all"
                               title="Accept this hunk"
                             >
                               <Check className="h-3 w-3" />
@@ -325,12 +325,12 @@ export function SideBySideDiff({
 
                       {/* Accepted/rejected indicator */}
                       {isHunkAccepted && (
-                        <span className="text-[9px] text-green-400/40 shrink-0">
+                        <span className="text-[9px] text-[var(--color-accent-green)]/40 shrink-0">
                           Accepted
                         </span>
                       )}
                       {isHunkRejected && (
-                        <span className="text-[9px] text-red-400/40 shrink-0">
+                        <span className="text-[9px] text-[var(--color-accent-red)]/40 shrink-0">
                           Rejected
                         </span>
                       )}
@@ -346,11 +346,11 @@ export function SideBySideDiff({
       {/* Collapsed state — show summary */}
       {!expanded && (
         <div className="px-3 py-2 flex items-center gap-2">
-          <span className="text-[10px] text-white/30">{file.hunks.length} hunk(s)</span>
-          <span className="text-[10px] text-green-400/50">+{totalAdditions}</span>
-          <span className="text-[10px] text-red-400/50">-{totalDeletions}</span>
-          {isAllAccepted && <span className="text-[9px] text-green-400/60">✓ Accepted</span>}
-          {isAllRejected && <span className="text-[9px] text-red-400/60">✗ Rejected</span>}
+          <span className="text-[10px] text-[var(--text-tertiary)]">{file.hunks.length} hunk(s)</span>
+          <span className="text-[10px] text-[var(--color-accent-green)]/50">+{totalAdditions}</span>
+          <span className="text-[10px] text-[var(--color-accent-red)]/50">-{totalDeletions}</span>
+          {isAllAccepted && <span className="text-[9px] text-[var(--color-accent-green)]/60">✓ Accepted</span>}
+          {isAllRejected && <span className="text-[9px] text-[var(--color-accent-red)]/60">✗ Rejected</span>}
         </div>
       )}
     </motion.div>

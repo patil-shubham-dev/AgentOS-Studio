@@ -7,6 +7,7 @@ import { executionProcessSection } from './execution-process.section'
 import { executionPolicySection } from './execution-policy.section'
 import { behaviorConstraintsSection } from './behavior-constraints.section'
 import { toolsRegistrySection } from './tools-registry.section'
+import { mcpInstructionsSection } from './mcp-instructions.section'
 import { toolsExecutionPolicySection } from './tools-execution-policy.section'
 import { workspaceContextSection } from './workspace-context.section'
 import { projectRulesSection } from './project-rules.section'
@@ -34,6 +35,7 @@ export const DEFAULT_SECTIONS: SectionDefinition[] = [
   workspaceContextSection,
   verificationSection,
   toolsRegistrySection,
+  mcpInstructionsSection,
   toolsExecutionPolicySection,
   collaborationSection,
   environmentInfoSection,
@@ -58,6 +60,7 @@ export {
   executionPolicySection,
   behaviorConstraintsSection,
   toolsRegistrySection,
+  mcpInstructionsSection,
   toolsExecutionPolicySection,
   workspaceContextSection,
   projectRulesSection,

@@ -51,22 +51,22 @@ export function DiagnosticsPanel({ onNavigateTo, onClose, open }: DiagnosticsPan
       animate={{ height: "auto", opacity: 1 }}
       exit={{ height: 0, opacity: 0 }}
       transition={{ duration: 0.15 }}
-      className="border-t border-white/[0.04] bg-black/30 overflow-hidden"
+      className="border-t border-[var(--border-subtle)] bg-[var(--surface-panel)]/70 overflow-hidden"
     >
       {/* Header bar */}
-      <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.04]">
+      <div className="flex items-center justify-between px-3 py-1 border-b border-[var(--border-subtle)]">
         <div className="flex items-center gap-3">
-          <span className="text-[10px] font-medium text-white/40 uppercase tracking-wider">Problems</span>
-          <span className="flex items-center gap-1 text-[10px] text-red-400" title="Errors">
+            <span className="text-[10px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">Problems</span>
+          <span className="flex items-center gap-1 text-[10px] text-[var(--color-accent-red)]" title="Errors">
             <AlertCircle className="h-2.5 w-2.5" />
             {errors.length}
           </span>
-          <span className="flex items-center gap-1 text-[10px] text-yellow-400" title="Warnings">
+          <span className="flex items-center gap-1 text-[10px] text-[var(--color-accent-amber)]" title="Warnings">
             <AlertTriangle className="h-2.5 w-2.5" />
             {warnings.length}
           </span>
           {infos.length > 0 && (
-            <span className="flex items-center gap-1 text-[10px] text-blue-400" title="Info">
+            <span className="flex items-center gap-1 text-[10px] text-[var(--accent-code)]" title="Info">
               <Info className="h-2.5 w-2.5" />
               {infos.length}
             </span>
@@ -74,7 +74,7 @@ export function DiagnosticsPanel({ onNavigateTo, onClose, open }: DiagnosticsPan
         </div>
         <button
           onClick={onClose}
-          className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+          className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
         >
           <X className="h-3 w-3" />
         </button>
@@ -91,7 +91,7 @@ export function DiagnosticsPanel({ onNavigateTo, onClose, open }: DiagnosticsPan
       >
         {all.length === 0 && (
           <div className="flex items-center justify-center py-6 text-center">
-            <p className="text-[10px] text-white/20">No problems detected</p>
+            <p className="text-[10px] text-[var(--text-quaternary)]">No problems detected</p>
           </div>
         )}
         {all.map((d, idx) => (
@@ -101,15 +101,15 @@ export function DiagnosticsPanel({ onNavigateTo, onClose, open }: DiagnosticsPan
             onClick={() => handleClick(d)}
             className={cn(
               "flex items-start gap-2 w-full px-3 py-1 text-left transition-all",
-              selectedIndex === idx ? "bg-blue-500/10" : "hover:bg-white/[0.03]",
+              selectedIndex === idx ? "bg-[var(--accent-code)]/10" : "hover:bg-[var(--border-subtle)]",
             )}
           >
-            {d.severity === "error" && <AlertCircle className="h-3 w-3 text-red-400 mt-0.5 shrink-0" />}
-            {d.severity === "warning" && <AlertTriangle className="h-3 w-3 text-yellow-400 mt-0.5 shrink-0" />}
-            {d.severity === "info" && <Info className="h-3 w-3 text-blue-400 mt-0.5 shrink-0" />}
+            {d.severity === "error" && <AlertCircle className="h-3 w-3 text-[var(--color-accent-red)] mt-0.5 shrink-0" />}
+            {d.severity === "warning" && <AlertTriangle className="h-3 w-3 text-[var(--color-accent-amber)] mt-0.5 shrink-0" />}
+            {d.severity === "info" && <Info className="h-3 w-3 text-[var(--accent-code)] mt-0.5 shrink-0" />}
             <div className="flex-1 min-w-0">
-              <span className="text-[10px] text-white/80 leading-relaxed">{d.message}</span>
-              <div className="flex items-center gap-2 text-[9px] text-white/30 mt-0.5">
+              <span className="text-[10px] text-[var(--text-primary)] leading-relaxed">{d.message}</span>
+              <div className="flex items-center gap-2 text-[9px] text-[var(--text-tertiary)] mt-0.5">
                 <span>{d.fileName}</span>
                 <span>Ln {d.line}, Col {d.column}</span>
               </div>

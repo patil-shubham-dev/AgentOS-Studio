@@ -5,6 +5,7 @@ import { useAppStore } from "@/stores/app-store"
 import type { GatewayProvider } from "@/types"
 import { classifyProviderError, type ProviderErrorCode, type ProviderErrorInfo } from "./ProviderError"
 import { generateMockResponse } from "./MockProviderRuntime"
+import { execTrace } from "@/runtime/execution-tracer"
 
 export type ProviderStreamEvent =
   | { type: "token"; text: string }
@@ -107,6 +108,8 @@ export class ProviderGateway {
   }
 
   async *stream(request: GatewayRequest): AsyncGenerator<ProviderStreamEvent> {
+    const _traceId = (request as any).correlationId ?? (request as any).executionId ?? `provider-${Date.now()}`
+    execTrace("ProviderGateway.stream", _traceId, { model: request.model, providerId: request.providerId, msgCount: request.messages?.length, mockMode: useAppStore.getState().mockMode })
     if (useAppStore.getState().mockMode) {
       yield* this.mockStream(request)
       return

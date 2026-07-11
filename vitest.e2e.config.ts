@@ -4,7 +4,7 @@ import { resolve } from 'path'
 export default defineConfig({
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src/renderer'),
+      '@': resolve(__dirname, 'apps/desktop/src/renderer'),
       '@agentic-os/shared': resolve(__dirname, 'packages/shared/src'),
       '@agentic-os/ui': resolve(__dirname, 'packages/ui/src'),
       '@agentic-os/providers': resolve(__dirname, 'packages/providers/src'),

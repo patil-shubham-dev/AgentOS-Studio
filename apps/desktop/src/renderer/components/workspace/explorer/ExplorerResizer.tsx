@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from "react"
+import { useCallback, useRef, useEffect, useState } from "react"
 import { GripVertical } from "lucide-react"
 
 interface ExplorerResizerProps {
@@ -11,6 +11,7 @@ export function ExplorerResizer({ onResize, minWidth = 200, maxWidth = 800 }: Ex
   const dragging = useRef(false)
   const startX = useRef(0)
   const startWidth = useRef(0)
+  const [hovered, setHovered] = useState(false)
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -46,11 +47,21 @@ export function ExplorerResizer({ onResize, minWidth = 200, maxWidth = 800 }: Ex
 
   return (
     <div
-      className="w-[3px] cursor-col-resize hover:w-[4px] hover:bg-blue-500/30 bg-white/[0.02] transition-all duration-150 shrink-0 relative group"
+      className="shrink-0 relative transition-all duration-150"
+      style={{
+        width: hovered || dragging.current ? "4px" : "3px",
+        cursor: "col-resize",
+        background: dragging.current ? "var(--color-accent-brand-border)" : hovered ? "var(--color-accent-brand-border)" : "var(--border-subtle)",
+      }}
       onMouseDown={handleMouseDown}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <div className="absolute inset-y-0 -left-1 -right-1" />
-      <GripVertical className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-3 w-3 text-white/0 group-hover:text-white/30 transition-colors" />
+      <GripVertical
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none transition-opacity duration-150"
+        style={{ opacity: hovered ? 1 : 0, color: "var(--text-quaternary)" }}
+      />
     </div>
   )
 }

@@ -71,8 +71,8 @@ function VersionTimeline({ versions, currentVersion, onSelect }: {
   return (
     <div className="space-y-1 px-2 py-2">
       <div className="flex items-center gap-1.5 px-1 mb-2">
-        <GitBranch className="h-2.5 w-2.5 text-white/30" />
-        <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">Version History</span>
+        <GitBranch className="h-2.5 w-2.5 text-[var(--text-tertiary)]" />
+        <span className="text-[9px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">Version History</span>
       </div>
       {[...versions].reverse().map((v, idx) => {
         const isLast = idx === versions.length - 1
@@ -84,36 +84,36 @@ function VersionTimeline({ versions, currentVersion, onSelect }: {
             className={cn(
               "w-full flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-all group",
               isCurrent
-                ? "bg-purple-500/10 border border-purple-500/15"
-                : "hover:bg-white/[0.03] border border-transparent",
+                ? "bg-[var(--accent-design)]/10 border border-[var(--accent-design)]/15"
+                : "hover:bg-[var(--border-subtle)] border border-transparent",
             )}
           >
             <div className="relative flex flex-col items-center mt-1">
               <div className={cn(
                 "h-2 w-2 rounded-full shrink-0",
-                isCurrent ? "bg-purple-500" : "bg-white/20 group-hover:bg-white/40",
+                isCurrent ? "bg-[var(--accent-design)]" : "bg-[var(--border-subtle)] group-hover:bg-[var(--border-default)]",
               )} />
-              {!isLast && <div className="w-px h-4 bg-white/[0.06] my-0.5" />}
+              {!isLast && <div className="w-px h-4 bg-[var(--border-default)] my-0.5" />}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className={cn(
                   "text-[10px] font-mono font-medium",
-                  isCurrent ? "text-purple-400" : "text-white/50",
+                  isCurrent ? "text-[var(--accent-design)]" : "text-[var(--text-secondary)]",
                 )}>
                   v{v.version}
                 </span>
                 {isCurrent && (
-                  <span className="text-[8px] text-purple-400/60 font-medium">current</span>
+                  <span className="text-[8px] text-[var(--accent-design)]/60 font-medium">current</span>
                 )}
               </div>
-              <p className="text-[9px] text-white/30 mt-0.5 line-clamp-1">{v.label}</p>
-              <p className="text-[8px] text-white/20 mt-0.5">
+              <p className="text-[9px] text-[var(--text-tertiary)] mt-0.5 line-clamp-1">{v.label}</p>
+              <p className="text-[8px] text-[var(--text-quaternary)] mt-0.5">
                 {new Date(v.timestamp).toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
               </p>
             </div>
             {isCurrent && (
-              <span className="h-1.5 w-1.5 rounded-full bg-purple-500 mt-1.5 shrink-0" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-design)] mt-1.5 shrink-0" />
             )}
           </button>
         )
@@ -151,39 +151,39 @@ function CreateArtifactDialog({ onClose }: { onClose: () => void }) {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="w-80 rounded-xl border border-white/[0.08] bg-[#0d0d0e] shadow-2xl p-4"
+        className="w-80 rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] shadow-2xl p-4"
       >
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-purple-500/10 border border-purple-500/15">
-              <Palette className="h-3 w-3 text-purple-400" />
+            <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-[var(--accent-design)]/10 border border-[var(--accent-design)]/15">
+              <Palette className="h-3 w-3 text-[var(--accent-design)]" />
             </div>
-            <span className="text-sm font-medium text-white/70">New Design Artifact</span>
+            <span className="text-sm font-medium text-[var(--text-secondary)]">New Design Artifact</span>
           </div>
-          <button onClick={onClose} className="rounded p-0.5 text-white/30 hover:text-white/60 transition-colors">
+          <button onClick={onClose} className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
 
         <div className="space-y-3">
           <div>
-            <label className="text-[10px] font-medium text-white/40 block mb-1">Name</label>
+            <label className="text-[10px] font-medium text-[var(--text-tertiary)] block mb-1">Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Button Component"
-              className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1.5 text-xs text-white/70 outline-none focus:border-purple-500/30 focus:bg-purple-500/[0.03] transition-all placeholder:text-white/20"
+              className="w-full rounded-lg border border-[var(--border-default)] bg-[var(--border-subtle)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] outline-none focus:border-[var(--accent-design)]/30 focus:bg-[var(--accent-design)]/[0.03] transition-all placeholder:text-[var(--text-quaternary)]"
               autoFocus
               onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
             />
           </div>
           <div>
-            <label className="text-[10px] font-medium text-white/40 block mb-1">Description</label>
+            <label className="text-[10px] font-medium text-[var(--text-tertiary)] block mb-1">Description</label>
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description..."
-              className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1.5 text-xs text-white/70 outline-none focus:border-purple-500/30 focus:bg-purple-500/[0.03] transition-all placeholder:text-white/20"
+              className="w-full rounded-lg border border-[var(--border-default)] bg-[var(--border-subtle)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] outline-none focus:border-[var(--accent-design)]/30 focus:bg-[var(--accent-design)]/[0.03] transition-all placeholder:text-[var(--text-quaternary)]"
               onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }}
             />
           </div>
@@ -192,14 +192,14 @@ function CreateArtifactDialog({ onClose }: { onClose: () => void }) {
         <div className="flex justify-end gap-2 mt-4">
           <button
             onClick={onClose}
-            className="rounded-lg border border-white/[0.06] px-3 py-1.5 text-[10px] text-white/50 hover:text-white/70 hover:bg-white/[0.04] transition-all"
+            className="rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
           >
             Cancel
           </button>
           <button
             onClick={handleCreate}
             disabled={!name.trim()}
-            className="rounded-lg bg-purple-500/20 border border-purple-500/30 px-3 py-1.5 text-[10px] text-purple-400 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded-lg bg-[var(--accent-design)]/20 border border-[var(--accent-design)]/30 px-3 py-1.5 text-[10px] text-[var(--accent-design)] hover:bg-[var(--accent-design)]/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Create Artifact
           </button>
@@ -234,12 +234,12 @@ function CodeEditor({ code, onSave }: { code: string; onSave: (code: string) => 
   if (!editing) {
     return (
       <div className="relative group h-full" onDoubleClick={() => setEditing(true)}>
-        <pre className="p-4 text-[11px] font-mono text-white/60 leading-relaxed whitespace-pre-wrap h-full overflow-auto">
+        <pre className="p-4 text-[11px] font-mono text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap h-full overflow-auto">
           <code>{value}</code>
         </pre>
         <button
           onClick={() => setEditing(true)}
-          className="absolute top-2 right-2 rounded-md border border-white/[0.06] bg-[#0c0c0d]/80 backdrop-blur-sm px-2 py-1 text-[9px] text-white/40 hover:text-white/60 opacity-0 group-hover:opacity-100 transition-all"
+          className="absolute top-2 right-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-panel)]/80 backdrop-blur-sm px-2 py-1 text-[9px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 transition-all"
         >
           Edit
         </button>
@@ -249,19 +249,19 @@ function CodeEditor({ code, onSave }: { code: string; onSave: (code: string) => 
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.06] bg-[#0c0c0d] shrink-0">
-        <span className="text-[9px] text-white/30">Editing — double-click to preview rendered output</span>
+      <div className="flex items-center justify-between px-3 py-1 border-b border-[var(--border-default)] bg-[var(--surface-panel)] shrink-0">
+        <span className="text-[9px] text-[var(--text-tertiary)]">Editing — double-click to preview rendered output</span>
         <div className="flex items-center gap-1">
           <button
             onClick={() => { setEditing(false); setValue(code) }}
-            className="rounded-md border border-white/[0.06] px-2 py-1 text-[9px] text-white/40 hover:text-white/60 transition-all"
+            className="rounded-md border border-[var(--border-default)] px-2 py-1 text-[9px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-all"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving || value === code}
-            className="rounded-md border border-purple-500/20 bg-purple-500/10 px-2 py-1 text-[9px] text-purple-400 hover:bg-purple-500/20 transition-all disabled:opacity-40"
+            className="rounded-md border border-[var(--accent-design)]/20 bg-[var(--accent-design)]/10 px-2 py-1 text-[9px] text-[var(--accent-design)] hover:bg-[var(--accent-design)]/20 transition-all disabled:opacity-40"
           >
             {saving ? "Saving..." : "Save as Version"}
           </button>
@@ -270,7 +270,7 @@ function CodeEditor({ code, onSave }: { code: string; onSave: (code: string) => 
       <textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        className="flex-1 w-full bg-transparent p-4 text-[11px] font-mono text-white/60 leading-relaxed outline-none resize-none"
+        className="flex-1 w-full bg-transparent p-4 text-[11px] font-mono text-[var(--text-secondary)] leading-relaxed outline-none resize-none"
         spellCheck={false}
         autoComplete="off"
       />
@@ -461,7 +461,7 @@ export function DesignWorkspace() {
   }, [notify])
 
   return (
-    <div className="flex h-full bg-[#0a0a0b]">
+    <div className="flex h-full bg-[var(--surface-app)]">
       {/* ── Artifact Browser Sidebar ── */}
       <AnimatePresence>
         {sidebarOpen && (
@@ -470,26 +470,26 @@ export function DesignWorkspace() {
             animate={{ width: 220, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="flex-shrink-0 border-r border-white/[0.06] bg-[#0c0c0d] overflow-hidden"
+            className="flex-shrink-0 border-r border-[var(--border-default)] bg-[var(--surface-panel)] overflow-hidden"
           >
             <div className="flex flex-col h-full">
               {/* Header */}
-              <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06]">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-default)]">
                 <div className="flex items-center gap-1.5">
-                  <Layers className="h-3 w-3 text-purple-400" />
-                  <span className="text-[10px] font-medium text-white/30 uppercase tracking-wider">Designs</span>
+                  <Layers className="h-3 w-3 text-[var(--accent-design)]" />
+                  <span className="text-[10px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">Designs</span>
                 </div>
                 <div className="flex items-center gap-0.5">
                   <button
                     onClick={() => setShowCreate(true)}
-                    className="rounded p-0.5 text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+                    className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
                     title="New artifact"
                   >
                     <Plus className="h-3 w-3" />
                   </button>
                   <button
                     onClick={handleImportClipboard}
-                    className="rounded p-0.5 text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+                    className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
                     title="Import from clipboard"
                   >
                     <Upload className="h-3 w-3" />
@@ -498,14 +498,14 @@ export function DesignWorkspace() {
               </div>
 
               {/* Search */}
-              <div className="px-2 py-1.5 border-b border-white/[0.06]">
+              <div className="px-2 py-1.5 border-b border-[var(--border-default)]">
                 <div className="relative">
-                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-white/20" />
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--text-quaternary)]" />
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search artifacts..."
-                    className="w-full rounded-md border border-white/[0.06] bg-white/[0.03] pl-6 pr-2 py-1 text-[10px] text-white/60 outline-none focus:border-purple-500/30 transition-all placeholder:text-white/20"
+                    className="w-full rounded-md border border-[var(--border-default)] bg-[var(--border-subtle)] pl-6 pr-2 py-1 text-[10px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-design)]/30 transition-all placeholder:text-[var(--text-quaternary)]"
                   />
                 </div>
               </div>
@@ -514,12 +514,12 @@ export function DesignWorkspace() {
               <div className="flex-1 overflow-y-auto py-1">
                 {filteredArtifacts.length === 0 ? (
                   <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-                    <Palette className="h-5 w-5 text-white/15" />
-                    <p className="text-[10px] text-white/30">No artifacts yet</p>
+                    <Palette className="h-5 w-5 text-[var(--text-quaternary)]" />
+                    <p className="text-[10px] text-[var(--text-tertiary)]">No artifacts yet</p>
                     {artifacts.length === 0 && (
                       <button
                         onClick={generateSample}
-                        className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-[9px] text-white/40 hover:text-white/60 hover:bg-white/[0.06] transition-all mt-1"
+                        className="rounded-lg border border-[var(--border-default)] bg-[var(--border-subtle)] px-3 py-1.5 text-[9px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all mt-1"
                       >
                         Import from Clipboard
                       </button>
@@ -534,14 +534,14 @@ export function DesignWorkspace() {
                         className={cn(
                           "w-full rounded-lg px-2.5 py-2 text-left transition-all group",
                           currentArtifactId === artifact.id
-                            ? "bg-purple-500/10 border border-purple-500/15"
-                            : "hover:bg-white/[0.03] border border-transparent",
+                            ? "bg-[var(--accent-design)]/10 border border-[var(--accent-design)]/15"
+                            : "hover:bg-[var(--border-subtle)] border border-transparent",
                         )}
                       >
                         <div className="flex items-center justify-between">
                           <span className={cn(
                             "text-[11px] font-medium truncate",
-                            currentArtifactId === artifact.id ? "text-purple-300" : "text-white/60 group-hover:text-white/80",
+                            currentArtifactId === artifact.id ? "text-[var(--accent-design)]" : "text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]",
                           )}>
                             {artifact.name}
                           </span>
@@ -550,17 +550,17 @@ export function DesignWorkspace() {
                             tabIndex={0}
                             onClick={(e) => { e.stopPropagation(); removeArtifact(artifact.id) }}
                             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); removeArtifact(artifact.id); } }}
-                            className="rounded p-0.5 text-white/20 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                            className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/10 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
                             aria-label={`Delete ${artifact.name}`}
                           >
                             <Trash2 className="h-2.5 w-2.5" />
                           </div>
                         </div>
                         {artifact.description && (
-                          <p className="text-[9px] text-white/30 mt-0.5 line-clamp-1">{artifact.description}</p>
+                          <p className="text-[9px] text-[var(--text-tertiary)] mt-0.5 line-clamp-1">{artifact.description}</p>
                         )}
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[8px] text-white/20 font-mono">
+                          <span className="text-[8px] text-[var(--text-quaternary)] font-mono">
                             {artifact.versions.length} version{artifact.versions.length !== 1 ? "s" : ""}
                           </span>
                           {artifact.tags.length > 0 && (
@@ -568,7 +568,7 @@ export function DesignWorkspace() {
                               {artifact.tags.slice(0, 2).map((tag) => (
                                 <span
                                   key={tag}
-                                  className="rounded bg-white/[0.04] px-1 py-px text-[7px] text-white/25"
+                                  className="rounded bg-[var(--border-subtle)] px-1 py-px text-[7px] text-[var(--text-quaternary)]"
                                 >
                                   {tag}
                                 </span>
@@ -589,7 +589,7 @@ export function DesignWorkspace() {
       {/* Toggle sidebar */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-r-md border border-white/[0.06] border-l-0 bg-[#0c0c0d] p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
+        className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-r-md border border-[var(--border-default)] border-l-0 bg-[var(--surface-panel)] p-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
         title="Toggle design browser"
       >
         {sidebarOpen ? <ChevronDown className="h-3 w-3 -rotate-90" /> : <ChevronRight className="h-3 w-3" />}
@@ -608,44 +608,44 @@ export function DesignWorkspace() {
           /* ── Artifact Content ── */
           <>
             {/* Artifact Header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.06] bg-[#0c0c0d]">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-default)] bg-[var(--surface-panel)]">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-purple-500/10 border border-purple-500/15">
-                  <Palette className="h-3 w-3 text-purple-400" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-[var(--accent-design)]/10 border border-[var(--accent-design)]/15">
+                  <Palette className="h-3 w-3 text-[var(--accent-design)]" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-semibold text-white/70 truncate">{currentArtifact.name}</span>
+                    <span className="text-[12px] font-semibold text-[var(--text-secondary)] truncate">{currentArtifact.name}</span>
                     {currentVersionData && (
-                      <span className="rounded-md bg-purple-500/10 px-1.5 py-0.5 text-[8px] font-mono text-purple-400/70 border border-purple-500/15">
+                      <span className="rounded-md bg-[var(--accent-design)]/10 px-1.5 py-0.5 text-[8px] font-mono text-[var(--accent-design)]/70 border border-[var(--accent-design)]/15">
                         v{currentVersionData.version}
                       </span>
                     )}
                     {currentArtifact.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[8px] text-white/30"
+                        className="rounded bg-[var(--border-subtle)] px-1.5 py-0.5 text-[8px] text-[var(--text-tertiary)]"
                       >
                         {tag}
                       </span>
                     ))}
                   </div>
                   {currentArtifact.description && (
-                    <p className="text-[9px] text-white/40 mt-0.5">{currentArtifact.description}</p>
+                    <p className="text-[9px] text-[var(--text-tertiary)] mt-0.5">{currentArtifact.description}</p>
                   )}
                 </div>
               </div>
 
               <div className="flex items-center gap-1">
                 {/* Preview mode toggles */}
-                <div className="flex items-center gap-0.5 mr-2 border-r border-white/[0.06] pr-2" role="radiogroup" aria-label="Preview mode">
+                <div className="flex items-center gap-0.5 mr-2 border-r border-[var(--border-default)] pr-2" role="radiogroup" aria-label="Preview mode">
                   <button
                     onClick={() => setPreviewMode("code")}
                     role="radio"
                     aria-checked={previewMode === "code"}
                     className={cn(
                       "rounded p-1 transition-all",
-                      previewMode === "code" ? "bg-white/[0.08] text-white/70" : "text-white/30 hover:text-white/60",
+                      previewMode === "code" ? "bg-[var(--border-default)] text-[var(--text-secondary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
                     )}
                     title="Code view"
                     aria-label="Code view"
@@ -658,7 +658,7 @@ export function DesignWorkspace() {
                     aria-checked={previewMode === "visual"}
                     className={cn(
                       "rounded p-1 transition-all",
-                      previewMode === "visual" ? "bg-white/[0.08] text-white/70" : "text-white/30 hover:text-white/60",
+                      previewMode === "visual" ? "bg-[var(--border-default)] text-[var(--text-secondary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
                     )}
                     title="Visual preview"
                     aria-label="Visual preview"
@@ -671,7 +671,7 @@ export function DesignWorkspace() {
                     aria-checked={previewMode === "split"}
                     className={cn(
                       "rounded p-1 transition-all",
-                      previewMode === "split" ? "bg-white/[0.08] text-white/70" : "text-white/30 hover:text-white/60",
+                      previewMode === "split" ? "bg-[var(--border-default)] text-[var(--text-secondary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
                     )}
                     title="Split view"
                     aria-label="Split view"
@@ -684,7 +684,7 @@ export function DesignWorkspace() {
                     aria-checked={previewMode === "live"}
                     className={cn(
                       "rounded p-1 transition-all",
-                      previewMode === "live" ? "bg-white/[0.08] text-white/70" : "text-white/30 hover:text-white/60",
+                      previewMode === "live" ? "bg-[var(--border-default)] text-[var(--text-secondary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
                     )}
                     title="Live browser preview"
                     aria-label="Live browser preview"
@@ -694,7 +694,7 @@ export function DesignWorkspace() {
                 </div>
 
                 {/* Device presets */}
-                <div className="flex items-center gap-0.5 mr-2 border-r border-white/[0.06] pr-2" role="radiogroup" aria-label="Device preset">
+                <div className="flex items-center gap-0.5 mr-2 border-r border-[var(--border-default)] pr-2" role="radiogroup" aria-label="Device preset">
                   {DEVICE_PRESETS.map((d) => {
                     const Icon = d.icon
                     const isActive = devicePreset.name === d.name
@@ -707,7 +707,7 @@ export function DesignWorkspace() {
                         aria-label={`${d.name} (${d.width}×${d.height})`}
                         className={cn(
                           "rounded p-1 transition-all",
-                          isActive ? "bg-white/[0.08] text-white/70" : "text-white/30 hover:text-white/60",
+                          isActive ? "bg-[var(--border-default)] text-[var(--text-secondary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
                         )}
                         title={`${d.name} (${d.width}×${d.height})`}
                       >
@@ -720,7 +720,7 @@ export function DesignWorkspace() {
                 {/* Actions */}
                 <button
                   onClick={handleExport}
-                  className="flex items-center gap-1 rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-[9px] text-white/40 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+                  className="flex items-center gap-1 rounded-md border border-[var(--border-default)] bg-[var(--border-subtle)] px-2 py-1 text-[9px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
                   title="Export code"
                   aria-label="Export design code"
                 >
@@ -730,7 +730,7 @@ export function DesignWorkspace() {
                 <button
                   onClick={handleRegenerate}
                   disabled={regenerating}
-                  className="flex items-center gap-1 rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-[9px] text-white/40 hover:text-white/60 hover:bg-white/[0.06] transition-all disabled:opacity-40"
+                  className="flex items-center gap-1 rounded-md border border-[var(--border-default)] bg-[var(--border-subtle)] px-2 py-1 text-[9px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all disabled:opacity-40"
                   title="Regenerate with AI"
                   aria-label="Regenerate design with AI"
                 >
@@ -744,7 +744,7 @@ export function DesignWorkspace() {
                 <button
                   onClick={handleApplyToCode}
                   disabled={applyToCode.isApplying || !currentVersionData}
-                  className="flex items-center gap-1 rounded-md border border-purple-500/20 bg-purple-500/10 px-2.5 py-1 text-[9px] text-purple-400 hover:bg-purple-500/20 transition-all disabled:opacity-40"
+                  className="flex items-center gap-1 rounded-md border border-[var(--accent-design)]/20 bg-[var(--accent-design)]/10 px-2.5 py-1 text-[9px] text-[var(--accent-design)] hover:bg-[var(--accent-design)]/20 transition-all disabled:opacity-40"
                   title="Apply design to codebase"
                   aria-label={applyToCode.isApplying ? "Applying design to code..." : "Apply design to codebase"}
                 >
@@ -768,25 +768,25 @@ export function DesignWorkspace() {
                   className={cn(
                     "border-b px-4 py-2 text-[10px]",
                     applyToCode.result === "success"
-                      ? "border-green-500/15 bg-green-500/[0.03]"
-                      : "border-red-500/15 bg-red-500/[0.03]",
+                      ? "border-[var(--accent-diff)]/15 bg-[var(--accent-diff)]/[0.03]"
+                      : "border-[var(--color-accent-red)]/15 bg-[var(--color-accent-red)]/[0.03]",
                   )}
                 >
                   <div className="flex items-center gap-2">
                     {applyToCode.result === "success" ? (
                       <>
-                        <CheckCircle2 className="h-3 w-3 text-green-400" />
-                        <span className="text-green-400">{applyToCode.progress}</span>
+                        <CheckCircle2 className="h-3 w-3 text-[var(--accent-diff)]" />
+                        <span className="text-[var(--accent-diff)]">{applyToCode.progress}</span>
                       </>
                     ) : (
                       <>
-                        <AlertCircle className="h-3 w-3 text-red-400" />
-                        <span className="text-red-400">{applyToCode.errorMessage || applyToCode.progress}</span>
+                        <AlertCircle className="h-3 w-3 text-[var(--color-accent-red)]" />
+                        <span className="text-[var(--color-accent-red)]">{applyToCode.errorMessage || applyToCode.progress}</span>
                       </>
                     )}
                     <button
                       onClick={resetApplyToCode}
-                      className="ml-auto rounded p-0.5 text-white/30 hover:text-white/60"
+                      className="ml-auto rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -800,7 +800,7 @@ export function DesignWorkspace() {
               {previewMode === "live" ? (
                 /* ── Live browser preview (merged from PreviewPane) ── */
                 <div className="flex-1 flex flex-col overflow-hidden">
-                  <Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading preview...</div>}>
+                  <Suspense fallback={<div className="flex-1 flex items-center justify-center text-[var(--text-tertiary)] text-xs">Loading preview...</div>}>
                     <PreviewPane />
                   </Suspense>
                 </div>
@@ -812,11 +812,11 @@ export function DesignWorkspace() {
                       "flex flex-col overflow-hidden",
                       previewMode === "split" ? "flex-1" : "w-full",
                     )}>
-                      <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.06] bg-[#0c0c0d]">
-                        <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">Code</span>
+                      <div className="flex items-center justify-between px-3 py-1 border-b border-[var(--border-default)] bg-[var(--surface-panel)]">
+                        <span className="text-[9px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">Code</span>
                         <button
                           onClick={() => copyToClipboard(currentVersionData.code)}
-                          className="rounded p-0.5 text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+                          className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
                           title="Copy code"
                         >
                           <Copy className="h-2.5 w-2.5" />
@@ -846,17 +846,17 @@ export function DesignWorkspace() {
                     <div className={cn(
                       "flex flex-col overflow-hidden",
                       previewMode === "split"
-                        ? "flex-1 border-l border-white/[0.06]"
+                        ? "flex-1 border-l border-[var(--border-default)]"
                         : "w-full",
                       previewMode === "visual" ? "border-l-0" : "",
                     )}>
-                      <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.06] bg-[#0c0c0d]">
-                        <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">Preview</span>
-                        <span className="text-[8px] text-white/20 font-mono">{devicePreset.width}×{devicePreset.height}</span>
+                      <div className="flex items-center justify-between px-3 py-1 border-b border-[var(--border-default)] bg-[var(--surface-panel)]">
+                        <span className="text-[9px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">Preview</span>
+                        <span className="text-[8px] text-[var(--text-quaternary)] font-mono">{devicePreset.width}×{devicePreset.height}</span>
                       </div>
-                      <div className="flex-1 overflow-auto bg-muted/20 flex items-start justify-center p-4">
+                      <div className="flex-1 overflow-auto bg-[var(--border-subtle)] flex items-start justify-center p-4">
                         {currentVersionData ? (
-                          <div className="relative transition-all duration-200 overflow-hidden rounded-lg border border-white/[0.06]"
+                          <div className="relative transition-all duration-200 overflow-hidden rounded-lg border border-[var(--border-default)]"
                             style={{ width: Math.min(devicePreset.width, 750), height: Math.min(devicePreset.height, 500) }}
                           >
                             {previewLoading && (
@@ -865,15 +865,15 @@ export function DesignWorkspace() {
                             <iframe
                               srcDoc={htmlPreviewSrc}
                               title="Design Preview"
-                              className="w-full h-full bg-[#0a0a0b]"
+                              className="w-full h-full bg-[var(--surface-app)]"
                               sandbox="allow-scripts"
                               onLoad={() => setPreviewLoading(false)}
                             />
                           </div>
                         ) : (
                           <div className="flex flex-col items-center gap-2 pt-16">
-                            <EyeOff className="h-5 w-5 text-white/15" />
-                            <p className="text-[10px] text-white/30">No version data to preview</p>
+                            <EyeOff className="h-5 w-5 text-[var(--text-quaternary)]" />
+                            <p className="text-[10px] text-[var(--text-tertiary)]">No version data to preview</p>
                           </div>
                         )}
                       </div>
@@ -885,7 +885,7 @@ export function DesignWorkspace() {
 
             {/* Bottom: Version timeline */}
             {currentArtifact.versions.length > 0 && (
-              <div className="border-t border-white/[0.06] bg-[#0c0c0d]">
+              <div className="border-t border-[var(--border-default)] bg-[var(--surface-panel)]">
                 <div className="flex items-center gap-2 overflow-x-auto px-3 py-1.5">
                   {currentArtifact.versions.map((v) => {
                     const isCurrent = v.version === currentArtifact.currentVersion
@@ -896,14 +896,14 @@ export function DesignWorkspace() {
                         className={cn(
                           "flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] transition-all whitespace-nowrap",
                           isCurrent
-                            ? "bg-purple-500/10 border border-purple-500/15 text-purple-400"
-                            : "border border-transparent text-white/40 hover:text-white/60 hover:bg-white/[0.04]",
+                            ? "bg-[var(--accent-design)]/10 border border-[var(--accent-design)]/15 text-[var(--accent-design)]"
+                            : "border border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]",
                         )}
                       >
                         <Clock className="h-2.5 w-2.5" />
                         <span className="font-mono font-medium">v{v.version}</span>
-                        <span className="text-[8px] text-white/30">{v.label}</span>
-                        {isCurrent && <span className="h-1 w-1 rounded-full bg-purple-500" />}
+                        <span className="text-[8px] text-[var(--text-tertiary)]">{v.label}</span>
+                        {isCurrent && <span className="h-1 w-1 rounded-full bg-[var(--accent-design)]" />}
                       </button>
                     )
                   })}

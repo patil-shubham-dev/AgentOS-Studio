@@ -41,12 +41,17 @@ export function SearchBar({ value, onChange, onClear, onFocus, placeholder = "Se
   }, [])
 
   return (
-    <div className="px-2 py-1.5 border-b border-white/[0.04]">
-      <div className={cn(
-        "flex items-center gap-1.5 rounded-md px-2 py-1 transition-all duration-100 border",
-        focused ? "border-blue-500/40 bg-white/[0.04]" : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1]",
-      )}>
-        <Search className="h-3 w-3 shrink-0 text-white/25" />
+    <div style={{ borderBottom: "1px solid var(--border-subtle)", padding: "6px 8px" }}>
+      <div
+        className={cn(
+          "flex items-center gap-1.5 rounded-md px-2 py-1 transition-all duration-100 border",
+        )}
+        style={{
+          border: focused ? "1px solid var(--color-accent-brand)" : "1px solid var(--border-default)",
+          background: focused ? "var(--border-default)" : "var(--border-subtle)",
+        }}
+      >
+        <Search className="h-3 w-3 shrink-0" style={{ color: "var(--text-quaternary)" }} />
         <input
           ref={inputRef}
           value={value}
@@ -55,14 +60,22 @@ export function SearchBar({ value, onChange, onClear, onFocus, placeholder = "Se
           onFocus={() => { setFocused(true); onFocus?.() }}
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
-          className="flex-1 bg-transparent text-[11px] text-white/70 outline-none placeholder:text-white/20 min-w-0"
+          className="flex-1 bg-transparent text-[11px] outline-none min-w-0"
+          style={{ color: "var(--text-primary)", outline: "none" }}
         />
         {value && (
-          <button onClick={onClear} className="rounded p-0.5 text-white/20 hover:text-white/50 hover:bg-white/[0.06] transition-all">
+          <button
+            onClick={onClear}
+            className="rounded p-0.5 transition-all"
+            style={{ color: "var(--text-quaternary)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; e.currentTarget.style.background = "var(--border-default)" }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-quaternary)"; e.currentTarget.style.background = "transparent" }}
+          >
             <X className="h-2.5 w-2.5" />
           </button>
         )}
-        <kbd className="text-[8px] font-mono text-white/15 bg-white/[0.04] px-1 rounded shrink-0">^P</kbd>
+        <kbd className="text-[8px] font-mono px-1 rounded shrink-0"
+          style={{ color: "var(--text-quaternary)", background: "var(--border-subtle)" }}>^P</kbd>
       </div>
     </div>
   )

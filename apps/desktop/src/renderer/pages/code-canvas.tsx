@@ -726,18 +726,18 @@ export function CodeCanvasPage() {
       {(runtimeStatus === "uninitialized" || runtimeStatus === "error" || (runtimeStatus === "ready" && !runtimeReady && rootPath) || (hasStaleConfig && runtimeReady)) && (
         <div className={cn(
           "flex items-center gap-2 border-b px-3 py-1.5 text-[10px]",
-          runtimeStatus === "error" ? "border-red-500/15 bg-red-500/[0.03] text-red-400" :
-          hasStaleConfig ? "border-yellow-500/15 bg-yellow-500/[0.03] text-yellow-400" :
-          runtimeStatus === "uninitialized" ? "border-white/[0.04] bg-white/[0.02] text-white/50" :
-          "border-amber-500/10 bg-amber-500/[0.02] text-amber-400",
+          runtimeStatus === "error" ? "border-[var(--color-accent-red)]/15 bg-[var(--color-accent-red)]/[0.03] text-[var(--color-accent-red)]" :
+          hasStaleConfig ? "border-[var(--color-accent-amber)]/15 bg-[var(--color-accent-amber)]/[0.03] text-[var(--color-accent-amber)]" :
+          runtimeStatus === "uninitialized" ? "border-[var(--border-subtle)] bg-[var(--border-subtle)] text-[var(--text-tertiary)]" :
+          "border-[var(--color-accent-amber)]/10 bg-[var(--color-accent-amber)]/[0.02] text-[var(--color-accent-amber)]",
         )}>
           {runtimeStatus === "uninitialized" && <><Loader2 className="h-2.5 w-2.5 animate-spin mr-1" />Initializing runtime...</>}
-          {runtimeStatus === "error" && <><XCircle className="h-3 w-3 mr-1 shrink-0" />{runtimeError}<Button variant="outline" size="sm" className="h-5 text-[9px] ml-auto border-red-500/20 text-red-400" onClick={initializeRuntime}>Retry</Button></>}
+          {runtimeStatus === "error" && <><XCircle className="h-3 w-3 mr-1 shrink-0" />{runtimeError}<Button variant="outline" size="sm" className="h-5 text-[9px] ml-auto border-[var(--color-accent-red)]/20 text-[var(--color-accent-red)]" onClick={initializeRuntime}>Retry</Button></>}
           {runtimeStatus === "ready" && !runtimeReady && rootPath && (
             <>Add a provider in Settings to start the AI assistant.</>
           )}
           {hasStaleConfig && runtimeReady && (
-            <>Configuration changed — <button onClick={() => refreshRuntime()} className="underline font-medium hover:text-yellow-200">refresh now</button></>
+            <>Configuration changed — <button onClick={() => refreshRuntime()} className="underline font-medium hover:text-[var(--color-accent-amber)]">refresh now</button></>
           )}
         </div>
       )}
@@ -777,23 +777,23 @@ export function CodeCanvasPage() {
       {/* PANEL 1: Chat — flex-1, shrinks when explorer opens */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0" role="region" aria-label="Chat panel">
         {/* Chat header bar — minimal */}
-        <div className="flex items-center justify-between px-2 py-1 border-b border-white/[0.06] bg-[#0c0c0d]">
+        <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--border-default)] bg-[var(--surface-panel)]">
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setExplorerOpen(!explorerOpen)}
-                className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+                className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
                 title="Toggle explorer (⌘B)"
               >
                 {explorerOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
               </button>
-              <span className="text-[10px] font-medium text-white/25">Chat</span>
+              <span className="text-[10px] font-medium text-[var(--text-quaternary)]">Chat</span>
               {/* Runtime dot */}
               <span className={cn(
                 "inline-block h-1.5 w-1.5 rounded-full",
-                runtimeReady && runtimeHealth === "healthy" ? "bg-green-500" :
-                runtimeStatus === "error" ? "bg-red-500" :
-                runtimeStatus === "initializing" ? "bg-blue-400 animate-pulse" :
-                "bg-white/20"
+                runtimeReady && runtimeHealth === "healthy" ? "bg-[var(--color-accent-green)]" :
+                runtimeStatus === "error" ? "bg-[var(--color-accent-red)]" :
+                runtimeStatus === "initializing" ? "bg-[var(--color-accent-blue)] animate-pulse" :
+                "bg-[var(--text-quaternary)]"
               )} title={runtimeReady ? "Runtime ready" : runtimeError || runtimeMessage || "Initializing"} />
             </div>
 
@@ -807,8 +807,8 @@ export function CodeCanvasPage() {
                 className={cn(
                   "rounded p-0.5 transition-all",
                   editorMode === "diff"
-                    ? "text-blue-400 bg-blue-500/10"
-                    : "text-white/30 hover:text-white/60 hover:bg-white/[0.06]"
+                    ? "text-[var(--color-accent-blue)] bg-[var(--color-accent-blue)]/10"
+                    : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]"
                 )}
                 title="Toggle diff viewer"
               >
@@ -822,7 +822,7 @@ export function CodeCanvasPage() {
                   setWorkspacePanelOpen(next)
                   panelCtrlRef.current?.syncOpenState(next)
                 }}
-                className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+                className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
                 title="Toggle workspace panel (⌘J)"
               >
                 {workspacePanelOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
@@ -846,18 +846,18 @@ export function CodeCanvasPage() {
         )}
 
         {/* PANEL 2: Workspace Panel — Code/Browser/Design */}
-        <div
-          style={{ width: workspacePanelOpen ? workspacePanelWidth : 0 }}
+        <motion.div
+          animate={{ width: workspacePanelOpen ? workspacePanelWidth : 0 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           className={cn(
-            "flex-shrink-0 flex flex-col overflow-hidden bg-[#0a0a0b] min-h-0",
-            "transition-[width] duration-[180ms] ease-out",
-            workspacePanelOpen && "border-l border-white/[0.06]",
+            "flex-shrink-0 flex flex-col overflow-hidden bg-[var(--surface-app)] min-h-0",
+            workspacePanelOpen && "border-l border-[var(--border-default)]",
           )}
           role="region"
           aria-label="Workspace panel"
         >
           {/* Pane toggle bar */}
-          <div className="flex items-center bg-[#0c0c0d] border-b border-white/[0.04] px-1.5 overflow-x-auto shrink-0">
+          <div className="flex items-center bg-[var(--surface-panel)] border-b border-[var(--border-subtle)] px-1.5 overflow-x-auto shrink-0">
             {WORKSPACE_PANEL_OPTIONS.map((opt) => {
               const Icon = opt.icon
               const pane = panes.find((p) => p.type === opt.id)
@@ -879,11 +879,11 @@ export function CodeCanvasPage() {
                   className={cn(
                     "flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-all duration-150 shrink-0 border-b-2 border-transparent active:scale-95",
                     visible
-                      ? "text-white border-blue-500"
-                      : "text-white/30 hover:text-white/50 hover:border-white/10"
+                      ? "text-[var(--text-primary)] border-[var(--accent-code)]"
+                      : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--border-hover)]"
                   )}
                 >
-                  <Icon className={cn("h-3.5 w-3.5", visible ? "text-blue-400" : "text-white/30")} />
+                  <Icon className={cn("h-3.5 w-3.5", visible ? "text-[var(--accent-code)]" : "text-[var(--text-tertiary)]")} />
                   <span>{opt.label}</span>
                 </button>
               )
@@ -894,7 +894,7 @@ export function CodeCanvasPage() {
           <div className="flex-1 overflow-hidden min-h-0">
             <PaneContainer panes={paneConfigs} />
           </div>
-        </div>
+        </motion.div>
 
       </div>
 
@@ -903,7 +903,7 @@ export function CodeCanvasPage() {
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             className="flex flex-col items-center gap-5 max-w-sm w-full"
           >
             <div className="relative h-16 w-16">
@@ -911,38 +911,38 @@ export function CodeCanvasPage() {
                 <motion.rect
                   x="8" y="12" width="48" height="40" rx="4"
                   stroke="currentColor" strokeWidth="1.5" fill="none"
-                  className="text-blue-400/40"
+                  className="text-[var(--accent-code)]/40"
                   initial={{ pathLength: 0, opacity: 0 }}
                   animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.6, ease: "easeOut" }}
+                  transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
                 />
                 <motion.path
                   d="M22 28L18 32L22 36"
                   stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                  className="text-blue-400"
+                  className="text-[var(--accent-code)]"
                   initial={{ pathLength: 0, opacity: 0 }}
                   animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.4, delay: 0.4 }}
+                  transition={{ duration: 0.4, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
                 />
                 <motion.path
                   d="M42 28L46 32L42 36"
                   stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                  className="text-cyan-400"
+                  className="text-[var(--accent-browser)]"
                   initial={{ pathLength: 0, opacity: 0 }}
                   animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.4, delay: 0.6 }}
+                  transition={{ duration: 0.4, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
                 />
                 <motion.path
                   d="M34 22L30 42"
                   stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                  className="text-purple-400"
+                  className="text-[var(--accent-design)]"
                   initial={{ pathLength: 0, opacity: 0 }}
                   animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.3, delay: 0.8 }}
+                  transition={{ duration: 0.3, delay: 0.8, ease: [0.16, 1, 0.3, 1] }}
                 />
                 <motion.circle
                   cx="32" cy="32" r="2"
-                  fill="currentColor" className="text-blue-400"
+                  fill="currentColor" className="text-[var(--accent-code)]"
                   initial={{ scale: 0, opacity: 0 }}
                   animate={{ scale: 1, opacity: 0.3 }}
                   transition={{ duration: 0.3, delay: 0.3 }}
@@ -950,21 +950,21 @@ export function CodeCanvasPage() {
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-white/70">No workspace open</h2>
-              <p className="text-sm text-white/30 mt-1.5 max-w-xs mx-auto leading-relaxed">
+              <h2 className="text-lg font-semibold text-[var(--text-secondary)]">No workspace open</h2>
+              <p className="text-sm text-[var(--text-tertiary)] mt-1.5 max-w-xs mx-auto leading-relaxed">
                 Open a project folder to start coding with AI-powered file context, safe edit reviews, and intelligent assistance.
               </p>
             </div>
             <button
               onClick={openWorkspace}
-              className="flex items-center gap-2 rounded-xl bg-blue-500/15 border border-blue-500/20 px-5 py-2.5 text-sm font-medium text-blue-400 hover:bg-blue-500/25 transition-all"
+              className="flex items-center gap-2 rounded-xl bg-[var(--accent-code)]/15 border border-[var(--accent-code)]/20 px-5 py-2.5 text-sm font-medium text-[var(--accent-code)] hover:bg-[var(--accent-code)]/25 transition-all"
             >
               <FolderOpen className="h-4 w-4" />
               Open Workspace
             </button>
-            <p className="text-[10px] text-white/20">Or drag and drop a folder onto the window</p>
-            <div className="w-full pt-3 border-t border-white/[0.04]">
-              <p className="text-[9px] font-medium text-white/15 uppercase tracking-wider mb-2">Keyboard Shortcuts</p>
+            <p className="text-[10px] text-[var(--text-quaternary)]">Or drag and drop a folder onto the window</p>
+            <div className="w-full pt-3 border-t border-[var(--border-subtle)]">
+              <p className="text-[9px] font-medium text-[var(--text-quaternary)] uppercase tracking-wider mb-2">Keyboard Shortcuts</p>
               <div className="space-y-1">
                 {[
                   { keys: "⌘P", desc: "Quick open" },
@@ -975,8 +975,8 @@ export function CodeCanvasPage() {
                   { keys: "⌘W", desc: "Close tab" },
                 ].map(({ keys, desc }) => (
                   <div key={keys} className="flex items-center justify-between">
-                    <span className="text-[10px] text-white/20">{desc}</span>
-                    <kbd className="text-[9px] font-mono text-white/15 bg-white/[0.04] px-1.5 py-0.5 rounded">{keys}</kbd>
+                    <span className="text-[10px] text-[var(--text-quaternary)]">{desc}</span>
+                    <kbd className="text-[9px] font-mono text-[var(--text-quaternary)] bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">{keys}</kbd>
                   </div>
                 ))}
               </div>

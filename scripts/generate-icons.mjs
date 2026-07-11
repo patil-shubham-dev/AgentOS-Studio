@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
 
-const logoSvg = join(root, 'src/renderer/assets/branding/logo.svg')
+const logoSvg = join(root, 'apps/desktop/src/renderer/assets/branding/logo.svg')
 const outDir = join(root, 'resources/branding')
 
 mkdirSync(outDir, { recursive: true })

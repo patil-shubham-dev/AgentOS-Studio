@@ -244,6 +244,9 @@ const api = {
   verificationRunStage: (stage: string, command: string) => ipcRenderer.invoke('verification:run-stage', stage, command),
   verificationAutoFix: () => ipcRenderer.invoke('verification:auto-fix'),
 
+  // Instruction files (agent-instructions/ prompt library)
+  readInstructionFile: (instructionPath: string) => ipcRenderer.invoke('read-instruction-file', instructionPath),
+
   // File path utility (for drag-and-drop)
   getPathForFile: (file: File) => {
     try { return webUtils.getPathForFile(file) } catch { console.warn("[Preload] getPathForFile failed"); return null }

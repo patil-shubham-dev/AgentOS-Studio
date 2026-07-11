@@ -64,7 +64,7 @@ function ResizeHandle({
       <div
         className={cn(
           "absolute transition-all duration-200 rounded-full",
-          hovered ? "bg-blue-500/50" : "bg-transparent",
+          hovered ? "bg-[var(--accent-code)]/50" : "bg-transparent",
           direction === "horizontal"
             ? "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-[3px]"
             : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-[3px]",
@@ -285,10 +285,10 @@ export function PaneContainer({ panes }: { panes: PaneConfig[] }) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="flex flex-col items-center gap-3 text-center max-w-[200px]">
-          <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-            <PanelRightClose className="h-5 w-5 text-white/20" />
+          <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-[var(--border-subtle)] border border-[var(--border-default)]">
+            <PanelRightClose className="h-5 w-5 text-[var(--text-quaternary)]" />
           </div>
-          <p className="text-xs text-white/20 leading-relaxed">
+          <p className="text-xs text-[var(--text-quaternary)] leading-relaxed">
             Open a pane from the toolbar above to see its contents here
           </p>
         </div>
@@ -333,30 +333,30 @@ export function Pane({
   return (
     <div
       className={cn(
-        "flex flex-col h-full min-h-0 bg-[#0a0a0b] relative",
-        isFocused && "ring-1 ring-blue-500/15",
+        "flex flex-col h-full min-h-0 bg-[var(--surface-app)] relative",
+        isFocused && "ring-1 ring-[var(--accent-code)]/15",
       )}
       onClick={() => focusPane(id)}
       tabIndex={-1}
     >
-      <div className="flex items-center justify-between px-1 py-1 border-b border-white/[0.04] shrink-0 group bg-[#0c0c0d]/80 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-1 py-1 border-b border-[var(--border-subtle)] shrink-0 group bg-[var(--surface-panel)]/80 backdrop-blur-sm">
         <div className="flex items-center gap-1 min-w-0">
           {dragHandleProps && (
             <button
               {...dragHandleProps}
-              className="cursor-grab active:cursor-grabbing rounded p-0.5 text-white/15 hover:text-white/50 hover:bg-white/[0.06] transition-all shrink-0"
+              className="cursor-grab active:cursor-grabbing rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all shrink-0"
               title="Drag to reorder pane"
               onClick={(event) => event.stopPropagation()}
             >
               <GripVertical className="h-3 w-3" />
             </button>
           )}
-          {icon && <span className="text-white/30 shrink-0">{icon}</span>}
-          <span className="text-[10px] font-medium text-white/25 uppercase tracking-widest truncate">
+          {icon && <span className="text-[var(--text-tertiary)] shrink-0">{icon}</span>}
+          <span className="text-[10px] font-medium text-[var(--text-quaternary)] uppercase tracking-widest truncate">
             {title}
           </span>
           {badge != null && (
-            <span className="inline-flex items-center justify-center h-3.5 min-w-[14px] px-1 rounded-full bg-blue-500/20 text-[8px] font-semibold text-blue-400 leading-none">
+            <span className="inline-flex items-center justify-center h-3.5 min-w-[14px] px-1 rounded-full bg-[var(--accent-code)]/20 text-[8px] font-semibold text-[var(--accent-code)] leading-none">
               {badge}
             </span>
           )}
@@ -369,7 +369,7 @@ export function Pane({
                 event.stopPropagation()
                 onClose()
               }}
-              className="rounded p-0.5 text-white/20 hover:text-white/50 hover:bg-white/[0.06] active:scale-90 transition-all duration-150"
+              className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] active:scale-90 transition-all duration-150"
             >
               <X className="h-3 w-3" />
             </button>

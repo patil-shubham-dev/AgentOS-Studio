@@ -50,16 +50,16 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
   },
   coding: {
     patterns: [
-      /implement|write|create|build|develop|\bprogram\b|\bcode\b/i,
-      /make|fix|debug|bug|error|crash|broken|issue|repair/i,
-      /refactor|rewrite|restructure|optimize|clean.?up/i,
-      /add feature|new feature|function|class|component|module/i,
-      /typescript|javascript|react|vue|angular|node|python|rust|go|java/i,
-      /html|css|scss|less|style|design|layout|ui|ux/i,
-      /website|webpage|web page|page|site|app|application/i,
-      /component|element|button|form|input|menu|nav|header|footer|section/i,
-      /algorithm|data structure|api endpoint|route|handler|service/i,
-      /unit test|integration test|test case|test suite/i,
+      /\b(implement|write|create|build|develop|program|code)\b/i,
+      /\b(make|fix|debug|bug|error|crash|broken|issue|repair)\b/i,
+      /\b(refactor|rewrite|restructure|optimize|clean.?up)\b/i,
+      /\b(add feature|new feature|function|class|component|module)\b/i,
+      /\b(typescript|javascript|react|vue|angular|node|python|rust|go|java)\b/i,
+      /\b(html|css|scss|less|style|design|layout|ui|ux)\b/i,
+      /\b(website|webpage|web page|page|site|app|application)\b/i,
+      /\b(component|element|button|form|input|menu|nav|header|footer|section)\b/i,
+      /\b(algorithm|data structure|api endpoint|route|handler|service)\b/i,
+      /\b(unit test|integration test|test case|test suite)\b/i,
     ],
     roles: ["coder"],
     delegatable: true,
@@ -67,7 +67,7 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
   "ui-analysis": {
     patterns: [
       /screenshot|visual|ui analysis|render|layout|style|css/i,
-      /looks? (like|at|wrong|off|good|bad)/i,
+      /\blooks?\s+(like|wrong|off|good|bad)\b/i,
       /design review|ui review|visual review/i,
     ],
     roles: ["vision"],
@@ -109,8 +109,8 @@ const INTENT_PATTERNS: Record<IntentCategory, { patterns: RegExp[]; roles: Runti
     patterns: [
       /navigate to|go to|open website|browse|visit/i,
       /scrape|extract.*data|crawl/i,
-      /click on|fill form|submit|login/i,
-      /automation|e2e test|playwright|puppeteer/i,
+      /\b(click on|fill (?:a )?form|submit)\b/i,
+      /\b(automate|automation|e2e test|playwright|puppeteer)\b/i,
     ],
     roles: ["browser"],
     delegatable: true,
@@ -164,7 +164,21 @@ export function classifyIntent(input: string): {
 } {
   const trimmed = input.trim()
 
-  for (const [category, config] of Object.entries(INTENT_PATTERNS)) {
+  // Specific, externally visible intents take precedence over broad coding
+  // vocabulary. This prevents incidental substrings such as "app" in
+  // "approaches" or "nav" in "navigate" from hijacking routing.
+  const categoryOrder: IntentCategory[] = [
+    "conversation",
+    "browser-task",
+    "research",
+    "ui-analysis",
+    "execution",
+    "planning",
+    "multi-agent",
+    "coding",
+  ]
+  for (const category of categoryOrder) {
+    const config = INTENT_PATTERNS[category]
     for (const pattern of config.patterns) {
       if (pattern.test(trimmed)) {
         return { category: category as IntentCategory, confidence: 0.8 }
@@ -179,6 +193,10 @@ export function classifyIntent(input: string): {
         return { category: "conversation", confidence: 0.9 }
       }
     }
+  }
+
+  if (/^does this work$/i.test(trimmed)) {
+    return { category: "conversation", confidence: 0.7 }
   }
 
   if (wordCount < 4) {
@@ -219,7 +237,13 @@ export function route(
     /\b(html|css|javascript|typescript|react|vue|node|python|rust|go|java|webpage|website|page|site|app|application)\b/i.test(input) ||
     /\banalyz|\banalys|\bexplor|\bexamin|\binvestigat/i.test(input)
 
-  if (isCodingIntent) {
+  const isExplicitNonCodingIntent =
+    category === "browser-task" ||
+    (category === "execution" && /\b(run|execute|start|launch|deploy|command|terminal|shell|script|bash|powershell|compile|transpile|bundle|package|install)\b/i.test(input)) ||
+    category === "ui-analysis" ||
+    category === "planning"
+
+  if (isCodingIntent && !isExplicitNonCodingIntent) {
     const coderAvailable = wiredRoles.includes("coder" as RuntimeRole)
     if (coderAvailable) {
       return {

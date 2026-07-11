@@ -128,6 +128,7 @@ declare global {
       sandboxExec: (opts: { command: string; args: string[]; cwd: string; policy: { readPaths: string[]; writePaths: string[]; network: boolean; execPaths: string[]; maxMemory?: number; maxProcesses?: number; timeout?: number }; env?: string[] }) => Promise<{ pid: number; error?: string }>
       on: (channel: string, cb: (...args: unknown[]) => void) => (() => void) | undefined
       getPathForFile: (file: File) => string | null
+      readInstructionFile: (instructionPath: string) => Promise<string>
       replayInit: () => Promise<{ sessionCount: number; orphanedCount: number }>
       replayAppendEvent: (sessionId: string, line: string) => Promise<void>
       replayAppendBatch: (sessionId: string, lines: string[]) => Promise<void>
@@ -161,6 +162,7 @@ export function invoke<T = unknown>(cmd: string, args?: Record<string, unknown>)
       case 'get_app_paths': return eapi.getAppPaths()
       case 'save_layout': return eapi.saveLayout(args?.layout as string)
       case 'load_layout': return eapi.loadLayout()
+      case 'read_instruction_file': return eapi.readInstructionFile(args?.instructionPath as string)
       case 'read_text_file': return eapi.readTextFile(args?.path as string)
       case 'write_text_file': return eapi.writeTextFile(args?.path as string, args?.content as string)
       case 'file_exists': return eapi.fileExists(args?.path as string)

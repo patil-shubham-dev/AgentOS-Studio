@@ -36,22 +36,22 @@ function StreamingProgress({ tokenCount, text }: { tokenCount: number; text: str
   return (
     <div className="p-3 space-y-2">
       <div className="flex items-center gap-2 mb-2">
-        <Loader2 className="h-3.5 w-3.5 text-blue-400 animate-spin" />
-        <span className="text-[11px] text-blue-400 font-medium">Generating edit...</span>
-        <span className="text-[9px] text-white/30 font-mono ml-auto">{tokenCount} chars</span>
+        <Loader2 className="h-3.5 w-3.5 text-[var(--accent-code)] animate-spin" />
+        <span className="text-[11px] text-[var(--accent-code)] font-medium">Generating edit...</span>
+        <span className="text-[9px] text-[var(--text-tertiary)] font-mono ml-auto">{tokenCount} chars</span>
       </div>
-      <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+      <div className="h-1 rounded-full bg-[var(--border-default)] overflow-hidden">
         <motion.div
-          className="h-full bg-blue-500/50 rounded-full"
+          className="h-full bg-[var(--accent-code)]/50 rounded-full"
           animate={{ width: ["20%", "60%", "40%", "80%"] }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         />
       </div>
       {lines.length > 0 && (
-        <div className="max-h-24 overflow-y-auto rounded-lg bg-white/[0.03] p-2 font-mono text-[10px] text-white/50 leading-relaxed">
-          <span className="text-green-400/60">+ </span>
+        <div className="max-h-24 overflow-y-auto rounded-lg bg-[var(--border-subtle)] p-2 font-mono text-[10px] text-[var(--text-secondary)] leading-relaxed">
+          <span className="text-[var(--accent-diff)]/60">+ </span>
           {text}
-          <span className="animate-pulse text-blue-400">▌</span>
+          <span className="animate-pulse text-[var(--accent-code)]">▌</span>
         </div>
       )}
     </div>
@@ -62,13 +62,13 @@ function LoadingSkeleton() {
   return (
     <div className="p-4 space-y-2">
       <div className="flex items-center gap-2 mb-3">
-        <Loader2 className="h-3.5 w-3.5 text-blue-400 animate-spin" />
-        <span className="text-[11px] text-blue-400 font-medium">Generating edit...</span>
+        <Loader2 className="h-3.5 w-3.5 text-[var(--accent-code)] animate-spin" />
+        <span className="text-[11px] text-[var(--accent-code)] font-medium">Generating edit...</span>
       </div>
       {[80, 60, 90, 45, 70].map((w, i) => (
         <motion.div
           key={i}
-          className="h-3 rounded bg-white/[0.06]"
+          className="h-3 rounded bg-[var(--border-default)]"
           style={{ width: `${w}%` }}
           animate={{ opacity: [0.3, 0.6, 0.3] }}
           transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut", delay: i * 0.15 }}
@@ -81,7 +81,7 @@ function LoadingSkeleton() {
 function SkeletonBar({ width }: { width: string }) {
   return (
     <motion.div
-      className="h-3 rounded bg-white/[0.06]"
+      className="h-3 rounded bg-[var(--border-default)]"
       style={{ width }}
       animate={{ opacity: [0.3, 0.6, 0.3] }}
       transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
@@ -207,17 +207,17 @@ export function InlineEditOverlay({
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
         className="pointer-events-auto w-full max-w-lg mx-4"
       >
-        <div className="rounded-xl border border-white/[0.08] bg-[#0c0c0d]/95 backdrop-blur-xl shadow-2xl shadow-black/50 overflow-hidden">
+        <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-panel)]/95 backdrop-blur-xl shadow-2xl shadow-black/50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06]">
             <div className="flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-              <span className="text-[11px] font-medium text-white/70">Inline AI Edit</span>
-              <span className="text-[9px] text-white/30 px-1.5 py-0.5 rounded bg-white/[0.04] font-mono">{language}</span>
+              <span className="text-[11px] font-medium text-[var(--text-primary)]">Inline AI Edit</span>
+              <span className="text-[9px] text-[var(--text-tertiary)] px-1.5 py-0.5 rounded bg-[var(--border-subtle)] font-mono">{language}</span>
             </div>
             <button
               onClick={() => { abortRef.current?.abort(); onClose() }}
-              className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all"
+              className="rounded p-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -232,15 +232,15 @@ export function InlineEditOverlay({
           {/* Error */}
           {state.error && !loading && !streaming && (
             <div className="p-3">
-              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
-                <div className="flex items-center gap-2 text-red-400 text-[11px]">
+              <div className="rounded-lg bg-[var(--color-accent-red)]/10 border border-[var(--color-accent-red)]/20 px-3 py-2">
+                <div className="flex items-center gap-2 text-[var(--color-accent-red)] text-[11px]">
                   <X className="h-3 w-3 shrink-0" />
                   <span>{state.error}</span>
                 </div>
               </div>
               <button
                 onClick={handleRegenerate}
-                className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-2 text-[11px] text-white/50 hover:text-white/70 hover:bg-white/[0.04] transition-all"
+                className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-default)] px-3 py-2 text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-subtle)] transition-all"
               >
                 <RefreshCw className="h-3 w-3" />
                 Retry
@@ -261,15 +261,15 @@ export function InlineEditOverlay({
                   streaming={streaming}
                 />
               </div>
-              <div className="flex items-center gap-2 border-t border-white/[0.06] px-3 py-2">
+              <div className="flex items-center gap-2 border-t border-[var(--border-default)] px-3 py-2">
                 <button
                   onClick={handleRegenerate}
                   disabled={streaming}
                   className={cn(
                     "flex items-center gap-1 rounded-lg px-3 py-1.5 text-[10px] transition-all",
                     streaming
-                      ? "text-white/20 cursor-not-allowed"
-                      : "text-white/40 hover:text-white/60 hover:bg-white/[0.04]",
+                      ? "text-[var(--text-quaternary)] cursor-not-allowed"
+                      : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]",
                   )}
                 >
                   <RefreshCw className="h-3 w-3" />
@@ -284,8 +284,8 @@ export function InlineEditOverlay({
                   className={cn(
                     "flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[10px] transition-all",
                     streaming
-                      ? "border-white/[0.04] text-white/20 cursor-not-allowed"
-                      : "border-white/[0.08] text-white/50 hover:bg-white/[0.04]",
+                      ? "border-[var(--border-subtle)] text-[var(--text-quaternary)] cursor-not-allowed"
+                      : "border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]",
                   )}
                 >
                   <X className="h-3 w-3" />
@@ -299,8 +299,8 @@ export function InlineEditOverlay({
                   className={cn(
                     "flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[10px] transition-all",
                     streaming
-                      ? "border-white/[0.04] text-white/20 cursor-not-allowed"
-                      : "bg-green-500/20 border-green-500/30 text-green-400 hover:bg-green-500/30",
+                      ? "border-[var(--border-subtle)] text-[var(--text-quaternary)] cursor-not-allowed"
+                      : "bg-[var(--accent-diff)]/20 border-[var(--accent-diff)]/30 text-[var(--accent-diff)] hover:bg-[var(--accent-diff)]/30",
                   )}
                 >
                   <Check className="h-3 w-3" />
@@ -322,12 +322,12 @@ export function InlineEditOverlay({
                     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleStreamingGenerate() }
                   }}
                   placeholder="Describe the edit you want to make..."
-                  className="w-full bg-transparent text-[12px] text-white/80 placeholder:text-white/25 resize-none outline-none min-h-[60px] leading-relaxed"
+                  className="w-full bg-transparent text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-quaternary)] resize-none outline-none min-h-[60px] leading-relaxed"
                   rows={3}
                 />
               </div>
-              <div className="flex items-center justify-between border-t border-white/[0.06] px-3 py-2">
-                <span className="text-[9px] text-white/20">
+              <div className="flex items-center justify-between border-t border-[var(--border-default)] px-3 py-2">
+                <span className="text-[9px] text-[var(--text-quaternary)]">
                   {state.selectedText.split("\n").length} line(s) selected
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -339,8 +339,8 @@ export function InlineEditOverlay({
                     className={cn(
                       "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-medium transition-all",
                       state.instruction.trim()
-                        ? "bg-white/[0.06] border border-white/[0.08] text-white/50 hover:bg-white/[0.08]"
-                        : "bg-white/[0.04] border border-white/[0.06] text-white/20 cursor-not-allowed",
+                        ? "bg-[var(--border-default)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--border-hover)]"
+                        : "bg-[var(--border-subtle)] border border-[var(--border-default)] text-[var(--text-quaternary)] cursor-not-allowed",
                     )}
                     title="Generate without streaming"
                   >
@@ -355,8 +355,8 @@ export function InlineEditOverlay({
                     className={cn(
                       "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-medium transition-all",
                       state.instruction.trim()
-                        ? "bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500/30"
-                        : "bg-white/[0.04] border border-white/[0.06] text-white/20 cursor-not-allowed",
+                        ? "bg-[var(--accent-design)]/20 border border-[var(--accent-design)]/30 text-[var(--accent-design)] hover:bg-[var(--accent-design)]/30"
+                        : "bg-[var(--border-subtle)] border border-[var(--border-default)] text-[var(--text-quaternary)] cursor-not-allowed",
                     )}
                   >
                     <Sparkles className="h-3 w-3" />

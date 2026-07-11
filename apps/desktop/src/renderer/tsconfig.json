@@ -17,9 +17,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "ignoreDeprecations": "6.0",
-    "baseUrl": "../../",
+    "baseUrl": "../../../../",
     "paths": {
-      "@/*": ["./src/renderer/*"],
+      "@/*": ["./apps/desktop/src/renderer/*"],
       "@agentic-os/shared": ["./packages/shared/src"],
       "@agentic-os/shared/*": ["./packages/shared/src/*"],
       "@agentic-os/ui": ["./packages/ui/src"],
@@ -28,5 +28,5 @@
       "@agentic-os/providers/*": ["./packages/providers/src/*"]
     }
   },
-  "include": [".", "../../packages/shared/src", "../../packages/ui/src", "../../packages/providers/src"]
+  "include": [".", "../../../../packages/shared/src", "../../../../packages/ui/src", "../../../../packages/providers/src"]
 }

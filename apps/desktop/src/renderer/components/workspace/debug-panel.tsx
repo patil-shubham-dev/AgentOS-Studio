@@ -53,19 +53,19 @@ export function DebugPanel() {
     <div className="flex h-full flex-col text-[11px]">
       {/* Launch/Connect bar */}
       {!isRunning ? (
-        <div className="flex items-center gap-1.5 border-b border-white/[0.04] px-2 py-1.5 bg-black/20">
-          <Bug className="h-3 w-3 text-white/40 shrink-0" />
+        <div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-2 py-1.5 bg-[var(--surface-panel)]/50">
+          <Bug className="h-3 w-3 text-[var(--text-tertiary)] shrink-0" />
           <input
             value={filePath}
             onChange={(e) => setFilePath(e.target.value)}
             placeholder="File path (e.g. script.js)"
-            className="flex-1 min-w-0 bg-white/[0.06] border border-white/[0.08] rounded px-1.5 py-0.5 text-[10px] font-mono text-white/70 placeholder:text-white/20 outline-none focus:border-blue-500/50"
+            className="flex-1 min-w-0 bg-[var(--border-default)] border border-[var(--border-default)] rounded px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-secondary)] placeholder:text-[var(--text-quaternary)] outline-none focus:border-[var(--accent-code)]/50"
           />
           <input
             value={workingDir}
             onChange={(e) => setWorkingDir(e.target.value)}
             placeholder="Working dir"
-            className="w-24 bg-white/[0.06] border border-white/[0.08] rounded px-1.5 py-0.5 text-[10px] font-mono text-white/70 placeholder:text-white/20 outline-none focus:border-blue-500/50"
+            className="w-24 bg-[var(--border-default)] border border-[var(--border-default)] rounded px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-secondary)] placeholder:text-[var(--text-quaternary)] outline-none focus:border-[var(--accent-code)]/50"
           />
           <button
             onClick={handleLaunch}
@@ -73,23 +73,23 @@ export function DebugPanel() {
             className={cn(
               "rounded px-2 py-0.5 text-[10px] font-medium transition-colors",
               filePath && workingDir
-                ? "bg-green-600/80 text-white hover:bg-green-500"
-                : "bg-white/[0.06] text-white/20 cursor-not-allowed",
+                ? "bg-[var(--color-accent-green)]/80 text-[var(--text-primary)] hover:bg-[var(--color-accent-green)]"
+                : "bg-[var(--border-default)] text-[var(--text-quaternary)] cursor-not-allowed",
             )}
           >
             Launch
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-1 border-b border-white/[0.04] px-2 py-1.5 bg-black/20">
+        <div className="flex items-center gap-1 border-b border-[var(--border-subtle)] px-2 py-1.5 bg-[var(--surface-panel)]/50">
           <button
             onClick={() => canContinue ? debugService.resume() : undefined}
             disabled={!canContinue}
             className={cn(
               "rounded p-1 transition-colors",
               canContinue
-                ? "text-green-400 hover:bg-white/[0.06] hover:text-green-300"
-                : "text-white/20 cursor-not-allowed",
+                ? "text-[var(--color-accent-green)] hover:bg-[var(--border-default)] hover:text-[var(--color-accent-green)]/80"
+                : "text-[var(--text-quaternary)] cursor-not-allowed",
             )}
             title="Continue (F5)"
           >
@@ -101,8 +101,8 @@ export function DebugPanel() {
             className={cn(
               "rounded p-1 transition-colors",
               canStep
-                ? "text-white/70 hover:bg-white/[0.06] hover:text-white"
-                : "text-white/20 cursor-not-allowed",
+                ? "text-[var(--text-secondary)] hover:bg-[var(--border-default)] hover:text-[var(--text-primary)]"
+                : "text-[var(--text-quaternary)] cursor-not-allowed",
             )}
             title="Step Over (F10)"
           >
@@ -114,8 +114,8 @@ export function DebugPanel() {
             className={cn(
               "rounded p-1 transition-colors",
               canStep
-                ? "text-white/70 hover:bg-white/[0.06] hover:text-white"
-                : "text-white/20 cursor-not-allowed",
+                ? "text-[var(--text-secondary)] hover:bg-[var(--border-default)] hover:text-[var(--text-primary)]"
+                : "text-[var(--text-quaternary)] cursor-not-allowed",
             )}
             title="Step Into (F11)"
           >
@@ -127,8 +127,8 @@ export function DebugPanel() {
             className={cn(
               "rounded p-1 transition-colors",
               canStep
-                ? "text-white/70 hover:bg-white/[0.06] hover:text-white"
-                : "text-white/20 cursor-not-allowed",
+                ? "text-[var(--text-secondary)] hover:bg-[var(--border-default)] hover:text-[var(--text-primary)]"
+                : "text-[var(--text-quaternary)] cursor-not-allowed",
             )}
             title="Step Out (Shift+F11)"
           >
@@ -137,26 +137,26 @@ export function DebugPanel() {
 
           <div className="ml-auto flex items-center gap-1.5">
             {isConnecting && (
-              <span className="flex items-center gap-1 text-[9px] text-yellow-400/70">
+              <span className="flex items-center gap-1 text-[9px] text-[var(--color-accent-amber)]/70">
                 <Loader2 className="h-2.5 w-2.5 animate-spin" />
                 Connecting
               </span>
             )}
             {cdpConnected && isPaused && (
-              <span className="flex items-center gap-1 rounded bg-blue-500/15 px-1.5 py-0.5 text-[9px] text-blue-400">
+              <span className="flex items-center gap-1 rounded bg-[var(--accent-code)]/15 px-1.5 py-0.5 text-[9px] text-[var(--accent-code)]">
                 <Pause className="h-2.5 w-2.5" />
                 Paused
               </span>
             )}
             {cdpConnected && !isPaused && !isConnecting && (
-              <span className="flex items-center gap-1 rounded bg-green-500/15 px-1.5 py-0.5 text-[9px] text-green-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="flex items-center gap-1 rounded bg-[var(--color-accent-green)]/15 px-1.5 py-0.5 text-[9px] text-[var(--color-accent-green)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent-green)] animate-pulse" />
                 Running
               </span>
             )}
             <button
               onClick={handleStop}
-              className="rounded p-1 text-red-400/70 hover:bg-white/[0.06] hover:text-red-300 transition-colors"
+              className="rounded p-1 text-[var(--color-accent-red)]/70 hover:bg-[var(--border-default)] hover:text-[var(--color-accent-red)]/80 transition-colors"
               title="Stop"
             >
               <Square className="h-3 w-3" />
@@ -167,58 +167,58 @@ export function DebugPanel() {
 
       {/* Paused frame info */}
       {currentFrame && isPaused && (
-        <div className="border-b border-white/[0.04] bg-blue-500/[0.03] px-2 py-1">
-          <p className="text-[10px] font-mono text-blue-400 truncate">
+        <div className="border-b border-[var(--border-subtle)] bg-[var(--accent-code)]/[0.03] px-2 py-1">
+          <p className="text-[10px] font-mono text-[var(--accent-code)] truncate">
             {currentFrame.filePath}:{currentFrame.line}:{currentFrame.column}
           </p>
           {currentFrame.functionName && (
-            <p className="text-[9px] text-white/40">{currentFrame.functionName}</p>
+            <p className="text-[9px] text-[var(--text-tertiary)]">{currentFrame.functionName}</p>
           )}
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto">
         {/* Breakpoints */}
-        <div className="border-b border-white/[0.04]">
-          <div className="flex items-center gap-1 px-2 py-1 text-[9px] font-medium text-white/30 uppercase">
+        <div className="border-b border-[var(--border-subtle)]">
+          <div className="flex items-center gap-1 px-2 py-1 text-[9px] font-medium text-[var(--text-tertiary)] uppercase">
             <Circle className="h-2.5 w-2.5" />
             Breakpoints
           </div>
           {breakpoints.length === 0 && (
-            <p className="px-2 py-2 text-[10px] text-white/20 italic">
+            <p className="px-2 py-2 text-[10px] text-[var(--text-quaternary)] italic">
               No breakpoints. Click the gutter in the editor to add one.
             </p>
           )}
           {breakpoints.map((bp) => (
             <div
               key={bp.id}
-              className="group flex items-center gap-1.5 px-2 py-1 hover:bg-white/[0.03]"
+              className="group flex items-center gap-1.5 px-2 py-1 hover:bg-[var(--border-subtle)]"
             >
               <button
                 onClick={() => toggleBreakpoint(bp.id)}
                 className={cn(
                   "shrink-0 rounded-sm p-0.5 transition-colors",
                   bp.enabled
-                    ? "text-red-400 hover:text-red-300"
-                    : "text-white/20 hover:text-white/40",
+                    ? "text-[var(--color-accent-red)] hover:text-[var(--color-accent-red)]/80"
+                    : "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
                 )}
               >
-                <Circle className={cn("h-2.5 w-2.5", bp.enabled ? "fill-red-400" : "")} />
+                <Circle className={cn("h-2.5 w-2.5", bp.enabled ? "fill-[var(--color-accent-red)]" : "")} />
               </button>
-              <span className="truncate flex-1 text-[10px] font-mono text-white/60">
+              <span className="truncate flex-1 text-[10px] font-mono text-[var(--text-secondary)]">
                 {bp.filePath}:{bp.line}
               </span>
               {bp.condition && (
-                <span className="text-[8px] text-yellow-400/60 truncate max-w-[80px]">
+                <span className="text-[8px] text-[var(--color-accent-amber)]/60 truncate max-w-[80px]">
                   if {bp.condition}
                 </span>
               )}
               {bp.hitCount !== undefined && (
-                <span className="text-[8px] text-white/30">{bp.hitCount}x</span>
+                <span className="text-[8px] text-[var(--text-tertiary)]">{bp.hitCount}x</span>
               )}
               <button
                 onClick={() => removeBreakpoint(bp.id)}
-                className="hidden group-hover:inline rounded p-0.5 text-white/30 hover:text-red-400 transition-colors"
+                className="hidden group-hover:inline rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--color-accent-red)] transition-colors"
               >
                 <X className="h-2.5 w-2.5" />
               </button>
@@ -227,13 +227,13 @@ export function DebugPanel() {
         </div>
 
         {/* Call stack */}
-        <div className="border-b border-white/[0.04]">
-          <div className="flex items-center gap-1 px-2 py-1 text-[9px] font-medium text-white/30 uppercase">
+        <div className="border-b border-[var(--border-subtle)]">
+          <div className="flex items-center gap-1 px-2 py-1 text-[9px] font-medium text-[var(--text-tertiary)] uppercase">
             <Terminal className="h-2.5 w-2.5" />
             Call Stack
           </div>
           {callStack.length === 0 && !isPaused && (
-            <p className="px-2 py-2 text-[10px] text-white/20 italic">
+            <p className="px-2 py-2 text-[10px] text-[var(--text-quaternary)] italic">
               Call stack shown when paused.
             </p>
           )}
@@ -242,13 +242,13 @@ export function DebugPanel() {
               key={i}
               className={cn(
                 "flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono",
-                i === 0 ? "text-blue-400 bg-blue-500/[0.04]" : "text-white/50",
+                i === 0 ? "text-[var(--accent-code)] bg-[var(--accent-code)]/[0.04]" : "text-[var(--text-secondary)]",
               )}
             >
               <span className="truncate flex-1">
                 {frame.functionName || "(anonymous)"}
               </span>
-              <span className="text-[8px] text-white/30 truncate max-w-[100px]">
+              <span className="text-[8px] text-[var(--text-tertiary)] truncate max-w-[100px]">
                 {frame.filePath}:{frame.line}
               </span>
             </div>
@@ -256,35 +256,35 @@ export function DebugPanel() {
         </div>
 
         {/* Variables */}
-        <div className="border-b border-white/[0.04]">
-          <div className="flex items-center gap-1 px-2 py-1 text-[9px] font-medium text-white/30 uppercase">
+        <div className="border-b border-[var(--border-subtle)]">
+          <div className="flex items-center gap-1 px-2 py-1 text-[9px] font-medium text-[var(--text-tertiary)] uppercase">
             Variables
           </div>
           {variables.length === 0 && (
-            <p className="px-2 py-2 text-[10px] text-white/20 italic">
+            <p className="px-2 py-2 text-[10px] text-[var(--text-quaternary)] italic">
               Variables shown when paused.
             </p>
           )}
           {variables.map((v, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 px-2 py-0.5 text-[10px] font-mono hover:bg-white/[0.02]"
+              className="flex items-center gap-2 px-2 py-0.5 text-[10px] font-mono hover:bg-[var(--border-subtle)]"
             >
-              <span className="text-cyan-400 shrink-0">{v.name}</span>
-              <span className="text-white/30 text-[8px] shrink-0">{v.type}</span>
-              <span className="truncate text-white/70">= {v.value}</span>
+              <span className="text-[var(--accent-browser)] shrink-0">{v.name}</span>
+              <span className="text-[var(--text-tertiary)] text-[8px] shrink-0">{v.type}</span>
+              <span className="truncate text-[var(--text-secondary)]">= {v.value}</span>
             </div>
           ))}
         </div>
 
         {/* Console output */}
         <div>
-          <div className="flex items-center justify-between px-2 py-1 text-[9px] font-medium text-white/30 uppercase">
+          <div className="flex items-center justify-between px-2 py-1 text-[9px] font-medium text-[var(--text-tertiary)] uppercase">
             <span>Console</span>
             {consoleOutput.length > 0 && (
               <button
                 onClick={clearConsole}
-                className="text-[8px] text-white/20 hover:text-white/50 transition-colors"
+                className="text-[8px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] transition-colors"
               >
                 Clear
               </button>
@@ -292,7 +292,7 @@ export function DebugPanel() {
           </div>
           <div ref={consoleRef} className="max-h-[200px] overflow-y-auto">
             {consoleOutput.length === 0 && (
-              <p className="px-2 py-2 text-[10px] text-white/20 italic">
+              <p className="px-2 py-2 text-[10px] text-[var(--text-quaternary)] italic">
                 No console output.
               </p>
             )}
@@ -301,12 +301,12 @@ export function DebugPanel() {
                 key={i}
                 className={cn(
                   "flex items-start gap-1.5 px-2 py-0.5 text-[10px] font-mono",
-                  entry.level === "error" && "text-red-400 bg-red-500/[0.04]",
-                  entry.level === "warn" && "text-yellow-400 bg-yellow-500/[0.04]",
-                  entry.level === "log" && "text-white/60",
+                  entry.level === "error" && "text-[var(--color-accent-red)] bg-[var(--color-accent-red)]/[0.04]",
+                  entry.level === "warn" && "text-[var(--color-accent-amber)] bg-[var(--color-accent-amber)]/[0.04]",
+                  entry.level === "log" && "text-[var(--text-secondary)]",
                 )}
               >
-                <span className="text-[8px] text-white/20 shrink-0 mt-0.5">
+                <span className="text-[8px] text-[var(--text-quaternary)] shrink-0 mt-0.5">
                   {formatTime(entry.timestamp)}
                 </span>
                 <span className="truncate">{entry.message}</span>

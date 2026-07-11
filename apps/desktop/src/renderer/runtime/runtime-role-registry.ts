@@ -1,6 +1,7 @@
 import type { RuntimeRole, AgentRoleConfig } from "@/types"
 import { TOKEN_CONFIG, RUNTIME_TOKEN_LIMITS } from "./runtime-token-config"
 import { ContextManager } from "./context/ContextManager"
+import { getRolePromptFromCache, ensureInstructionFilesInitialized } from "./load-instructions"
 
 export interface RoleDefinition {
   id: string
@@ -861,6 +862,21 @@ export function getRolesByExecutionMode(mode: string): RoleDefinition[] {
 
 const CACHED_NEW_PROMPTS = new Map<string, string>()
 
+/**
+ * True if at least one role prompt resolved from the file-based cache.
+ * The UI can check this to display a "(file-based prompts active)" indicator.
+ */
+let fileBasedPromptsActive = false
+export function isFileBasedPromptsActive(): boolean { return fileBasedPromptsActive }
+
+function emitHardcodedFallbackWarning(role: string, stage: string): void {
+  const msg =
+    `%c⚠️ HARDCODED FALLBACK [${stage}] — role "${role}" resolved from compiled source, NOT from agent-instructions/ file. ` +
+    `Check that agent-instructions/ exists and read-instruction-file IPC is working. ` +
+    `Edit the .md files in agent-instructions/roles/ for live changes — not the .ts source.`
+  console.warn(msg, 'background: #ff4444; color: white; font-weight: bold; padding: 2px 4px; border-radius: 2px; font-size: 13px;')
+}
+
 export function getSystemPromptForRole(role: string): string {
   try {
     const cm = ContextManager.getInstance()
@@ -873,12 +889,25 @@ export function getSystemPromptForRole(role: string): string {
     const cached = CACHED_NEW_PROMPTS.get(role)
     if (typeof cached === 'string') return cached
   } catch {
-    // ContextManager not initialized — fallback to hardcoded
+    // ContextManager not initialized — fallback to file cache or hardcoded
   }
+  const fileCached = getRolePromptFromCache(role)
+  if (fileCached !== null) {
+    fileBasedPromptsActive = true
+    return fileCached
+  }
+  ensureInstructionFilesInitialized().then(() => {
+    const loaded = getRolePromptFromCache(role)
+    if (loaded !== null) {
+      fileBasedPromptsActive = true
+      CACHED_NEW_PROMPTS.set(role, loaded)
+    }
+  }).catch(() => {})
   const canonical = normalizeRole(role)
   const def = canonical
     ? (BY_RUNTIME_ROLE[canonical] ?? REGISTRY[role] ?? BY_NAME[role.toLowerCase()])
     : (REGISTRY[role] ?? BY_NAME[role.toLowerCase()])
+  emitHardcodedFallbackWarning(role, def ? 'definition-inline' : 'CODER_PROMPT-default')
   return def?.systemPrompt ?? CODER_PROMPT
 }
 

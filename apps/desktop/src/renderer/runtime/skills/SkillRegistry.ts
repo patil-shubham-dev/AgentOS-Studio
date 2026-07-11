@@ -76,7 +76,10 @@ export class SkillRegistry {
 
   getAll(): SkillDefinition[] {
     return Array.from(
-      new Map(Array.from(this.skills.entries()).filter(([, v]) => v.name === v.name || !v.aliases.includes(v.name))).values(),
+      // The registry stores a canonical entry plus one entry for each alias.
+      // Expose only canonical entries to callers; otherwise skill matching,
+      // listings, and telemetry treat aliases as separate skills.
+      new Map(Array.from(this.skills.entries()).filter(([key, skill]) => key === skill.name)).values(),
     )
   }
 
@@ -107,9 +110,13 @@ export class SkillRegistry {
   }
 
   size(): SkillRegistryState {
+    const canonicalSkills = this.getAll()
     return {
-      total: this.skills.size,
-      ...this.sourceCounts,
+      total: canonicalSkills.length,
+      bundled: canonicalSkills.filter((skill) => skill.source === 'bundled').length,
+      user: canonicalSkills.filter((skill) => skill.source === 'user').length,
+      project: canonicalSkills.filter((skill) => skill.source === 'project').length,
+      plugin: canonicalSkills.filter((skill) => skill.source === 'plugin').length,
     }
   }
 

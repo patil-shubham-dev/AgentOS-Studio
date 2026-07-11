@@ -882,7 +882,7 @@ export function CodeWorkspace() {
   const pendingChange = aiChanges.find((c) => c.filePath === activeFile.path && !c.applied && !c.rejected)
 
   return (
-    <div className="flex h-full flex-col bg-[#0a0a0b] min-h-0">
+    <div className="flex h-full flex-col bg-[var(--surface-app)] min-h-0">
       {/* Editor Tabs */}
       <EditorTabs
         openFiles={openFiles}
@@ -894,12 +894,12 @@ export function CodeWorkspace() {
 
       {/* Large file warning */}
       {largeFileWarning && (
-        <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-amber-400 bg-amber-400/10 border-b border-amber-400/20">
+        <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-[var(--color-accent-amber)] bg-[var(--color-accent-amber)]/10 border-b border-[var(--color-accent-amber)]/20">
           <AlertTriangle className="h-3 w-3 shrink-0" />
           <span className="flex-1">Large file — minimap, folding, and other visual features disabled for performance.</span>
           <button
             onClick={() => setLargeFileWarning(null)}
-            className="text-white/40 hover:text-white/70 text-xs leading-none"
+            className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] text-xs leading-none"
           >
             ✕
           </button>
@@ -910,11 +910,11 @@ export function CodeWorkspace() {
       <BreadcrumbNav />
 
       {/* Editor toolbar */}
-      <div className="flex items-center justify-between border-b border-white/[0.04] bg-black/10 px-3 py-1 shrink-0">
+      <div className="flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-panel)]/50 px-3 py-1 shrink-0">
         <div className="flex items-center gap-2.5">
-          <span className="text-[10px] font-medium text-white/40 uppercase">{language}</span>
-          <span className="text-white/15 text-[8px]">|</span>
-          <span className="text-[10px] text-white/30">
+          <span className="text-[10px] font-medium text-[var(--text-tertiary)] uppercase">{language}</span>
+          <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
+          <span className="text-[10px] text-[var(--text-tertiary)]">
             Ln {editorRef.current?.getPosition()?.lineNumber || 1}, Col {editorRef.current?.getPosition()?.column || 1}
           </span>
 
@@ -924,13 +924,13 @@ export function CodeWorkspace() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="flex items-center gap-1.5 rounded-full bg-green-500/15 border border-green-500/30 px-2 py-1"
+              className="flex items-center gap-1.5 rounded-full bg-[var(--color-accent-green)]/15 border border-[var(--color-accent-green)]/30 px-2 py-1"
             >
-              <Pencil className="h-2.5 w-2.5 text-green-400" />
+              <Pencil className="h-2.5 w-2.5 text-[var(--color-accent-green)]" />
               <motion.span
                 animate={{ opacity: [1, 0.4, 1] }}
                 transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-                className="text-[9px] font-medium text-green-400"
+                className="text-[9px] font-medium text-[var(--color-accent-green)]"
               >
                 AI writing
               </motion.span>
@@ -943,13 +943,13 @@ export function CodeWorkspace() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="flex items-center gap-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 px-2 py-1"
+              className="flex items-center gap-1.5 rounded-full bg-[var(--accent-code)]/10 border border-[var(--accent-code)]/20 px-2 py-1"
             >
-              <Pencil className="h-2.5 w-2.5 text-blue-400" />
+              <Pencil className="h-2.5 w-2.5 text-[var(--accent-code)]" />
               <motion.span
                 animate={{ opacity: [1, 0.4, 1] }}
                 transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-                className="text-[9px] font-medium text-blue-400"
+                className="text-[9px] font-medium text-[var(--accent-code)]"
               >
                 AI editing {liveEditingFile.split("/").pop()}
               </motion.span>
@@ -961,9 +961,9 @@ export function CodeWorkspace() {
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex items-center gap-1 text-[9px] text-white/25 font-mono"
+              className="flex items-center gap-1 text-[9px] text-[var(--text-quaternary)] font-mono"
             >
-              <span className="text-white/15 text-[8px]">|</span>
+              <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
                           <span className="tabular-nums">
                 {formatCount(sessionTokens)} tok · {formatCount(sessionChars)} chars
               </span>
@@ -985,19 +985,19 @@ export function CodeWorkspace() {
                 onClick={() => setShowGitPanel((p) => !p)}
                 className={cn(
                   "flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-all",
-                  showGitPanel ? "bg-blue-500/10 text-blue-400" : "text-white/40 hover:text-white/60 hover:bg-white/[0.03]",
+                  showGitPanel ? "bg-[var(--accent-code)]/10 text-[var(--accent-code)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]",
                 )}
               >
                 <GitBranch className="h-2.5 w-2.5" />
                 {gitInfo.branch}
                 {gitInfo.changes > 0 && (
-                  <span className="text-amber-400 font-medium">{gitInfo.changes}</span>
+                  <span className="text-[var(--color-accent-amber)] font-medium">{gitInfo.changes}</span>
                 )}
               </motion.button>
             </Tooltip>
           )}
 
-          <span className="text-white/10 text-[8px]">|</span>
+          <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
 
           {/* Problems badge */}
           <Tooltip content={`${errorCount} errors, ${warningCount} warnings — click to toggle problems panel`}>
@@ -1007,23 +1007,23 @@ export function CodeWorkspace() {
               onClick={() => setShowProblems((p) => !p)}
               className={cn(
                 "flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-all",
-                showProblems ? "bg-white/[0.06]" : "hover:bg-white/[0.03]",
+                showProblems ? "bg-[var(--border-default)]" : "hover:bg-[var(--border-subtle)]",
               )}
             >
               {errorCount > 0 && (
-                <span className="flex items-center gap-1 text-red-400">
+                <span className="flex items-center gap-1 text-[var(--color-accent-red)]">
                   <AlertCircle className="h-2.5 w-2.5" />
                   {errorCount}
                 </span>
               )}
               {warningCount > 0 && (
-                <span className="flex items-center gap-1 text-yellow-400">
+                <span className="flex items-center gap-1 text-[var(--color-accent-amber)]">
                   <AlertTriangle className="h-2.5 w-2.5" />
                   {warningCount}
                 </span>
               )}
               {errorCount === 0 && warningCount === 0 && (
-                <span className="text-white/30">
+                <span className="text-[var(--text-tertiary)]">
                   <Check className="h-2.5 w-2.5" />
                 </span>
               )}
@@ -1037,20 +1037,20 @@ export function CodeWorkspace() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={toggleAiContext}
-              className={cn("rounded p-1 transition-all", isInAiContext ? "text-blue-400 bg-blue-500/10" : "text-white/30 hover:text-white/60")}
+              className={cn("rounded p-1 transition-all", isInAiContext ? "text-[var(--accent-code)] bg-[var(--accent-code)]/10" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]")}
             >
               <Brain className="h-3 w-3" />
             </motion.button>
           </Tooltip>
 
-          <span className="text-white/10 text-[8px]">|</span>
+          <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
 
           <Tooltip content={showMinimap ? "Hide minimap" : "Show minimap"}>
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => { pulse("click"); setShowMinimap(!showMinimap) }}
-              className={cn("rounded p-1 transition-colors", showMinimap ? "text-white/60" : "text-white/20 hover:text-white/40")}
+              className={cn("rounded p-1 transition-colors", showMinimap ? "text-[var(--text-secondary)]" : "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]")}
             >
                 <Columns3 className="h-3 w-3" />
               </motion.button>
@@ -1069,7 +1069,7 @@ export function CodeWorkspace() {
                   setSplitMode("none")
                 }
               }}
-              className={cn("rounded p-1 transition-colors", splitMode !== "none" ? "text-blue-400 bg-blue-500/10" : "text-white/20 hover:text-white/40")}
+              className={cn("rounded p-1 transition-colors", splitMode !== "none" ? "text-[var(--accent-code)] bg-[var(--accent-code)]/10" : "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]")}
             >
               <PanelRight className="h-3 w-3" />
             </motion.button>
@@ -1080,20 +1080,20 @@ export function CodeWorkspace() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => { pulse("click"); setWordWrap(!wordWrap) }}
-              className={cn("rounded p-1 transition-colors", wordWrap ? "text-white/60 bg-white/10" : "text-white/20 hover:text-white/40")}
+              className={cn("rounded p-1 transition-colors", wordWrap ? "text-[var(--text-secondary)] bg-[var(--border-default)]" : "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]")}
             >
               <WrapText className="h-3 w-3" />
             </motion.button>
           </Tooltip>
 
-          <span className="text-white/10 text-[8px]">|</span>
+          <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
 
           <Tooltip content="Decrease font size">
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => { pulse("click"); setFontSize((s) => Math.max(10, s - 1)) }}
-              className="rounded p-1 text-white/20 hover:text-white/40"
+              className="rounded p-1 text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
             >
               <Minus className="h-3 w-3" />
             </motion.button>
@@ -1102,7 +1102,7 @@ export function CodeWorkspace() {
             key={fontSize}
             initial={{ y: -5, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="text-[10px] font-mono text-white/40 w-5 text-center select-none"
+            className="text-[10px] font-mono text-[var(--text-tertiary)] w-5 text-center select-none"
           >
             {fontSize}
           </motion.span>
@@ -1111,13 +1111,13 @@ export function CodeWorkspace() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => { pulse("click"); setFontSize((s) => Math.min(24, s + 1)) }}
-              className="rounded p-1 text-white/20 hover:text-white/40"
+              className="rounded p-1 text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
             >
               <Plus className="h-3 w-3" />
             </motion.button>
           </Tooltip>
 
-          <span className="text-white/10 text-[8px]">|</span>
+          <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
 
           {/* Symbol search */}
           <Tooltip content="Go to Symbol (⌘⇧O)">
@@ -1149,13 +1149,13 @@ export function CodeWorkspace() {
                   }
                 }
               }}
-              className="rounded p-1 text-white/25 hover:text-white/60 transition-colors"
+              className="rounded p-1 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] transition-colors"
             >
               <FileSearch className="h-3 w-3" />
             </motion.button>
           </Tooltip>
 
-          {/* Debug panel toggle */}          {/* File History toggle */}
+          {/* File History toggle */}
           <Tooltip content="File History — view snapshots before agent edits">
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -1169,7 +1169,7 @@ export function CodeWorkspace() {
               }}
               className={cn(
                 "rounded p-1 transition-colors",
-                historyOpen ? "text-amber-400 bg-amber-500/10" : "text-white/25 hover:text-white/60",
+                historyOpen ? "text-[var(--color-accent-amber)] bg-[var(--color-accent-amber)]/10" : "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]",
               )}
             >
               <History className="h-3 w-3" />
@@ -1184,14 +1184,14 @@ export function CodeWorkspace() {
               onClick={() => toggleCheckpoint()}
               className={cn(
                 "rounded p-1 transition-colors",
-                checkpointOpen ? "text-blue-400 bg-blue-500/10" : "text-white/25 hover:text-white/60",
+                checkpointOpen ? "text-[var(--accent-code)] bg-[var(--accent-code)]/10" : "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]",
               )}
             >
               <RotateCcw className="h-3 w-3" />
             </motion.button>
           </Tooltip>
 
-          <span className="text-white/10 text-[8px]">|</span>
+          <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
 
           <Tooltip content="Debug (⌘⇧D)">
             <motion.button
@@ -1200,14 +1200,14 @@ export function CodeWorkspace() {
               onClick={() => setShowDebugPanel((p) => !p)}
               className={cn(
                 "rounded p-1 transition-colors",
-                showDebugPanel ? "text-blue-400 bg-blue-500/10" : "text-white/25 hover:text-white/60",
+                showDebugPanel ? "text-[var(--accent-code)] bg-[var(--accent-code)]/10" : "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]",
               )}
             >
               <Bug className="h-3 w-3" />
             </motion.button>
           </Tooltip>
 
-          <span className="text-white/10 text-[8px]">|</span>
+          <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
 
           {/* Download as file (web fallback) */}
           <Tooltip content="Download as file">
@@ -1215,7 +1215,7 @@ export function CodeWorkspace() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleDownload}
-              className="rounded p-1 text-white/25 hover:text-cyan-400 transition-colors"
+              className="rounded p-1 text-[var(--text-quaternary)] hover:text-[var(--accent-browser)] transition-colors"
             >
               <FileDown className="h-3 w-3" />
             </motion.button>
@@ -1226,20 +1226,20 @@ export function CodeWorkspace() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleSave}
-              className="rounded p-1 text-white/30 hover:text-white/60"
+              className="rounded p-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
             >
               <Save className="h-3 w-3" />
             </motion.button>
           </Tooltip>
 
-          <span className="text-white/10 text-[8px]">|</span>
+          <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
 
           <Tooltip content={showOutput ? "Hide output" : "Show output"}>
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => { pulse("click"); setShowOutput((p) => !p) }}
-              className={cn("rounded p-1 transition-colors", showOutput ? "text-blue-400 bg-blue-500/10" : "text-white/20 hover:text-white/40")}
+              className={cn("rounded p-1 transition-colors", showOutput ? "text-[var(--accent-code)] bg-[var(--accent-code)]/10" : "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]")}
             >
               <Logs className="h-3 w-3" />
             </motion.button>
@@ -1248,7 +1248,7 @@ export function CodeWorkspace() {
       </div>
 
       {/* ── Editor mode tabs ── */}
-      <div className="flex items-center border-b border-white/[0.04] bg-black/5 px-2 shrink-0">
+      <div className="flex items-center border-b border-[var(--border-subtle)] bg-[var(--surface-panel)]/30 px-2 shrink-0">
         {MODE_OPTIONS.map((opt) => {
           const Icon = opt.icon
           const isActive = editorMode === opt.id
@@ -1274,8 +1274,8 @@ export function CodeWorkspace() {
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium transition-all border-b-2 -mb-[1px]",
                 isActive
-                  ? "text-blue-400 border-blue-400/70"
-                  : "text-white/30 border-transparent hover:text-white/50 hover:border-white/10",
+                  ? "text-[var(--accent-code)] border-[var(--accent-code)]/70"
+                  : "text-[var(--text-tertiary)] border-transparent hover:text-[var(--text-secondary)] hover:border-[var(--border-hover)]",
               )}
             >
               <Icon className="h-3 w-3" />
@@ -1287,13 +1287,13 @@ export function CodeWorkspace() {
 
       {/* ── AI streaming progress bar (gutter between toolbar and editor) ── */}
       <div className="relative shrink-0">
-        <div className="h-[2px] bg-white/[0.03]">
+        <div className="h-[2px] bg-[var(--border-subtle)]">
           {liveStreamActive && (
             <motion.div
-              className="h-full bg-gradient-to-r from-green-500/80 via-emerald-400/60 to-green-500/80 rounded-full"
+              className="h-full bg-gradient-to-r from-[var(--color-accent-green)]/80 via-[var(--color-accent-green)]/60 to-[var(--color-accent-green)]/80 rounded-full"
               initial={{ width: "0%" }}
               animate={{ width: `${Math.round(streamProgress * 100)}%` }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             />
           )}
         </div>
@@ -1393,7 +1393,7 @@ export function CodeWorkspace() {
             animate={{ opacity: 1, scale: 1 }}
             className="absolute top-2 right-2"
           >
-            <div className="flex items-center gap-1.5 rounded-full bg-blue-500/15 border border-blue-500/25 px-2.5 py-1 text-[9px] text-blue-400">
+            <div className="flex items-center gap-1.5 rounded-full bg-[var(--accent-code)]/15 border border-[var(--accent-code)]/25 px-2.5 py-1 text-[9px] text-[var(--accent-code)]">
               <Sparkles className="h-2.5 w-2.5" />
               AI Aware
             </div>
@@ -1407,7 +1407,7 @@ export function CodeWorkspace() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10, scale: 0.9 }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-green-500/20 border border-green-500/30 px-3 py-1.5 text-[10px] text-green-400 shadow-lg"
+              className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-[var(--color-accent-green)]/20 border border-[var(--color-accent-green)]/30 px-3 py-1.5 text-[10px] text-[var(--color-accent-green)] shadow-lg"
             >
               <Check className="h-3 w-3" />
               <span>Saved</span>
@@ -1415,7 +1415,7 @@ export function CodeWorkspace() {
                 <motion.span
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="text-[8px] text-green-400/60 ml-1"
+                  className="text-[8px] text-[var(--color-accent-green)]/60 ml-1"
                 >
                   (downloaded)
                 </motion.span>
@@ -1442,16 +1442,16 @@ export function CodeWorkspace() {
             animate={{ height: 250, opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="border-t border-white/[0.06] overflow-hidden shrink-0"
+            className="border-t border-[var(--border-default)] overflow-hidden shrink-0"
           >
-            <div className="flex items-center justify-between px-2 py-1 bg-black/20 border-b border-white/[0.04]">
-              <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">
+            <div className="flex items-center justify-between px-2 py-1 bg-[var(--surface-panel)]/50 border-b border-[var(--border-subtle)]">
+              <span className="text-[9px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 <GitBranch className="h-2.5 w-2.5 inline mr-1" />
                 Git Changes
               </span>
               <button
                 onClick={() => setShowGitPanel(false)}
-                className="rounded p-0.5 text-white/30 hover:text-white/60 transition-colors"
+                className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -1492,13 +1492,13 @@ export function CodeWorkspace() {
             animate={{ height: 200, opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="border-t border-white/[0.06] overflow-hidden shrink-0"
+            className="border-t border-[var(--border-default)] overflow-hidden shrink-0"
           >
-            <div className="flex items-center justify-between px-2 py-1 bg-black/20 border-b border-white/[0.04]">
-              <span className="text-[9px] font-medium text-white/30 uppercase tracking-wider">Debug</span>
+            <div className="flex items-center justify-between px-2 py-1 bg-[var(--surface-panel)]/50 border-b border-[var(--border-subtle)]">
+              <span className="text-[9px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">Debug</span>
               <button
                 onClick={() => setShowDebugPanel(false)}
-                className="rounded p-0.5 text-white/30 hover:text-white/60 transition-colors"
+                className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
               >
                 <X className="h-3 w-3" />
               </button>

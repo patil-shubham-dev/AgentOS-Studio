@@ -18,6 +18,7 @@ import * as wi from "@/lib/workspace-intelligence"
 import { getEffectiveMaxTokens } from "@/runtime/runtime-token-config"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
 import type { AgentTool } from "@/runtime/tools/core/AgentTool"
+import { execTrace } from "@/runtime/execution-tracer"
 import type { WorkspaceStoreAPI, DiffStoreAPI, AgentStoreAPI } from "@/runtime/tools/core/ToolContext"
 import { agentToolsToToolDefs } from "@/runtime/tools/conversion/agentToolToToolDef"
 import { FAST_CHAT_PROMPT } from "@/runtime/runtime-role-registry"
@@ -103,6 +104,9 @@ export class AgentExecutor {
   }
 
   async *execute(): AsyncGenerator<ExecutionEvent> {
+    const _traceId = this.correlationId ?? this.executionId
+    execTrace("AgentExecutor.execute", _traceId, { mode: this.mode, role: this.role, executionId: this.executionId, correlationId: this.correlationId })
+    console.trace(`[XTRACE:${_traceId}] AgentExecutor.execute CALL STACK`)
     if (this.mode === "FAST") {
       yield* this.executeFast()
     } else {
@@ -112,6 +116,8 @@ export class AgentExecutor {
 
   private async *executeFast(): AsyncGenerator<ExecutionEvent> {
     const eid = this.executionId
+    const _traceId = this.correlationId ?? eid
+    execTrace("AgentExecutor.executeFast", _traceId, { role: this.role, executionId: eid })
     const wired = resolveWiredAgent(this.role)
     if (!wired) throw new Error(`Role "${this.role}" is not wired. Configure it in Settings → Roles.`)
 
@@ -178,11 +184,11 @@ export class AgentExecutor {
 
   private async *executeFull(): AsyncGenerator<ExecutionEvent> {
     const eid = this.executionId
+    const _traceId = this.correlationId ?? eid
+    execTrace("AgentExecutor.executeFull", _traceId, { role: this.role, executionId: eid })
     const startedAt = performance.now()
     const wired = resolveWiredAgent(this.role)
     if (!wired) throw new Error(`Role "${this.role}" is not wired. Configure it in Settings → Roles.`)
-
-    trace("AgentExecutor", "start", { role: this.role, mode: this.mode })
 
     const normalizedRole = normalizeRole(this.role) ?? "coder"
 

@@ -1,13 +1,18 @@
-export { ConversationTimeline } from "./conversation-timeline"
-export { UserPill } from "./UserPill"
-export { ResponseStream } from "./response-stream"
-export { AssistantResponse } from "./AssistantResponse"
-export { SessionCard } from "./SessionCard"
-export { CommandCard } from "./CommandCard"
-export { TerminalBlock } from "./TerminalBlock"
-export { TerminalPane } from "./TerminalPane"
-export { Composer } from "./composer"
-export { ToolCallCard } from "./ToolCallCard"
-export { ProviderErrorCard } from "./ProviderErrorCard"
-export { DiffCard, MultiFileDiffCard, FileCreatedCard, FileDeletedCard, FileMovedCard, FilePreviewCard } from "./diff"
-export { ReasoningBlock } from "./ReasoningBlock"
+// Re-exports from the canonical chat directory
+export {
+  ConversationTimeline,
+  UserPill,
+  AssistantResponse,
+  Composer,
+  EmptyState,
+  ReasoningBlock,
+  ToolCallLine,
+  ToolCallAccumulator,
+  ToolErrorDisplay,
+  ProviderErrorCard,
+  ResponseStream,
+  SessionCard,
+  TerminalPane,
+  ContextBreakdown,
+  StableMarkdownRenderer,
+} from "@/components/workspace/chat"

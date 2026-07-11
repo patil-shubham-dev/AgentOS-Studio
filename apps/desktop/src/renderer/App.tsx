@@ -15,6 +15,7 @@ import { AboutDialog } from '@/components/AboutDialog'
 import { StartupTiming } from '@/lib/startup-timing'
 import { InstallWizard } from '@/pages/install-wizard'
 import { StartupStore, type StartupPhase } from '@/lib/startup-store'
+import { ensureInstructionFilesInitialized } from '@/runtime/load-instructions'
 import logoSvg from '@/assets/branding/logo.svg'
 
 export function AppLoadingOverlay() {
@@ -122,6 +123,7 @@ export default function App({ startupPhase }: AppProps) {
   const [showWelcome, setShowWelcome] = useState(false)
 
   useEffect(() => {
+    ensureInstructionFilesInitialized()
     StartupTiming.mark('app:mounted')
     const isFirstLaunch = sessionStorage.getItem("first-launch") === "true"
     if (isFirstLaunch) {

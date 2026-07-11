@@ -99,12 +99,12 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
   if (fileList.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
-        <div className="flex items-center justify-center h-12 w-12 rounded-2xl bg-white/[0.03] border border-white/[0.06]">
-          <GitBranch className="h-6 w-6 text-white/20" />
+        <div className="flex items-center justify-center h-12 w-12 rounded-2xl bg-[var(--border-subtle)] border border-[var(--border-default)]">
+          <GitBranch className="h-6 w-6 text-[var(--text-quaternary)]" />
         </div>
         <div>
-          <p className="text-[12px] font-medium text-white/40">No file changes yet</p>
-          <p className="text-[10px] text-white/20 mt-1 max-w-[220px]">
+          <p className="text-[12px] font-medium text-[var(--text-tertiary)]">No file changes yet</p>
+          <p className="text-[10px] text-[var(--text-quaternary)] mt-1 max-w-[220px]">
             File edits made by agents will appear here for review with side-by-side diffs and per-change accept/reject controls
           </p>
         </div>
@@ -115,20 +115,20 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* ── Global toolbar ── */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.06] bg-white/[0.02] shrink-0">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border-default)] bg-[var(--surface-panel)]/50 shrink-0">
         <div className="flex items-center gap-2">
           {/* Back button (inline mode only) */}
           {isInline && (
             <>
               <button
                 onClick={onSwitchToEditor}
-                className="rounded px-1.5 py-0.5 text-[9px] text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
+                className="rounded px-1.5 py-0.5 text-[9px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
                 title="Return to editor"
               >
                 <ChevronLeft className="h-3 w-3 inline mr-1" />
                 Back
               </button>
-              <span className="text-white/15 text-[8px]">|</span>
+              <span className="text-[var(--text-quaternary)] text-[8px]">|</span>
             </>
           )}
 
@@ -138,8 +138,8 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
             className={cn(
               "rounded p-0.5 transition-all",
               showSidebar
-                ? "text-blue-400 bg-blue-500/10"
-                : "text-white/30 hover:text-white/50 hover:bg-white/[0.04]",
+                ? "text-[var(--accent-code)] bg-[var(--accent-code)]/10"
+                : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]",
             )}
             title="Toggle file sidebar"
           >
@@ -151,16 +151,16 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
           </button>
 
           {/* Summary stats */}
-          <span className="text-[9px] font-medium text-white/30 uppercase tracking-widest">
+          <span className="text-[9px] font-medium text-[var(--text-tertiary)] uppercase tracking-widest">
             Changes
           </span>
-          <span className="text-[9px] text-white/20 bg-white/[0.04] rounded px-1 py-0.5">
+          <span className="text-[9px] text-[var(--text-quaternary)] bg-[var(--border-subtle)] rounded px-1 py-0.5">
             {totals.files} file{totals.files !== 1 ? "s" : ""}
           </span>
-          <span className="text-[9px] text-green-400/60 font-mono">+{totals.additions}</span>
-          <span className="text-[9px] text-red-400/60 font-mono">-{totals.deletions}</span>
+          <span className="text-[9px] text-[var(--color-accent-green)]/60 font-mono">+{totals.additions}</span>
+          <span className="text-[9px] text-[var(--color-accent-red)]/60 font-mono">-{totals.deletions}</span>
           {totals.pending > 0 && (
-            <span className="text-[9px] text-amber-400/60 font-mono">{totals.pending} pending</span>
+            <span className="text-[9px] text-[var(--color-accent-amber)]/60 font-mono">{totals.pending} pending</span>
           )}
         </div>
 
@@ -168,7 +168,7 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
           {/* Sidebar toggle button */}
           <button
             onClick={() => setShowSidebar((v) => !v)}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
           >
             {showSidebar ? (
               <><EyeOff className="h-2.5 w-2.5" /> Sidebar</>
@@ -177,7 +177,7 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
             )}
           </button>
 
-          <div className="w-px h-4 bg-white/[0.06]" />
+          <div className="w-px h-4 bg-[var(--border-default)]" />
 
           {/* Accept All / Reject All */}
           <button
@@ -186,8 +186,8 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
             className={cn(
               "flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-all",
               totals.pending > 0
-                ? "text-red-400/60 hover:text-red-400 hover:bg-red-500/10"
-                : "text-white/15 cursor-not-allowed",
+                ? "text-[var(--color-accent-red)]/60 hover:text-[var(--color-accent-red)] hover:bg-[var(--color-accent-red)]/10"
+                : "text-[var(--text-quaternary)] cursor-not-allowed",
             )}
           >
             <XCircle className="h-2.5 w-2.5" />
@@ -199,8 +199,8 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
             className={cn(
               "flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-all",
               totals.pending > 0
-                ? "text-green-400/60 hover:text-green-400 hover:bg-green-500/10"
-                : "text-white/15 cursor-not-allowed",
+                ? "text-[var(--color-accent-green)]/60 hover:text-[var(--color-accent-green)] hover:bg-[var(--color-accent-green)]/10"
+                : "text-[var(--text-quaternary)] cursor-not-allowed",
             )}
           >
             <CheckCheck className="h-2.5 w-2.5" />
@@ -210,10 +210,10 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
           {/* Clear (panel mode only) */}
           {!isInline && (
             <>
-              <div className="w-px h-4 bg-white/[0.06]" />
+              <div className="w-px h-4 bg-[var(--border-default)]" />
               <button
                 onClick={clear}
-                className="rounded px-1.5 py-0.5 text-[9px] text-white/20 hover:text-white/50 hover:bg-white/[0.04] transition-all"
+                className="rounded px-1.5 py-0.5 text-[9px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
               >
                 Clear
               </button>
@@ -231,16 +231,16 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: 200, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.15, ease: "easeInOut" }}
-              className="flex-shrink-0 border-r border-white/[0.06] overflow-hidden"
+              transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+              className="flex-shrink-0 border-r border-[var(--border-default)] overflow-hidden"
             >
               <div className="flex flex-col h-full">
                 {/* Sidebar header */}
-                <div className="flex items-center justify-between px-2 py-1.5 border-b border-white/[0.04]">
-                  <span className="text-[9px] font-medium text-white/20 uppercase tracking-wider">
+                <div className="flex items-center justify-between px-2 py-1.5 border-b border-[var(--border-subtle)]">
+                  <span className="text-[9px] font-medium text-[var(--text-quaternary)] uppercase tracking-wider">
                     Files
                   </span>
-                  <span className="text-[8px] text-white/15">{fileList.length}</span>
+                  <span className="text-[8px] text-[var(--text-quaternary)]">{fileList.length}</span>
                 </div>
 
                 {/* File list */}
@@ -254,37 +254,37 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
                         className={cn(
                           "flex items-center gap-2 w-full px-2.5 py-1.5 text-left transition-colors",
                           isSelected
-                            ? "bg-blue-500/8"
-                            : "hover:bg-white/[0.03]",
+                            ? "bg-[var(--accent-code)]/8"
+                            : "hover:bg-[var(--border-subtle)]",
                         )}
                       >
                         {/* Status dot */}
                         <div className={cn(
                           "h-1.5 w-1.5 rounded-full shrink-0",
-                          file.status === "accepted" ? "bg-green-400" :
-                          file.status === "rejected" ? "bg-red-400" :
-                          "bg-amber-400",
+                          file.status === "accepted" ? "bg-[var(--color-accent-green)]" :
+                          file.status === "rejected" ? "bg-[var(--color-accent-red)]" :
+                          "bg-[var(--color-accent-amber)]",
                         )} />
 
                         {/* File name */}
                         <div className="flex-1 min-w-0">
                           <span className={cn(
                             "text-[10px] font-mono truncate block",
-                            isSelected ? "text-white/80" : "text-white/50",
+                            isSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]",
                           )}>
                             {file.path.split("/").pop()}
                           </span>
-                          <span className="text-[8px] text-white/20 truncate block">
+                          <span className="text-[8px] text-[var(--text-quaternary)] truncate block">
                             {file.path}
                           </span>
                         </div>
 
                         {/* Line counts */}
                         <div className="text-right shrink-0">
-                          <div className="text-[8px] text-green-400/50 font-mono">
+                          <div className="text-[8px] text-[var(--color-accent-green)]/50 font-mono">
                             +{file.hunks.reduce((s, h) => s + h.additions, 0)}
                           </div>
-                          <div className="text-[8px] text-red-400/50 font-mono">
+                          <div className="text-[8px] text-[var(--color-accent-red)]/50 font-mono">
                             -{file.hunks.reduce((s, h) => s + h.deletions, 0)}
                           </div>
                         </div>
@@ -310,7 +310,7 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
               expanded={true}
             />
           ) : (
-            <div className="flex items-center justify-center flex-1 text-[11px] text-white/20">
+            <div className="flex items-center justify-center flex-1 text-[11px] text-[var(--text-quaternary)]">
               Select a file from the sidebar to view its diff
             </div>
           )}
@@ -318,48 +318,48 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
       </div>
 
       {/* ── Status bar ── */}
-      <div className="flex items-center gap-3 px-3 py-1 border-t border-white/[0.04] bg-white/[0.01] shrink-0">
+      <div className="flex items-center gap-3 px-3 py-1 border-t border-[var(--border-subtle)] bg-[var(--surface-panel)]/30 shrink-0">
         {/* Prev/Next navigation (inline mode) */}
         {isInline && fileList.length > 1 && (
           <div className="flex items-center gap-1 mr-2">
             <button
               onClick={navigatePrev}
               disabled={currentIndex <= 0}
-              className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all disabled:text-white/10 disabled:cursor-not-allowed"
+              className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all disabled:text-[var(--text-quaternary)]/50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="h-3 w-3" />
             </button>
-            <span className="text-[9px] text-white/30 min-w-[4ch] text-center">
+            <span className="text-[9px] text-[var(--text-tertiary)] min-w-[4ch] text-center">
               {currentIndex + 1}/{fileList.length}
             </span>
             <button
               onClick={navigateNext}
               disabled={currentIndex >= fileList.length - 1}
-              className="rounded p-0.5 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all disabled:text-white/10 disabled:cursor-not-allowed"
+              className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all disabled:text-[var(--text-quaternary)]/50 disabled:cursor-not-allowed"
             >
               <ChevronRight className="h-3 w-3" />
             </button>
-            <div className="w-px h-4 bg-white/[0.06] ml-1" />
+            <div className="w-px h-4 bg-[var(--border-default)] ml-1" />
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 text-[9px] text-white/25">
-          <Check className="h-2.5 w-2.5 text-green-400/50" />
+        <div className="flex items-center gap-1.5 text-[9px] text-[var(--text-quaternary)]">
+          <Check className="h-2.5 w-2.5 text-[var(--color-accent-green)]/50" />
           <span>{totals.accepted} accepted</span>
         </div>
-        <div className="flex items-center gap-1.5 text-[9px] text-white/25">
-          <X className="h-2.5 w-2.5 text-red-400/50" />
+        <div className="flex items-center gap-1.5 text-[9px] text-[var(--text-quaternary)]">
+          <X className="h-2.5 w-2.5 text-[var(--color-accent-red)]/50" />
           <span>{totals.rejected} rejected</span>
         </div>
         {totals.pending > 0 && (
-          <div className="flex items-center gap-1.5 text-[9px] text-white/25">
-            <AlertTriangle className="h-2.5 w-2.5 text-amber-400/50" />
+          <div className="flex items-center gap-1.5 text-[9px] text-[var(--text-quaternary)]">
+            <AlertTriangle className="h-2.5 w-2.5 text-[var(--color-accent-amber)]/50" />
             <span>{totals.pending} pending</span>
           </div>
         )}
         <div className="flex-1" />
         {selectedFile && hunkSummary && (
-          <span className="text-[8px] text-white/15 font-mono">{hunkSummary}</span>
+          <span className="text-[8px] text-[var(--text-quaternary)] font-mono">{hunkSummary}</span>
         )}
       </div>
     </div>

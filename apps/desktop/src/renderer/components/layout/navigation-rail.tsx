@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { TooltipSimple as Tooltip } from "@agentic-os/ui"
+import { useTheme } from "@/lib/use-theme"
 import {
   LayoutDashboard,
   Code2,
@@ -12,6 +13,8 @@ import {
   User,
   Pin,
   PinOff,
+  Sun,
+  Moon,
 } from "lucide-react"
 import logoSvg from "@/assets/branding/logo.svg"
 import wordmarkSvg from "@/assets/branding/wordmark.svg"
@@ -51,25 +54,28 @@ function NavItemButton({
       className={cn(
         "relative flex w-full items-center transition-all duration-150 rounded-lg",
         expanded ? "gap-3 px-3 py-2.5" : "justify-center px-2 py-2.5",
-        isActive
-          ? "text-white"
-          : "text-white/30 hover:text-white/60",
       )}
+      style={{
+        color: isActive ? "var(--text-primary)" : "var(--text-tertiary)",
+      }}
+      onMouseEnter={(e) => {
+        if (!isActive) e.currentTarget.style.color = "var(--text-secondary)"
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) e.currentTarget.style.color = "var(--text-tertiary)"
+      }}
     >
       {/* Active indicator glow */}
       {isActive && (
         <motion.span
           layoutId="nav-active-indicator"
-          className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full"
+          style={{ background: "var(--color-accent-brand)", boxShadow: "0 0 8px var(--color-accent-brand-border)" }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
         />
       )}
 
-      {/* Icon with active glow */}
-      <span className={cn(
-        "shrink-0 transition-all duration-200",
-        isActive && "drop-shadow-[0_0_6px_rgba(59,130,246,0.4)]"
-      )}>
+      <span className="shrink-0 transition-all duration-200" style={isActive ? { filter: "drop-shadow(0 0 6px var(--color-accent-brand-border))" } : {}}>
         {item.icon}
       </span>
 
@@ -101,6 +107,7 @@ export function NavigationRail() {
   const location = useLocation()
   const [isHovered, setIsHovered] = useState(false)
   const [isPinned, setIsPinned] = useState(false)
+  const { theme, toggle: toggleTheme } = useTheme()
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const railRef = useRef<HTMLElement>(null)
 
@@ -137,8 +144,12 @@ export function NavigationRail() {
       animate={{ width }}
       transition={{ duration: 0.2, ease: "easeInOut" }}
       className={cn(
-        "flex flex-col border-r border-white/[0.06] bg-[#0c0c0d] overflow-hidden shrink-0 h-full",
+        "flex flex-col overflow-hidden shrink-0 h-full",
       )}
+      style={{
+        background: "var(--surface-panel)",
+        borderRight: "1px solid var(--border-default)",
+      }}
     >
       {/* Branding */}
       <div className="flex items-center justify-center px-3 pt-4 pb-3">
@@ -187,6 +198,19 @@ export function NavigationRail() {
         {/* Spacer */}
         <div className="flex-1 min-h-4" />
 
+        {/* Theme toggle (collapsed) */}
+        {!expanded && (
+          <Tooltip content={theme === "dark" ? "Switch to warm theme" : "Switch to dark theme"}>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="flex justify-center px-2 py-2 text-white/20 hover:text-white/50 transition-colors rounded-lg hover:bg-white/[0.04]"
+            >
+              {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            </button>
+          </Tooltip>
+        )}
+
         {/* Pin toggle */}
         {expanded && (
           <motion.button
@@ -205,22 +229,48 @@ export function NavigationRail() {
             {isPinned ? "Unpin sidebar" : "Pin sidebar"}
           </motion.button>
         )}
+
+        {/* Theme toggle */}
+        {expanded && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={toggleTheme}
+            className="flex items-center gap-3 px-3 py-2 text-[10px] text-white/20 hover:text-white/50 transition-colors rounded-lg hover:bg-white/[0.04]"
+          >
+            {theme === "dark" ? (
+              <Sun className="h-3.5 w-3.5" />
+            ) : (
+              <Moon className="h-3.5 w-3.5" />
+            )}
+            {theme === "dark" ? "Switch to warm theme" : "Switch to dark theme"}
+          </motion.button>
+        )}
       </div>
 
       {/* Bottom section: user */}
       <div className={cn(
-        "border-t border-white/[0.06] pt-2 pb-2 transition-all",
+        "pt-2 pb-2 transition-all",
         expanded ? "px-3" : "px-2"
-      )}>
-        <div className={cn(
-          "flex items-center gap-3 rounded-lg transition-colors hover:bg-white/[0.04]",
-          expanded ? "px-2 py-2" : "justify-center py-2"
-        )}>
+      )}
+        style={{ borderTop: "1px solid var(--border-default)" }}>
+        <div
+          className={cn(
+            "flex items-center gap-3 rounded-lg transition-colors",
+            expanded ? "px-2 py-2" : "justify-center py-2"
+          )}
+          style={{ color: "var(--text-primary)" }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--border-default)" }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent" }}
+        >
           <div className="relative shrink-0">
             <div className="h-7 w-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
               <User className="h-3.5 w-3.5 text-white" />
             </div>
-            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-[#0c0c0d]" />
+            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-500"
+              style={{ border: "2px solid var(--surface-panel)" }} />
           </div>
           <AnimatePresence>
             {expanded && (
@@ -231,12 +281,17 @@ export function NavigationRail() {
                 transition={{ duration: 0.12 }}
                 className="flex-1 min-w-0"
               >
-                <p className="text-[11px] font-medium text-white/70 truncate">Developer</p>
+                <p className="text-[11px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>Developer</p>
               </motion.div>
             )}
           </AnimatePresence>
           {expanded && (
-            <button className="shrink-0 rounded-md p-1 text-white/20 hover:text-white/50 hover:bg-white/[0.06] transition-all">
+            <button
+              className="shrink-0 rounded-md p-1 transition-all"
+              style={{ color: "var(--text-quaternary)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; e.currentTarget.style.background = "var(--border-default)" }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-quaternary)"; e.currentTarget.style.background = "transparent" }}
+            >
               <Bell className="h-3.5 w-3.5" />
             </button>
           )}

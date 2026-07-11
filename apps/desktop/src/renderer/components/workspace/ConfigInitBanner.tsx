@@ -177,36 +177,36 @@ export function ConfigInitBanner() {
         className={cn(
           "rounded-xl border overflow-hidden",
           result === "success"
-            ? "border-green-500/20 bg-green-500/5"
+            ? "border-[var(--accent-diff)]/20 bg-[var(--accent-diff)]/5"
             : result === "error"
-              ? "border-red-500/20 bg-red-500/5"
-              : "border-blue-500/20 bg-gradient-to-r from-blue-500/8 to-indigo-500/5",
+              ? "border-[var(--color-accent-red)]/20 bg-[var(--color-accent-red)]/5"
+              : "border-[var(--accent-code)]/20 bg-gradient-to-r from-[var(--accent-code)]/8 to-[var(--accent-design)]/5",
         )}
       >
         <div className="flex items-start gap-3 px-4 py-3">
           {/* Icon */}
           {result === "success" ? (
-            <CheckCircle2 className="h-5 w-5 text-green-400 shrink-0 mt-0.5" />
+            <CheckCircle2 className="h-5 w-5 text-[var(--accent-diff)] shrink-0 mt-0.5" />
           ) : result === "error" ? (
-            <AlertTriangle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
+            <AlertTriangle className="h-5 w-5 text-[var(--color-accent-red)] shrink-0 mt-0.5" />
           ) : (
-            <FileText className="h-5 w-5 text-blue-400 shrink-0 mt-0.5" />
+            <FileText className="h-5 w-5 text-[var(--accent-code)] shrink-0 mt-0.5" />
           )}
 
           {/* Content */}
           <div className="flex-1 min-w-0">
             {result === "success" ? (
               <>
-                <p className="text-xs font-semibold text-green-400">AGENTIC.md Created</p>
-                <p className="text-[10px] text-green-300/70 mt-0.5">
+                <p className="text-xs font-semibold text-[var(--accent-diff)]">AGENTIC.md Created</p>
+                <p className="text-[10px] text-[var(--accent-diff)]/70 mt-0.5">
                   Project configuration generated successfully. The AI will now follow your project conventions.
                 </p>
               </>
             ) : (
               <>
-                <p className="text-xs font-semibold text-white/80">Configure Project for Better Results</p>
-                <p className="text-[10px] text-white/40 mt-0.5 leading-relaxed">
-                  No <code className="text-blue-400">AGENTIC.md</code> file found. Generate one to let the AI
+                <p className="text-xs font-semibold text-[var(--text-primary)]">Configure Project for Better Results</p>
+                <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
+                  No <code className="text-[var(--accent-code)]">AGENTIC.md</code> file found. Generate one to let the AI
                   understand your project structure, build commands, and coding conventions — resulting in
                   more accurate and context-aware responses.
                 </p>
@@ -215,25 +215,25 @@ export function ConfigInitBanner() {
 
             {/* Error detail */}
             {result === "error" && errorMessage && (
-              <p className="text-[9px] text-red-400/60 mt-1">{errorMessage}</p>
+              <p className="text-[9px] text-[var(--color-accent-red)]/60 mt-1">{errorMessage}</p>
             )}
 
             {/* Confirmation dialog for overwrite */}
             {showConfirmOverwrite && (
-              <div className="mt-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/15">
-                <p className="text-[10px] text-amber-400/80 mb-2">
+              <div className="mt-2 p-2 rounded-lg bg-[var(--accent-preview)]/5 border border-[var(--accent-preview)]/15">
+                <p className="text-[10px] text-[var(--accent-preview)]/80 mb-2">
                   AGENTIC.md already exists in this project. Overwrite it?
                 </p>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={doGenerate}
-                    className="px-2 py-1 rounded-lg bg-amber-500/15 border border-amber-500/25 text-[10px] font-medium text-amber-400 hover:bg-amber-500/25 transition-all"
+                    className="px-2 py-1 rounded-lg bg-[var(--accent-preview)]/15 border border-[var(--accent-preview)]/25 text-[10px] font-medium text-[var(--accent-preview)] hover:bg-[var(--accent-preview)]/25 transition-all"
                   >
                     Overwrite
                   </button>
                   <button
                     onClick={() => setShowConfirmOverwrite(false)}
-                    className="px-2 py-1 rounded-lg text-[10px] text-white/30 hover:text-white/50 transition-colors"
+                    className="px-2 py-1 rounded-lg text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
                   >
                     Cancel
                   </button>
@@ -248,7 +248,7 @@ export function ConfigInitBanner() {
                   <button
                     onClick={handleGenerate}
                     disabled={generating}
-                    className="flex items-center gap-1 rounded-lg bg-blue-500/15 border border-blue-500/25 px-3 py-1.5 text-[10px] font-medium text-blue-400 hover:bg-blue-500/25 transition-all disabled:opacity-50"
+                    className="flex items-center gap-1 rounded-lg bg-[var(--accent-code)]/15 border border-[var(--accent-code)]/25 px-3 py-1.5 text-[10px] font-medium text-[var(--accent-code)] hover:bg-[var(--accent-code)]/25 transition-all disabled:opacity-50"
                   >
                     {generating ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -261,7 +261,7 @@ export function ConfigInitBanner() {
                 {result !== "success" && (
                   <button
                     onClick={handleDismiss}
-                    className="rounded-lg px-3 py-1.5 text-[10px] text-white/30 hover:text-white/50 hover:bg-white/[0.04] transition-all"
+                    className="rounded-lg px-3 py-1.5 text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
                   >
                     Dismiss
                   </button>
@@ -273,7 +273,7 @@ export function ConfigInitBanner() {
           {/* Close button */}
           <button
             onClick={handleDismiss}
-            className="rounded p-0.5 text-white/20 hover:text-white/50 hover:bg-white/[0.04] transition-all shrink-0"
+            className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all shrink-0"
           >
             <X className="h-4 w-4" />
           </button>

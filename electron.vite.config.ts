@@ -11,7 +11,7 @@ export default defineConfig({
     })],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/main/index.ts') }
+        input: { index: resolve(__dirname, 'apps/desktop/src/main/index.ts') }
       }
     }
   },
@@ -19,7 +19,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/preload/index.ts') },
+        input: { index: resolve(__dirname, 'apps/desktop/src/preload/index.ts') },
         output: {
           format: 'cjs',
           entryFileNames: 'index.js'
@@ -28,11 +28,16 @@ export default defineConfig({
     }
   },
   renderer: {
-    root: resolve(__dirname, 'src/renderer'),
+    root: resolve(__dirname, 'apps/desktop/src/renderer'),
+    build: {
+      rollupOptions: {
+        input: resolve(__dirname, 'apps/desktop/src/renderer/index.html')
+      }
+    },
     plugins: [react(), tailwindcss(), nodePolyfills({ globals: { process: true, Buffer: true } })],
     resolve: {
       alias: {
-        '@': resolve(__dirname, 'src/renderer'),
+        '@': resolve(__dirname, 'apps/desktop/src/renderer'),
         '@agentic-os/shared': resolve(__dirname, 'packages/shared/src'),
         '@agentic-os/ui': resolve(__dirname, 'packages/ui/src'),
         '@agentic-os/providers': resolve(__dirname, 'packages/providers/src')

@@ -8,7 +8,7 @@ const config = {
   },
   files: [
     'out/**/*',
-    '!src/**/*',
+    '!apps/**/src/**/*',
     '!packages/**/src/**/*',
     '!.git/**/*',
   ],
@@ -55,6 +55,7 @@ const config = {
   extraResources: [
     { from: 'resources/', to: 'resources/', filter: ['**/*'] },
     { from: 'build/', to: 'build/', filter: ['**/*'] },
+    { from: 'agent-instructions/', to: 'agent-instructions/', filter: ['**/*'] },
   ],
   protocols: {
     name: 'AgenticOS Protocol',

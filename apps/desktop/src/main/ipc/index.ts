@@ -10,6 +10,7 @@ import { registerCommandHandlers } from './command'
 import { assertPathAllowed, isPathAllowed, filterDeniedPaths, assertGitRepoPath } from './path-utils'
 import { registerHttpProxyHandler } from './http-proxy'
 import { registerViewportHandlers } from './viewport'
+import { registerInstructionFileHandlers } from './instruction-files'
 export function registerAllIpcHandlers(
   windowManager: WindowManager,
   browserManager: BrowserManager,
@@ -37,6 +38,7 @@ export function registerAllIpcHandlers(
   const viewportManager = new ViewportManager()
   registerViewportHandlers(viewportManager, windowManager)
   registerImportSettingsHandlers()
+  registerInstructionFileHandlers()
 }
 
 function registerDevHandlers(): void {

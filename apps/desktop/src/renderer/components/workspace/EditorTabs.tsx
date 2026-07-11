@@ -43,11 +43,11 @@ export function EditorTabs({ openFiles, activeFilePath, liveEditingFile, onOpen,
   }
 
   return (
-    <div ref={tabsRef} role="tablist" className="flex items-center border-b border-white/[0.04] bg-black/20 overflow-x-auto shrink-0 scrollbar-thin">
+    <div ref={tabsRef} role="tablist" className="flex items-center border-b border-[var(--border-subtle)] bg-[var(--surface-panel)]/30 overflow-x-auto shrink-0 scrollbar-thin">
       <style>{`
         @keyframes streaming-border-pulse {
-          0%, 100% { border-left-color: rgba(34, 197, 94, 0); }
-          50% { border-left-color: rgba(34, 197, 94, 0.6); }
+          0%, 100% { border-left-color: transparent; }
+          50% { border-left-color: var(--color-accent-green); }
         }
       `}</style>
       {openFiles.map((file) => {
@@ -65,24 +65,24 @@ export function EditorTabs({ openFiles, activeFilePath, liveEditingFile, onOpen,
             layoutId={file.path}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
             className={cn(
-              "group flex items-center gap-1.5 px-3 py-1.5 text-[11px] cursor-pointer border-r border-white/[0.03] transition-all select-none whitespace-nowrap",
+              "group flex items-center gap-1.5 px-3 py-1.5 text-[11px] cursor-pointer border-r border-[var(--border-subtle)] transition-all select-none whitespace-nowrap",
               file.path === activeFilePath
-                ? "bg-white/[0.04] text-white shadow-[inset_0_-1.5px_0_0] shadow-blue-500"
-                : "text-white/40 hover:text-white/70 hover:bg-white/[0.02]",
+                ? "bg-[var(--border-subtle)] text-[var(--text-primary)] shadow-[inset_0_-1.5px_0_0] shadow-[var(--accent-code)]"
+                : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]/50",
               isBeingStreamed && "border-l-2 border-l-transparent animate-[streaming-border-pulse_1.5s_ease-in-out_infinite]"
             )}
             onClick={() => onOpen(file)}
           >
             <span className={cn(
               "text-[10px] font-medium uppercase",
-              lang === "typescript" && "text-blue-400",
-              lang === "javascript" && "text-yellow-400",
+              lang === "typescript" && "text-[var(--accent-code)]",
+              lang === "javascript" && "text-[var(--color-accent-amber)]",
               lang === "css" && "text-pink-400",
               lang === "html" && "text-orange-400",
-              lang === "json" && "text-green-400",
+              lang === "json" && "text-[var(--color-accent-green)]",
               lang === "python" && "text-blue-300",
               lang === "rust" && "text-orange-400",
-              lang === "markdown" && "text-white/40",
+              lang === "markdown" && "text-[var(--text-tertiary)]",
             )}>
               {file.name.split(".").pop()}
             </span>
@@ -92,13 +92,13 @@ export function EditorTabs({ openFiles, activeFilePath, liveEditingFile, onOpen,
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0"
+                className="h-1.5 w-1.5 rounded-full bg-[var(--accent-code)] shrink-0"
                 title="Unsaved changes"
               />
             )}
             <button
               onClick={(e) => { e.stopPropagation(); onClose(file.path) }}
-              className="ml-0.5 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all text-white/30 hover:text-white"
+              className="ml-0.5 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-[var(--border-default)] transition-all text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
               aria-label={`Close ${file.name}`}
             >
               <X className="h-3 w-3" />

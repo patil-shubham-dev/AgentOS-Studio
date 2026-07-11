@@ -31,11 +31,11 @@ export function BreadcrumbNav() {
   }
 
   return (
-    <div className="flex items-center gap-0.5 px-3 py-1 border-b border-white/[0.03] bg-black/10 overflow-x-auto shrink-0 scrollbar-thin">
+    <div className="flex items-center gap-0.5 px-3 py-1 border-b border-[var(--border-subtle)] bg-[var(--surface-panel)]/30 overflow-x-auto shrink-0 scrollbar-thin">
       {segments.map((seg, i) => (
         <div key={seg.path + seg.label} className="flex items-center gap-0.5">
           {i > 0 && (
-            <ChevronRight className="h-2.5 w-2.5 text-white/15 shrink-0" />
+            <ChevronRight className="h-2.5 w-2.5 text-[var(--text-quaternary)] shrink-0" />
           )}
           <motion.button
             whileHover={{ scale: 1.03 }}
@@ -44,12 +44,12 @@ export function BreadcrumbNav() {
             className={cn(
               "flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-all shrink-0",
               seg.isFile
-                ? "text-white/60 cursor-default"
-                : "text-white/30 hover:text-white/60 hover:bg-white/[0.04] cursor-pointer",
+                ? "text-[var(--text-secondary)] cursor-default"
+                : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] cursor-pointer",
             )}
           >
-            {!seg.isFile && <FolderOpen className="h-2.5 w-2.5 text-amber-400/40" />}
-            {seg.isFile && <FileCode className="h-2.5 w-2.5 text-blue-400/50" />}
+            {!seg.isFile && <FolderOpen className="h-2.5 w-2.5 text-[var(--color-accent-amber)]/40" />}
+            {seg.isFile && <FileCode className="h-2.5 w-2.5 text-[var(--accent-code)]/50" />}
             <span className={cn(
               "truncate max-w-32",
               seg.isFile && "font-medium",

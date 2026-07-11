@@ -1,5 +1,4 @@
 import { FilePlus, FolderPlus, RefreshCw, ChevronsUpDown, ChevronsDown, X, Loader2 } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 interface WorkspaceHeaderProps {
   rootPath: string | null
@@ -18,14 +17,15 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
   const name = rootPath ? rootPath.split(/[/\\]+/).pop() : ""
 
   return (
-    <div className="border-b border-white/[0.04]">
+    <div style={{ borderBottom: "1px solid var(--border-subtle)" }}>
       <div className="flex items-center justify-between px-1 py-0.5">
         <div className="flex items-center gap-1.5 min-w-0 px-1">
-          <span className="text-[10px] font-semibold text-white/30 uppercase tracking-[0.08em] select-none truncate max-w-[160px]">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] select-none truncate max-w-[160px]"
+            style={{ color: "var(--text-tertiary)" }}>
             {name || "Explorer"}
           </span>
           {rootPath && !isLoading && (
-            <span className="text-[9px] text-white/20 font-mono shrink-0">{fileCount}</span>
+            <span className="text-[9px] font-mono shrink-0" style={{ color: "var(--text-quaternary)" }}>{fileCount}</span>
           )}
         </div>
         <div className="flex items-center gap-0.5">
@@ -61,11 +61,29 @@ function HeaderButton({ onClick, disabled, title, children }: { onClick?: () => 
       onClick={onClick ?? undefined}
       disabled={disabled}
       title={title}
-      className={cn(
-        "rounded p-0.5 transition-all duration-100",
-        "text-white/20 hover:text-white/60 hover:bg-white/[0.06]",
-        "disabled:opacity-20 disabled:pointer-events-none",
-      )}
+      className="rounded p-0.5 transition-all duration-100"
+      style={{
+        color: "var(--text-quaternary)",
+        opacity: disabled ? 0.25 : undefined,
+        cursor: disabled ? "default" : "pointer",
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.color = "var(--text-secondary)"
+          e.currentTarget.style.background = "var(--border-default)"
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = "var(--text-quaternary)"
+        e.currentTarget.style.background = "transparent"
+      }}
+      onFocus={(e) => {
+        e.currentTarget.style.outline = "2px solid var(--color-accent-brand)"
+        e.currentTarget.style.outlineOffset = "1px"
+      }}
+      onBlur={(e) => {
+        e.currentTarget.style.outline = ""
+      }}
     >
       {children}
     </button>

@@ -7,8 +7,8 @@
  * Run: npx tsx scripts/phase1-validation.ts
  */
 
-import { parseProjectConfig, formatForRole, getCommandsForVerification } from "../src/renderer/runtime/project-config/ProjectConfigTypes"
-import type { StructuredProjectConfig } from "../src/renderer/runtime/project-config/ProjectConfigTypes"
+import { parseProjectConfig, formatForRole, getCommandsForVerification } from "../apps/desktop/src/renderer/runtime/project-config/ProjectConfigTypes"
+import type { StructuredProjectConfig } from "../apps/desktop/src/renderer/runtime/project-config/ProjectConfigTypes"
 import * as fs from "fs"
 import * as path from "path"
 
