@@ -13,15 +13,15 @@ function GanttBar({ label, startMs, durationMs, totalMs, color }: {
   const widthPct = totalMs > 0 ? (durationMs / totalMs) * 100 : 0
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-      <span style={{ minWidth: '100px', fontSize: '11px', color: '#aaa', textAlign: 'right' }}>{label}</span>
-      <div style={{ flex: 1, height: '16px', background: '#0d0d10', borderRadius: '3px', position: 'relative', overflow: 'hidden' }}>
+      <span style={{ minWidth: '100px', fontSize: '11px', color: 'var(--text-tertiary)', textAlign: 'right' }}>{label}</span>
+      <div style={{ flex: 1, height: '16px', background: 'var(--surface-panel)', borderRadius: '3px', position: 'relative', overflow: 'hidden' }}>
         <div style={{
           position: 'absolute', left: `${leftPct}%`, width: `${Math.max(widthPct, 1)}%`,
           height: '100%', background: color, borderRadius: '3px', opacity: 0.8,
           transition: 'width 0.3s ease',
         }} />
       </div>
-      <span style={{ minWidth: '50px', fontSize: '10px', color: '#6b7280', textAlign: 'right' }}>{durationMs}ms</span>
+      <span style={{ minWidth: '50px', fontSize: '10px', color: 'var(--text-tertiary)', textAlign: 'right' }}>{durationMs}ms</span>
     </div>
   )
 }
@@ -87,21 +87,21 @@ export function StartupDiagnosticsPage() {
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto', fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto', fontFamily: "'Inter', system-ui, sans-serif", color: 'var(--text-primary)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#e2e8f0', margin: 0 }}>
+        <h1 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>
           Startup Diagnostics
         </h1>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={handleCopy} style={{
-            padding: '6px 14px', background: copied ? '#16a34a' : '#2563eb', color: '#fff',
+            padding: '6px 14px', background: copied ? 'var(--color-success-text)' : 'var(--color-accent-brand)', color: '#fff',
             border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '12px',
           }}>
             {copied ? 'Copied!' : 'Copy'}
           </button>
           <button onClick={handleExport} style={{
-            padding: '6px 14px', background: 'transparent', color: '#ccc',
-            border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '12px',
+            padding: '6px 14px', background: 'transparent', color: 'var(--text-secondary)',
+            border: '1px solid var(--border-default)', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '12px',
           }}>
             Export
           </button>
@@ -110,10 +110,10 @@ export function StartupDiagnosticsPage() {
 
       {/* Summary */}
       <div style={{
-        background: '#1a1a1f', borderRadius: '12px', padding: '20px', marginBottom: '20px',
-        border: '1px solid #2a2a30',
+        background: 'var(--surface-overlay)', borderRadius: '12px', padding: '20px', marginBottom: '20px',
+        border: '1px solid var(--border-default)',
       }}>
-        <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '16px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
           Summary
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
@@ -126,10 +126,10 @@ export function StartupDiagnosticsPage() {
             ['Background', `${startupReport.deferredDuration}ms`],
           ].map(([label, value]) => (
             <div key={label} style={{
-              background: '#0d0d10', borderRadius: '8px', padding: '12px 16px',
+              background: 'var(--surface-panel)', borderRadius: '8px', padding: '12px 16px',
             }}>
-              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>{label}</div>
-              <div style={{ fontSize: '16px', fontWeight: 600, color: '#e2e8f0' }}>{value}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>{label}</div>
+              <div style={{ fontSize: '16px', fontWeight: 600 }}>{value}</div>
             </div>
           ))}
         </div>
@@ -137,28 +137,28 @@ export function StartupDiagnosticsPage() {
 
       {/* Readiness Gates */}
       <div style={{
-        background: '#1a1a1f', borderRadius: '12px', padding: '20px', marginBottom: '20px',
-        border: '1px solid #2a2a30',
+        background: 'var(--surface-overlay)', borderRadius: '12px', padding: '20px', marginBottom: '20px',
+        border: '1px solid var(--border-default)',
       }}>
-        <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '12px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>
           Readiness
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {readiness.map(r => {
-            const color = r.ready ? '#22c55e' : '#6b7280'
+            const color = r.ready ? 'var(--color-success-text)' : 'var(--text-tertiary)'
             return (
               <div key={r.level} style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '8px 12px', background: '#0d0d10', borderRadius: '6px',
+                padding: '8px 12px', background: 'var(--surface-panel)', borderRadius: '6px',
               }}>
                 <div style={{
                   width: '10px', height: '10px', borderRadius: '50%',
                   background: color, flexShrink: 0,
                 }} />
-                <span style={{ fontSize: '13px', color: '#e2e8f0', minWidth: '120px' }}>{r.label}</span>
+                <span style={{ fontSize: '13px', minWidth: '120px' }}>{r.label}</span>
                 <span style={{ fontSize: '11px', color }}>{r.ready ? 'Ready' : 'Waiting...'}</span>
                 {r.timestamp > 0 && (
-                  <span style={{ fontSize: '10px', color: '#6b7280', marginLeft: 'auto' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginLeft: 'auto' }}>
                     {new Date(r.timestamp).toLocaleTimeString()}
                   </span>
                 )}
@@ -170,10 +170,10 @@ export function StartupDiagnosticsPage() {
 
       {/* Visual Timeline (Gantt) */}
       <div style={{
-        background: '#1a1a1f', borderRadius: '12px', padding: '20px', marginBottom: '20px',
-        border: '1px solid #2a2a30',
+        background: 'var(--surface-overlay)', borderRadius: '12px', padding: '20px', marginBottom: '20px',
+        border: '1px solid var(--border-default)',
       }}>
-        <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '12px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>
           Execution Timeline
         </div>
         {ganttEntries.length > 0 ? (
@@ -190,7 +190,7 @@ export function StartupDiagnosticsPage() {
             ))}
           </div>
         ) : (
-          <div style={{ fontSize: '12px', color: '#6b7280', textAlign: 'center', padding: '20px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', textAlign: 'center', padding: '20px' }}>
             No timing data available yet. Restart the application to collect data.
           </div>
         )}
@@ -198,22 +198,22 @@ export function StartupDiagnosticsPage() {
 
       {/* Detailed Timeline */}
       <div style={{
-        background: '#1a1a1f', borderRadius: '12px', padding: '20px', marginBottom: '20px',
-        border: '1px solid #2a2a30',
+        background: 'var(--surface-overlay)', borderRadius: '12px', padding: '20px', marginBottom: '20px',
+        border: '1px solid var(--border-default)',
       }}>
-        <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '12px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>
           Detailed Timeline
         </div>
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: '#aaa', lineHeight: '1.8' }}>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: '1.8' }}>
           {Object.entries(timingData)
             .sort((a, b) => a[1].time - b[1].time)
             .map(([k, v]) => {
               const isTask = k.startsWith('task:')
-              const color = isTask ? '#60a5fa' : k.includes('complete') ? '#22c55e' : k.includes('start') ? '#f59e0b' : '#aaa'
+              const color = isTask ? '#60a5fa' : k.includes('complete') ? 'var(--color-success-text)' : k.includes('start') ? '#f59e0b' : 'var(--text-tertiary)'
               return (
                 <div key={k} style={{ display: 'flex', gap: '12px', padding: '2px 0' }}>
-                  <span style={{ color: '#6b7280', minWidth: '50px', textAlign: 'right' }}>{v.elapsed}ms</span>
-                  <span style={{ color: '#555', minWidth: '40px', textAlign: 'right' }}>+{v.duration}ms</span>
+                  <span style={{ color: 'var(--text-tertiary)', minWidth: '50px', textAlign: 'right' }}>{v.elapsed}ms</span>
+                  <span style={{ color: 'var(--text-quaternary)', minWidth: '40px', textAlign: 'right' }}>+{v.duration}ms</span>
                   <span style={{ color }}>{k}</span>
                 </div>
               )
@@ -223,18 +223,18 @@ export function StartupDiagnosticsPage() {
 
       {/* Services */}
       <div style={{
-        background: '#1a1a1f', borderRadius: '12px', padding: '20px', marginBottom: '20px',
-        border: '1px solid #2a2a30',
+        background: 'var(--surface-overlay)', borderRadius: '12px', padding: '20px', marginBottom: '20px',
+        border: '1px solid var(--border-default)',
       }}>
-        <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '12px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>
           Services
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {services.map(s => {
-            const statusColor = s.status === 'ready' ? '#22c55e' : s.status === 'failed' ? '#ef4444' : s.status === 'loading' ? '#f59e0b' : '#6b7280'
+            const statusColor = s.status === 'ready' ? 'var(--color-success-text)' : s.status === 'failed' ? '#ef4444' : s.status === 'loading' ? '#f59e0b' : 'var(--text-tertiary)'
             return (
               <div key={s.name} style={{
-                background: '#0d0d10', borderRadius: '8px', padding: '12px 16px',
+                background: 'var(--surface-panel)', borderRadius: '8px', padding: '12px 16px',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -242,9 +242,9 @@ export function StartupDiagnosticsPage() {
                     width: '8px', height: '8px', borderRadius: '50%', background: statusColor,
                     flexShrink: 0,
                   }} />
-                  <span style={{ fontSize: '13px', color: '#e2e8f0' }}>{s.name}</span>
+                  <span style={{ fontSize: '13px' }}>{s.name}</span>
                   {s.duration && (
-                    <span style={{ fontSize: '11px', color: '#6b7280' }}>{s.duration}ms</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{s.duration}ms</span>
                   )}
                 </div>
                 <span style={{ fontSize: '12px', color: statusColor, textTransform: 'capitalize' }}>
@@ -263,28 +263,28 @@ export function StartupDiagnosticsPage() {
         if (!reg.baseline.totalDuration) return null
         return (
           <div style={{
-            background: '#1a1a1f', borderRadius: '12px', padding: '20px', marginBottom: '20px',
-            border: reg.hasRegression ? '1px solid #f59e0b' : '1px solid #2a2a30',
+            background: 'var(--surface-overlay)', borderRadius: '12px', padding: '20px', marginBottom: '20px',
+            border: reg.hasRegression ? '1px solid #f59e0b' : '1px solid var(--border-default)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600 }}>
                 Regression Tracking {reg.hasRegression && <span style={{ color: '#f59e0b', marginLeft: '8px' }}>⚠ Warnings</span>}
               </div>
               <button onClick={() => { clearHistory(); window.location.reload() }} style={{
-                padding: '4px 10px', background: 'transparent', color: '#888',
-                border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', fontSize: '11px',
+                padding: '4px 10px', background: 'transparent', color: 'var(--text-quaternary)',
+                border: '1px solid var(--border-default)', borderRadius: '6px', cursor: 'pointer', fontSize: '11px',
               }}>
                 Clear History
               </button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '12px' }}>
-              <div style={{ background: '#0d0d10', borderRadius: '8px', padding: '12px' }}>
-                <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '4px' }}>BASELINE AVG</div>
-                <div style={{ fontSize: '18px', fontWeight: 600, color: '#22c55e' }}>{reg.baseline.totalDuration}ms</div>
+              <div style={{ background: 'var(--surface-panel)', borderRadius: '8px', padding: '12px' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>BASELINE AVG</div>
+                <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-success-text)' }}>{reg.baseline.totalDuration}ms</div>
               </div>
-              <div style={{ background: '#0d0d10', borderRadius: '8px', padding: '12px' }}>
-                <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '4px' }}>CURRENT</div>
-                <div style={{ fontSize: '18px', fontWeight: 600, color: reg.hasRegression ? '#f59e0b' : '#e2e8f0' }}>{reg.current.totalDuration}ms</div>
+              <div style={{ background: 'var(--surface-panel)', borderRadius: '8px', padding: '12px' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>CURRENT</div>
+                <div style={{ fontSize: '18px', fontWeight: 600, color: reg.hasRegression ? '#f59e0b' : 'var(--text-primary)' }}>{reg.current.totalDuration}ms</div>
               </div>
             </div>
             {reg.warnings.length > 0 && (
@@ -303,15 +303,15 @@ export function StartupDiagnosticsPage() {
       {/* Startup Report */}
       {startupReport.longestTask.name && (
         <div style={{
-          background: '#1a1a1f', borderRadius: '12px', padding: '20px',
-          border: '1px solid #2a2a30',
+          background: 'var(--surface-overlay)', borderRadius: '12px', padding: '20px',
+          border: '1px solid var(--border-default)',
         }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '12px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>
             Startup Report
           </div>
           <pre style={{
             fontFamily: "'JetBrains Mono', monospace", fontSize: '11px',
-            color: '#aaa', lineHeight: '1.6', margin: 0, whiteSpace: 'pre-wrap',
+            color: 'var(--text-tertiary)', lineHeight: '1.6', margin: 0, whiteSpace: 'pre-wrap',
           }}>
             {formatReport(startupReport)}
           </pre>

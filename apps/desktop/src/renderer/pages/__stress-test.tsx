@@ -53,15 +53,15 @@ export function StressTestPage() {
   }, [routeSpam, mountSpam, runTest])
 
   return (
-    <div style={{ padding: "24px", fontFamily: "monospace", fontSize: "13px" }}>
-      <h2 style={{ color: "#e2e8f0", marginBottom: "16px" }}>Stress Test</h2>
+    <div style={{ padding: "24px", fontFamily: "monospace", fontSize: "13px", color: "var(--text-primary)" }}>
+      <h2 style={{ marginBottom: "16px" }}>Stress Test</h2>
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
         <button
           onClick={startStress}
           disabled={running}
           style={{
-            padding: "8px 20px", background: running ? "#333" : "#ef4444",
+            padding: "8px 20px", background: running ? "var(--text-quaternary)" : "#ef4444",
             color: "#fff", border: "none", borderRadius: "8px",
             cursor: running ? "not-allowed" : "pointer", fontWeight: 600,
           }}
@@ -70,7 +70,7 @@ export function StressTestPage() {
         </button>
         <button
           onClick={() => setErrors([])}
-          style={{ padding: "8px 20px", background: "transparent", color: "#888", border: "1px solid #555", borderRadius: "8px", cursor: "pointer" }}
+          style={{ padding: "8px 20px", background: "transparent", color: "var(--text-quaternary)", border: "1px solid var(--border-default)", borderRadius: "8px", cursor: "pointer" }}
         >
           Clear Errors
         </button>
@@ -83,8 +83,8 @@ export function StressTestPage() {
             onClick={() => navigate(route)}
             style={{
               padding: "4px 10px", fontSize: "11px", cursor: "pointer",
-              background: "#1a1a2e", color: "#94a3b8",
-              border: "1px solid #333", borderRadius: "6px",
+              background: "var(--surface-elevated)", color: "var(--text-tertiary)",
+              border: "1px solid var(--border-default)", borderRadius: "6px",
             }}
           >
             {route}
@@ -101,19 +101,19 @@ export function StressTestPage() {
         </div>
       )}
 
-      <div style={{ color: "#64748b", fontSize: "11px" }}>
+      <div style={{ color: "var(--text-tertiary)", fontSize: "11px" }}>
         <div>Iterations: {iteration}</div>
         <div>Running: {String(running)}</div>
         <div>Active panel: {activePanel ?? "none"}</div>
       </div>
 
       <div style={{ marginTop: "16px" }}>
-        <div style={{ color: "#94a3b8", fontWeight: 600, marginBottom: "8px" }}>Fake Panels (mount/unmount test)</div>
+        <div style={{ color: "var(--text-tertiary)", fontWeight: 600, marginBottom: "8px" }}>Fake Panels (mount/unmount test)</div>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           {activePanel && (
-            <div style={{ background: "#1a1a2e", padding: "16px", borderRadius: "8px", border: "1px solid #333" }}>
+            <div style={{ background: "var(--surface-elevated)", padding: "16px", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
               <div style={{ color: "#60a5fa", fontWeight: 600 }}>{activePanel}</div>
-              <div style={{ color: "#94a3b8", fontSize: "11px", marginTop: "4px" }}>
+              <div style={{ color: "var(--text-tertiary)", fontSize: "11px", marginTop: "4px" }}>
                 This panel simulates a real component mount
               </div>
             </div>
