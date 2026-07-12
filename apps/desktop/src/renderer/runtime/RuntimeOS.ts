@@ -1,6 +1,7 @@
 import { ToolRegistry } from './tools/registry/ToolRegistry'
 import { ToolPoolAssembler } from './tools/registry/ToolPoolAssembler'
 import { ToolExecutionPipeline } from './tools/execution/ToolExecutionPipeline'
+import { ToolFallbackRegistry } from './tools/policies/ToolFallbackRegistry'
 import { createMicroCompactPostHook, createPersistPostHook } from './tools/execution'
 import { ToolExecutionPolicy } from './tools/policies/ToolExecutionPolicy'
 import { ToolConcurrencyPolicy } from './tools/policies/ToolConcurrencyPolicy'
@@ -82,6 +83,9 @@ export class RuntimeOS {
     this.toolExecutionPipeline.registerPostHook(createPersistPostHook())
     this.toolExecutionPolicy = new ToolExecutionPolicy()
     this.toolExecutionPipeline.setPolicy(this.toolExecutionPolicy)
+    const fallbackRegistry = new ToolFallbackRegistry()
+    fallbackRegistry.registerDefaults()
+    this.toolExecutionPipeline.setFallbackRegistry(fallbackRegistry)
     this.toolConcurrencyPolicy = new ToolConcurrencyPolicy()
 
     const mcpRegistry = new MCPRegistry()

@@ -12,6 +12,7 @@ import type { ClassifierResult } from '../../permissions/speculativeClassifier'
 import type { LifecycleHookRegistry } from '../../lifecycle/LifecycleHookRegistry'
 import { RuntimeOS } from '../../RuntimeOS'
 import { EventBus } from '../../EventBus'
+import { ToolFallbackRegistry } from '../policies/ToolFallbackRegistry'
 
 export type ExecutionOptions = {
   skipValidation?: boolean
@@ -28,6 +29,7 @@ export class ToolExecutionPipeline {
   private preHooks: PreExecutionHook[] = []
   private postHooks: PostExecutionHook[] = []
   private policy: ToolExecutionPolicy | null = null
+  private fallbackRegistry: ToolFallbackRegistry | null = null
 
   constructor(registry: ToolRegistry, permissionEngine: PermissionEngine) {
     this.registry = registry
@@ -37,6 +39,10 @@ export class ToolExecutionPipeline {
 
   setPolicy(policy: ToolExecutionPolicy): void {
     this.policy = policy
+  }
+
+  setFallbackRegistry(registry: ToolFallbackRegistry): void {
+    this.fallbackRegistry = registry
   }
 
   registerPreHook(hook: PreExecutionHook): void {
@@ -159,6 +165,19 @@ export class ToolExecutionPipeline {
 
       result = await tool.execute(ctx, processedInput as any)
 
+      if (result.isError && this.fallbackRegistry) {
+        const strategy = this.fallbackRegistry.get(toolName)
+        if (strategy) {
+          const fallbackResult = await strategy(tool, processedInput, result.error ?? '', ctx, (name) => this.registry.resolve(name))
+          if (fallbackResult && !fallbackResult.isError) {
+            result = {
+              data: fallbackResult.data,
+              meta: { ...fallbackResult.meta, fallbackFrom: toolName },
+            }
+          }
+        }
+      }
+
       for (const hook of allPostHooks) {
         result = await hook(ctx, tool, processedInput, result)
       }
@@ -174,6 +193,18 @@ export class ToolExecutionPipeline {
       return result
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
+
+      if (this.fallbackRegistry) {
+        const strategy = this.fallbackRegistry.get(toolName)
+        if (strategy) {
+          const fallbackResult = await strategy(tool, processedInput, errMsg, ctx, (name) => this.registry.resolve(name))
+          if (fallbackResult && !fallbackResult.isError) {
+            const durationMs = Math.round(performance.now() - startTime)
+            this.emit(opts, { type: 'tool:end', toolName, timestamp: Date.now(), durationMs })
+            return { data: fallbackResult.data, meta: { ...fallbackResult.meta, fallbackFrom: toolName } }
+          }
+        }
+      }
 
       // ── Lifecycle: errorEscalation ──
       if (lifecycleHooks) {
