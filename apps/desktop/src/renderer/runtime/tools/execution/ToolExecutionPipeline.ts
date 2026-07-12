@@ -11,6 +11,7 @@ import { classifyToolCall } from '../../permissions/speculativeClassifier'
 import type { ClassifierResult } from '../../permissions/speculativeClassifier'
 import type { LifecycleHookRegistry } from '../../lifecycle/LifecycleHookRegistry'
 import { RuntimeOS } from '../../RuntimeOS'
+import { EventBus } from '../../EventBus'
 
 export type ExecutionOptions = {
   skipValidation?: boolean
@@ -51,6 +52,7 @@ export class ToolExecutionPipeline {
     const opts: ExecutionOptions = { skipValidation: false, skipPermission: false, preHooks: [], postHooks: [], ...options }
     const allPreHooks = [...this.preHooks, ...(opts.preHooks ?? [])]
     const allPostHooks = [...this.postHooks, ...(opts.postHooks ?? [])]
+    const eventBus = EventBus.getInstance()
 
     this.emit(opts, { type: 'tool:start', toolName, timestamp: Date.now() })
 
@@ -58,6 +60,7 @@ export class ToolExecutionPipeline {
     if (!tool) {
       const errResult: ToolResult = { data: null, error: `Tool "${toolName}" not found`, isError: true }
       this.emit(opts, { type: 'tool:error', toolName, timestamp: Date.now(), error: `Not found: ${toolName}` })
+      eventBus.emit({ type: 'tool:error', toolName, error: `Tool "${toolName}" not found`, timestamp: Date.now() } as any)
       return errResult
     }
 
@@ -72,6 +75,7 @@ export class ToolExecutionPipeline {
       if (!validation.valid) {
         const errResult: ToolResult = { data: null, error: validation.error, isError: true }
         this.emit(opts, { type: 'tool:error', toolName, timestamp: Date.now(), error: validation.error })
+        eventBus.emit({ type: 'EXECUTION_ERROR', stepId: ctx.sessionId ?? '', role: '', message: `Tool validation failed: ${validation.error}` })
         return errResult
       }
     }
@@ -175,6 +179,8 @@ export class ToolExecutionPipeline {
       if (lifecycleHooks) {
         await lifecycleHooks.dispatchAll('errorEscalation', { error: err instanceof Error ? err : new Error(errMsg), toolName, sessionId: ctx.sessionId }).catch(() => {})
       }
+
+      eventBus.emit({ type: 'EXECUTION_ERROR', stepId: ctx.sessionId ?? '', role: '', message: `Tool "${toolName}" failed: ${errMsg}` })
 
       const errResult: ToolResult = { data: null, error: errMsg, isError: true }
       this.emit(opts, { type: 'tool:error', toolName, timestamp: Date.now(), error: errMsg })
