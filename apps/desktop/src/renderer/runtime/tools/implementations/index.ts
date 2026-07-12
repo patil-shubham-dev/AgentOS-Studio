@@ -30,6 +30,7 @@ import {
 } from './github/github-tools'
 import { GithubReviewPullRequestTool } from './github/GithubReviewPullRequestTool'
 import { BatchParallelTaskTool } from './batch/BatchParallelTaskTool'
+import { MemoryInfoTool } from './MemoryInfoTool'
 
 export const CODING_TOOLS = [
   ReadFileTool,
@@ -62,6 +63,7 @@ export const CODING_TOOLS = [
   GithubSearchRepoTool,
   GithubReviewPullRequestTool,
   BatchParallelTaskTool,
+  MemoryInfoTool,
 ]
 
 export {
@@ -95,4 +97,5 @@ export {
   GithubSearchRepoTool,
   GithubReviewPullRequestTool,
   BatchParallelTaskTool,
+  MemoryInfoTool,
 }
