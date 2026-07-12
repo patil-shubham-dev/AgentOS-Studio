@@ -27,6 +27,14 @@ interface ApprovalStore {
 }
 
 let approvalIdCounter = 0
+let expiredClearTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearExpiredTimer(): void {
+  if (expiredClearTimer !== null) {
+    clearTimeout(expiredClearTimer)
+    expiredClearTimer = null
+  }
+}
 
 export const useApprovalStore = create<ApprovalStore>((set, get) => ({
   queue: [],
@@ -39,25 +47,26 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     }
 
     return new Promise<boolean>((resolve) => {
+      const id = `ap_${++approvalIdCounter}`
       const timeoutId = setTimeout(() => {
         const state = get()
+        clearExpiredTimer()
         set({
           current: null,
           expiredMessage: `Approval request timed out after 60s for operation: ${opts.command.slice(0, 100)}`,
         })
-        setTimeout(() => {
-          set({ expiredMessage: null })
+        expiredClearTimer = setTimeout(() => {
+          useApprovalStore.setState({ expiredMessage: null })
+          expiredClearTimer = null
         }, 8000)
         const item = state.queue.find((q) => q.id === id)
         if (item) {
-          clearTimeout(timeoutId)
           resolve(false)
           set({ queue: state.queue.filter((q) => q.id !== id) })
           processQueue()
         }
       }, 60_000)
 
-      const id = `ap_${++approvalIdCounter}`
       const entry: PendingApproval = {
         id,
         command: opts.command,
@@ -66,10 +75,12 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
         args: opts.args,
         resolve: (result: boolean) => {
           clearTimeout(timeoutId)
+          clearExpiredTimer()
           resolve(result)
         },
       }
 
+      clearExpiredTimer()
       set((s) => ({
         expiredMessage: null,
         queue: [...s.queue, entry],
@@ -82,6 +93,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     if (current) {
       current.resolve(true)
       set({ current: null, expiredMessage: null })
+      clearExpiredTimer()
       processQueue()
     }
   },
@@ -90,11 +102,12 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     if (current) {
       current.resolve(false)
       set({ current: null, expiredMessage: null })
+      clearExpiredTimer()
       processQueue()
     }
   },
   setAlwaysAllow: (value) => set({ alwaysAllow: value }),
-  clearExpired: () => set({ expiredMessage: null }),
+  clearExpired: () => { clearExpiredTimer(); set({ expiredMessage: null }) },
 }))
 
 function processQueue(): void {
