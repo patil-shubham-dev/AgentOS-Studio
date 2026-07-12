@@ -1037,15 +1037,15 @@ export function CodeCanvasPage() {
           background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
         }}>
           <div style={{
-            background: '#1a1a1f', borderRadius: '12px', border: '1px solid #2a2a30',
+            background: 'var(--surface-overlay)', borderRadius: '12px', border: '1px solid var(--border-default)',
             width: '440px', padding: '24px',
             boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
           }}>
-            <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#e2e8f0', margin: '0 0 8px 0' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 8px 0' }}>
               Workspace Not Found
             </h2>
-            <p style={{ fontSize: '12px', color: '#6b7280', margin: '0 0 16px 0', lineHeight: 1.5 }}>
-              The workspace folder "<code style={{ color: '#f59e0b', wordBreak: 'break-all' }}>{missingWorkspace}</code>" could not be found. It may have been moved, renamed, or deleted.
+            <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+              The workspace folder "<code style={{ color: 'var(--color-accent-amber)', wordBreak: 'break-all' }}>{missingWorkspace}</code>" could not be found. It may have been moved, renamed, or deleted.
             </p>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
@@ -1054,8 +1054,8 @@ export function CodeCanvasPage() {
                   setMissingWorkspace(null)
                 }}
                 style={{
-                  padding: '8px 16px', background: 'transparent', color: '#ccc',
-                  border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500,
+                  padding: '8px 16px', background: 'transparent', color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-default)', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500,
                 }}
               >
                 Remove from Recent
@@ -1073,7 +1073,7 @@ export function CodeCanvasPage() {
                   }
                 }}
                 style={{
-                  padding: '8px 16px', background: '#2563eb', color: '#fff',
+                  padding: '8px 16px', background: 'var(--color-accent-blue)', color: '#fff',
                   border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500,
                 }}
               >
