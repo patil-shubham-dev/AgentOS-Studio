@@ -10,6 +10,7 @@ export class ToolConcurrencyPolicy {
   private running: Map<string, ConcurrencySlot> = new Map()
   private maxConcurrentDefault = 5
   private toolLimits: Map<string, number> = new Map()
+  private slotCounter = 0
 
   setToolLimit(toolName: string, maxConcurrent: number): void {
     this.toolLimits.set(toolName, maxConcurrent)
@@ -30,12 +31,17 @@ export class ToolConcurrencyPolicy {
     if (!tool.isConcurrencySafe(input as any)) {
       if (this.running.size > 0) return false
     }
-    this.running.set(tool.name, { toolName: tool.name, startedAt: Date.now(), input })
+    const slotKey = `${tool.name}-${++this.slotCounter}`
+    this.running.set(slotKey, { toolName: tool.name, startedAt: Date.now(), input })
     return true
   }
 
   release(toolName: string): void {
-    this.running.delete(toolName)
+    for (const [key, slot] of this.running) {
+      if (slot.toolName === toolName) {
+        this.running.delete(key)
+      }
+    }
   }
 
   countRunning(toolName: string): number {
