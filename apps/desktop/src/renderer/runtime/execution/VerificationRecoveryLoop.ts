@@ -3,7 +3,7 @@ import { VerificationPipeline } from "@/runtime/verification/VerificationPipelin
 import { FailureAnalysisEngine, type FailureAnalysis } from "@/runtime/execution/FailureAnalysisEngine"
 import { RepairPlanner, type RepairPlan, type RepairAction } from "@/runtime/execution/RepairPlanner"
 import { FailurePatternMemory } from "@/runtime/execution/FailurePatternMemory"
-import { ToolExecutionPipeline } from "@/runtime/tools/execution/ToolExecutionPipeline"
+import { RuntimeOS } from "@/runtime/RuntimeOS"
 import type { ToolContext } from "@/runtime/tools/core/ToolContext"
 
 export interface UnhandledRepairAction {
@@ -200,7 +200,7 @@ export class VerificationRecoveryLoop {
   }
 
   private async applyRepairs(actions: RepairAction[]): Promise<UnhandledRepairAction[]> {
-    const pipeline = ToolExecutionPipeline.getInstance()
+    const pipeline = RuntimeOS.getInstance().toolExecutionPipeline
     const unhandled: UnhandledRepairAction[] = []
 
     for (const action of actions) {

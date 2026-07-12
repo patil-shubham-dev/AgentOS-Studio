@@ -2,7 +2,7 @@ import { RepositoryKnowledgeGraph } from "@/runtime/intelligence/RepositoryKnowl
 import { FailureAnalysisEngine, type FailureAnalysis } from "@/runtime/execution/FailureAnalysisEngine"
 import type { VerificationResult } from "@/runtime/verification/types"
 import { ToolExecutionPipeline } from "@/runtime/tools/execution/ToolExecutionPipeline"
-import { ToolExecutionSandbox } from "@/runtime/tools/ToolExecutionSandbox"
+import { RuntimeOS } from "@/runtime/RuntimeOS"
 
 export interface RepairEdit {
   file: string
@@ -156,7 +156,7 @@ export class RepairExecutor {
 
   private async runLintFix(): Promise<RepairResult> {
     try {
-      const pipeline = ToolExecutionPipeline.getInstance()
+      const pipeline = RuntimeOS.getInstance().toolExecutionPipeline
       const result = await pipeline.execute("run_command", { command: "npx eslint --fix --quiet --ext .ts,.tsx", timeout: 30_000 }, { role: "repair", signal: new AbortController().signal })
       if (result.isError) {
         return { attempted: true, success: false, editsApplied: [], message: `Lint auto-fix failed: ${result.error}` }
@@ -170,12 +170,8 @@ export class RepairExecutor {
   private async readFile(filePath: string): Promise<string | null> {
     if (this.fileContents.has(filePath)) return this.fileContents.get(filePath)!
     try {
-      const pipeline = ToolExecutionPipeline.getInstance()
-      const sandbox = ToolExecutionSandbox.getInstance()
-      await sandbox.assertAllowed(
-        { id: "repair-auto", name: "read_file", args: { path: filePath } },
-        { role: "repair" },
-      )
+      const os = RuntimeOS.getInstance()
+      const pipeline = os.toolExecutionPipeline
       const result = await pipeline.execute("read_file", { path: filePath }, { role: "repair", signal: new AbortController().signal })
       if (result.isError) {
         console.error(`[RepairExecutor] read_file failed for ${filePath}: ${result.error}`)
@@ -198,14 +194,10 @@ export class RepairExecutor {
 
   private async applyAllEdits(): Promise<void> {
     if (this.fileEdits.size === 0) return
-    const pipeline = ToolExecutionPipeline.getInstance()
-    const sandbox = ToolExecutionSandbox.getInstance()
+    const os = RuntimeOS.getInstance()
+    const pipeline = os.toolExecutionPipeline
     for (const [file, content] of this.fileEdits) {
       try {
-        await sandbox.assertAllowed(
-          { id: "repair-auto", name: "write_file", args: { path: file, content } },
-          { role: "repair" },
-        )
         const result = await pipeline.execute("write_file", { path: file, content }, { role: "repair", signal: new AbortController().signal })
         if (result.isError) {
           console.error(`[RepairExecutor] write_file failed for ${file}: ${result.error}`)
