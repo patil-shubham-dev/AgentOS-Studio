@@ -9,13 +9,13 @@ type SessionStatus = "running" | "complete" | "error"
 
 const STATUS_COLORS: Record<SessionStatus, string> = {
   running: "border-amber-500/15",
-  complete: "border-emerald-500/10",
+  complete: "border-[var(--color-success-border)]",
   error: "border-red-500/12",
 }
 
 const STATUS_BORDER_ACCENT: Record<SessionStatus, string> = {
   running: "border-l-amber-500/30",
-  complete: "border-l-emerald-500/20",
+  complete: "border-l-[var(--color-success-border)]",
   error: "border-l-red-500/25",
 }
 
@@ -55,7 +55,7 @@ export const SessionCard = memo(function SessionCard({ session, children }: Sess
       transition={ENTRANCE_SPRING}
       className={cn(
         "w-full rounded-xl border border-l-2",
-        "bg-gradient-to-r from-white/[0.01] to-transparent",
+        "bg-[var(--surface-elevated)]",
         STATUS_COLORS[status],
         STATUS_BORDER_ACCENT[status],
       )}
@@ -63,18 +63,18 @@ export const SessionCard = memo(function SessionCard({ session, children }: Sess
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-0.5 select-none">
         <StatusIcon streamState={streamState} />
 
-        <span className="text-[11px] font-medium text-white/40 leading-tight">
+        <span className="text-[11px] font-medium leading-tight" style={{ color: "var(--text-secondary)" }}>
           {session.roleName}
         </span>
 
         {session.modelName && (
-          <span className="text-[9px] text-white/20 font-mono hidden sm:inline">
+          <span className="text-[9px] font-mono hidden sm:inline" style={{ color: "var(--text-tertiary)" }}>
             {session.modelName}
           </span>
         )}
 
         {session.providerName && (
-          <span className="text-[8px] text-white/12 hidden sm:inline">
+          <span className="text-[8px] hidden sm:inline" style={{ color: "var(--text-quaternary)" }}>
             {session.providerName}
           </span>
         )}
@@ -86,14 +86,14 @@ export const SessionCard = memo(function SessionCard({ session, children }: Sess
         <div className="flex-1" />
 
         {(isComplete || isError || isCancelled) && duration && (
-          <span className="flex items-center gap-1 text-[9px] font-mono text-white/15 tabular-nums">
+          <span className="flex items-center gap-1 text-[9px] font-mono tabular-nums" style={{ color: "var(--text-quaternary)" }}>
             <Clock className="h-2.5 w-2.5" />
             {duration}
           </span>
         )}
 
         {isComplete && session.roleName && (
-          <span className="text-[9px] text-emerald-400/40">
+          <span className="text-[9px]" style={{ color: "var(--color-success-text)", opacity: 0.4 }}>
             Complete
           </span>
         )}
@@ -103,7 +103,7 @@ export const SessionCard = memo(function SessionCard({ session, children }: Sess
           </span>
         )}
         {isCancelled && (
-          <span className="text-[9px] text-white/20">
+          <span className="text-[9px]" style={{ color: "var(--text-tertiary)" }}>
             Cancelled
           </span>
         )}
@@ -142,12 +142,13 @@ function StatusIcon({ streamState }: { streamState: string }) {
           <span className="absolute inset-0 rounded-full animate-pulse-ring-green" />
           <svg
             viewBox="0 0 14 14"
-            className="h-3 w-3 text-emerald-400/70"
+            className="h-3 w-3"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
+            style={{ color: "var(--color-success-text)", opacity: 0.7 }}
           >
             <motion.path
               d="M3 7L5.5 9.5L11 4"
@@ -167,7 +168,7 @@ function StatusIcon({ streamState }: { streamState: string }) {
     case "cancelled":
       return (
         <span className="relative flex h-3.5 w-3.5 items-center justify-center">
-          <MinusCircle className="h-2.5 w-2.5 text-white/30" />
+          <MinusCircle className="h-2.5 w-2.5" style={{ color: "var(--text-quaternary)" }} />
         </span>
       )
     default:
