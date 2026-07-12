@@ -252,22 +252,23 @@ export class ToolExecutionSandbox {
     let backgrounded = false
     let backgroundTaskId: string | null = null
 
-    const streamPromise = (async () => {
+    const abortController = new AbortController()
+    const timeoutId = setTimeout(() => abortController.abort(), ASSISTANT_BLOCKING_BUDGET_MS)
+
+    try {
       for await (const event of this.terminalRuntime.runStream(command, cwd, streamOptions)) {
+        if (abortController.signal.aborted) break
         if (event.type === "OUTPUT_LINE" && event.line) {
           // Already handled via onOutput callback
         }
       }
-    })()
+    } catch {
+      // Stream may throw on abort — ignore
+    } finally {
+      clearTimeout(timeoutId)
+    }
 
-    const result = await Promise.race([
-      streamPromise.then(() => 'COMPLETED' as const),
-      new Promise<'TIMEOUT'>((resolve) =>
-        setTimeout(() => resolve('TIMEOUT'), ASSISTANT_BLOCKING_BUDGET_MS),
-      ),
-    ])
-
-    if (result === 'TIMEOUT') {
+    if (abortController.signal.aborted && !abortController.signal.reason) {
       backgrounded = true
       backgroundTaskId = BackgroundTaskManager.getInstance().spawn(
         `Command: ${command.slice(0, 80)}`,
