@@ -139,20 +139,20 @@ export function SettingsPage() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -20 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="w-full max-w-lg rounded-2xl border border-white/10 bg-black/80 backdrop-blur-2xl shadow-2xl overflow-hidden"
+              className="w-full max-w-lg rounded-2xl border border-[var(--border-default)] bg-black/80 backdrop-blur-2xl shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center gap-3 border-b border-white/5 px-4 py-3">
-                <Search className="h-4 w-4 text-white/40" />
+              <div className="flex items-center gap-3 border-b border-[var(--border-default)] px-4 py-3">
+                <Search className="h-4 w-4 text-[var(--text-tertiary)]" />
                 <input
                   ref={searchRef}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search settings..."
-                  className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/30"
+                  className="flex-1 bg-transparent text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
                   autoFocus
                 />
-                <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/40">
+                <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded-md border border-[var(--border-default)] bg-[var(--border-subtle)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">
                   <Command className="h-2.5 w-2.5" />K
                 </kbd>
               </div>
@@ -166,23 +166,23 @@ export function SettingsPage() {
                       className={cn(
                         "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-all",
                         activeTab === item.id
-                          ? "bg-white/10 text-white"
-                          : "text-white/60 hover:bg-white/5 hover:text-white"
+                          ? "bg-[var(--border-default)] text-[var(--text-primary)]"
+                          : "text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-primary)]"
                       )}
                     >
                       <Icon className="h-4 w-4" />
                       <div className="flex-1">
                         <span className="font-medium">{item.label}</span>
-                        <span className="ml-2 text-xs text-white/40">{item.description}</span>
+                        <span className="ml-2 text-xs text-[var(--text-tertiary)]">{item.description}</span>
                       </div>
-                      <kbd className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/30">
+                      <kbd className="rounded-md border border-[var(--border-default)] bg-[var(--border-subtle)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">
                         {item.shortcut}
                       </kbd>
                     </button>
                   )
                 })}
                 {filteredNav.length === 0 && (
-                  <p className="px-3 py-8 text-center text-sm text-white/30">
+                  <p className="px-3 py-8 text-center text-sm text-[var(--text-tertiary)]">
                     No results for "{searchQuery}"
                   </p>
                 )}
@@ -196,22 +196,22 @@ export function SettingsPage() {
       <motion.aside
         animate={{ width: sidebarCollapsed ? 64 : 240 }}
         className={cn(
-          "flex-shrink-0 border-r border-white/5 bg-black/20 backdrop-blur-xl flex flex-col overflow-hidden transition-[width] duration-200"
+          "flex-shrink-0 border-r border-[var(--border-default)] bg-black/20 backdrop-blur-xl flex flex-col overflow-hidden transition-[width] duration-200"
         )}
       >
-        <div className="flex items-center gap-3 border-b border-white/5 px-4 py-3.5">
-          <div className="flex items-center justify-center h-8 w-8 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-white/10 animate-glow">
+        <div className="flex items-center gap-3 border-b border-[var(--border-default)] px-4 py-3.5">
+          <div className="flex items-center justify-center h-8 w-8 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-[var(--border-default)] animate-glow">
             <Settings2 className="h-4 w-4 text-blue-400" />
           </div>
           <motion.span
             animate={{ opacity: sidebarCollapsed ? 0 : 1 }}
-            className="text-sm font-semibold text-white truncate"
+            className="text-sm font-semibold text-[var(--text-primary)] truncate"
           >
             Settings
           </motion.span>
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="ml-auto rounded-lg p-1 text-white/30 hover:text-white hover:bg-white/5 transition-all"
+            className="ml-auto rounded-lg p-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-subtle)] transition-all"
           >
             <ChevronLeft className={cn("h-4 w-4 transition-transform", sidebarCollapsed && "rotate-180")} />
           </button>
@@ -219,13 +219,13 @@ export function SettingsPage() {
 
         <button
           onClick={() => setSearchOpen(true)}
-          className="mx-2 mt-2 flex items-center gap-2 rounded-lg border border-white/5 bg-white/5 px-3 py-2 text-xs text-white/30 hover:bg-white/10 hover:text-white/50 transition-all"
+          className="mx-2 mt-2 flex items-center gap-2 rounded-lg border border-[var(--border-default)] bg-[var(--border-subtle)] px-3 py-2 text-xs text-[var(--text-tertiary)] hover:bg-[var(--border-default)] hover:text-[var(--text-secondary)] transition-all"
         >
           <Search className="h-3.5 w-3.5" />
           <motion.span animate={{ opacity: sidebarCollapsed ? 0 : 1 }} className="flex-1 text-left">
             Search settings...
           </motion.span>
-          <kbd className="rounded border border-white/10 bg-white/5 px-1 py-0.5 text-[9px]">⌘K</kbd>
+          <kbd className="rounded border border-[var(--border-default)] bg-[var(--border-subtle)] px-1 py-0.5 text-[9px]">⌘K</kbd>
         </button>
 
         <nav className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -235,7 +235,7 @@ export function SettingsPage() {
               <div key={section.label}>
                 <button
                   onClick={() => setCollapsedSections((prev) => ({ ...prev, [section.label]: !prev[section.label] }))}
-                  className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/20 hover:text-white/40 transition-colors"
+                  className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)] transition-colors"
                 >
                   <motion.span
                     animate={{ rotate: isCollapsed ? -90 : 0 }}
@@ -268,14 +268,14 @@ export function SettingsPage() {
                             className={cn(
                               "group relative flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-all",
                               isActive
-                                ? "bg-gradient-to-r from-blue-500/15 to-purple-500/10 text-white shadow-sm"
-                                : "text-white/40 hover:bg-white/5 hover:text-white/70"
+                                ? "bg-gradient-to-r from-blue-500/15 to-purple-500/10 text-[var(--text-primary)] shadow-sm"
+                                : "text-[var(--text-tertiary)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-primary)]"
                             )}
                           >
                             {isActive && (
                               <motion.div
                                 layoutId="activeTab"
-                                className="absolute inset-0 rounded-xl border border-white/10"
+                                className="absolute inset-0 rounded-xl border border-[var(--border-default)]"
                                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                               />
                             )}
@@ -290,7 +290,7 @@ export function SettingsPage() {
                               {item.label}
                             </motion.span>
                             {!sidebarCollapsed && (
-                              <kbd className="relative z-10 rounded-md border border-white/5 bg-white/5 px-1.5 py-0.5 text-[9px] text-white/20 font-mono">
+                              <kbd className="relative z-10 rounded-md border border-[var(--border-default)] bg-[var(--border-subtle)] px-1.5 py-0.5 text-[9px] text-[var(--text-quaternary)] font-mono">
                                 {item.shortcut}
                               </kbd>
                             )}
@@ -303,17 +303,17 @@ export function SettingsPage() {
               </div>
             )
           })}
-          <div className="border-t border-white/[0.04] pt-1 mt-1">
+          <div className="border-t border-[var(--border-default)] pt-1 mt-1">
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs text-white/25 hover:text-white/60 hover:bg-white/[0.03] transition-all"
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
             >
               <div className={cn(
                 "h-3.5 w-3.5 rounded border transition-colors duration-150 flex items-center justify-center",
-                showAdvanced ? "bg-blue-500/40 border-blue-500/50" : "border-white/10"
+                showAdvanced ? "bg-blue-500/40 border-blue-500/50" : "border-[var(--border-default)]"
               )}>
                 {showAdvanced && (
-                  <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 text-[var(--text-primary)]" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M2.5 6L5 8.5L9.5 3.5" />
                   </svg>
                 )}
@@ -326,22 +326,22 @@ export function SettingsPage() {
 
       {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden bg-gradient-to-br from-[var(--surface-app)] via-[var(--surface-elevated)] to-[var(--surface-elevated)]">
-        <div className="flex items-center justify-between border-b border-white/5 px-6 py-3 bg-black/20 backdrop-blur-xl">
+        <div className="flex items-center justify-between border-b border-[var(--border-default)] px-6 py-3 bg-black/20 backdrop-blur-xl">
           <div className="flex items-center gap-4">
             <motion.h1
               key={activeTab}
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-sm font-semibold text-white"
+              className="text-sm font-semibold text-[var(--text-primary)]"
             >
               {allNavItems.find((n) => n.id === activeTab)?.label || "Settings"}
             </motion.h1>
-            <span className="text-xs text-white/20">/</span>
-            <span className="text-xs text-white/30 font-mono">
+            <span className="text-xs text-[var(--text-quaternary)]">/</span>
+            <span className="text-xs text-[var(--text-tertiary)] font-mono">
               {allNavItems.find((n) => n.id === activeTab)?.description}
             </span>
             {activeTab === "providers" || activeTab === "runtime" ? (
-              <div className="ml-4 pl-4 border-l border-white/10">
+              <div className="ml-4 pl-4 border-l border-[var(--border-default)]">
                 <WiringIndicator variant="bar" />
               </div>
             ) : null}

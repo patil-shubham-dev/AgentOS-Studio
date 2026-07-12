@@ -112,10 +112,10 @@ function StepIndicator({ steps, current }: { steps: InstallStep[]; current: Inst
               className={cn(
                 "flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-bold transition-all duration-300",
                 i < currentIdx
-                  ? "bg-blue-500 text-white"
+                  ? "bg-blue-500 text-[var(--text-primary)]"
                   : i === currentIdx
                     ? "bg-blue-500/20 border border-blue-500/40 text-blue-400"
-                    : "bg-white/5 border border-white/10 text-white/30",
+                    : "bg-[var(--border-subtle)] border border-[var(--border-default)] text-[var(--text-tertiary)]",
               )}
             >
               {i < currentIdx ? <Check className="h-3 w-3" /> : i + 1}
@@ -123,14 +123,14 @@ function StepIndicator({ steps, current }: { steps: InstallStep[]; current: Inst
             <span
               className={cn(
                 "text-[8px] font-medium whitespace-nowrap transition-colors",
-                i === currentIdx ? "text-blue-400" : i < currentIdx ? "text-white/40" : "text-white/20",
+                i === currentIdx ? "text-blue-400" : i < currentIdx ? "text-[var(--text-tertiary)]" : "text-[var(--text-quaternary)]",
               )}
             >
               {labels[step]}
             </span>
           </div>
           {i < steps.length - 1 && (
-            <div className={cn("h-px flex-1 mx-1 transition-colors", i < currentIdx ? "bg-blue-500/40" : "bg-white/5")} />
+            <div className={cn("h-px flex-1 mx-1 transition-colors", i < currentIdx ? "bg-blue-500/40" : "bg-[var(--border-subtle)]")} />
           )}
         </div>
       ))}
@@ -143,7 +143,7 @@ function SystemCheckItem({ check, index }: { check: SystemCheckResult; index: nu
     pass: { icon: CheckCircle2, color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/20", glow: "from-green-500/10" },
     warn: { icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", glow: "from-amber-500/10" },
     fail: { icon: XCircle, color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/20", glow: "from-red-500/10" },
-    pending: { icon: Loader2, color: "text-white/20", bg: "bg-white/[0.02]", border: "border-white/5", glow: "from-white/5" },
+    pending: { icon: Loader2, color: "text-[var(--text-quaternary)]", bg: "bg-[var(--border-subtle)]", border: "border-[var(--border-default)]", glow: "from-[var(--surface-elevated)]" },
     checking: { icon: Loader2, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20", glow: "from-blue-500/10" },
   }
 
@@ -168,10 +168,10 @@ function SystemCheckItem({ check, index }: { check: SystemCheckResult; index: nu
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-white/80">{check.label}</span>
+            <span className="text-xs font-medium text-[var(--text-primary)]">{check.label}</span>
             <span className={cn("text-[10px] font-medium capitalize", cfg.color)}>{check.status === "pass" ? "Passed" : check.status === "warn" ? "Warning" : check.status === "fail" ? "Failed" : check.status === "checking" ? "Checking..." : "Pending"}</span>
           </div>
-          <p className="text-[10px] text-white/40 mt-0.5">{check.detail}</p>
+          <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{check.detail}</p>
         </div>
         {check.action && check.status !== "pass" && (
           <button className="shrink-0 rounded-lg bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 text-[9px] font-medium text-blue-400 hover:bg-blue-500/20 transition-all whitespace-nowrap">
@@ -197,10 +197,10 @@ function ComponentCard({ component, selected, onToggle, disabled }: {
       className={cn(
         "relative rounded-xl border p-3 transition-all duration-200 cursor-pointer",
         disabled
-          ? "opacity-50 cursor-not-allowed border-white/5"
+          ? "opacity-50 cursor-not-allowed border-[var(--border-default)]"
           : selected
             ? "border-blue-500/30 bg-blue-500/[0.04]"
-            : "border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]",
+            : "border-[var(--border-default)] bg-[var(--border-subtle)] hover:border-[var(--border-default)] hover:bg-[var(--border-default)]",
       )}
       onClick={() => !disabled && onToggle(component.id)}
     >
@@ -208,20 +208,20 @@ function ComponentCard({ component, selected, onToggle, disabled }: {
         <div
           className={cn(
             "flex h-8 w-8 items-center justify-center rounded-lg transition-all",
-            selected ? "bg-blue-500/10 border border-blue-500/20" : "bg-white/[0.04] border border-white/[0.06]",
+            selected ? "bg-blue-500/10 border border-blue-500/20" : "bg-[var(--border-subtle)] border border-[var(--border-default)]",
           )}
         >
-          <Icon className={cn("h-4 w-4", selected ? "text-blue-400" : "text-white/40")} />
+          <Icon className={cn("h-4 w-4", selected ? "text-blue-400" : "text-[var(--text-tertiary)]")} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className={cn("text-xs font-medium", selected ? "text-white/90" : "text-white/60")}>{component.label}</span>
+            <span className={cn("text-xs font-medium", selected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]")}>{component.label}</span>
             {component.recommended && (
               <span className="rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[8px] font-medium text-blue-400">Recommended</span>
             )}
-            <span className="ml-auto text-[9px] text-white/30 font-mono">{component.size}</span>
+            <span className="ml-auto text-[9px] text-[var(--text-tertiary)] font-mono">{component.size}</span>
           </div>
-          <p className="text-[10px] text-white/40 mt-0.5">{component.description}</p>
+          <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{component.description}</p>
         </div>
         <div
           className={cn(
@@ -229,7 +229,7 @@ function ComponentCard({ component, selected, onToggle, disabled }: {
             selected ? "border-blue-500 bg-blue-500" : "border-white/20",
           )}
         >
-          {selected && <Check className="h-3 w-3 text-white" />}
+          {selected && <Check className="h-3 w-3 text-[var(--text-primary)]" />}
         </div>
       </div>
     </motion.div>
@@ -238,7 +238,7 @@ function ComponentCard({ component, selected, onToggle, disabled }: {
 
 function ProgressStage({ stage, index }: { stage: InstallStage; index: number }) {
   const statusStyles = {
-    pending: { icon: Loader2, color: "text-white/20", bg: "bg-white/[0.02]", border: "border-white/5", pulse: false, spin: false },
+    pending: { icon: Loader2, color: "text-[var(--text-quaternary)]", bg: "bg-[var(--border-subtle)]", border: "border-[var(--border-default)]", pulse: false, spin: false },
     active: { icon: Loader2, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20", pulse: true, spin: true },
     done: { icon: CheckCircle2, color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/20", pulse: false, spin: false },
     error: { icon: XCircle, color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/20", pulse: false, spin: false },
@@ -461,26 +461,26 @@ export function InstallWizard() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-gradient-to-br from-[#0a0a0b] via-[#0d0d12] to-[#09090a]">
+    <div className="flex h-full flex-col bg-gradient-to-br from-[var(--surface-app)] via-[#0d0d12] to-[#09090a]">
       {/* Header */}
-      <div className="border-b border-white/[0.04] bg-black/20 backdrop-blur-xl px-6 py-3">
+      <div className="border-b border-[var(--border-default)] bg-black/20 backdrop-blur-xl px-6 py-3">
         <div className="flex items-center gap-4 max-w-4xl mx-auto">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-white/10">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-[var(--border-default)]">
             <Bot className="h-4 w-4 text-blue-400" />
           </div>
           <div className="flex-1">
-            <h1 className="text-sm font-semibold text-white/90">Installation Wizard</h1>
-            <p className="text-[10px] text-white/30">Set up AgenticOS on your system</p>
+            <h1 className="text-sm font-semibold text-[var(--text-primary)]">Installation Wizard</h1>
+            <p className="text-[10px] text-[var(--text-tertiary)]">Set up AgenticOS on your system</p>
           </div>
           {step !== "complete" && step !== "installing" && (
-            <span className="text-[10px] text-white/20 font-mono">v{VERSION}</span>
+            <span className="text-[10px] text-[var(--text-quaternary)] font-mono">v{VERSION}</span>
           )}
         </div>
       </div>
 
       {/* Step Indicator */}
       {step !== "installing" && step !== "complete" && (
-        <div className="border-b border-white/[0.04] bg-black/10 px-6 py-3">
+        <div className="border-b border-[var(--border-default)] bg-black/10 px-6 py-3">
           <div className="max-w-4xl mx-auto">
             <StepIndicator steps={STEPS.slice(0, -1)} current={step} />
           </div>
@@ -508,7 +508,7 @@ export function InstallWizard() {
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ type: "spring", damping: 15, stiffness: 200 }}
-                      className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/15 via-purple-500/10 to-indigo-500/15 border border-white/10"
+                      className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/15 via-purple-500/10 to-indigo-500/15 border border-[var(--border-default)]"
                     >
                       <Sparkles className="h-10 w-10 text-blue-400" />
                     </motion.div>
@@ -516,7 +516,7 @@ export function InstallWizard() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.2 }}
-                      className="text-3xl font-bold tracking-tight text-white"
+                      className="text-3xl font-bold tracking-tight text-[var(--text-primary)]"
                     >
                       AgenticOS
                     </motion.h1>
@@ -524,7 +524,7 @@ export function InstallWizard() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.3 }}
-                      className="text-sm text-white/40 mt-1"
+                      className="text-sm text-[var(--text-tertiary)] mt-1"
                     >
                       Autonomous AI Workspace
                     </motion.p>
@@ -546,12 +546,12 @@ export function InstallWizard() {
                     ].map((item, i) => (
                       <div
                         key={i}
-                        className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2.5"
+                        className="flex items-center gap-2 rounded-lg border border-[var(--border-default)] bg-[var(--border-subtle)] px-3 py-2.5"
                       >
                         <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/10">
                           <item.icon className="h-3 w-3 text-blue-400" />
                         </div>
-                        <span className="text-[11px] text-white/60">{item.text}</span>
+                        <span className="text-[11px] text-[var(--text-secondary)]">{item.text}</span>
                       </div>
                     ))}
                   </motion.div>
@@ -560,9 +560,9 @@ export function InstallWizard() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.6 }}
-                    className="rounded-xl bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-white/5 p-4 text-center"
+                    className="rounded-xl bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-[var(--border-default)] p-4 text-center"
                   >
-                    <p className="text-xs text-white/40 leading-relaxed">
+                    <p className="text-xs text-[var(--text-tertiary)] leading-relaxed">
                       This wizard will guide you through installing AgenticOS on your system.
                       The process takes about 2-3 minutes.
                     </p>
@@ -574,8 +574,8 @@ export function InstallWizard() {
               {step === "system-check" && (
                 <div className="space-y-4">
                   <div>
-                    <h2 className="text-lg font-semibold text-white/90">System Check</h2>
-                    <p className="text-xs text-white/40 mt-1">Verifying that your system meets the requirements</p>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">System Check</h2>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-1">Verifying that your system meets the requirements</p>
                   </div>
 
                   <div className="space-y-2">
@@ -604,8 +604,8 @@ export function InstallWizard() {
               {step === "install-type" && (
                 <div className="space-y-4">
                   <div>
-                    <h2 className="text-lg font-semibold text-white/90">Installation Type</h2>
-                    <p className="text-xs text-white/40 mt-1">Choose how you want to install AgenticOS</p>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Installation Type</h2>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-1">Choose how you want to install AgenticOS</p>
                   </div>
 
                   <div className="space-y-3">
@@ -616,7 +616,7 @@ export function InstallWizard() {
                         "relative rounded-xl border-2 p-4 cursor-pointer transition-all",
                         installType === "recommended"
                           ? "border-blue-500/40 bg-blue-500/[0.04]"
-                          : "border-white/5 bg-white/[0.02] hover:border-white/15",
+                          : "border-[var(--border-default)] bg-[var(--border-subtle)] hover:border-[var(--border-default)]",
                       )}
                       onClick={() => selectInstallType("recommended")}
                     >
@@ -624,23 +624,23 @@ export function InstallWizard() {
                         <div
                           className={cn(
                             "flex h-10 w-10 items-center justify-center rounded-xl",
-                            installType === "recommended" ? "bg-blue-500/10" : "bg-white/[0.04]",
+                            installType === "recommended" ? "bg-blue-500/10" : "bg-[var(--border-subtle)]",
                           )}
                         >
-                          <Diamond className={cn("h-5 w-5", installType === "recommended" ? "text-blue-400" : "text-white/30")} />
+                          <Diamond className={cn("h-5 w-5", installType === "recommended" ? "text-blue-400" : "text-[var(--text-tertiary)]")} />
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-semibold text-white/80">Recommended</h3>
+                            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Recommended</h3>
                             <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[9px] font-medium text-blue-400">Best for most users</span>
                           </div>
-                          <p className="text-xs text-white/40 mt-1">
+                          <p className="text-xs text-[var(--text-tertiary)] mt-1">
                             Installs with desktop shortcut, context menu, deep links, and auto-updates enabled.
                             Everything you need to get started immediately.
                           </p>
                           <div className="mt-3 flex flex-wrap gap-1.5">
                             {["Core App", "AI Runtime", "Browser Automation", "Context Menu", "Desktop Shortcut", "Deep Links", "Auto Updates"].map((tag) => (
-                              <span key={tag} className="rounded-md bg-white/[0.04] border border-white/5 px-2 py-0.5 text-[9px] text-white/40">
+                              <span key={tag} className="rounded-md bg-[var(--border-subtle)] border border-[var(--border-default)] px-2 py-0.5 text-[9px] text-[var(--text-tertiary)]">
                                 {tag}
                               </span>
                             ))}
@@ -664,7 +664,7 @@ export function InstallWizard() {
                         "relative rounded-xl border-2 p-4 cursor-pointer transition-all",
                         installType === "advanced"
                           ? "border-purple-500/40 bg-purple-500/[0.04]"
-                          : "border-white/5 bg-white/[0.02] hover:border-white/15",
+                          : "border-[var(--border-default)] bg-[var(--border-subtle)] hover:border-[var(--border-default)]",
                       )}
                       onClick={() => selectInstallType("advanced")}
                     >
@@ -672,23 +672,23 @@ export function InstallWizard() {
                         <div
                           className={cn(
                             "flex h-10 w-10 items-center justify-center rounded-xl",
-                            installType === "advanced" ? "bg-purple-500/10" : "bg-white/[0.04]",
+                            installType === "advanced" ? "bg-purple-500/10" : "bg-[var(--border-subtle)]",
                           )}
                         >
-                          <Sliders className={cn("h-5 w-5", installType === "advanced" ? "text-purple-400" : "text-white/30")} />
+                          <Sliders className={cn("h-5 w-5", installType === "advanced" ? "text-purple-400" : "text-[var(--text-tertiary)]")} />
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-semibold text-white/80">Advanced</h3>
+                            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Advanced</h3>
                             <span className="rounded-full bg-purple-500/10 px-2 py-0.5 text-[9px] font-medium text-purple-400">Full control</span>
                           </div>
-                          <p className="text-xs text-white/40 mt-1">
+                          <p className="text-xs text-[var(--text-tertiary)] mt-1">
                             Full customization of all components, shortcuts, file associations, and integrations.
                             Choose exactly what to install.
                           </p>
                           <div className="mt-3 flex flex-wrap gap-1.5">
                             {["All components", "Custom selection", "Manual config"].map((tag) => (
-                              <span key={tag} className="rounded-md bg-white/[0.04] border border-white/5 px-2 py-0.5 text-[9px] text-white/40">
+                              <span key={tag} className="rounded-md bg-[var(--border-subtle)] border border-[var(--border-default)] px-2 py-0.5 text-[9px] text-[var(--text-tertiary)]">
                                 {tag}
                               </span>
                             ))}
@@ -713,12 +713,12 @@ export function InstallWizard() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-lg font-semibold text-white/90">Components</h2>
-                      <p className="text-xs text-white/40 mt-1">Select which components to install</p>
+                      <h2 className="text-lg font-semibold text-[var(--text-primary)]">Components</h2>
+                      <p className="text-xs text-[var(--text-tertiary)] mt-1">Select which components to install</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs font-semibold text-white/70">{selectedCount} of {INSTALL_COMPONENTS.length} selected</p>
-                      <p className="text-[9px] text-white/30">~{totalSize} MB total</p>
+                      <p className="text-xs font-semibold text-[var(--text-primary)]">{selectedCount} of {INSTALL_COMPONENTS.length} selected</p>
+                      <p className="text-[9px] text-[var(--text-tertiary)]">~{totalSize} MB total</p>
                     </div>
                   </div>
 
@@ -740,14 +740,14 @@ export function InstallWizard() {
               {step === "location" && (
                 <div className="space-y-4">
                   <div>
-                    <h2 className="text-lg font-semibold text-white/90">Install Location</h2>
-                    <p className="text-xs text-white/40 mt-1">Choose where to install AgenticOS</p>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Install Location</h2>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-1">Choose where to install AgenticOS</p>
                   </div>
 
-                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                  <div className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] p-4">
                     <div className="flex items-center gap-3 mb-3">
                       <FolderOpen className="h-5 w-5 text-blue-400" />
-                      <span className="text-xs font-medium text-white/70">Install Path</span>
+                      <span className="text-xs font-medium text-[var(--text-primary)]">Install Path</span>
                     </div>
 
                     <div className="relative">
@@ -755,34 +755,34 @@ export function InstallWizard() {
                         type="text"
                         value={installPath || "%LOCALAPPDATA%\\AgenticOS"}
                         onChange={(e) => setInstallPath(e.target.value)}
-                        className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-xs font-mono text-white/60 placeholder:text-white/20 outline-none focus:border-blue-500/40 transition-colors"
+                        className="w-full rounded-lg border border-[var(--border-default)] bg-black/40 px-3 py-2.5 text-xs font-mono text-[var(--text-secondary)] placeholder:text-[var(--text-quaternary)] outline-none focus:border-blue-500/40 transition-colors"
                         placeholder="Select installation directory..."
                       />
                     </div>
 
                     <div className="mt-4 space-y-2">
-                      <div className="flex items-center justify-between py-1.5 border-b border-white/[0.03]">
-                        <span className="text-[11px] text-white/40">Required Space</span>
-                        <span className="text-[11px] font-mono text-white/60">~{totalSize} MB</span>
+                      <div className="flex items-center justify-between py-1.5 border-b border-[var(--border-subtle)]">
+                        <span className="text-[11px] text-[var(--text-tertiary)]">Required Space</span>
+                        <span className="text-[11px] font-mono text-[var(--text-secondary)]">~{totalSize} MB</span>
                       </div>
-                      <div className="flex items-center justify-between py-1.5 border-b border-white/[0.03]">
-                        <span className="text-[11px] text-white/40">Available Space</span>
+                      <div className="flex items-center justify-between py-1.5 border-b border-[var(--border-subtle)]">
+                        <span className="text-[11px] text-[var(--text-tertiary)]">Available Space</span>
                         <span className="text-[11px] font-mono text-green-400">~50 GB</span>
                       </div>
                       <div className="flex items-center justify-between py-1.5">
-                        <span className="text-[11px] text-white/40">Expected Usage</span>
-                        <span className="text-[11px] font-mono text-white/60">~{Math.round(totalSize * 1.3)} MB (with runtime data)</span>
+                        <span className="text-[11px] text-[var(--text-tertiary)]">Expected Usage</span>
+                        <span className="text-[11px] font-mono text-[var(--text-secondary)]">~{Math.round(totalSize * 1.3)} MB (with runtime data)</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Space bar */}
-                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                  <div className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] text-white/30">Disk Usage</span>
-                      <span className="text-[10px] text-white/30">{(totalSize / 50000 * 100).toFixed(1)}% of available</span>
+                      <span className="text-[10px] text-[var(--text-tertiary)]">Disk Usage</span>
+                      <span className="text-[10px] text-[var(--text-tertiary)]">{(totalSize / 50000 * 100).toFixed(1)}% of available</span>
                     </div>
-                    <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                    <div className="h-2 rounded-full bg-[var(--border-subtle)] overflow-hidden">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
                         style={{ width: `${Math.min((totalSize / 50000) * 100, 100)}%` }}
@@ -796,56 +796,56 @@ export function InstallWizard() {
               {step === "summary" && (
                 <div className="space-y-4">
                   <div>
-                    <h2 className="text-lg font-semibold text-white/90">Installation Summary</h2>
-                    <p className="text-xs text-white/40 mt-1">Review your selections before installing</p>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Installation Summary</h2>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-1">Review your selections before installing</p>
                   </div>
 
                   <div className="space-y-3">
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                    <div className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] p-4">
                       <div className="flex items-center gap-2 mb-3">
                         <Sliders className="h-4 w-4 text-blue-400" />
-                        <span className="text-xs font-semibold text-white/70">Installation Type</span>
+                        <span className="text-xs font-semibold text-[var(--text-primary)]">Installation Type</span>
                       </div>
-                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02]">
-                        <span className="text-[11px] text-white/60 capitalize">{installType}</span>
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--border-subtle)]">
+                        <span className="text-[11px] text-[var(--text-secondary)] capitalize">{installType}</span>
                         {installType === "recommended" && <span className="text-[9px] text-blue-400">Best for most users</span>}
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                    <div className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] p-4">
                       <div className="flex items-center gap-2 mb-3">
-                        <Package className="h-4 w-4 text-emerald-400" />
-                        <span className="text-xs font-semibold text-white/70">Components ({selectedCount})</span>
+                        <Package className="h-4 w-4 text-[var(--color-success-text)]" />
+                        <span className="text-xs font-semibold text-[var(--text-primary)]">Components ({selectedCount})</span>
                       </div>
                       <div className="grid grid-cols-2 gap-1.5">
                         {INSTALL_COMPONENTS.filter((c) => selectedComponents.has(c.id)).map((c) => (
-                          <div key={c.id} className="flex items-center gap-2 rounded-lg bg-white/[0.02] px-2.5 py-1.5">
+                          <div key={c.id} className="flex items-center gap-2 rounded-lg bg-[var(--border-subtle)] px-2.5 py-1.5">
                             <Check className="h-3 w-3 text-green-400 shrink-0" />
-                            <span className="text-[10px] text-white/60">{c.label}</span>
+                            <span className="text-[10px] text-[var(--text-secondary)]">{c.label}</span>
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                    <div className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] p-4">
                       <div className="flex items-center gap-2 mb-3">
                         <HardDrive className="h-4 w-4 text-amber-400" />
-                        <span className="text-xs font-semibold text-white/70">Disk Usage</span>
+                        <span className="text-xs font-semibold text-[var(--text-primary)]">Disk Usage</span>
                       </div>
-                      <div className="flex items-center justify-between py-1.5 border-b border-white/[0.03]">
-                        <span className="text-[11px] text-white/40">Install Size</span>
-                        <span className="text-[11px] font-mono text-white/60">~{totalSize} MB</span>
+                      <div className="flex items-center justify-between py-1.5 border-b border-[var(--border-subtle)]">
+                        <span className="text-[11px] text-[var(--text-tertiary)]">Install Size</span>
+                        <span className="text-[11px] font-mono text-[var(--text-secondary)]">~{totalSize} MB</span>
                       </div>
                       <div className="flex items-center justify-between py-1.5">
-                        <span className="text-[11px] text-white/40">Location</span>
-                        <span className="text-[11px] font-mono text-white/50 truncate ml-4 max-w-[200px]">{installPath || "%LOCALAPPDATA%\\AgenticOS"}</span>
+                        <span className="text-[11px] text-[var(--text-tertiary)]">Location</span>
+                        <span className="text-[11px] font-mono text-[var(--text-secondary)] truncate ml-4 max-w-[200px]">{installPath || "%LOCALAPPDATA%\\AgenticOS"}</span>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                    <div className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] p-4">
                       <div className="flex items-center gap-2 mb-3">
                         <Link className="h-4 w-4 text-purple-400" />
-                        <span className="text-xs font-semibold text-white/70">Integrations</span>
+                        <span className="text-xs font-semibold text-[var(--text-primary)]">Integrations</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {[
@@ -859,11 +859,11 @@ export function InstallWizard() {
                             key={item.label}
                             className={cn(
                               "flex items-center gap-1.5 rounded-md px-2 py-1 border",
-                              item.on ? "bg-green-500/10 border-green-500/20" : "bg-white/[0.02] border-white/5 opacity-40",
+                              item.on ? "bg-green-500/10 border-green-500/20" : "bg-[var(--border-subtle)] border-[var(--border-default)] opacity-40",
                             )}
                           >
-                            <item.icon className="h-3 w-3 text-white/50" />
-                            <span className={cn("text-[9px]", item.on ? "text-green-400" : "text-white/30")}>
+                            <item.icon className="h-3 w-3 text-[var(--text-secondary)]" />
+                            <span className={cn("text-[9px]", item.on ? "text-green-400" : "text-[var(--text-tertiary)]")}>
                               {item.on ? "✓" : "○"} {item.label}
                             </span>
                           </div>
@@ -881,24 +881,24 @@ export function InstallWizard() {
                     <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-500/10 border border-blue-500/20">
                       <Loader2 className="h-7 w-7 text-blue-400 animate-spin" />
                     </div>
-                    <h2 className="text-lg font-semibold text-white/90">Installing AgenticOS</h2>
-                    <p className="text-xs text-white/40 mt-1">Please wait while we set up your system</p>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Installing AgenticOS</h2>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-1">Please wait while we set up your system</p>
                   </div>
 
                   {/* Progress bar */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-[10px]">
-                      <span className="text-white/40">{currentFile || "Preparing..."}</span>
-                      <span className="font-mono text-white/60">{progress.toFixed(0)}%</span>
+                      <span className="text-[var(--text-tertiary)]">{currentFile || "Preparing..."}</span>
+                      <span className="font-mono text-[var(--text-secondary)]">{progress.toFixed(0)}%</span>
                     </div>
-                    <div className="h-2.5 rounded-full bg-white/5 overflow-hidden">
+                    <div className="h-2.5 rounded-full bg-[var(--border-subtle)] overflow-hidden">
                       <motion.div
                         className="h-full rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-blue-400"
                         style={{ width: `${progress}%` }}
                         transition={{ duration: 0.3 }}
                       />
                     </div>
-                    <div className="flex items-center justify-between text-[9px] text-white/20">
+                    <div className="flex items-center justify-between text-[9px] text-[var(--text-quaternary)]">
                       <span>Time elapsed: {formatTime(elapsed)}</span>
                       <span>Estimated: ~01:30</span>
                     </div>
@@ -925,17 +925,17 @@ export function InstallWizard() {
                     <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-green-500/20 to-emerald-500/20 border border-green-500/30">
                       <CheckCircle2 className="h-10 w-10 text-green-400" />
                     </div>
-                    <h2 className="text-2xl font-bold text-white">Installation Complete</h2>
-                    <p className="text-sm text-white/40 mt-1">AgenticOS v{VERSION} is ready to use</p>
+                    <h2 className="text-2xl font-bold text-[var(--text-primary)]">Installation Complete</h2>
+                    <p className="text-sm text-[var(--text-tertiary)] mt-1">AgenticOS v{VERSION} is ready to use</p>
                   </motion.div>
 
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
-                    className="rounded-xl border border-white/5 bg-white/[0.02] p-4 space-y-3"
+                    className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] p-4 space-y-3"
                   >
-                    <h3 className="text-xs font-semibold text-white/70">What would you like to do next?</h3>
+                    <h3 className="text-xs font-semibold text-[var(--text-primary)]">What would you like to do next?</h3>
                     <div className="space-y-2">
                       {[
                         { id: "launch" as const, icon: Rocket, label: "Launch AgenticOS", desc: "Start using AgenticOS right away" },
@@ -952,7 +952,7 @@ export function InstallWizard() {
                               "flex items-center gap-3 rounded-lg border p-3 transition-all cursor-pointer",
                               isOn
                                 ? "border-blue-500/20 bg-blue-500/[0.04]"
-                                : "border-white/5 bg-white/[0.02] hover:border-white/10",
+                                : "border-[var(--border-default)] bg-[var(--border-subtle)] hover:border-[var(--border-default)]",
                             )}
                             onClick={() => setPostInstallActions((prev) => ({ ...prev, [action.id]: !prev[action.id] }))}
                           >
@@ -962,12 +962,12 @@ export function InstallWizard() {
                                 isOn ? "border-blue-500 bg-blue-500" : "border-white/20",
                               )}
                             >
-                              {isOn && <Check className="h-3 w-3 text-white" />}
+                              {isOn && <Check className="h-3 w-3 text-[var(--text-primary)]" />}
                             </div>
-                            <Icon className={cn("h-4 w-4 shrink-0", isOn ? "text-blue-400" : "text-white/30")} />
+                            <Icon className={cn("h-4 w-4 shrink-0", isOn ? "text-blue-400" : "text-[var(--text-tertiary)]")} />
                             <div className="flex-1 min-w-0">
-                              <span className={cn("text-xs font-medium", isOn ? "text-white/80" : "text-white/50")}>{action.label}</span>
-                              <p className="text-[10px] text-white/30">{action.desc}</p>
+                              <span className={cn("text-xs font-medium", isOn ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]")}>{action.label}</span>
+                              <p className="text-[10px] text-[var(--text-tertiary)]">{action.desc}</p>
                             </div>
                           </div>
                         )
@@ -980,15 +980,15 @@ export function InstallWizard() {
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.5 }}
                     onClick={() => setShowImportDialog(true)}
-                    className="w-full rounded-xl bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-white/5 p-4 hover:from-blue-500/10 hover:to-purple-500/10 transition-all text-left group"
+                    className="w-full rounded-xl bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-[var(--border-default)] p-4 hover:from-blue-500/10 hover:to-purple-500/10 transition-all text-left group"
                   >
                     <div className="flex items-center gap-3">
                       <div className="rounded-lg p-1.5 bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/15 transition-all">
                         <Download className="h-4 w-4 text-blue-400" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-white/70 group-hover:text-white/90 transition-colors">Import Settings</p>
-                        <p className="text-[10px] text-white/40">Import providers, API keys & preferences from VS Code, Cursor, or Claude Desktop</p>
+                        <p className="text-xs font-semibold text-[var(--text-primary)] group-hover:text-[var(--text-primary)] transition-colors">Import Settings</p>
+                        <p className="text-[10px] text-[var(--text-tertiary)]">Import providers, API keys & preferences from VS Code, Cursor, or Claude Desktop</p>
                       </div>
                       <div className="shrink-0 rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 text-[10px] font-medium text-blue-400 group-hover:bg-blue-500/20 transition-all flex items-center gap-1">
                         Import
@@ -1010,7 +1010,7 @@ export function InstallWizard() {
       </div>
 
       {/* Footer Navigation */}
-      <div className="border-t border-white/[0.04] bg-black/20 backdrop-blur-xl px-6 py-3">
+      <div className="border-t border-[var(--border-default)] bg-black/20 backdrop-blur-xl px-6 py-3">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <button
             onClick={step === "welcome" ? undefined : prevStep}
@@ -1018,8 +1018,8 @@ export function InstallWizard() {
             className={cn(
               "flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all",
               step === "welcome" || step === "installing" || step === "complete"
-                ? "text-white/20 cursor-not-allowed"
-                : "text-white/40 hover:text-white/70 hover:bg-white/[0.04]",
+                ? "text-[var(--text-quaternary)] cursor-not-allowed"
+                : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-default)]",
             )}
           >
             <ArrowLeft className="h-3.5 w-3.5" />
@@ -1031,7 +1031,7 @@ export function InstallWizard() {
               <>
                 <button
                   onClick={() => setStep("welcome")}
-                  className="rounded-lg border border-white/5 px-3 py-2 text-xs text-white/40 hover:text-white/60 hover:bg-white/[0.04] transition-all"
+                  className="rounded-lg border border-[var(--border-default)] px-3 py-2 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-default)] transition-all"
                 >
                   Start Over
                 </button>
@@ -1051,7 +1051,7 @@ export function InstallWizard() {
                       window.electronAPI?.openExternal?.("https://agenticos.ai/releases")
                     }
                   }}
-                  className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-2 text-xs font-semibold text-white hover:from-blue-500 hover:to-purple-500 transition-all"
+                  className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-2 text-xs font-semibold text-[var(--text-primary)] hover:from-blue-500 hover:to-purple-500 transition-all"
                 >
                   <Rocket className="h-3.5 w-3.5" />
                   Finish
@@ -1066,8 +1066,8 @@ export function InstallWizard() {
                 className={cn(
                   "flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold transition-all",
                   step === "system-check" && !allChecksPassed
-                    ? "bg-white/5 text-white/30 cursor-not-allowed"
-                    : "bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-500 hover:to-purple-500",
+                    ? "bg-[var(--border-subtle)] text-[var(--text-tertiary)] cursor-not-allowed"
+                    : "bg-gradient-to-r from-blue-600 to-purple-600 text-[var(--text-primary)] hover:from-blue-500 hover:to-purple-500",
                 )}
               >
                 {step === "summary" ? (

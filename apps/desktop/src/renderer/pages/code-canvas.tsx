@@ -206,7 +206,7 @@ export function CodeCanvasPage() {
   const paneConfigs = useMemo(() => {
     const paneRenderers: Record<string, () => React.ReactNode> = {
       code: () => <WorkspaceErrorBoundary><CodeWorkspace /></WorkspaceErrorBoundary>,
-      design: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-white/30 text-xs">Loading design...</div>}><DesignWorkspace /></Suspense></WorkspaceErrorBoundary>,
+      design: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-[var(--text-tertiary)] text-xs">Loading design...</div>}><DesignWorkspace /></Suspense></WorkspaceErrorBoundary>,
     }
     return visiblePanes.map((p) => ({
       id: p.id,
@@ -806,7 +806,7 @@ export function CodeCanvasPage() {
           className={cn(
             "flex-shrink-0 flex flex-col overflow-hidden bg-[#0c0c0d] min-h-0",
             "transition-[width] duration-[180ms] ease-out",
-            explorerOpen && "border-r border-white/[0.06]",
+            explorerOpen && "border-r border-[var(--border-default)]",
           )}
         >
           {explorerOpen && (

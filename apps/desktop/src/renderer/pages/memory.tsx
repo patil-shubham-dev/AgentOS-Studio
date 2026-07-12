@@ -21,7 +21,7 @@ const CATEGORY_COLORS: Record<MemoryCategory, string> = {
   preference: "text-purple-400 bg-purple-500/10 border-purple-500/20",
   convention: "text-blue-400 bg-blue-500/10 border-blue-500/20",
   decision: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  pattern: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+  pattern: "text-[var(--color-success-text)] bg-emerald-500/10 border-emerald-500/20",
   workflow: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
   error: "text-red-400 bg-red-500/10 border-red-500/20",
   learning: "text-violet-400 bg-violet-500/10 border-violet-500/20",
@@ -91,21 +91,21 @@ export function MemoryPage() {
   return (
     <div className="h-full overflow-hidden bg-[var(--surface-app)] flex flex-col">
       {/* Header */}
-      <div className="shrink-0 border-b border-white/[0.06] bg-[#0c0c0d]">
+      <div className="shrink-0 border-b border-[var(--border-default)] bg-[#0c0c0d]">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-purple-500/10 border border-white/10">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-purple-500/10 border border-[var(--border-default)]">
                 <Brain className="h-5 w-5 text-violet-400" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-white">Memory</h1>
-                <p className="text-xs text-white/40">Search, browse, and manage learned information</p>
+                <h1 className="text-lg font-semibold text-[var(--text-primary)]">Memory</h1>
+                <p className="text-xs text-[var(--text-tertiary)]">Search, browse, and manage learned information</p>
               </div>
             </div>
             <button
               onClick={() => store.refresh()}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs text-white/40 hover:text-white/70 transition-colors rounded-lg hover:bg-white/[0.04]"
+              className="flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors rounded-lg hover:bg-[var(--border-default)]"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", store.loading && "animate-spin")} />
               Refresh
@@ -114,18 +114,18 @@ export function MemoryPage() {
 
           {/* Search bar */}
           <div className="relative mt-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-quaternary)]" />
             <input
               type="text"
               value={store.searchQuery}
               onChange={(e) => store.setSearchQuery(e.target.value)}
               placeholder="Search memories..."
-              className="w-full h-9 pl-9 pr-8 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-white/70 placeholder:text-white/20 outline-none focus:border-white/20 focus:text-white transition-colors"
+              className="w-full h-9 pl-9 pr-8 text-sm bg-[var(--border-subtle)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-quaternary)] outline-none focus:border-[var(--border-strong)] focus:text-[var(--text-primary)] transition-colors"
             />
             {store.searchQuery && (
               <button
                 onClick={() => store.setSearchQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/20 hover:text-white/50"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -156,7 +156,7 @@ export function MemoryPage() {
               <button
                 onClick={() => store.setSort("timestamp", store.sortBy === "timestamp" && store.sortDir === "desc" ? "asc" : "desc")}
                 className={cn("flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors",
-                  store.sortBy === "timestamp" ? "text-white bg-white/[0.06]" : "text-white/30 hover:text-white/60"
+                  store.sortBy === "timestamp" ? "text-[var(--text-primary)] bg-[var(--border-default)]" : "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
                 )}
               >
                 <Clock className="h-3 w-3" />
@@ -166,7 +166,7 @@ export function MemoryPage() {
               <button
                 onClick={() => store.setSort("importance", store.sortBy === "importance" && store.sortDir === "desc" ? "asc" : "desc")}
                 className={cn("flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors",
-                  store.sortBy === "importance" ? "text-white bg-white/[0.06]" : "text-white/30 hover:text-white/60"
+                  store.sortBy === "importance" ? "text-[var(--text-primary)] bg-[var(--border-default)]" : "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
                 )}
               >
                 <TrendingUp className="h-3 w-3" />
@@ -176,7 +176,7 @@ export function MemoryPage() {
               <button
                 onClick={() => store.setSort("confidence", store.sortBy === "confidence" && store.sortDir === "desc" ? "asc" : "desc")}
                 className={cn("flex items-center gap-1 px-2 py-1 text-[11px] rounded-md transition-colors",
-                  store.sortBy === "confidence" ? "text-white bg-white/[0.06]" : "text-white/30 hover:text-white/60"
+                  store.sortBy === "confidence" ? "text-[var(--text-primary)] bg-[var(--border-default)]" : "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
                 )}
               >
                 <Target className="h-3 w-3" />
@@ -191,12 +191,12 @@ export function MemoryPage() {
       {/* Content area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Entry list */}
-        <div className={cn("flex-1 overflow-y-auto", store.detailOpen && "border-r border-white/[0.06]")}>
+        <div className={cn("flex-1 overflow-y-auto", store.detailOpen && "border-r border-[var(--border-default)]")}>
           {/* Stats cards */}
           {store.stats && !store.searchQuery && (
-            <div className="grid grid-cols-4 gap-3 p-4 border-b border-white/[0.04]">
+            <div className="grid grid-cols-4 gap-3 p-4 border-b border-[var(--border-subtle)]">
               <StatCard label="Total Entries" value={store.stats.totalEntries.toString()} icon={<Brain className="h-4 w-4" />} color="text-violet-400" />
-              <StatCard label="Avg Importance" value={(store.stats.averageImportance * 100).toFixed(0) + "%"} icon={<TrendingUp className="h-4 w-4" />} color="text-emerald-400" />
+              <StatCard label="Avg Importance" value={(store.stats.averageImportance * 100).toFixed(0) + "%"} icon={<TrendingUp className="h-4 w-4" />} color="text-[var(--color-success-text)]" />
               <StatCard label="Avg Confidence" value={(store.stats.averageConfidence * 100).toFixed(0) + "%"} icon={<Target className="h-4 w-4" />} color="text-blue-400" />
               <StatCard label="Categories" value={Object.keys(store.stats.byCategory).length.toString()} icon={<Layers className="h-4 w-4" />} color="text-amber-400" />
             </div>
@@ -205,15 +205,15 @@ export function MemoryPage() {
           <div className="p-4 space-y-2">
             {store.loading && store.entries.length === 0 && (
               <div className="flex items-center justify-center py-16">
-                <RefreshCw className="h-6 w-6 text-white/20 animate-spin" />
+                <RefreshCw className="h-6 w-6 text-[var(--text-quaternary)] animate-spin" />
               </div>
             )}
 
             {!store.loading && store.entries.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <Brain className="h-10 w-10 text-white/10 mb-3" />
-                <p className="text-sm text-white/30">No memories found</p>
-                <p className="text-xs text-white/20 mt-1">
+                <Brain className="h-10 w-10 text-[var(--text-quaternary)] mb-3" />
+                <p className="text-sm text-[var(--text-quaternary)]">No memories found</p>
+                <p className="text-xs text-[var(--text-quaternary)] mt-1">
                   {store.searchQuery ? "Try a different search term" : "Memories are created automatically during execution"}
                 </p>
               </div>
@@ -236,17 +236,17 @@ export function MemoryPage() {
                 <button
                   onClick={store.prevPage}
                   disabled={store.offset === 0}
-                  className="px-3 py-1.5 text-xs text-white/40 hover:text-white/70 disabled:text-white/10 disabled:cursor-not-allowed rounded-lg hover:bg-white/[0.04] transition-colors"
+                  className="px-3 py-1.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] disabled:text-[var(--text-quaternary)] disabled:cursor-not-allowed rounded-lg hover:bg-[var(--border-default)] transition-colors"
                 >
                   Previous
                 </button>
-                <span className="text-xs text-white/30">
+                <span className="text-xs text-[var(--text-quaternary)]">
                   {store.offset + 1}–{Math.min(store.offset + store.limit, store.totalCount)} of {store.totalCount}
                 </span>
                 <button
                   onClick={store.nextPage}
                   disabled={store.offset + store.limit >= store.totalCount}
-                  className="px-3 py-1.5 text-xs text-white/40 hover:text-white/70 disabled:text-white/10 disabled:cursor-not-allowed rounded-lg hover:bg-white/[0.04] transition-colors"
+                  className="px-3 py-1.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] disabled:text-[var(--text-quaternary)] disabled:cursor-not-allowed rounded-lg hover:bg-[var(--border-default)] transition-colors"
                 >
                   Next
                 </button>
@@ -279,8 +279,8 @@ function MemoryEntryCard({ entry, selected, onClick }: { entry: MemoryEntry; sel
       className={cn(
         "w-full text-left p-3 rounded-lg border transition-all duration-150",
         selected
-          ? "bg-white/[0.06] border-white/15"
-          : "bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04] hover:border-white/10"
+          ? "bg-[var(--border-default)] border-[var(--border-strong)]"
+          : "bg-[var(--border-subtle)] border-[var(--border-default)] hover:bg-[var(--border-default)] hover:border-[var(--border-default)]"
       )}
     >
       <div className="flex items-start gap-3">
@@ -295,43 +295,43 @@ function MemoryEntryCard({ entry, selected, onClick }: { entry: MemoryEntry; sel
             <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded border", colorClass)}>
               {CATEGORY_LABELS[entry.category]}
             </span>
-            <span className="text-[10px] text-white/20">{SCOPE_LABELS[entry.scope]}</span>
+            <span className="text-[10px] text-[var(--text-quaternary)]">{SCOPE_LABELS[entry.scope]}</span>
             {entry.status !== "active" && (
               <span className="text-[10px] text-amber-400/60">{STATUS_LABELS[entry.status]}</span>
             )}
-            <span className="text-[10px] text-white/20 ml-auto">{formatDate(entry.timestamp)}</span>
+            <span className="text-[10px] text-[var(--text-quaternary)] ml-auto">{formatDate(entry.timestamp)}</span>
           </div>
 
           {/* Content preview */}
-          <p className="text-xs text-white/60 line-clamp-2 leading-relaxed">{entry.content}</p>
+          <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">{entry.content}</p>
 
           {/* Footer: importance/confidence bars + tags */}
           <div className="flex items-center gap-3 mt-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] text-white/20">Importance</span>
-              <div className="h-1 w-12 rounded-full bg-white/[0.06] overflow-hidden">
+              <span className="text-[9px] text-[var(--text-quaternary)]">Importance</span>
+              <div className="h-1 w-12 rounded-full bg-[var(--border-default)] overflow-hidden">
                 <div className="h-full rounded-full bg-emerald-500/60" style={{ width: `${entry.importance * 100}%` }} />
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] text-white/20">Confidence</span>
-              <div className="h-1 w-12 rounded-full bg-white/[0.06] overflow-hidden">
+              <span className="text-[9px] text-[var(--text-quaternary)]">Confidence</span>
+              <div className="h-1 w-12 rounded-full bg-[var(--border-default)] overflow-hidden">
                 <div className="h-full rounded-full bg-blue-500/60" style={{ width: `${entry.confidence * 100}%` }} />
               </div>
             </div>
-            <span className="text-[9px] text-white/20">v{entry.version}</span>
+            <span className="text-[9px] text-[var(--text-quaternary)]">v{entry.version}</span>
           </div>
 
           {/* Tags */}
           {entry.tags.length > 0 && (
             <div className="flex items-center gap-1 mt-2 flex-wrap">
               {entry.tags.slice(0, 4).map((tag) => (
-                <span key={tag} className="text-[9px] text-white/20 bg-white/[0.03] px-1.5 py-0.5 rounded">
+                <span key={tag} className="text-[9px] text-[var(--text-quaternary)] bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">
                   {tag}
                 </span>
               ))}
               {entry.tags.length > 4 && (
-                <span className="text-[9px] text-white/10">+{entry.tags.length - 4}</span>
+                <span className="text-[9px] text-[var(--text-quaternary)]">+{entry.tags.length - 4}</span>
               )}
             </div>
           )}
@@ -354,14 +354,14 @@ function MemoryDetailPane({ entry, store }: { entry: MemoryEntry; store: ReturnT
     >
       <div className="w-[360px] h-full overflow-y-auto">
         {/* Detail header */}
-        <div className="flex items-center justify-between p-4 border-b border-white/[0.06]">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--border-default)]">
           <div className="flex items-center gap-2">
             <div className={cn("flex items-center justify-center h-8 w-8 rounded-lg border", colorClass)}>
               {getCategoryIcon(entry.category)}
             </div>
-            <span className="text-sm font-medium text-white">{CATEGORY_LABELS[entry.category]}</span>
+            <span className="text-sm font-medium text-[var(--text-primary)]">{CATEGORY_LABELS[entry.category]}</span>
           </div>
-          <button onClick={store.closeDetail} className="text-white/20 hover:text-white/50 transition-colors">
+          <button onClick={store.closeDetail} className="text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)] transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -383,10 +383,10 @@ function MemoryDetailPane({ entry, store }: { entry: MemoryEntry; store: ReturnT
           <div className="space-y-2.5">
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-white/30 uppercase tracking-wider">Importance</span>
-                <span className="text-[10px] text-white/50">{(entry.importance * 100).toFixed(0)}%</span>
+                <span className="text-[10px] text-[var(--text-quaternary)] uppercase tracking-wider">Importance</span>
+                <span className="text-[10px] text-[var(--text-tertiary)]">{(entry.importance * 100).toFixed(0)}%</span>
               </div>
-              <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
+              <div className="h-2 rounded-full bg-[var(--border-default)] overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${entry.importance * 100}%` }}
@@ -396,10 +396,10 @@ function MemoryDetailPane({ entry, store }: { entry: MemoryEntry; store: ReturnT
             </div>
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-white/30 uppercase tracking-wider">Confidence</span>
-                <span className="text-[10px] text-white/50">{(entry.confidence * 100).toFixed(0)}%</span>
+                <span className="text-[10px] text-[var(--text-quaternary)] uppercase tracking-wider">Confidence</span>
+                <span className="text-[10px] text-[var(--text-tertiary)]">{(entry.confidence * 100).toFixed(0)}%</span>
               </div>
-              <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
+              <div className="h-2 rounded-full bg-[var(--border-default)] overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${entry.confidence * 100}%` }}
@@ -411,19 +411,19 @@ function MemoryDetailPane({ entry, store }: { entry: MemoryEntry; store: ReturnT
 
           {/* Full content */}
           <div className="space-y-1">
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">Content</span>
-            <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
-              <p className="text-xs text-white/60 leading-relaxed whitespace-pre-wrap">{entry.content}</p>
+            <span className="text-[10px] text-[var(--text-quaternary)] uppercase tracking-wider">Content</span>
+            <div className="p-3 rounded-lg bg-[var(--border-subtle)] border border-[var(--border-default)]">
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">{entry.content}</p>
             </div>
           </div>
 
           {/* Tags */}
           {entry.tags.length > 0 && (
             <div className="space-y-1">
-              <span className="text-[10px] text-white/30 uppercase tracking-wider">Tags</span>
+              <span className="text-[10px] text-[var(--text-quaternary)] uppercase tracking-wider">Tags</span>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {entry.tags.map((tag) => (
-                  <span key={tag} className="text-[10px] text-white/40 bg-white/[0.04] px-2 py-0.5 rounded border border-white/[0.06]">
+                  <span key={tag} className="text-[10px] text-[var(--text-tertiary)] bg-[var(--border-subtle)] px-2 py-0.5 rounded border border-[var(--border-default)]">
                     {tag}
                   </span>
                 ))}
@@ -434,9 +434,9 @@ function MemoryDetailPane({ entry, store }: { entry: MemoryEntry; store: ReturnT
           {/* File paths */}
           {entry.filePaths.length > 0 && (
             <div className="space-y-1">
-              <span className="text-[10px] text-white/30 uppercase tracking-wider">Files</span>
+              <span className="text-[10px] text-[var(--text-quaternary)] uppercase tracking-wider">Files</span>
               {entry.filePaths.map((fp) => (
-                <div key={fp} className="flex items-center gap-1.5 text-[11px] text-white/30">
+                <div key={fp} className="flex items-center gap-1.5 text-[11px] text-[var(--text-quaternary)]">
                   <FileText className="h-3 w-3 shrink-0" />
                   <span className="truncate">{fp}</span>
                 </div>
@@ -447,15 +447,15 @@ function MemoryDetailPane({ entry, store }: { entry: MemoryEntry; store: ReturnT
           {/* Metadata JSON */}
           {Object.keys(entry.metadata).length > 0 && (
             <div className="space-y-1">
-              <span className="text-[10px] text-white/30 uppercase tracking-wider">Metadata</span>
-              <pre className="text-[10px] text-white/30 bg-white/[0.03] p-2 rounded-lg border border-white/[0.06] overflow-x-auto">
+              <span className="text-[10px] text-[var(--text-quaternary)] uppercase tracking-wider">Metadata</span>
+              <pre className="text-[10px] text-[var(--text-quaternary)] bg-[var(--border-subtle)] p-2 rounded-lg border border-[var(--border-default)] overflow-x-auto">
                 {JSON.stringify(entry.metadata, null, 2)}
               </pre>
             </div>
           )}
 
           {/* Actions */}
-          <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
+          <div className="flex items-center gap-2 pt-2 border-t border-[var(--border-default)]">
             <button
               onClick={() => store.deleteEntry(entry.id)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-red-400/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
@@ -472,11 +472,11 @@ function MemoryDetailPane({ entry, store }: { entry: MemoryEntry; store: ReturnT
 
 function StatCard({ label, value, icon, color }: { label: string; value: string; icon: React.ReactNode; color: string }) {
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+    <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--border-subtle)] border border-[var(--border-default)]">
       <div className={cn("shrink-0", color)}>{icon}</div>
       <div className="min-w-0">
-        <p className="text-xs font-medium text-white">{value}</p>
-        <p className="text-[10px] text-white/30">{label}</p>
+        <p className="text-xs font-medium text-[var(--text-primary)]">{value}</p>
+        <p className="text-[10px] text-[var(--text-quaternary)]">{label}</p>
       </div>
     </div>
   )
@@ -484,9 +484,9 @@ function StatCard({ label, value, icon, color }: { label: string; value: string;
 
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="p-2 rounded bg-white/[0.03] border border-white/[0.04]">
-      <p className="text-[9px] text-white/20 uppercase tracking-wider">{label}</p>
-      <p className="text-[11px] text-white/50 mt-0.5 truncate">{value}</p>
+    <div className="p-2 rounded bg-[var(--border-subtle)] border border-[var(--border-subtle)]">
+      <p className="text-[9px] text-[var(--text-quaternary)] uppercase tracking-wider">{label}</p>
+      <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5 truncate">{value}</p>
     </div>
   )
 }
@@ -498,7 +498,7 @@ function FilterSelect({ value, onChange, label, children }: {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-7 text-[11px] px-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 outline-none cursor-pointer hover:text-white/70 transition-colors appearance-none"
+      className="h-7 text-[11px] px-2 rounded-lg bg-[var(--border-subtle)] border border-[var(--border-default)] text-[var(--text-tertiary)] outline-none cursor-pointer hover:text-[var(--text-primary)] transition-colors appearance-none"
     >
       <option value="all">All {label}s</option>
       {children}

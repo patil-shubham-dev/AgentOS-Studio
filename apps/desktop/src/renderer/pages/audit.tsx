@@ -80,14 +80,14 @@ export function AuditPage() {
   return (
     <div className="flex flex-col h-full bg-[var(--surface-app)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-default)]">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-amber-500/10">
             <Shield className="h-4 w-4 text-amber-400" />
           </div>
           <div>
-            <h1 className="text-sm font-semibold text-white/85">Audit Trail</h1>
-            <p className="text-[10px] text-white/25 mt-0.5">
+            <h1 className="text-sm font-semibold text-[var(--text-primary)]">Audit Trail</h1>
+            <p className="text-[10px] text-[var(--text-quaternary)] mt-0.5">
               {stats.total} total events · {stats.last24h} in last 24h · {stats.lastHour} in last hour
             </p>
           </div>
@@ -99,7 +99,7 @@ export function AuditPage() {
               "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition-all border",
               showFilters || hasActiveFilters
                 ? "bg-blue-500/10 text-blue-300 border-blue-500/20"
-                : "bg-white/[0.03] text-white/30 border-white/[0.06] hover:bg-white/[0.06]",
+                : "bg-[var(--border-subtle)] text-[var(--text-tertiary)] border-[var(--border-default)] hover:bg-[var(--border-default)]",
             )}
           >
             <Filter className="h-3 w-3" />
@@ -107,7 +107,7 @@ export function AuditPage() {
           </button>
           <button
             onClick={() => auditLog.clear()}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-white/[0.03] text-white/30 border border-white/[0.06] hover:bg-red-500/10 hover:text-red-300 transition-all"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-[var(--border-subtle)] text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-red-500/10 hover:text-red-300 transition-all"
           >
             <Trash2 className="h-3 w-3" />
             Clear
@@ -122,25 +122,25 @@ export function AuditPage() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-b border-white/[0.06]"
+            className="overflow-hidden border-b border-[var(--border-default)]"
           >
             <div className="px-6 py-3 space-y-3">
               {/* Search */}
               <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-white/15" />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-[var(--text-quaternary)]" />
                 <input
                   type="text"
                   value={filters.search}
                   onChange={(e) => setFilters((p) => ({ ...p, search: e.target.value }))}
                   placeholder="Search events..."
-                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg pl-7 pr-2.5 py-1.5 text-[11px] text-white/60 placeholder:text-white/12 outline-none focus:border-blue-500/30 focus:bg-blue-500/5 transition-all"
+                  className="w-full bg-[var(--border-subtle)] border border-[var(--border-default)] rounded-lg pl-7 pr-2.5 py-1.5 text-[11px] text-[var(--text-secondary)] placeholder:text-[var(--text-quaternary)] outline-none focus:border-blue-500/30 focus:bg-blue-500/5 transition-all"
                 />
               </div>
 
               <div className="flex flex-wrap gap-3">
                 {/* Type filters */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[8px] text-white/20 uppercase tracking-wider font-medium mr-1">Type</span>
+                  <span className="text-[8px] text-[var(--text-quaternary)] uppercase tracking-wider font-medium mr-1">Type</span>
                   {(Object.entries(EVENT_TYPE_COLORS) as [AuditEventType, { label: string; icon: string }][]).map(([type, config]) => (
                     <button
                       key={type}
@@ -149,7 +149,7 @@ export function AuditPage() {
                         "flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium transition-all border",
                         filters.types.includes(type)
                           ? "bg-blue-500/10 text-blue-300 border-blue-500/20"
-                          : "bg-white/[0.02] text-white/20 border-white/[0.04] hover:bg-white/[0.04]",
+                          : "bg-[var(--border-subtle)] text-[var(--text-quaternary)] border-[var(--border-default)] hover:bg-[var(--border-default)]",
                       )}
                     >
                       <span>{config.icon}</span>
@@ -160,7 +160,7 @@ export function AuditPage() {
 
                 {/* Severity filters */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[8px] text-white/20 uppercase tracking-wider font-medium mr-1">Severity</span>
+                  <span className="text-[8px] text-[var(--text-quaternary)] uppercase tracking-wider font-medium mr-1">Severity</span>
                   {(["critical", "error", "warning", "info"] as AuditSeverity[]).map((severity) => {
                     const colors = SEVERITY_COLORS[severity]
                     return (
@@ -171,7 +171,7 @@ export function AuditPage() {
                           "flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium transition-all border capitalize",
                           filters.severities.includes(severity)
                             ? `${colors.badge} border-current`
-                            : "bg-white/[0.02] text-white/20 border-white/[0.04] hover:bg-white/[0.04]",
+                            : "bg-[var(--border-subtle)] text-[var(--text-quaternary)] border-[var(--border-default)] hover:bg-[var(--border-default)]",
                         )}
                       >
                         {severity}
@@ -186,12 +186,12 @@ export function AuditPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={clearFilters}
-                    className="flex items-center gap-1 text-[9px] text-white/20 hover:text-white/50 transition-colors"
+                    className="flex items-center gap-1 text-[9px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] transition-colors"
                   >
                     <X className="h-2.5 w-2.5" />
                     Clear all filters
                   </button>
-                  <span className="text-[8px] text-white/10">
+                  <span className="text-[8px] text-[var(--text-quaternary)]">
                     {filteredEvents.length} of {events.length} events shown
                   </span>
                 </div>
@@ -205,13 +205,13 @@ export function AuditPage() {
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {filteredEvents.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-white/[0.03] mb-3">
-              <Shield className="h-6 w-6 text-white/10" />
+            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-[var(--border-subtle)] mb-3">
+              <Shield className="h-6 w-6 text-[var(--text-quaternary)]" />
             </div>
-            <p className="text-[12px] text-white/25 font-medium">
+            <p className="text-[12px] text-[var(--text-quaternary)] font-medium">
               {hasActiveFilters ? "No events match the current filters" : "No audit events yet"}
             </p>
-            <p className="text-[9px] text-white/15 mt-1 max-w-[300px]">
+            <p className="text-[9px] text-[var(--text-quaternary)] mt-1 max-w-[300px]">
               {hasActiveFilters
                 ? "Try clearing filters or changing your search."
                 : "Audit events appear here when security actions are blocked or denied."}
@@ -264,12 +264,12 @@ function AuditEventRow({
         onClick={onToggle}
         className={cn(
           "flex w-full items-center gap-3 px-3 py-2 rounded-lg text-left transition-all",
-          "hover:bg-white/[0.03]",
-          isExpanded && "bg-white/[0.03]",
+          "hover:bg-[var(--border-subtle)]",
+          isExpanded && "bg-[var(--border-subtle)]",
         )}
       >
         {/* Index */}
-        <span className="text-[9px] text-white/10 font-mono w-6 shrink-0 text-right">#{index}</span>
+        <span className="text-[9px] text-[var(--text-quaternary)] font-mono w-6 shrink-0 text-right">#{index}</span>
 
         {/* Severity indicator */}
         <div className={cn("h-1.5 w-1.5 rounded-full shrink-0", severityColor.badge.split(" ")[0])} />
@@ -278,21 +278,21 @@ function AuditEventRow({
         <span className="text-[10px] shrink-0">{typeConfig.icon}</span>
 
         {/* Source */}
-        <span className="text-[10px] font-mono text-white/30 w-20 shrink-0 truncate">{event.source}</span>
+        <span className="text-[10px] font-mono text-[var(--text-tertiary)] w-20 shrink-0 truncate">{event.source}</span>
 
         {/* Message */}
-        <span className="flex-1 text-[11px] text-white/60 truncate min-w-0">{event.message}</span>
+        <span className="flex-1 text-[11px] text-[var(--text-secondary)] truncate min-w-0">{event.message}</span>
 
         {/* Time */}
-        <span className="text-[9px] text-white/15 font-mono shrink-0 w-16 text-right truncate">
+        <span className="text-[9px] text-[var(--text-quaternary)] font-mono shrink-0 w-16 text-right truncate">
           {formatRelativeTime(event.timestamp)}
         </span>
 
         {/* Expand indicator */}
         {isExpanded ? (
-          <ChevronDown className="h-3 w-3 text-white/15 shrink-0" />
+          <ChevronDown className="h-3 w-3 text-[var(--text-quaternary)] shrink-0" />
         ) : (
-          <ChevronRight className="h-3 w-3 text-white/10 shrink-0" />
+          <ChevronRight className="h-3 w-3 text-[var(--text-quaternary)] shrink-0" />
         )}
       </button>
 
@@ -306,42 +306,42 @@ function AuditEventRow({
             transition={{ duration: 0.15, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <div className="ml-12 mr-3 mb-2 p-3 rounded-lg bg-black/30 border border-white/[0.04] space-y-2">
+            <div className="ml-12 mr-3 mb-2 p-3 rounded-lg bg-black/30 border border-[var(--border-default)] space-y-2">
               <div className="grid grid-cols-2 gap-2 text-[10px]">
                 <div>
-                  <span className="text-white/20">Type</span>
-                  <p className="text-white/60 font-mono mt-0.5">{typeConfig.label}</p>
+                  <span className="text-[var(--text-quaternary)]">Type</span>
+                  <p className="text-[var(--text-secondary)] font-mono mt-0.5">{typeConfig.label}</p>
                 </div>
                 <div>
-                  <span className="text-white/20">Severity</span>
+                  <span className="text-[var(--text-quaternary)]">Severity</span>
                   <p className={cn("font-mono mt-0.5 capitalize", severityColor.text)}>{event.severity}</p>
                 </div>
                 <div>
-                  <span className="text-white/20">Source</span>
-                  <p className="text-white/60 font-mono mt-0.5">{event.source}</p>
+                  <span className="text-[var(--text-quaternary)]">Source</span>
+                  <p className="text-[var(--text-secondary)] font-mono mt-0.5">{event.source}</p>
                 </div>
                 <div>
-                  <span className="text-white/20">Time</span>
-                  <p className="text-white/60 font-mono mt-0.5">{formattedTime}</p>
+                  <span className="text-[var(--text-quaternary)]">Time</span>
+                  <p className="text-[var(--text-secondary)] font-mono mt-0.5">{formattedTime}</p>
                 </div>
                 {event.action && (
                   <div>
-                    <span className="text-white/20">Action</span>
-                    <p className="text-white/60 font-mono mt-0.5">{event.action}</p>
+                    <span className="text-[var(--text-quaternary)]">Action</span>
+                    <p className="text-[var(--text-secondary)] font-mono mt-0.5">{event.action}</p>
                   </div>
                 )}
                 {event.filePath && (
                   <div className="col-span-2">
-                    <span className="text-white/20">File Path</span>
-                    <p className="text-white/60 font-mono mt-0.5 text-[9px] break-all">{event.filePath}</p>
+                    <span className="text-[var(--text-quaternary)]">File Path</span>
+                    <p className="text-[var(--text-secondary)] font-mono mt-0.5 text-[9px] break-all">{event.filePath}</p>
                   </div>
                 )}
               </div>
 
               {event.args && Object.keys(event.args).length > 0 && (
                 <div>
-                  <span className="text-[10px] text-white/20">Arguments</span>
-                  <pre className="mt-1 text-[8px] font-mono text-white/30 bg-white/[0.03] rounded p-2 overflow-x-auto">
+                  <span className="text-[10px] text-[var(--text-quaternary)]">Arguments</span>
+                  <pre className="mt-1 text-[8px] font-mono text-[var(--text-tertiary)] bg-[var(--border-subtle)] rounded p-2 overflow-x-auto">
                     {JSON.stringify(event.args, null, 2)}
                   </pre>
                 </div>
@@ -349,8 +349,8 @@ function AuditEventRow({
 
               {event.metadata && Object.keys(event.metadata).length > 0 && (
                 <div>
-                  <span className="text-[10px] text-white/20">Metadata</span>
-                  <pre className="mt-1 text-[8px] font-mono text-white/30 bg-white/[0.03] rounded p-2 overflow-x-auto">
+                  <span className="text-[10px] text-[var(--text-quaternary)]">Metadata</span>
+                  <pre className="mt-1 text-[8px] font-mono text-[var(--text-tertiary)] bg-[var(--border-subtle)] rounded p-2 overflow-x-auto">
                     {JSON.stringify(event.metadata, null, 2)}
                   </pre>
                 </div>

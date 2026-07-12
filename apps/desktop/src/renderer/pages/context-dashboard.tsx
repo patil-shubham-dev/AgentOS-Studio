@@ -32,9 +32,9 @@ export function ContextDashboardPage() {
     return (
       <div className="h-full flex items-center justify-center bg-[var(--surface-app)]">
         <div className="text-center">
-          <Layers className="h-8 w-8 text-white/10 mx-auto mb-3" />
-          <p className="text-sm text-white/30">Context Manager not initialized</p>
-          <p className="text-xs text-white/20 mt-1">Send a message to initialize context tracking</p>
+          <Layers className="h-8 w-8 text-[var(--text-quaternary)] mx-auto mb-3" />
+          <p className="text-sm text-[var(--text-tertiary)]">Context Manager not initialized</p>
+          <p className="text-xs text-[var(--text-quaternary)] mt-1">Send a message to initialize context tracking</p>
         </div>
       </div>
     )
@@ -46,22 +46,22 @@ export function ContextDashboardPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-blue-500/10 border border-white/10">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-blue-500/10 border border-[var(--border-default)]">
               <LayoutDashboard className="h-5 w-5 text-indigo-400" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-white">Context Dashboard</h1>
-              <p className="text-xs text-white/40">Context budget and monitoring</p>
+              <h1 className="text-lg font-semibold text-[var(--text-primary)]">Context Dashboard</h1>
+              <p className="text-xs text-[var(--text-tertiary)]">Context budget and monitoring</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-white/30">Auto-refresh</span>
+              <span className="text-[10px] text-[var(--text-tertiary)]">Auto-refresh</span>
               <button
                 onClick={() => store.setAutoRefresh(!store.autoRefresh)}
                 className={cn(
                   "relative h-4 w-7 rounded-full transition-colors",
-                  store.autoRefresh ? "bg-emerald-500/50" : "bg-white/[0.08]"
+                  store.autoRefresh ? "bg-emerald-500/50" : "bg-[var(--border-default)]"
                 )}
               >
                 <motion.div
@@ -72,7 +72,7 @@ export function ContextDashboardPage() {
             </div>
             <button
               onClick={() => store.poll()}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-white/40 hover:text-white/70 rounded-lg hover:bg-white/[0.04] transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--border-subtle)] transition-colors"
             >
               <RefreshCw className="h-3 w-3" />
               Refresh
@@ -100,12 +100,12 @@ function TokenBudgetPanel({ budgetState }: { budgetState: { used: number; remain
     <PanelShell icon={<PieChart className="h-4 w-4" />} title="Token Budget" subtitle="Context window tracking">
       <div className="space-y-2 mb-4">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-white/50 font-medium">Used</span>
-          <span className="text-[11px] text-white/30">
+          <span className="text-[11px] text-[var(--text-secondary)] font-medium">Used</span>
+          <span className="text-[11px] text-[var(--text-tertiary)]">
             {budgetState.used.toLocaleString()} / {total.toLocaleString()} tokens
           </span>
         </div>
-        <div className="h-2.5 rounded-full bg-white/[0.06] overflow-hidden">
+        <div className="h-2.5 rounded-full bg-[var(--border-default)] overflow-hidden">
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${Math.min(budgetState.percentageUsed, 100)}%` }}
@@ -116,8 +116,8 @@ function TokenBudgetPanel({ budgetState }: { budgetState: { used: number; remain
           />
         </div>
         <div className="flex items-center justify-between text-[10px]">
-          <span className="text-white/20">Remaining: {budgetState.remaining.toLocaleString()}</span>
-          <span className="text-white/20">{budgetState.percentageUsed.toFixed(1)}% used</span>
+          <span className="text-[var(--text-quaternary)]">Remaining: {budgetState.remaining.toLocaleString()}</span>
+          <span className="text-[var(--text-quaternary)]">{budgetState.percentageUsed.toFixed(1)}% used</span>
         </div>
       </div>
     </PanelShell>
@@ -129,14 +129,14 @@ function CompactionPanel({ compactUsed, compactAvailable }: { compactUsed: numbe
     <PanelShell icon={<Zap className="h-4 w-4" />} title="Compaction" subtitle="Auto-compaction tracking">
       <div className="flex items-center gap-4 mb-4">
         <div className="flex flex-col items-center">
-          <span className="text-2xl font-semibold text-white">{compactUsed}</span>
-          <span className="text-[10px] text-white/30">Compactions</span>
+          <span className="text-2xl font-semibold text-[var(--text-primary)]">{compactUsed}</span>
+          <span className="text-[10px] text-[var(--text-tertiary)]">Compactions</span>
         </div>
         <div className="flex flex-col items-center">
-          <span className={cn("text-lg font-medium", compactAvailable > 0 ? "text-emerald-400" : "text-white/20")}>
+          <span className={cn("text-lg font-medium", compactAvailable > 0 ? "text-[var(--color-success-text)]" : "text-[var(--text-quaternary)]")}>
             {compactAvailable > 0 ? "Enabled" : "Disabled"}
           </span>
-          <span className="text-[10px] text-white/30">Auto-compact</span>
+          <span className="text-[10px] text-[var(--text-tertiary)]">Auto-compact</span>
         </div>
       </div>
     </PanelShell>
@@ -152,21 +152,21 @@ function PanelShell({ icon, title, subtitle, children, priority }: {
       animate={{ opacity: 1, y: 0 }}
       className={cn(
         "rounded-xl border bg-[#0c0c0d] overflow-hidden",
-        priority === "high" ? "border-red-500/20" : "border-white/[0.06]"
+        priority === "high" ? "border-red-500/20" : "border-[var(--border-default)]"
       )}
     >
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-default)]">
         <div className={cn(
           "flex items-center justify-center h-7 w-7 rounded-lg border",
           priority === "high"
             ? "bg-red-500/10 border-red-500/20 text-red-400"
-            : "bg-white/[0.04] border-white/[0.08] text-white/40"
+            : "bg-[var(--border-subtle)] border-[var(--border-default)] text-[var(--text-tertiary)]"
         )}>
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-[13px] font-medium text-white">{title}</h2>
-          <p className="text-[10px] text-white/30">{subtitle}</p>
+          <h2 className="text-[13px] font-medium text-[var(--text-primary)]">{title}</h2>
+          <p className="text-[10px] text-[var(--text-tertiary)]">{subtitle}</p>
         </div>
       </div>
       <div className="p-4">

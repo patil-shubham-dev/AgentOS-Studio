@@ -10,12 +10,12 @@ export function LogsPage() {
         {/* Page header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/10 border border-white/10">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/10 border border-[var(--border-default)]">
               <ScrollText className="h-5 w-5 text-amber-400" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">Logs</h1>
-              <p className="text-sm text-white/40 mt-0.5">
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Logs</h1>
+              <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
                 System logs, execution traces, and activity history
               </p>
             </div>

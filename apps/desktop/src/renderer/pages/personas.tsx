@@ -24,7 +24,7 @@ const TAG_COLORS: Record<string, string> = {
   detailed: 'text-indigo-400 bg-indigo-500/10',
   thorough: 'text-violet-400 bg-violet-500/10',
   documentation: 'text-amber-400 bg-amber-500/10',
-  educational: 'text-emerald-400 bg-emerald-500/10',
+  educational: 'text-[var(--color-success-text)] bg-emerald-500/10',
   explanatory: 'text-teal-400 bg-teal-500/10',
   teaching: 'text-sky-400 bg-sky-500/10',
   learning: 'text-rose-400 bg-rose-500/10',
@@ -34,7 +34,7 @@ const TAG_COLORS: Record<string, string> = {
 }
 
 function getTagColor(tag: string): string {
-  return TAG_COLORS[tag.toLowerCase()] ?? 'text-white/40 bg-white/[0.04]'
+  return TAG_COLORS[tag.toLowerCase()] ?? 'text-[var(--text-tertiary)] bg-[var(--border-subtle)]'
 }
 
 function SourceBadge({ source }: { source: Persona['source'] }) {
@@ -44,7 +44,7 @@ function SourceBadge({ source }: { source: Persona['source'] }) {
       source === 'builtin' ? 'text-blue-400 bg-blue-500/10' :
       source === 'user' ? 'text-green-400 bg-green-500/10' :
       source === 'project' ? 'text-amber-400 bg-amber-500/10' :
-      'text-white/40 bg-white/[0.04]',
+      'text-[var(--text-tertiary)] bg-[var(--border-subtle)]',
     )}>
       {source === 'builtin' ? <Bookmark className="h-2.5 w-2.5" /> :
        source === 'user' ? <User className="h-2.5 w-2.5" /> :
@@ -82,7 +82,7 @@ function PersonaCard({
         'group relative rounded-2xl border transition-all duration-200 overflow-hidden',
         isActive
           ? 'border-purple-500/30 bg-gradient-to-br from-purple-500/8 to-pink-500/5 shadow-[0_0_30px_rgba(168,85,247,0.08)]'
-          : 'border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01] hover:border-white/10',
+          : 'border-[var(--border-subtle)] bg-gradient-to-br from-[var(--surface-elevated)] to-[var(--surface-elevated)] hover:border-[var(--border-default)]',
       )}
     >
       {/* Top accent bar */}
@@ -98,13 +98,13 @@ function PersonaCard({
         <div className="flex items-start gap-3">
           <div className={cn(
             'flex items-center justify-center h-10 w-10 rounded-xl border shrink-0',
-            isActive ? 'border-purple-500/30 bg-purple-500/10' : 'border-white/10 bg-white/[0.04]',
+            isActive ? 'border-purple-500/30 bg-purple-500/10' : 'border-[var(--border-default)] bg-[var(--border-subtle)]',
           )}>
-            <Palette className={cn('h-4 w-4', isActive ? 'text-purple-400' : 'text-white/40')} />
+            <Palette className={cn('h-4 w-4', isActive ? 'text-purple-400' : 'text-[var(--text-tertiary)]')} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-white truncate">{persona.name}</h3>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">{persona.name}</h3>
               <SourceBadge source={persona.source} />
               {isActive && (
                 <span className="flex items-center gap-1 text-[9px] font-medium text-purple-400">
@@ -112,7 +112,7 @@ function PersonaCard({
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-white/40 mt-0.5 line-clamp-2">{persona.description}</p>
+            <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5 line-clamp-2">{persona.description}</p>
           </div>
         </div>
 
@@ -128,37 +128,37 @@ function PersonaCard({
         )}
 
         {/* Instruction preview */}
-        <div className="mt-2 rounded-lg bg-white/[0.02] border border-white/[0.04] p-2 max-h-20 overflow-y-auto">
-          <p className="text-[9px] text-white/30 leading-relaxed line-clamp-3">
+        <div className="mt-2 rounded-lg bg-[var(--border-subtle)] border border-[var(--border-subtle)] p-2 max-h-20 overflow-y-auto">
+          <p className="text-[9px] text-[var(--text-quaternary)] leading-relaxed line-clamp-3">
             {persona.instruction || 'No instruction text'}
           </p>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-1 mt-3 pt-2 border-t border-white/[0.04]">
+        <div className="flex items-center gap-1 mt-3 pt-2 border-t border-[var(--border-subtle)]">
           <button
             onClick={onActivate}
             className={cn(
               'flex items-center gap-1 flex-1 justify-center px-2 py-1.5 rounded-lg text-[9px] font-medium transition-all',
               isActive
                 ? 'bg-purple-500/10 text-purple-400'
-                : 'bg-white/[0.04] text-white/40 hover:text-white/70 hover:bg-white/[0.06]',
+                : 'bg-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-strong)]',
             )}
           >
             {isActive ? <CheckCircle2 className="h-2.5 w-2.5" /> : <Sparkles className="h-2.5 w-2.5" />}
             {isActive ? 'Active' : 'Activate'}
           </button>
-          <div className="w-px h-4 bg-white/[0.06]" />
+          <div className="w-px h-4 bg-[var(--border-subtle)]" />
           <button
             onClick={onEdit}
-            className="rounded-lg p-1.5 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
+            className="rounded-lg p-1.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
             title="Edit"
           >
             <Edit3 className="h-3 w-3" />
           </button>
           <button
             onClick={onClone}
-            className="rounded-lg p-1.5 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
+            className="rounded-lg p-1.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
             title="Duplicate as custom"
           >
             <Copy className="h-3 w-3" />
@@ -166,7 +166,7 @@ function PersonaCard({
           {canDelete && (
             <button
               onClick={onDelete}
-              className="rounded-lg p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+              className="rounded-lg p-1.5 text-[var(--text-quaternary)] hover:text-red-400 hover:bg-red-500/10 transition-all"
               title="Delete"
             >
               <Trash2 className="h-3 w-3" />
@@ -256,21 +256,21 @@ function PersonaEditorModal({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="w-full max-w-3xl rounded-2xl border border-white/[0.08] bg-[#0f0f10] shadow-2xl overflow-hidden"
+        className="w-full max-w-3xl rounded-2xl border border-[var(--border-default)] bg-[#0f0f10] shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-default)]">
           <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-500/10">
             <Palette className="h-3.5 w-3.5 text-purple-400" />
           </div>
-          <span className="text-sm font-semibold text-white">Edit Persona</span>
+          <span className="text-sm font-semibold text-[var(--text-primary)]">Edit Persona</span>
           <div className="flex-1" />
           <button
             onClick={() => setShowPreview((v) => !v)}
             className={cn(
               'flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-all',
-              showPreview ? 'bg-blue-500/10 text-blue-400' : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04]',
+              showPreview ? 'bg-blue-500/10 text-blue-400' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)]',
             )}
           >
             {showPreview ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
@@ -283,7 +283,7 @@ function PersonaEditorModal({
             <Save className="h-3 w-3" />
             Save
           </button>
-          <button onClick={onClose} className="rounded-lg p-1 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all">
+          <button onClick={onClose} className="rounded-lg p-1 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -292,36 +292,36 @@ function PersonaEditorModal({
         <div className="p-4 space-y-3 max-h-[75vh] overflow-y-auto">
           {/* Name */}
           <div>
-            <label className="block text-[10px] font-medium text-white/50 mb-1">Name</label>
+            <label className="block text-[10px] font-medium text-[var(--text-tertiary)] mb-1">Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My Persona"
-              className="w-full h-9 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-xs text-white outline-none focus:border-white/20"
+              className="w-full h-9 rounded-lg border border-[var(--border-default)] bg-[var(--border-subtle)] px-3 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--border-strong)]"
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-[10px] font-medium text-white/50 mb-1">Description</label>
+            <label className="block text-[10px] font-medium text-[var(--text-tertiary)] mb-1">Description</label>
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description of this style"
-              className="w-full h-9 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-xs text-white outline-none focus:border-white/20"
+              className="w-full h-9 rounded-lg border border-[var(--border-default)] bg-[var(--border-subtle)] px-3 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--border-strong)]"
             />
           </div>
 
           {/* Tags */}
           <div>
-            <label className="block text-[10px] font-medium text-white/50 mb-1">
-              Tags <span className="text-white/20">(comma-separated)</span>
+            <label className="block text-[10px] font-medium text-[var(--text-tertiary)] mb-1">
+              Tags <span className="text-[var(--text-quaternary)]">(comma-separated)</span>
             </label>
             <input
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
               placeholder="concise, technical, direct"
-              className="w-full h-9 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-xs text-white outline-none focus:border-white/20"
+              className="w-full h-9 rounded-lg border border-[var(--border-default)] bg-[var(--border-subtle)] px-3 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--border-strong)]"
             />
           </div>
 
@@ -342,16 +342,16 @@ function PersonaEditorModal({
           {/* Instruction editor or preview */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] font-medium text-white/50">Instruction Text</label>
-              <span className="text-[8px] text-white/20 font-mono">
+              <label className="text-[10px] font-medium text-[var(--text-tertiary)]">Instruction Text</label>
+              <span className="text-[8px] text-[var(--text-quaternary)] font-mono">
                 {characterCount.toLocaleString()} chars · {lineCount} lines
               </span>
             </div>
-            <div className="rounded-xl border border-white/10 overflow-hidden">
+            <div className="rounded-xl border border-[var(--border-default)] overflow-hidden">
               {showPreview ? (
                 <div className="h-[300px] overflow-y-auto p-3 bg-black/20">
-                  <h3 className="text-[10px] font-semibold text-white/40 uppercase tracking-wider mb-2">Communication Style</h3>
-                  <pre className="text-xs text-white/50 font-sans leading-relaxed whitespace-pre-wrap">
+                  <h3 className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Communication Style</h3>
+                  <pre className="text-xs text-[var(--text-tertiary)] font-sans leading-relaxed whitespace-pre-wrap">
                     {instruction || 'No instruction text defined.'}
                   </pre>
                 </div>
@@ -413,7 +413,7 @@ function ConfirmDeleteDialog({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-sm rounded-2xl border border-white/[0.08] bg-[#0f0f10] shadow-2xl p-5"
+        className="w-full max-w-sm rounded-2xl border border-[var(--border-default)] bg-[#0f0f10] shadow-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 mb-3">
@@ -421,17 +421,17 @@ function ConfirmDeleteDialog({
             <AlertTriangle className="h-4 w-4 text-red-400" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-white">Delete Persona</h3>
-            <p className="text-[11px] text-white/40 mt-0.5">This action cannot be undone.</p>
+            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Delete Persona</h3>
+            <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">This action cannot be undone.</p>
           </div>
         </div>
-        <p className="text-xs text-white/60 mb-4">
+        <p className="text-xs text-[var(--text-secondary)] mb-4">
           Are you sure you want to delete <span className="text-red-400 font-medium">{personaName}</span>? The file will be permanently removed from disk.
         </p>
         <div className="flex gap-2">
           <button
             onClick={onCancel}
-            className="flex-1 rounded-lg border border-white/10 px-3 py-2 text-[10px] font-medium text-white/50 hover:text-white/70 hover:bg-white/[0.04] transition-all"
+            className="flex-1 rounded-lg border border-[var(--border-default)] px-3 py-2 text-[10px] font-medium text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-default)] transition-all"
           >
             Cancel
           </button>
@@ -619,19 +619,19 @@ export function PersonasPage() {
         {/* ── Page Header ── */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/10 border border-white/10 shadow-lg">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/10 border border-[var(--border-default)] shadow-lg">
               <Palette className="h-5 w-5 text-purple-400" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">Personas</h1>
-              <p className="text-sm text-white/40 mt-0.5">
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Personas</h1>
+              <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
                 Output style presets — define how agents communicate their responses
               </p>
             </div>
           </div>
           <button
             onClick={handleNew}
-            className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-purple-600/20 transition-all"
+            className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 px-4 py-2 text-xs font-medium text-[var(--text-primary)] shadow-lg shadow-purple-600/20 transition-all"
           >
             <Plus className="h-3.5 w-3.5" />
             Create Persona
@@ -647,12 +647,12 @@ export function PersonasPage() {
           ].map((stat) => {
             const Icon = stat.icon
             return (
-              <div key={stat.label} className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-4">
+              <div key={stat.label} className="rounded-2xl border border-[var(--border-subtle)] bg-gradient-to-br from-[var(--surface-elevated)] to-[var(--surface-elevated)] p-4">
                 <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-2xl font-bold text-white">{stat.value}</span>
+                  <span className="text-2xl font-bold text-[var(--text-primary)]">{stat.value}</span>
                   <Icon className={cn('h-4 w-4', stat.color)} />
                 </div>
-                <p className="text-xs text-white/40">{stat.label}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">{stat.label}</p>
               </div>
             )
           })}
@@ -667,15 +667,15 @@ export function PersonasPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-white">{activePersona.name}</span>
+                  <span className="text-xs font-semibold text-[var(--text-primary)]">{activePersona.name}</span>
                   <SourceBadge source={activePersona.source} />
                   <span className="text-[9px] text-purple-400 font-medium">Active</span>
                 </div>
-                <p className="text-[10px] text-white/40 mt-0.5 truncate">{activePersona.description}</p>
+                <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5 truncate">{activePersona.description}</p>
               </div>
               <button
                 onClick={() => setActivePersonaById('none')}
-                className="rounded-lg border border-white/10 px-3 py-1 text-[9px] font-medium text-white/40 hover:text-white/70 hover:bg-white/[0.04] transition-all"
+                className="rounded-lg border border-[var(--border-default)] px-3 py-1 text-[9px] font-medium text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-default)] transition-all"
               >
                 Deactivate
               </button>
@@ -685,12 +685,12 @@ export function PersonasPage() {
 
         {/* ── Search ── */}
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-quaternary)]" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search personas by name, description, tag, or instruction..."
-            className="w-full h-10 rounded-xl border border-white/5 bg-white/[0.03] pl-10 pr-4 text-sm text-white outline-none placeholder:text-white/20 focus:border-white/10 focus:bg-white/[0.05] transition-all"
+            className="w-full h-10 rounded-xl border border-[var(--border-subtle)] bg-[var(--border-subtle)] pl-10 pr-4 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-quaternary)] focus:border-[var(--border-default)] focus:bg-[var(--border-default)] transition-all"
           />
         </div>
 
@@ -717,11 +717,11 @@ export function PersonasPage() {
         {/* ── Empty state ── */}
         {filtered.length <= 1 && (
           <div className="text-center py-12">
-            <Palette className="h-10 w-10 text-white/10 mx-auto mb-3" />
-            <h3 className="text-base font-semibold text-white/60 mb-1">
+            <Palette className="h-10 w-10 text-[var(--text-quaternary)] mx-auto mb-3" />
+            <h3 className="text-base font-semibold text-[var(--text-secondary)] mb-1">
               {searchQuery ? 'No matching personas' : 'No personas yet'}
             </h3>
-            <p className="text-xs text-white/30 max-w-md mx-auto">
+            <p className="text-xs text-[var(--text-quaternary)] max-w-md mx-auto">
               {searchQuery
                 ? 'Try a different search query.'
                 : 'Personas define how agents communicate. Create your first one to get started or place .md files in .agentic/presets/'}
@@ -730,11 +730,11 @@ export function PersonasPage() {
         )}
 
         {/* ── Info footer ── */}
-        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--border-subtle)] p-4">
           <div className="flex items-start gap-3">
-            <FileText className="h-4 w-4 text-white/30 mt-0.5 shrink-0" />
-            <div className="text-[11px] text-white/30 leading-relaxed">
-              <p className="font-medium text-white/50 mb-1">How Personas Work</p>
+            <FileText className="h-4 w-4 text-[var(--text-quaternary)] mt-0.5 shrink-0" />
+            <div className="text-[11px] text-[var(--text-quaternary)] leading-relaxed">
+              <p className="font-medium text-[var(--text-tertiary)] mb-1">How Personas Work</p>
               <p>Personas are stored as Markdown files in <code className="text-blue-400">~/.agentic/presets/*.md</code> (user-level) or <code className="text-amber-400">&lt;project&gt;/.agentic/presets/*.md</code> (project-level).</p>
               <p className="mt-1">Each file uses YAML frontmatter to define metadata (name, description, tags) and the body becomes the instruction text injected into system prompts.</p>
               <p className="mt-1">Project personas override user personas with the same filename. Built-in personas are always available.</p>

@@ -107,12 +107,12 @@ export function PluginsPage() {
         {/* Page Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/10 border border-white/10">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/10 border border-[var(--border-default)]">
               <Puzzle className="h-5 w-5 text-indigo-400" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">Plugins</h1>
-              <p className="text-sm text-white/40 mt-0.5">
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Plugins</h1>
+              <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
                 Extend AgenticOS with custom tools, MCP servers, and UI components
               </p>
             </div>
@@ -120,7 +120,7 @@ export function PluginsPage() {
           <button
             onClick={loadPlugins}
             disabled={isLoading}
-            className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-4 py-2 text-xs font-medium text-[var(--text-primary)] shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-40"
           >
             {isLoading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -141,12 +141,12 @@ export function PluginsPage() {
           ].map((stat) => {
             const Icon = stat.icon
             return (
-              <div key={stat.label} className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-4">
+              <div key={stat.label} className="rounded-2xl border border-[var(--border-subtle)] bg-gradient-to-br from-[var(--surface-elevated)] to-[var(--surface-elevated)] p-4">
                 <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-2xl font-bold text-white">{stat.value}</span>
+                  <span className="text-2xl font-bold text-[var(--text-primary)]">{stat.value}</span>
                   <Icon className={cn("h-4 w-4", stat.color)} />
                 </div>
-                <p className="text-xs text-white/40">{stat.label}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">{stat.label}</p>
               </div>
             )
           })}
@@ -159,7 +159,7 @@ export function PluginsPage() {
             <span className="text-xs text-red-300">{error}</span>
             <button
               onClick={() => setError(null)}
-              className="ml-auto rounded p-0.5 text-white/30 hover:text-white/60"
+              className="ml-auto rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
             >
               <XCircle className="h-3.5 w-3.5" />
             </button>
@@ -168,12 +168,12 @@ export function PluginsPage() {
 
         {/* Search */}
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-quaternary)]" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search plugins by name, description, or tag..."
-            className="w-full h-10 rounded-xl border border-white/5 bg-white/[0.03] pl-10 pr-4 text-sm text-white outline-none placeholder:text-white/20 focus:border-white/10 focus:bg-white/[0.05] transition-all"
+            className="w-full h-10 rounded-xl border border-[var(--border-subtle)] bg-[var(--border-subtle)] pl-10 pr-4 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-quaternary)] focus:border-[var(--border-default)] focus:bg-[var(--border-default)] transition-all"
           />
         </div>
 
@@ -191,7 +191,7 @@ export function PluginsPage() {
                   "group relative rounded-2xl border transition-all duration-200 overflow-hidden",
                   plugin.enabled
                     ? "border-indigo-500/20 bg-gradient-to-br from-indigo-500/5 to-purple-500/3"
-                    : "border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01] hover:border-white/10",
+                    : "border-[var(--border-subtle)] bg-gradient-to-br from-[var(--surface-elevated)] to-[var(--surface-elevated)] hover:border-[var(--border-default)]",
                 )}
               >
                 {/* Top accent bar */}
@@ -212,19 +212,19 @@ export function PluginsPage() {
                         "flex items-center justify-center h-10 w-10 rounded-xl border shrink-0",
                         plugin.enabled
                           ? "border-indigo-500/30 bg-indigo-500/10"
-                          : "border-white/10 bg-white/[0.04]",
+                          : "border-[var(--border-default)] bg-[var(--border-subtle)]",
                       )}
                     >
                       <Puzzle
                         className={cn(
                           "h-4 w-4",
-                          plugin.enabled ? "text-indigo-400" : "text-white/40",
+                          plugin.enabled ? "text-indigo-400" : "text-[var(--text-tertiary)]",
                         )}
                       />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-white truncate">
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
                           {plugin.manifest.name}
                         </h3>
                         <span
@@ -238,7 +238,7 @@ export function PluginsPage() {
                           {plugin.manifest.isBuiltin ? "Built-in" : plugin.manifest.version}
                         </span>
                       </div>
-                      <p className="text-[11px] text-white/40 mt-0.5 line-clamp-2">
+                      <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5 line-clamp-2">
                         {plugin.manifest.description}
                       </p>
                     </div>
@@ -250,7 +250,7 @@ export function PluginsPage() {
                       {plugin.manifest.tags.map((tag) => (
                         <span
                           key={tag}
-                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium text-white/40 bg-white/[0.04]"
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium text-[var(--text-tertiary)] bg-[var(--border-subtle)]"
                         >
                           <Tag className="h-2 w-2" />
                           {tag}
@@ -260,14 +260,14 @@ export function PluginsPage() {
                   )}
 
                   {/* Plugin ID */}
-                  <div className="mt-2 rounded-lg bg-white/[0.02] border border-white/[0.04] px-2 py-1">
-                    <code className="text-[8px] text-white/30 font-mono break-all">
+                  <div className="mt-2 rounded-lg bg-[var(--border-subtle)] border border-[var(--border-subtle)] px-2 py-1">
+                    <code className="text-[8px] text-[var(--text-quaternary)] font-mono break-all">
                       {plugin.manifest.id}
                     </code>
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-1 mt-3 pt-2 border-t border-white/[0.04]">
+                  <div className="flex items-center gap-1 mt-3 pt-2 border-t border-[var(--border-subtle)]">
                     {/* Enable/Disable Toggle */}
                     <button
                       onClick={() => handleToggle(plugin.manifest.id)}
@@ -275,7 +275,7 @@ export function PluginsPage() {
                         "flex items-center gap-1 flex-1 justify-center px-2 py-1.5 rounded-lg text-[9px] font-medium transition-all",
                         plugin.enabled
                           ? "bg-indigo-500/10 text-indigo-400"
-                          : "bg-white/[0.04] text-white/40 hover:text-white/70 hover:bg-white/[0.06]",
+                          : "bg-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-strong)]",
                       )}
                     >
                       {plugin.enabled ? (
@@ -289,12 +289,12 @@ export function PluginsPage() {
                     {/* External link */}
                     {plugin.manifest.homepage && (
                       <>
-                        <div className="w-px h-4 bg-white/[0.06]" />
+                        <div className="w-px h-4 bg-[var(--border-subtle)]" />
                         <a
                           href={plugin.manifest.homepage}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="rounded-lg p-1.5 text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-all"
+                          className="rounded-lg p-1.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-default)] transition-all"
                           title="Plugin homepage"
                         >
                           <ExternalLink className="h-3 w-3" />
@@ -305,10 +305,10 @@ export function PluginsPage() {
                     {/* Delete (user plugins only) */}
                     {!plugin.manifest.isBuiltin && (
                       <>
-                        <div className="w-px h-4 bg-white/[0.06]" />
+                        <div className="w-px h-4 bg-[var(--border-subtle)]" />
                         <button
                           onClick={() => handleDelete(plugin.manifest.id)}
-                          className="rounded-lg p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                          className="rounded-lg p-1.5 text-[var(--text-quaternary)] hover:text-red-400 hover:bg-red-500/10 transition-all"
                           title="Remove plugin"
                         >
                           <Trash2 className="h-3 w-3" />
@@ -325,11 +325,11 @@ export function PluginsPage() {
         {/* Empty state */}
         {filteredPlugins.length === 0 && (
           <div className="text-center py-12">
-            <Puzzle className="h-10 w-10 text-white/10 mx-auto mb-3" />
-            <h3 className="text-base font-semibold text-white/60 mb-1">
+            <Puzzle className="h-10 w-10 text-[var(--text-quaternary)] mx-auto mb-3" />
+            <h3 className="text-base font-semibold text-[var(--text-secondary)] mb-1">
               {searchQuery ? "No matching plugins" : "No plugins found"}
             </h3>
-            <p className="text-xs text-white/30 max-w-md mx-auto">
+            <p className="text-xs text-[var(--text-quaternary)] max-w-md mx-auto">
               {searchQuery
                 ? "Try a different search query."
                 : "Plugins extend AgenticOS with new capabilities. Install plugins by placing them in ~/.agentic/plugins/"}
@@ -338,11 +338,11 @@ export function PluginsPage() {
         )}
 
         {/* Info footer */}
-        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--border-subtle)] p-4">
           <div className="flex items-start gap-3">
-            <Puzzle className="h-4 w-4 text-white/30 mt-0.5 shrink-0" />
-            <div className="text-[11px] text-white/30 leading-relaxed">
-              <p className="font-medium text-white/50 mb-1">How Plugins Work</p>
+            <Puzzle className="h-4 w-4 text-[var(--text-quaternary)] mt-0.5 shrink-0" />
+            <div className="text-[11px] text-[var(--text-quaternary)] leading-relaxed">
+              <p className="font-medium text-[var(--text-tertiary)] mb-1">How Plugins Work</p>
               <p>
                 Plugins can register new tools, MCP server configurations, UI components, and lifecycle hooks.
                 Install plugins by creating a directory in{" "}
