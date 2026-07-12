@@ -243,11 +243,13 @@ function getAdapterId(baseUrl: string): string {
   if (url.includes("together.xyz")) return "together"
   if (url.includes("nvidia.com")) return "nvidia-nim"
   if (url.includes("azure.com") || url.includes("azure-api.net")) return "azure"
+  if (url.includes("localhost") || url.includes("127.0.0.1") || url.includes("host.docker.internal")) {
     if (url.includes("11434")) return "ollama"
     try { const port = new URL(baseUrl).port; if (port === "8000") return "vllm" } catch {}
     if (url.includes("1234")) return "lm-studio"
     try { const port = new URL(baseUrl).port; if (port === "8080") return "local-ai" } catch {}
     if (url.includes("4000")) return "litellm"
+  }
   return "unknown"
 }
 
