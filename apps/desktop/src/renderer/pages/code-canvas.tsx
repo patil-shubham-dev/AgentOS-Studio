@@ -757,7 +757,7 @@ export function CodeCanvasPage() {
 
 
   return (
-    <div className="flex h-full flex-col bg-[#0a0a0b]" role="main" aria-label="Code canvas workspace">
+    <div className="flex h-full flex-col bg-[var(--surface-app)]" role="main" aria-label="Code canvas workspace">
       {/* Compact status bar — single line for active notifications */}
       {(runtimeStatus === "uninitialized" || runtimeStatus === "error" || (runtimeStatus === "ready" && !runtimeReady && rootPath) || (hasStaleConfig && runtimeReady)) && (
         <div className={cn(

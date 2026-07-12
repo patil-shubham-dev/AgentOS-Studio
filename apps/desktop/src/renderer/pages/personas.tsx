@@ -614,7 +614,7 @@ export function PersonasPage() {
   }, [deleteTarget, rootPath, setAvailablePersonas, activePersona.id, setActivePersonaById])
 
   return (
-    <div className="h-full overflow-y-auto bg-[#0a0a0b]">
+    <div className="h-full overflow-y-auto bg-[var(--surface-app)]">
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         {/* ── Page Header ── */}
         <div className="flex items-center justify-between">

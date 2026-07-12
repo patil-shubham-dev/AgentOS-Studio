@@ -89,7 +89,7 @@ export function MemoryPage() {
   }, [])
 
   return (
-    <div className="h-full overflow-hidden bg-[#0a0a0b] flex flex-col">
+    <div className="h-full overflow-hidden bg-[var(--surface-app)] flex flex-col">
       {/* Header */}
       <div className="shrink-0 border-b border-white/[0.06] bg-[#0c0c0d]">
         <div className="px-6 py-4">

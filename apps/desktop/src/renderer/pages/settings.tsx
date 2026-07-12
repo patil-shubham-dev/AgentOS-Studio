@@ -325,7 +325,7 @@ export function SettingsPage() {
       </motion.aside>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-gradient-to-br from-black via-[#050508] to-[#0a0a14]">
+      <div className="flex-1 flex flex-col overflow-hidden bg-gradient-to-br from-[var(--surface-app)] via-[var(--surface-elevated)] to-[var(--surface-elevated)]">
         <div className="flex items-center justify-between border-b border-white/5 px-6 py-3 bg-black/20 backdrop-blur-xl">
           <div className="flex items-center gap-4">
             <motion.h1

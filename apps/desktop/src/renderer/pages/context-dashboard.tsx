@@ -30,7 +30,7 @@ export function ContextDashboardPage() {
 
   if (!store.budgetState) {
     return (
-      <div className="h-full flex items-center justify-center bg-[#0a0a0b]">
+      <div className="h-full flex items-center justify-center bg-[var(--surface-app)]">
         <div className="text-center">
           <Layers className="h-8 w-8 text-white/10 mx-auto mb-3" />
           <p className="text-sm text-white/30">Context Manager not initialized</p>
@@ -41,7 +41,7 @@ export function ContextDashboardPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-[#0a0a0b]">
+    <div className="h-full overflow-y-auto bg-[var(--surface-app)]">
       <div className="p-6 max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
