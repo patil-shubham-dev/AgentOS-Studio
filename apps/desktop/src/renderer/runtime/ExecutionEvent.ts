@@ -212,6 +212,13 @@ export interface TokenEvent {
   timestamp: number
 }
 
+export interface ReasoningTokenEvent {
+  type: "REASONING_TOKEN"
+  executionId: string
+  token: string
+  timestamp: number
+}
+
 export interface FallbackActivatedEvent {
   type: "FALLBACK_ACTIVATED"
   executionId: string
@@ -541,6 +548,7 @@ export type ExecutionEvent =
   | (ProviderConnectingEvent & ExecutionTraceable)
   | (ProviderConnectedEvent & ExecutionTraceable)
   | (TokenEvent & ExecutionTraceable)
+  | (ReasoningTokenEvent & ExecutionTraceable)
   | (MessageUpdateEvent & ExecutionTraceable)
   | (MessageCompleteEvent & ExecutionTraceable)
   | (ExecutionCompleteEvent & ExecutionTraceable)
