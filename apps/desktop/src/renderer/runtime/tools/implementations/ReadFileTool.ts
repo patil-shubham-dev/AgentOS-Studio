@@ -144,7 +144,7 @@ export const ReadFileTool: AgentTool = buildTool({
     const path = String(input.path ?? '')
     if (!path) return { data: null, error: 'path is required', isError: true }
 
-    const rootPath = ctx.workspaceStore?.rootPath ?? null
+    const rootPath = _ctx.workspaceStore?.rootPath ?? null
     const fullPath = resolvePath(rootPath, path)
 
     const validationError = validatePath(fullPath, rootPath)

@@ -82,6 +82,12 @@ function resolvePath(rootPath: string | null, inputPath: string): string {
   return `${rootPath}\\${inputPath.replace(/\//g, '\\')}`
 }
 
+function validatePath(normalized: string, rootPath: string | null): string | null {
+  if (normalized.includes('..')) return 'Path traversal denied'
+  if (rootPath && !normalized.startsWith(rootPath)) return 'Path escapes workspace root'
+  return null
+}
+
 export const WriteFileTool: AgentTool = buildTool({
   name: 'write_file',
   description: 'Write content to a file (creates directories if needed), updating the file on disk immediately',
@@ -108,6 +114,9 @@ export const WriteFileTool: AgentTool = buildTool({
     if (!path) return { data: null, error: 'path is required', isError: true }
     const rootPath = ctx.workspaceStore?.rootPath ?? null
     const fullPath = resolvePath(rootPath, path)
+
+    const validationError = validatePath(fullPath, rootPath)
+    if (validationError) return { data: null, error: validationError, isError: true }
 
     if (isPathDenied(fullPath)) {
       return { data: null, error: `Cannot write to "${path}". The path is not accessible.`, isError: true }

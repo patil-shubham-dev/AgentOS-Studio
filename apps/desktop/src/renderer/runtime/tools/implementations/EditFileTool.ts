@@ -103,6 +103,12 @@ function resolvePath(rootPath: string | null, inputPath: string): string {
   return `${rootPath}\\${inputPath.replace(/\//g, '\\')}`
 }
 
+function validatePath(normalized: string, rootPath: string | null): string | null {
+  if (normalized.includes('..')) return 'Path traversal denied'
+  if (rootPath && !normalized.startsWith(rootPath)) return 'Path escapes workspace root'
+  return null
+}
+
 function toDiffEdits(input: Record<string, unknown>): DiffEdit[] {
   const edits = input.edits as Array<Record<string, unknown>> | undefined
   if (Array.isArray(edits) && edits.length > 0) {
@@ -281,6 +287,9 @@ export const EditFileTool: AgentTool = buildTool({
 
     const rootPath = ctx.workspaceStore?.rootPath ?? null
     const fullPath = resolvePath(rootPath, filePath)
+
+    const validationError = validatePath(fullPath, rootPath)
+    if (validationError) return { data: null, error: validationError, isError: true }
 
     if (isPathDenied(fullPath)) {
       return { data: null, error: `File not found: "${filePath}". The file may not exist at this location.`, isError: true }
