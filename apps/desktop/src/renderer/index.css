@@ -141,6 +141,12 @@
   --color-accent-brand-border: rgba(91, 155, 255, 0.3);
   --color-accent-brand-text: #5B9BFF;
 
+  /* Semantic state — Success (green) */
+  --color-success: #22c55e;
+  --color-success-muted: rgba(34, 197, 94, 0.08);
+  --color-success-border: rgba(34, 197, 94, 0.2);
+  --color-success-text: #22c55e;
+
   /* Tool identity colors */
   --tool-read: #5B9BFF;
   --tool-write: #34D399;
@@ -176,6 +182,7 @@
   --surface-panel: #F4F0E7;
   --surface-elevated: #FFFFFF;
   --surface-overlay: #EBE5DA;
+  --surface-tooltip: #E5DFD2;
 
   --text-primary: #2D2621;
   --text-secondary: #6B6258;
@@ -196,6 +203,12 @@
   --color-accent-brand-muted: rgba(91, 155, 255, 0.1);
   --color-accent-brand-border: rgba(91, 155, 255, 0.25);
   --color-accent-brand-text: #4A7FCC;
+
+  /* Semantic state — Success (green) */
+  --color-success: #16A34A;
+  --color-success-muted: rgba(22, 163, 74, 0.08);
+  --color-success-border: rgba(22, 163, 74, 0.2);
+  --color-success-text: #16A34A;
 
   --tool-read: #4A7FCC;
   --tool-write: #2DAF7A;
