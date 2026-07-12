@@ -14,6 +14,7 @@ import { FeatureFlagManager } from "@/runtime/feature-flags/FeatureFlagManager"
 import { GoalState } from "@/runtime/autonomous/GoalState"
 import type { GoalSnapshot } from "@/runtime/autonomous/GoalState"
 import { MemoryArchitecture } from "@/runtime/memory/unified/MemoryArchitecture"
+import { StreamManager } from "@/runtime/streaming/StreamManager"
 
 type FullPathFn = (
   input: string,
@@ -118,6 +119,7 @@ export class AutonomousExecutionPath {
       for await (const event of executor.execute()) {
         if (event.type === "MESSAGE_COMPLETE") {
           budgetMgr.recordUsage(budgetId, { tokens: (event as any).tokensIn ?? 0 + (event as any).tokensOut ?? 0 })
+          StreamManager.getInstance().flushImmediate()
         }
         yield event
       }

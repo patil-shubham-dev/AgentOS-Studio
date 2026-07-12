@@ -303,7 +303,7 @@ export class ExecutionSessionManager {
         const sess = tlAfter.agentSessions.get(stepId)
         if (sess && (sess.streamState === "streaming" || sess.streamState === "loading_slowly")) {
           console.warn(`[SessionManager] Force-completing stuck agent session ${stepId} (state=${sess.streamState})`)
-          StreamManager.getInstance().clearStep(stepId)
+          StreamManager.getInstance().complete(stepId)
           tlAfter.commitStreamingText(stepId)
           tlAfter.updateAgentSession(stepId, { status: "complete", streamState: "completed", completedAt: Date.now() })
         }
@@ -395,7 +395,7 @@ export class ExecutionSessionManager {
       for (const [, stepId] of this.stepByExecId) { allErrorSteps.add(stepId) }
       for (const [, stepIds] of this.stepHistoryByExecId) { for (const sid of stepIds) allErrorSteps.add(sid) }
       for (const stepId of allErrorSteps) {
-        StreamManager.getInstance().clearStep(stepId)
+        StreamManager.getInstance().complete(stepId)
         timeline.commitStreamingText(stepId)
         timeline.flushPendingText(stepId)
         timeline.updateAgentSession(stepId, { status: "complete", streamState: "cancelled" })
@@ -540,8 +540,9 @@ export class ExecutionSessionManager {
         const isError = finishReason === "error"
         const corrId = options.correlationId ?? event.correlationId
 
-        timeline.commitStreamingText(event.stepId)
-        StreamManager.getInstance().clearStep(event.stepId)
+        const sessionStepId = this.stepByExecId.get(event.executionId) ?? event.stepId
+        StreamManager.getInstance().complete(sessionStepId)
+        timeline.commitStreamingText(sessionStepId)
 
         if (isError) {
           const errorMsg = (event as any).content || event.content || "Request failed — provider returned an error"
@@ -847,8 +848,8 @@ export class ExecutionSessionManager {
 
         const efStepId = this.stepByExecId.get(event.executionId)
         if (efStepId) {
+          StreamManager.getInstance().complete(efStepId)
           timeline.commitStreamingText(efStepId)
-          StreamManager.getInstance().clearStep(efStepId)
           timeline.updateAgentSession(efStepId, {
             status: wasCancelled ? "complete" : "error",
             streamState: wasCancelled ? "cancelled" : "failed",
@@ -1072,7 +1073,7 @@ export class ExecutionSessionManager {
       case "GOAL_ACHIEVED": {
         // Goal achieved — final cleanup
         for (const [eid, stepId] of this.stepByExecId) {
-          StreamManager.getInstance().clearStep(stepId)
+          StreamManager.getInstance().complete(stepId)
           timeline.commitStreamingText(stepId)
           timeline.updateAgentSession(stepId, { status: "complete", streamState: "completed" })
         }
@@ -1309,7 +1310,8 @@ export class ExecutionSessionManager {
     session.status = "cancelled"
     session.completedAt = Date.now()
 
-    // 1. Stop all streams immediately
+    // 1. Flush all pending word-buffer text to streamingTexts, then clear buffer
+    StreamManager.getInstance().flushImmediate()
     StreamManager.getInstance().clearAll()
 
     // 2. Abort any active runtime
