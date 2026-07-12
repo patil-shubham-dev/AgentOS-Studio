@@ -82,12 +82,12 @@ export function AboutDialog() {
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-sm mx-4 rounded-2xl border border-white/[0.08] bg-[#0c0c0d] shadow-2xl overflow-hidden"
+            className="relative w-full max-w-sm mx-4 rounded-2xl border border-[var(--border-default)] bg-[#0c0c0d] shadow-2xl overflow-hidden"
           >
             {/* Close button */}
             <button
               onClick={handleClose}
-              className="absolute top-3 right-3 z-10 flex h-6 w-6 items-center justify-center rounded-md text-white/30 hover:text-white/70 hover:bg-white/[0.06] transition-all"
+              className="absolute top-3 right-3 z-10 flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-default)] transition-all"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
@@ -104,11 +104,11 @@ export function AboutDialog() {
             </div>
 
             {/* Tagline */}
-            <p className="text-center text-xs text-white/40 mt-2 mb-6 px-8">
+            <p className="text-center text-xs text-[var(--text-tertiary)] mt-2 mb-6 px-8">
               Multi-Agent AI Workspace
             </p>
 
-            <div className="border-t border-white/[0.06]" />
+            <div className="border-t border-[var(--border-default)]" />
 
             {/* Info rows */}
             <div className="px-6 py-4 space-y-2.5">
@@ -125,11 +125,11 @@ export function AboutDialog() {
               <InfoRow label="Node.js" value={nodeVer} />
             </div>
 
-            <div className="border-t border-white/[0.06]" />
+            <div className="border-t border-[var(--border-default)]" />
 
             {/* License & links */}
             <div className="px-6 py-4 flex items-center justify-between">
-              <span className="text-[10px] text-white/25">
+              <span className="text-[10px] text-[var(--text-quaternary)]">
                 License: Proprietary
               </span>
               <div className="flex items-center gap-3">
@@ -137,7 +137,7 @@ export function AboutDialog() {
                   href="https://agenticos.ai/docs"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 transition-colors"
+                  className="flex items-center gap-1 text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
                 >
                   <BookOpen className="h-3 w-3" />
                   Docs
@@ -146,7 +146,7 @@ export function AboutDialog() {
                   href="https://github.com/agenticos"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 transition-colors"
+                  className="flex items-center gap-1 text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
                 >
                   <ExternalLink className="h-3 w-3" />
                   GitHub
@@ -156,7 +156,7 @@ export function AboutDialog() {
 
             {/* Copyright */}
             <div className="px-6 pb-5 text-center">
-              <p className="text-[9px] text-white/15">
+              <p className="text-[9px] text-[var(--text-quaternary)]">
                 &copy; {new Date().getFullYear()} AgenticOS. All rights reserved.
               </p>
             </div>
@@ -170,8 +170,8 @@ export function AboutDialog() {
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-[11px] text-white/40">{label}</span>
-      <span className="text-[11px] text-white/70 font-mono">{value}</span>
+      <span className="text-[11px] text-[var(--text-tertiary)]">{label}</span>
+      <span className="text-[11px] text-[var(--text-primary)] font-mono">{value}</span>
     </div>
   )
 }

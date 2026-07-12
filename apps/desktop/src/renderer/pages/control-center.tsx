@@ -75,7 +75,7 @@ function FallbackCard({ title, description, action, actionLabel, icon: Icon }: {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-amber-300">{title}</p>
-          <p className="text-xs text-white/50 mt-1">{description}</p>
+          <p className="text-xs text-[var(--text-secondary)] mt-1">{description}</p>
           {action && actionLabel && (
             <button
               onClick={action}
@@ -104,19 +104,19 @@ function OrchestrationPanel({
   navigate: ReturnType<typeof useNavigate>
 }) {
   return (
-    <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-5 backdrop-blur-xl">
+    <div className="rounded-2xl border border-[var(--border-default)] bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-5 backdrop-blur-xl">
       <div className="flex items-center gap-2 mb-3">
         <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-amber-500/10">
           <Brain className="h-3.5 w-3.5 text-amber-400" />
         </div>
-        <span className="text-xs font-semibold text-white/70">Orchestration</span>
+        <span className="text-xs font-semibold text-[var(--text-primary)]">Orchestration</span>
       </div>
       <div className="space-y-2">
         {managerConfigured ? (
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-green-500" />
-            <span className="text-sm font-medium text-green-400">Ready</span>
-            <span className="text-xs text-white/40">– Manager is active</span>
+            <span className="text-sm font-medium text-[var(--color-success-text)]">Ready</span>
+            <span className="text-xs text-[var(--text-tertiary)]">– Manager is active</span>
           </div>
         ) : (
           <div className="flex items-center gap-2">
@@ -125,9 +125,9 @@ function OrchestrationPanel({
             <button onClick={() => navigate("/settings")} className="text-xs text-amber-500 hover:underline ml-1">Configure</button>
           </div>
         )}
-        <div className="flex items-center gap-2 text-xs text-white/40">
+        <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
           <span>{roleConfigStats.configured} role(s) configured</span>
-          <span className="text-white/[0.06]">·</span>
+          <span className="text-[var(--text-primary)]/[0.06]">·</span>
           <span>{roleConfigStats.executing} executing</span>
         </div>
         {!managerConfigured && (
@@ -147,20 +147,20 @@ function ProviderStatusCard({ providers, navigate }: {
   const configured = providers.filter((p) => p.apiKey.length > 0).length
 
   return (
-    <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-5 backdrop-blur-xl">
+    <div className="rounded-2xl border border-[var(--border-default)] bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-5 backdrop-blur-xl">
       <div className="flex items-center gap-2 mb-3">
         <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-blue-500/10">
           <Server className="h-3.5 w-3.5 text-blue-400" />
         </div>
-        <span className="text-xs font-semibold text-white/70">Providers</span>
+        <span className="text-xs font-semibold text-[var(--text-primary)]">Providers</span>
       </div>
       {providers.length === 0 ? (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <WifiOff className="h-4 w-4 text-white/30" />
-            <span className="text-sm text-white/50">No Providers</span>
+            <WifiOff className="h-4 w-4 text-[var(--text-tertiary)]" />
+            <span className="text-sm text-[var(--text-secondary)]">No Providers</span>
           </div>
-          <p className="text-[10px] text-white/30">Add an AI provider to enable agent orchestration.</p>
+          <p className="text-[10px] text-[var(--text-tertiary)]">Add an AI provider to enable agent orchestration.</p>
           <div className="flex flex-col gap-2">
             <button
               onClick={() => navigate("/settings")}
@@ -174,10 +174,10 @@ function ProviderStatusCard({ providers, navigate }: {
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <Wifi className={cn("h-4 w-4", configured > 0 ? "text-green-400" : "text-white/30")} />
-              <span className="text-sm font-medium text-white/70">{configured}/{providers.length} configured</span>
+              <Wifi className={cn("h-4 w-4", configured > 0 ? "text-[var(--color-success-text)]" : "text-[var(--text-tertiary)]")} />
+              <span className="text-sm font-medium text-[var(--text-primary)]">{configured}/{providers.length} configured</span>
             </div>
-            <span className="text-xs text-white/40">{providers.reduce((s, p) => s + p.models.length, 0)} models</span>
+            <span className="text-xs text-[var(--text-tertiary)]">{providers.reduce((s, p) => s + p.models.length, 0)} models</span>
           </div>
           <div className="flex flex-wrap gap-1">
             {providers.slice(0, 4).map((p) => (
@@ -186,8 +186,8 @@ function ProviderStatusCard({ providers, navigate }: {
                 className={cn(
                   "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-mono border",
                   p.apiKey
-                    ? "border-green-500/20 text-green-400 bg-green-500/5"
-                    : "border-white/10 text-white/40 bg-white/[0.02]"
+                    ? "border-green-500/20 text-[var(--color-success-text)] bg-green-500/5"
+                    : "border-[var(--border-default)] text-[var(--text-tertiary)] bg-[var(--border-subtle)]"
                 )}
               >
                 <span className={cn("h-1.5 w-1.5 rounded-full", p.apiKey ? "bg-green-500" : "bg-white/20")} />
@@ -195,12 +195,12 @@ function ProviderStatusCard({ providers, navigate }: {
               </span>
             ))}
             {providers.length > 4 && (
-              <span className="text-[9px] text-white/30">+{providers.length - 4}</span>
+              <span className="text-[9px] text-[var(--text-tertiary)]">+{providers.length - 4}</span>
             )}
           </div>
           <button
             onClick={() => navigate("/settings")}
-            className="flex items-center justify-center gap-1 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] px-2 py-1 text-[10px] text-white/40 hover:text-white/60 transition-all w-full"
+            className="flex items-center justify-center gap-1 rounded-lg border border-[var(--border-default)] bg-[var(--border-subtle)] hover:bg-[var(--border-subtle)] px-2 py-1 text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-all w-full"
           >
             <Settings2 className="h-3 w-3" /> Manage Providers
           </button>
@@ -221,20 +221,20 @@ function RuntimeHealthCard({
   const failedRoles = roleConfigs.filter((r) => r.runtimeState === "failed")
 
   return (
-    <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-5 backdrop-blur-xl">
+    <div className="rounded-2xl border border-[var(--border-default)] bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-5 backdrop-blur-xl">
       <div className="flex items-center gap-2 mb-3">
         <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-500/10">
           <Activity className="h-3.5 w-3.5 text-purple-400" />
         </div>
-        <span className="text-xs font-semibold text-white/70">Runtime Health</span>
+        <span className="text-xs font-semibold text-[var(--text-primary)]">Runtime Health</span>
       </div>
       <div className="space-y-2">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className={cn("inline-block h-2 w-2 rounded-full", isProcessing ? "bg-green-500 animate-pulse" : "bg-green-500")} />
-            <span className="text-sm font-medium text-white/70">{isProcessing ? "Active" : "Idle"}</span>
+            <span className="text-sm font-medium text-[var(--text-primary)]">{isProcessing ? "Active" : "Idle"}</span>
           </div>
-          <span className="text-xs text-white/40">{runningRoles.length} running · {failedRoles.length} failed</span>
+          <span className="text-xs text-[var(--text-tertiary)]">{runningRoles.length} running · {failedRoles.length} failed</span>
         </div>
         {failedRoles.length > 0 && (
           <div className="rounded-xl bg-red-500/5 border border-red-500/20 px-3 py-2">
@@ -262,13 +262,13 @@ function OnboardingTaskList({ onNavigate }: { onNavigate: (path: string) => void
   const done = tasks.filter((t) => t.done).length
 
   return (
-    <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-5 backdrop-blur-xl">
+    <div className="rounded-2xl border border-[var(--border-default)] bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-5 backdrop-blur-xl">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-white/80">Getting Started</h3>
-          <p className="text-[10px] text-white/40 mt-0.5">Complete these steps to start building</p>
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Getting Started</h3>
+          <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Complete these steps to start building</p>
         </div>
-        <span className="text-xs font-medium text-white/40 bg-white/[0.04] px-2.5 py-1 rounded-full">
+        <span className="text-xs font-medium text-[var(--text-tertiary)] bg-[var(--border-subtle)] px-2.5 py-1 rounded-full">
           {done} / {tasks.length}
         </span>
       </div>
@@ -282,25 +282,25 @@ function OnboardingTaskList({ onNavigate }: { onNavigate: (path: string) => void
               "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
               task.done
                 ? "border-green-500/15 bg-green-500/[0.03] cursor-default"
-                : "border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04] cursor-pointer",
+                : "border-[var(--border-default)] bg-[var(--border-subtle)] hover:border-[var(--border-default)] hover:bg-[var(--border-subtle)] cursor-pointer",
             )}
           >
             <div className={cn(
               "flex items-center justify-center h-7 w-7 rounded-lg shrink-0",
-              task.done ? "bg-green-500/10" : "bg-white/[0.04]",
+              task.done ? "bg-green-500/10" : "bg-[var(--border-subtle)]",
             )}>
               {task.done ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+                <CheckCircle2 className="h-3.5 w-3.5 text-[var(--color-success-text)]" />
               ) : (
-                <task.icon className="h-3.5 w-3.5 text-white/40" />
+                <task.icon className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className={cn("text-xs font-medium", task.done ? "text-green-400" : "text-white/70")}>
+              <p className={cn("text-xs font-medium", task.done ? "text-[var(--color-success-text)]" : "text-[var(--text-primary)]")}>
                 {task.label}
               </p>
             </div>
-            {!task.done && <ArrowRight className="h-3.5 w-3.5 text-white/20 shrink-0" />}
+            {!task.done && <ArrowRight className="h-3.5 w-3.5 text-[var(--text-quaternary)] shrink-0" />}
           </button>
         ))}
       </div>
@@ -399,16 +399,16 @@ export function ControlCenterPage() {
           {/* Header with readiness indicator */}
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <h1 className="text-2xl font-bold text-white tracking-tight">Dashboard</h1>
-              <p className="text-sm text-white/40">Mission control for the AI operating system</p>
+              <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Dashboard</h1>
+              <p className="text-sm text-[var(--text-tertiary)]">Mission control for the AI operating system</p>
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-white/40">System:</span>
+                <span className="text-xs text-[var(--text-tertiary)]">System:</span>
                 <div className={cn(
                   "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium border",
                   readiness === "ready"
-                    ? "border-green-500/20 bg-green-500/5 text-green-400"
+                    ? "border-green-500/20 bg-green-500/5 text-[var(--color-success-text)]"
                     : readiness === "partial"
                       ? "border-amber-500/20 bg-amber-500/5 text-amber-400"
                       : "border-red-500/20 bg-red-500/5 text-red-400",
@@ -432,18 +432,18 @@ export function ControlCenterPage() {
                 { label: "Total Tokens", value: `${(totalTokens / 1000).toFixed(1)}K`, icon: Cpu, color: "text-blue-400", detail: "across all agents" },
                 { label: "Total Messages", value: totalMessages.toLocaleString(), icon: MessageSquare, color: "text-purple-400", detail: "conversation history" },
                 { label: "Active Roles", value: `${roleConfigStats.configured}/${roleConfigStats.enabled}`, icon: Layers, color: "text-amber-400", detail: `${roleConfigStats.executing} executing` },
-                { label: "Orchestration Steps", value: totalSteps > 0 ? `${completedSteps}/${totalSteps}` : "—", icon: Brain, color: "text-green-400", detail: totalSteps > 0 ? `${activeSteps} active` : "idle" },
+                { label: "Orchestration Steps", value: totalSteps > 0 ? `${completedSteps}/${totalSteps}` : "—", icon: Brain, color: "text-[var(--color-success-text)]", detail: totalSteps > 0 ? `${activeSteps} active` : "idle" },
                 { label: "Providers", value: `${providers.length}`, icon: Server, color: "text-cyan-400", detail: `${providers.filter((p) => p.apiKey).length} connected` },
               ].map((stat) => {
                 const Icon = stat.icon
                 return (
-                  <div key={stat.label} className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-4 backdrop-blur-xl">
+                  <div key={stat.label} className="rounded-2xl border border-[var(--border-default)] bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-4 backdrop-blur-xl">
                     <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-xl font-bold text-white">{stat.value}</span>
+                      <span className="text-xl font-bold text-[var(--text-primary)]">{stat.value}</span>
                       <Icon className={cn("h-4 w-4", stat.color)} />
                     </div>
-                    <p className="text-[10px] text-white/40">{stat.label}</p>
-                    <p className="text-[8px] text-white/20">{stat.detail}</p>
+                    <p className="text-[10px] text-[var(--text-tertiary)]">{stat.label}</p>
+                    <p className="text-[8px] text-[var(--text-quaternary)]">{stat.detail}</p>
                   </div>
                 )
               })}
@@ -461,16 +461,16 @@ export function ControlCenterPage() {
           {enabledRoleConfigs.length > 0 && (
             <div className="flex items-center gap-3">
               <div className="relative max-w-xs flex-1">
-                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/20" />
+                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-quaternary)]" />
                 <input
                   value={agentSearch}
                   onChange={(e) => setAgentSearch(e.target.value)}
                   placeholder="Search agents..."
-                  className="h-9 w-full rounded-xl border border-white/5 bg-white/[0.03] pl-8 pr-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-white/10"
+                  className="h-9 w-full rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] pl-8 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-quaternary)] focus:border-[var(--border-default)]"
                 />
               </div>
               {enabledRoleConfigs.length > 6 && (
-                <button onClick={() => setShowAllRoles(!showAllRoles)} className="text-xs text-white/40 hover:text-white/70 transition-colors">
+                <button onClick={() => setShowAllRoles(!showAllRoles)} className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">
                   {showAllRoles ? "Show less" : `Show all ${enabledRoleConfigs.length}`}
                 </button>
               )}
@@ -480,12 +480,12 @@ export function ControlCenterPage() {
           {/* Empty state — no roles at all */}
           {enabledRoleConfigs.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-                <Cpu className="h-5 w-5 text-white/30" aria-hidden="true" />
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-[var(--border-subtle)] border border-[var(--border-default)]">
+                <Cpu className="h-5 w-5 text-[var(--text-tertiary)]" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-sm font-medium text-white/50">No agents configured</p>
-                <p className="text-xs text-white/30 mt-0.5">Add providers and assign roles in Settings to get started.</p>
+                <p className="text-sm font-medium text-[var(--text-secondary)]">No agents configured</p>
+                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">Add providers and assign roles in Settings to get started.</p>
               </div>
               <button
                 onClick={() => navigate("/settings")}
@@ -499,8 +499,8 @@ export function ControlCenterPage() {
           {/* Search no results */}
           {enabledRoleConfigs.length > 0 && filteredRoles.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-              <Search className="h-5 w-5 text-white/20" aria-hidden="true" />
-              <p className="text-sm text-white/40">No agents match your search</p>
+              <Search className="h-5 w-5 text-[var(--text-quaternary)]" aria-hidden="true" />
+              <p className="text-sm text-[var(--text-tertiary)]">No agents match your search</p>
               <button onClick={() => setAgentSearch("")} className="text-xs text-blue-400 hover:underline">
                 Clear search
               </button>
@@ -531,7 +531,7 @@ export function ControlCenterPage() {
                         "rounded-2xl border transition-all duration-200 backdrop-blur-xl",
                         isConfigured
                           ? "border-green-500/10 bg-gradient-to-br from-green-500/[0.02] to-white/[0.01]"
-                          : "border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01]",
+                          : "border-[var(--border-default)] bg-gradient-to-br from-white/[0.03] to-white/[0.01]",
                       )}
                     >
                       <div className="p-4 space-y-3">
@@ -540,13 +540,13 @@ export function ControlCenterPage() {
                           <div className="flex items-center gap-3 min-w-0">
                             <div className={cn(
                               "flex items-center justify-center h-8 w-8 rounded-xl",
-                              roleIcons[agentRole] ?? "bg-white/[0.04] text-white/40"
+                              roleIcons[agentRole] ?? "bg-[var(--border-subtle)] text-[var(--text-tertiary)]"
                             )}>
                               <Activity className="h-4 w-4" />
                             </div>
                             <div className="min-w-0">
-                              <h3 className="text-sm font-semibold text-white/80 truncate">{roleConfig.name}</h3>
-                              <p className="text-[10px] text-white/40 truncate">{roleConfig.description}</p>
+                              <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">{roleConfig.name}</h3>
+                              <p className="text-[10px] text-[var(--text-tertiary)] truncate">{roleConfig.description}</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
@@ -559,45 +559,45 @@ export function ControlCenterPage() {
 
                         {/* Stats grid — 3 columns */}
                         <div className="grid grid-cols-3 gap-2">
-                          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2">
-                            <p className="text-[8px] text-white/30 uppercase tracking-wider">Model</p>
-                            <p className="text-[10px] font-medium text-white/60 truncate mt-0.5">
+                          <div className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] p-2">
+                            <p className="text-[8px] text-[var(--text-tertiary)] uppercase tracking-wider">Model</p>
+                            <p className="text-[10px] font-medium text-[var(--text-secondary)] truncate mt-0.5">
                               {roleConfig.model ? (
                                 <>
                                   {roleConfig.model.split("/").pop()?.slice(0, 20)}
-                                  {roleConfig.fallbackModel && <span className="text-white/20"> +1</span>}
+                                  {roleConfig.fallbackModel && <span className="text-[var(--text-quaternary)]"> +1</span>}
                                 </>
                               ) : "—"}
                             </p>
                           </div>
-                          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2">
-                            <p className="text-[8px] text-white/30 uppercase tracking-wider">Tokens</p>
-                            <p className="text-[10px] font-medium text-white/60 mt-0.5">
+                          <div className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] p-2">
+                            <p className="text-[8px] text-[var(--text-tertiary)] uppercase tracking-wider">Tokens</p>
+                            <p className="text-[10px] font-medium text-[var(--text-secondary)] mt-0.5">
                               {agents.find((a) => a.role === agentRole)?.tokenUsage?.toLocaleString() ?? 0}
                             </p>
                           </div>
-                          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2">
-                            <p className="text-[8px] text-white/30 uppercase tracking-wider">Messages</p>
-                            <p className="text-[10px] font-medium text-white/60 mt-0.5">{msgCount}</p>
+                          <div className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] p-2">
+                            <p className="text-[8px] text-[var(--text-tertiary)] uppercase tracking-wider">Messages</p>
+                            <p className="text-[10px] font-medium text-[var(--text-secondary)] mt-0.5">{msgCount}</p>
                           </div>
                         </div>
 
                         {/* Status */}
                         <div className="flex items-center gap-2">
-                          <span className="text-[9px] text-white/40">Status:</span>
+                          <span className="text-[9px] text-[var(--text-tertiary)]">Status:</span>
                           <span className={cn(
                             "text-[10px] font-medium capitalize",
-                            roleConfig.runtimeState === "executing" ? "text-green-400" :
+                            roleConfig.runtimeState === "executing" ? "text-[var(--color-success-text)]" :
                             roleConfig.runtimeState === "failed" ? "text-red-400" :
                             roleConfig.runtimeState === "thinking" ? "text-blue-400" :
-                            "text-white/40"
+                            "text-[var(--text-tertiary)]"
                           )}>
                             {roleConfig.runtimeState}
                           </span>
                           {isConfigured ? (
-                            <span className="ml-auto text-[8px] text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded-md">configured</span>
+                            <span className="ml-auto text-[8px] text-[var(--color-success-text)] bg-green-500/10 px-1.5 py-0.5 rounded-md">configured</span>
                           ) : (
-                            <span className="ml-auto text-[8px] text-white/30 bg-white/[0.04] px-1.5 py-0.5 rounded-md">no config</span>
+                            <span className="ml-auto text-[8px] text-[var(--text-tertiary)] bg-[var(--border-subtle)] px-1.5 py-0.5 rounded-md">no config</span>
                           )}
                         </div>
 
@@ -619,26 +619,26 @@ export function ControlCenterPage() {
                         <div className="flex gap-1.5 pt-1">
                           <div className={cn(
                             "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[10px] font-medium border",
-                            agentState.state === "idle" ? "bg-white/[0.04] text-white/50 border-white/5" :
+                            agentState.state === "idle" ? "bg-[var(--border-subtle)] text-[var(--text-secondary)] border-[var(--border-default)]" :
                             agentState.state === "planning" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
                             agentState.state === "researching" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" :
                             agentState.state === "editing" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
                             agentState.state === "validating" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
-                            agentState.state === "complete" ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                            agentState.state === "complete" ? "bg-green-500/10 text-[var(--color-success-text)] border-green-500/20" :
                             agentState.state === "failed" ? "bg-red-500/10 text-red-400 border-red-500/20" :
-                            "bg-white/[0.04] text-white/50 border-white/5"
+                            "bg-[var(--border-subtle)] text-[var(--text-secondary)] border-[var(--border-default)]"
                           )}>
                             <Activity className="h-3 w-3" /> {agentState.state === "complete" ? "Completed" : safeCapitalize(agentState.state, "")}
                           </div>
                           {agentState.task && agentState.state !== "idle" && (
-                            <span className="flex items-center text-[10px] text-white/40 truncate max-w-[200px]">· {agentState.task}</span>
+                            <span className="flex items-center text-[10px] text-[var(--text-tertiary)] truncate max-w-[200px]">· {agentState.task}</span>
                           )}
                         </div>
 
                         {agentState.task && (
-                          <div className="rounded-xl border border-white/5 bg-white/[0.02] px-2.5 py-1.5">
-                            <p className="text-[8px] text-white/30 uppercase tracking-wider mb-0.5">Last Task</p>
-                            <p className="text-[10px] text-white/60 truncate">{agentState.task}</p>
+                          <div className="rounded-xl border border-[var(--border-default)] bg-[var(--border-subtle)] px-2.5 py-1.5">
+                            <p className="text-[8px] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5">Last Task</p>
+                            <p className="text-[10px] text-[var(--text-secondary)] truncate">{agentState.task}</p>
                           </div>
                         )}
 
@@ -658,7 +658,7 @@ export function ControlCenterPage() {
           {/* Empty state when filtered list is empty but roles exist */}
           {filteredRoles.length === 0 && enabledRoleConfigs.length > 0 && (
             <div className="flex flex-col items-center justify-center h-32 text-center">
-              <p className="text-sm text-white/40">No agents match your search</p>
+              <p className="text-sm text-[var(--text-tertiary)]">No agents match your search</p>
               <button onClick={() => setAgentSearch("")} className="text-xs text-blue-400 hover:underline mt-1">Clear search</button>
             </div>
           )}

@@ -104,7 +104,7 @@ export function AgentsPage() {
           <div className="flex items-center justify-center h-64">
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="h-8 w-8 text-blue-400 animate-spin" />
-              <p className="text-sm text-white/40">Loading agent workforce...</p>
+              <p className="text-sm text-[var(--text-tertiary)]">Loading agent workforce...</p>
             </div>
           </div>
         </div>
@@ -118,12 +118,12 @@ export function AgentsPage() {
         {/* ── Page Header ── */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/10 border border-white/10 shadow-lg shadow-blue-500/5">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/10 border border-[var(--border-default)] shadow-lg shadow-blue-500/5">
               <Users className="h-5 w-5 text-blue-400" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">Agents</h1>
-              <p className="text-sm text-white/40 mt-0.5">
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Agents</h1>
+              <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
                 Workforce hub — manage roles, hierarchy, and dependencies
               </p>
             </div>
@@ -142,7 +142,7 @@ export function AgentsPage() {
             )}
             <Button
               size="sm"
-              className="h-9 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white border-0 shadow-lg shadow-blue-600/20"
+              className="h-9 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-[var(--text-primary)] border-0 shadow-lg shadow-blue-600/20"
               onClick={handleCreateRole}
             >
               <Plus className="h-4 w-4 mr-1.5" /> New Role
@@ -157,11 +157,11 @@ export function AgentsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center py-12 text-center"
           >
-            <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500/15 to-purple-500/10 border border-white/10 mb-4">
+            <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500/15 to-purple-500/10 border border-[var(--border-default)] mb-4">
               <Users className="h-7 w-7 text-blue-400" />
             </div>
-            <h2 className="text-lg font-semibold text-white mb-1">Welcome to Agent Workforce</h2>
-            <p className="text-sm text-white/40 max-w-md mb-6">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-1">Welcome to Agent Workforce</h2>
+            <p className="text-sm text-[var(--text-tertiary)] max-w-md mb-6">
               Create agent roles to build your AI workforce. Each role can be configured with a model, capabilities, and collaboration rules.
             </p>
             <Button onClick={handleCreateRole} size="sm" className="h-8 text-xs">
@@ -173,11 +173,11 @@ export function AgentsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {[
             { label: "Total Roles", value: stats.total, icon: Users, color: "text-blue-400" },
-            { label: "Enabled", value: stats.enabled, icon: CheckCircle2, color: "text-green-400" },
+            { label: "Enabled", value: stats.enabled, icon: CheckCircle2, color: "text-[var(--color-success-text)]" },
             { label: "Configured", value: stats.configured, icon: Cpu, color: "text-purple-400" },
             { label: "Active", value: stats.running, icon: Activity, color: "text-cyan-400" },
             { label: "Failed", value: stats.failed, icon: AlertTriangle, color: "text-red-400" },
-            { label: "Uptime", value: `${stats.uptime}%`, icon: Brain, color: stats.uptime > 80 ? "text-green-400" : stats.uptime > 50 ? "text-amber-400" : "text-red-400" },
+            { label: "Uptime", value: `${stats.uptime}%`, icon: Brain, color: stats.uptime > 80 ? "text-[var(--color-success-text)]" : stats.uptime > 50 ? "text-amber-400" : "text-red-400" },
           ].map((stat) => {
             const Icon = stat.icon
             return (
@@ -185,20 +185,20 @@ export function AgentsPage() {
                 key={stat.label}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-4 backdrop-blur-xl"
+                className="rounded-2xl border border-[var(--border-default)] bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-4 backdrop-blur-xl"
               >
                 <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-2xl font-bold text-white">{stat.value}</span>
+                  <span className="text-2xl font-bold text-[var(--text-primary)]">{stat.value}</span>
                   <Icon className={cn("h-4 w-4", stat.color)} />
                 </div>
-                <p className="text-xs text-white/40">{stat.label}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">{stat.label}</p>
               </motion.div>
             )
           })}
         </div>
 
         {/* ── View Tabs ── */}
-        <div className="flex items-center gap-2 border-b border-white/5 pb-px">
+        <div className="flex items-center gap-2 border-b border-[var(--border-default)] pb-px">
           {VIEW_OPTIONS.map((opt) => {
             const isActive = viewMode === opt.mode
             const Icon = opt.icon
@@ -209,8 +209,8 @@ export function AgentsPage() {
                 className={cn(
                   "flex items-center gap-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-all relative",
                   isActive
-                    ? "text-white border-blue-400"
-                    : "text-white/40 border-transparent hover:text-white/60",
+                    ? "text-[var(--text-primary)] border-blue-400"
+                    : "text-[var(--text-tertiary)] border-transparent hover:text-[var(--text-secondary)]",
                 )}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -230,12 +230,12 @@ export function AgentsPage() {
 
           {/* Search */}
           <div className="relative max-w-[200px]">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/20" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-quaternary)]" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search roles..."
-              className="w-full h-8 rounded-lg border border-white/5 bg-white/[0.03] pl-8 pr-3 text-xs text-white outline-none placeholder:text-white/20 focus:border-white/10 transition-all"
+              className="w-full h-8 rounded-lg border border-[var(--border-default)] bg-[var(--border-subtle)] pl-8 pr-3 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-quaternary)] focus:border-[var(--border-default)] transition-all"
             />
           </div>
 
@@ -247,8 +247,8 @@ export function AgentsPage() {
               <span className={cn(
                 "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium border",
                 managerReady
-                  ? "border-green-500/20 bg-green-500/5 text-green-400"
-                  : "border-white/[0.06] bg-white/[0.02] text-white/30",
+                  ? "border-green-500/20 bg-green-500/5 text-[var(--color-success-text)]"
+                  : "border-[var(--border-default)] bg-[var(--border-subtle)] text-[var(--text-tertiary)]",
               )}>
                 {managerReady ? <Wifi className="h-3 w-3" /> : <Settings2 className="h-3 w-3" />}
                 {managerReady ? "Manager Ready" : "Manager (optional)"}
@@ -302,10 +302,10 @@ export function AgentsPage() {
             {viewMode === "hierarchy" && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold text-white/80">Role Hierarchy</h3>
-                  <p className="text-xs text-white/30">Visualize parent-child relationships between agent roles. Roles without a parent appear at the root level.</p>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Role Hierarchy</h3>
+                  <p className="text-xs text-[var(--text-tertiary)]">Visualize parent-child relationships between agent roles. Roles without a parent appear at the root level.</p>
                 </div>
-                <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.02] to-white/[0.01] p-4">
+                <div className="rounded-2xl border border-[var(--border-default)] bg-gradient-to-br from-white/[0.02] to-white/[0.01] p-4">
                   <RoleHierarchyTree
                     roles={roleConfigs.filter((r) => r.isEnabled)}
                     onSelect={(role) => setSelectedRoleId(role.id === selectedRoleId ? null : role.id)}
@@ -324,15 +324,15 @@ export function AgentsPage() {
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <h4 className="text-sm font-semibold text-white">{selectedRole.name}</h4>
+                          <h4 className="text-sm font-semibold text-[var(--text-primary)]">{selectedRole.name}</h4>
                           <Badge variant={selectedRole.runtimeState === "executing" ? "success" : selectedRole.runtimeState === "failed" ? "error" : "info"} size="sm">
                             {selectedRole.runtimeState}
                           </Badge>
                         </div>
-                        <p className="text-xs text-white/50 mb-2">{selectedRole.description}</p>
+                        <p className="text-xs text-[var(--text-secondary)] mb-2">{selectedRole.description}</p>
                         <div className="flex flex-wrap gap-2 text-[10px]">
                           {selectedRole.model && (
-                            <span className="text-green-400">Model: {selectedRole.model}</span>
+                            <span className="text-[var(--color-success-text)]">Model: {selectedRole.model}</span>
                           )}
                           {selectedRole.parentRole && (
                             <span className="text-blue-400">
@@ -349,7 +349,7 @@ export function AgentsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="shrink-0 h-7 text-[10px] border-white/10"
+                        className="shrink-0 h-7 text-[10px] border-[var(--border-default)]"
                         onClick={() => { setViewMode("grid"); setSelectedRoleId(selectedRole.id) }}
                       >
                         <Settings2 className="h-3 w-3 mr-1" /> Configure
@@ -362,8 +362,8 @@ export function AgentsPage() {
             {viewMode === "dependencies" && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold text-white/80">Role Dependencies</h3>
-                  <p className="text-xs text-white/30">Interactive graph showing parent-child relationships (solid lines) and collaboration tag connections (dashed lines). Drag to pan, scroll to zoom, click nodes for details.</p>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Role Dependencies</h3>
+                  <p className="text-xs text-[var(--text-tertiary)]">Interactive graph showing parent-child relationships (solid lines) and collaboration tag connections (dashed lines). Drag to pan, scroll to zoom, click nodes for details.</p>
                 </div>
                 <RoleDependencyGraph
                   roles={roleConfigs.filter((r) => r.isEnabled)}
@@ -375,10 +375,10 @@ export function AgentsPage() {
             {viewMode === "runtime" && (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold text-white/80">Sub-Agent Runtime Tree</h3>
-                  <p className="text-xs text-white/30">Live hierarchy of running and completed sub-agents, showing delegation depth, current task, and execution state.</p>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Sub-Agent Runtime Tree</h3>
+                  <p className="text-xs text-[var(--text-tertiary)]">Live hierarchy of running and completed sub-agents, showing delegation depth, current task, and execution state.</p>
                 </div>
-                <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.02] to-white/[0.01] p-4">
+                <div className="rounded-2xl border border-[var(--border-default)] bg-gradient-to-br from-white/[0.02] to-white/[0.01] p-4">
                   <AgentTreeView />
                 </div>
               </div>

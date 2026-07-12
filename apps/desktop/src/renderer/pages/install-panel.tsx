@@ -38,9 +38,9 @@ const formatBytes = (bytes: number) => {
 
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-white/[0.03] last:border-0">
-      <span className="text-xs text-white/40">{label}</span>
-      <span className={`text-xs ${mono ? "font-mono" : ""} text-white/70`}>{value}</span>
+    <div className="flex items-center justify-between py-2 border-b border-[var(--border-subtle)] last:border-0">
+      <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
+      <span className={`text-xs ${mono ? "font-mono" : ""} text-[var(--text-primary)]`}>{value}</span>
     </div>
   )
 }
@@ -49,16 +49,16 @@ function StatCard({ icon: Icon, label, value, color, sub }: { icon: any; label: 
   return (
     <div className="relative group">
       <div className={`absolute -inset-px rounded-xl bg-gradient-to-br ${color} opacity-0 group-hover:opacity-100 blur-sm transition-opacity duration-500`} />
-      <div className="relative rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 backdrop-blur-xl">
+      <div className="relative rounded-xl bg-[var(--border-subtle)] border border-[var(--border-default)] p-4 backdrop-blur-xl">
         <div className="flex items-start justify-between mb-3">
-          <div className={`rounded-lg p-2 bg-white/[0.04] border border-white/[0.06]`}>
-            <Icon className="h-4 w-4 text-white/60" />
+          <div className={`rounded-lg p-2 bg-[var(--border-subtle)] border border-[var(--border-default)]`}>
+            <Icon className="h-4 w-4 text-[var(--text-secondary)]" />
           </div>
         </div>
         <div className="space-y-1">
-          <p className="text-2xl font-semibold tracking-tight text-white/90">{value}</p>
-          <p className="text-[11px] text-white/40">{label}</p>
-          {sub && <p className="text-[10px] text-white/20">{sub}</p>}
+          <p className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">{value}</p>
+          <p className="text-[11px] text-[var(--text-tertiary)]">{label}</p>
+          {sub && <p className="text-[10px] text-[var(--text-quaternary)]">{sub}</p>}
         </div>
       </div>
     </div>
@@ -192,7 +192,7 @@ export function InstallPanel() {
           <div className="absolute -inset-4 rounded-full bg-blue-500/10 blur-xl animate-glow-pulse" />
           <Loader2 className="h-8 w-8 text-blue-400 animate-spin relative" />
         </div>
-        <p className="text-sm text-white/30">Loading installation info...</p>
+        <p className="text-sm text-[var(--text-tertiary)]">Loading installation info...</p>
       </div>
     )
   }
@@ -217,7 +217,7 @@ export function InstallPanel() {
       >
         <div className="relative">
           <div className="absolute -inset-2 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-xl" />
-          <div className="relative flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-white/[0.08] backdrop-blur-xl overflow-hidden">
+          <div className="relative flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-[var(--border-default)] backdrop-blur-xl overflow-hidden">
             {appIconUrl ? (
               <img src={appIconUrl} alt="AgenticOS" className="h-9 w-9" />
             ) : (
@@ -226,8 +226,8 @@ export function InstallPanel() {
           </div>
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Installation</h1>
-          <p className="text-sm text-white/40 mt-0.5">
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Installation</h1>
+          <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
             Application information, storage, and system integration
           </p>
         </div>
@@ -239,7 +239,7 @@ export function InstallPanel() {
         )}
         <div className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
           <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-[11px] font-medium text-green-400 capitalize">{info.runtime_status}</span>
+          <span className="text-[11px] font-medium text-[var(--color-success-text)] capitalize">{info.runtime_status}</span>
         </div>
       </motion.div>
 
@@ -250,7 +250,7 @@ export function InstallPanel() {
         transition={{ duration: 0.3, delay: 0.1 }}
         className="grid grid-cols-2 md:grid-cols-4 gap-3"
       >
-        <StatCard icon={() => appIconUrl ? <img src={appIconUrl} alt="" className="h-4 w-4" /> : <Package className="h-4 w-4 text-white/60" />} label="Version" value={info.version} color="from-blue-500/20 to-blue-600/10" sub={`Build ${info.build_date}`} />
+        <StatCard icon={() => appIconUrl ? <img src={appIconUrl} alt="" className="h-4 w-4" /> : <Package className="h-4 w-4 text-[var(--text-secondary)]" />} label="Version" value={info.version} color="from-blue-500/20 to-blue-600/10" sub={`Build ${info.build_date}`} />
         <StatCard icon={HardDrive} label="Storage Used" value={formatBytes(info.storage_bytes)} color="from-emerald-500/20 to-emerald-600/10" sub={info.data_path} />
         <StatCard icon={Server} label="Runtime" value={info.runtime_status} color="from-purple-500/20 to-purple-600/10" sub={info.first_launch ? "First launch" : "Previously launched"} />
         <StatCard icon={Shield} label="Status" value="Installed" color="from-green-500/20 to-green-600/10" sub="All systems operational" />
@@ -265,7 +265,7 @@ export function InstallPanel() {
           className="lg:col-span-2 space-y-4"
         >
           {/* Application Card */}
-          <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-xl">
+          <Card className="border-[var(--border-default)] bg-[var(--border-subtle)] backdrop-blur-xl">
             <div className="p-5">
               <div className="flex items-center gap-2 mb-4">
                 <div className="rounded-lg p-1.5 bg-blue-500/10 border border-blue-500/20 overflow-hidden">
@@ -275,7 +275,7 @@ export function InstallPanel() {
                     <Package className="h-3.5 w-3.5 text-blue-400" />
                   )}
                 </div>
-                <h2 className="text-sm font-semibold text-white/80">Application Details</h2>
+                <h2 className="text-sm font-semibold text-[var(--text-primary)]">Application Details</h2>
               </div>
               <div className="space-y-0">
                 <InfoRow label="Version" value={info.version} mono />
@@ -288,13 +288,13 @@ export function InstallPanel() {
           </Card>
 
           {/* System Information */}
-          <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-xl">
+          <Card className="border-[var(--border-default)] bg-[var(--border-subtle)] backdrop-blur-xl">
             <div className="p-5">
               <div className="flex items-center gap-2 mb-4">
                 <div className="rounded-lg p-1.5 bg-purple-500/10 border border-purple-500/20">
                   <Cpu className="h-3.5 w-3.5 text-purple-400" />
                 </div>
-                <h2 className="text-sm font-semibold text-white/80">System Information</h2>
+                <h2 className="text-sm font-semibold text-[var(--text-primary)]">System Information</h2>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-0">
@@ -312,31 +312,31 @@ export function InstallPanel() {
           </Card>
 
           {/* Storage Details */}
-          <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-xl">
+          <Card className="border-[var(--border-default)] bg-[var(--border-subtle)] backdrop-blur-xl">
             <div className="p-5">
               <div className="flex items-center gap-2 mb-4">
                 <div className="rounded-lg p-1.5 bg-amber-500/10 border border-amber-500/20">
                   <HardDrive className="h-3.5 w-3.5 text-amber-400" />
                 </div>
-                <h2 className="text-sm font-semibold text-white/80">Storage Details</h2>
+                <h2 className="text-sm font-semibold text-[var(--text-primary)]">Storage Details</h2>
               </div>
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/[0.04]">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-[var(--border-subtle)] border border-[var(--border-subtle)]">
                   <div className="flex items-center gap-3">
                     <Activity className="h-4 w-4 text-blue-400" />
                     <div>
-                      <p className="text-xs font-medium text-white/70">App Data</p>
-                      <p className="text-[10px] text-white/30">Settings, ledger, workspace memory</p>
+                      <p className="text-xs font-medium text-[var(--text-primary)]">App Data</p>
+                      <p className="text-[10px] text-[var(--text-tertiary)]">Settings, ledger, workspace memory</p>
                     </div>
                   </div>
-                  <span className="text-xs font-mono text-white/60">{formatBytes(info.storage_bytes)}</span>
+                  <span className="text-xs font-mono text-[var(--text-secondary)]">{formatBytes(info.storage_bytes)}</span>
                 </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/[0.04]">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-[var(--border-subtle)] border border-[var(--border-subtle)]">
                   <div className="flex items-center gap-3">
                     <FolderOpen className="h-4 w-4 text-purple-400" />
                     <div>
-                      <p className="text-xs font-medium text-white/70">Install Directory</p>
-                      <p className="text-[10px] text-white/30">Application binaries and resources</p>
+                      <p className="text-xs font-medium text-[var(--text-primary)]">Install Directory</p>
+                      <p className="text-[10px] text-[var(--text-tertiary)]">Application binaries and resources</p>
                     </div>
                   </div>
                   <button
@@ -346,12 +346,12 @@ export function InstallPanel() {
                     Open <ExternalLink className="h-3 w-3" />
                   </button>
                 </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/[0.04]">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-[var(--border-subtle)] border border-[var(--border-subtle)]">
                   <div className="flex items-center gap-3">
                     <FolderOpen className="h-4 w-4 text-emerald-400" />
                     <div>
-                      <p className="text-xs font-medium text-white/70">Data Directory</p>
-                      <p className="text-[10px] text-white/30">User settings, cache, logs</p>
+                      <p className="text-xs font-medium text-[var(--text-primary)]">Data Directory</p>
+                      <p className="text-[10px] text-[var(--text-tertiary)]">User settings, cache, logs</p>
                     </div>
                   </div>
                   <button
@@ -374,25 +374,25 @@ export function InstallPanel() {
           className="space-y-4"
         >
           {/* Shell Integration */}
-          <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-xl">
+          <Card className="border-[var(--border-default)] bg-[var(--border-subtle)] backdrop-blur-xl">
             <div className="p-5">
               <div className="flex items-center gap-2 mb-4">
                 <div className="rounded-lg p-1.5 bg-green-500/10 border border-green-500/20">
-                  <MousePointerClick className="h-3.5 w-3.5 text-green-400" />
+                  <MousePointerClick className="h-3.5 w-3.5 text-[var(--color-success-text)]" />
                 </div>
-                <h2 className="text-sm font-semibold text-white/80">Shell Integration</h2>
+                <h2 className="text-sm font-semibold text-[var(--text-primary)]">Shell Integration</h2>
               </div>
-              <p className="text-[11px] text-white/30 mb-4 leading-relaxed">
+              <p className="text-[11px] text-[var(--text-tertiary)] mb-4 leading-relaxed">
                 Add or remove the "Open with AgenticOS" shortcut from the right-click context menu in File Explorer.
               </p>
-              <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-3">
+              <div className="rounded-lg bg-[var(--border-subtle)] border border-[var(--border-default)] p-3">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className={`rounded-full p-1.5 ${contextMenuRegistered ? "bg-green-500/20" : "bg-white/[0.04]"}`}>
-                    <MousePointerClick className={`h-3.5 w-3.5 ${contextMenuRegistered ? "text-green-400" : "text-white/30"}`} />
+                  <div className={`rounded-full p-1.5 ${contextMenuRegistered ? "bg-green-500/20" : "bg-[var(--border-subtle)]"}`}>
+                    <MousePointerClick className={`h-3.5 w-3.5 ${contextMenuRegistered ? "text-[var(--color-success-text)]" : "text-[var(--text-tertiary)]"}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-white/70">Context Menu Entry</p>
-                    <p className="text-[10px] text-white/30 truncate">
+                    <p className="text-xs font-medium text-[var(--text-primary)]">Context Menu Entry</p>
+                    <p className="text-[10px] text-[var(--text-tertiary)] truncate">
                       {contextMenuRegistered === null
                         ? "Status unknown"
                         : contextMenuRegistered
@@ -443,30 +443,30 @@ export function InstallPanel() {
           </Card>
 
           {/* Quick Info */}
-          <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-xl">
+          <Card className="border-[var(--border-default)] bg-[var(--border-subtle)] backdrop-blur-xl">
             <div className="p-5">
               <div className="flex items-center gap-2 mb-4">
                 <div className="rounded-lg p-1.5 bg-cyan-500/10 border border-cyan-500/20">
                   <Terminal className="h-3.5 w-3.5 text-cyan-400" />
                 </div>
-                <h2 className="text-sm font-semibold text-white/80">Quick Info</h2>
+                <h2 className="text-sm font-semibold text-[var(--text-primary)]">Quick Info</h2>
               </div>
               <div className="space-y-2">
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.02]">
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-[var(--border-subtle)]">
                   <Globe className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-                  <span className="text-[11px] text-white/50">Protocol: <code className="text-blue-300 font-mono text-[10px]">agenticos://</code></span>
+                  <span className="text-[11px] text-[var(--text-secondary)]">Protocol: <code className="text-blue-300 font-mono text-[10px]">agenticos://</code></span>
                 </div>
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.02]">
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-[var(--border-subtle)]">
                   <GitBranch className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                  <span className="text-[11px] text-white/50">Associations: <code className="text-white/40 font-mono text-[10px]">.md .ts .js .py .rs ...</code></span>
+                  <span className="text-[11px] text-[var(--text-secondary)]">Associations: <code className="text-[var(--text-tertiary)] font-mono text-[10px]">.md .ts .js .py .rs ...</code></span>
                 </div>
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.02]">
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-[var(--border-subtle)]">
                   <AppWindow className="h-3.5 w-3.5 text-purple-400 shrink-0" />
-                  <span className="text-[11px] text-white/50">Shortcuts: Desktop + Start Menu</span>
+                  <span className="text-[11px] text-[var(--text-secondary)]">Shortcuts: Desktop + Start Menu</span>
                 </div>
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-white/[0.02]">
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-[var(--border-subtle)]">
                   <Clock className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                  <span className="text-[11px] text-white/50">Build: <code className="text-white/40 font-mono text-[10px]">{info.build_date}</code></span>
+                  <span className="text-[11px] text-[var(--text-secondary)]">Build: <code className="text-[var(--text-tertiary)] font-mono text-[10px]">{info.build_date}</code></span>
                 </div>
               </div>
             </div>
@@ -479,17 +479,17 @@ export function InstallPanel() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3, delay: 0.3 }}
-        className="rounded-xl bg-white/[0.02] border border-white/[0.04] p-4"
+        className="rounded-xl bg-[var(--border-subtle)] border border-[var(--border-subtle)] p-4"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Shield className="h-4 w-4 text-white/20" />
-            <p className="text-[11px] text-white/20">
-              Application ID: <code className="text-white/30 font-mono">com.agenticos.studio</code>
+            <Shield className="h-4 w-4 text-[var(--text-quaternary)]" />
+            <p className="text-[11px] text-[var(--text-quaternary)]">
+              Application ID: <code className="text-[var(--text-tertiary)] font-mono">com.agenticos.studio</code>
             </p>
           </div>
-          <p className="text-[11px] text-white/20">
-            Data: <code className="text-white/30 font-mono text-[10px]">{info.data_path}</code>
+          <p className="text-[11px] text-[var(--text-quaternary)]">
+            Data: <code className="text-[var(--text-tertiary)] font-mono text-[10px]">{info.data_path}</code>
           </p>
         </div>
       </motion.div>

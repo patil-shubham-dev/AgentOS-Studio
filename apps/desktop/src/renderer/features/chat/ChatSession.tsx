@@ -120,8 +120,8 @@ export function ChatSession() {
         <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500/10 to-indigo-500/10 border border-blue-500/10 mb-4">
           <Bot className="h-7 w-7 text-blue-400/60" />
         </div>
-        <h3 className="text-sm font-semibold text-white/70 mb-2">No agent configured</h3>
-        <p className="text-xs text-white/30 max-w-xs mb-6">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">No agent configured</h3>
+        <p className="text-xs text-[var(--text-tertiary)] max-w-xs mb-6">
           Add an AI provider and wire it to a role in Settings to start coding with AI assistance.
         </p>
       </div>
@@ -134,8 +134,8 @@ export function ChatSession() {
         <div className="flex items-center justify-center h-12 w-12 rounded-2xl bg-amber-500/10 border border-amber-500/10 mb-3">
           <WifiOff className="h-6 w-6 text-amber-400/60" />
         </div>
-        <h3 className="text-sm font-semibold text-white/70 mb-2">Role not wired</h3>
-        <p className="text-xs text-white/30 max-w-xs">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">Role not wired</h3>
+        <p className="text-xs text-[var(--text-tertiary)] max-w-xs">
           The role "{activeRole}" is not connected to any provider model. Configure it in Settings → Roles.
         </p>
       </div>
@@ -148,9 +148,9 @@ export function ChatSession() {
 
       {/* Processing indicator */}
       {isProcessing && (
-        <div className="flex items-center gap-2 px-4 py-2 border-t border-white/[0.04] bg-white/[0.01]">
+        <div className="flex items-center gap-2 px-4 py-2 border-t border-[var(--border-default)] bg-[var(--surface-elevated)]">
           <Loader2 className="h-3 w-3 animate-spin text-blue-400" />
-          <span className="text-[11px] text-white/40">Agent is working...</span>
+          <span className="text-[11px] text-[var(--text-tertiary)]">Agent is working...</span>
         </div>
       )}
 

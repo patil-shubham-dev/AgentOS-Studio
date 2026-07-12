@@ -32,13 +32,13 @@ const ChatMessage = memo(function ChatMessage({ message }: { message: ChatMessag
   return (
     <div className={cn(
       'group flex gap-3 px-4 py-3 transition-colors',
-      isUser ? 'bg-white/[0.01]' : 'bg-transparent',
+      isUser ? 'bg-[var(--surface-elevated)]' : 'bg-transparent',
       message.isError && 'bg-red-500/[0.03]',
     )}>
       {/* Avatar */}
       <div className={cn(
         'flex-shrink-0 flex items-center justify-center h-7 w-7 rounded-lg mt-0.5',
-        isUser ? 'bg-blue-500/10' : isAssistant ? 'bg-emerald-500/10' : 'bg-white/5',
+        isUser ? 'bg-blue-500/10' : isAssistant ? 'bg-emerald-500/10' : 'bg-[var(--border-subtle)]',
       )}>
         {isUser ? (
           <User className="h-3.5 w-3.5 text-blue-400" />
@@ -55,17 +55,17 @@ const ChatMessage = memo(function ChatMessage({ message }: { message: ChatMessag
         <div className="flex items-center gap-2">
           <span className={cn(
             'text-[11px] font-medium uppercase tracking-wider',
-            isUser ? 'text-blue-400/60' : isAssistant ? 'text-emerald-400/60' : 'text-white/30',
+            isUser ? 'text-blue-400/60' : isAssistant ? 'text-[var(--color-success-text)]' : 'text-[var(--text-tertiary)]',
           )}>
             {isUser ? 'You' : isAssistant ? 'Agent' : message.role}
           </span>
           {message.isStreaming && (
-            <span className="flex items-center gap-1 text-[10px] text-white/30">
+            <span className="flex items-center gap-1 text-[10px] text-[var(--text-tertiary)]">
               <Loader2 className="h-2.5 w-2.5 animate-spin" />
               Streaming...
             </span>
           )}
-          <span className="text-[10px] text-white/20">
+          <span className="text-[10px] text-[var(--text-quaternary)]">
             {new Date(message.timestamp).toLocaleTimeString()}
           </span>
         </div>
@@ -82,14 +82,14 @@ const ChatMessage = memo(function ChatMessage({ message }: { message: ChatMessag
               rehypePlugins={[rehypeHighlight]}
               components={{
                 pre: ({ children }) => (
-                  <pre className="bg-[#0d0d10] border border-white/5 rounded-lg p-3 overflow-x-auto text-xs">
+                  <pre className="bg-[#0d0d10] border border-[var(--border-default)] rounded-lg p-3 overflow-x-auto text-xs">
                     {children}
                   </pre>
                 ),
                 code: ({ className, children, ...props }) => {
                   const isInline = !className
                   return isInline ? (
-                    <code className="bg-white/5 px-1 py-0.5 rounded text-[13px] font-mono" {...props}>
+                    <code className="bg-[var(--border-subtle)] px-1 py-0.5 rounded text-[13px] font-mono" {...props}>
                       {children}
                     </code>
                   ) : (
@@ -101,7 +101,7 @@ const ChatMessage = memo(function ChatMessage({ message }: { message: ChatMessag
               {message.content}
             </ReactMarkdown>
           ) : message.isStreaming ? (
-            <span className="inline-flex items-center gap-1 text-white/40">
+            <span className="inline-flex items-center gap-1 text-[var(--text-tertiary)]">
               <span className="w-1.5 h-4 bg-emerald-400/60 rounded-sm animate-pulse" />
             </span>
           ) : null}
@@ -112,7 +112,7 @@ const ChatMessage = memo(function ChatMessage({ message }: { message: ChatMessag
           <div className="mt-2">
             <button
               onClick={() => setExpandedTools(!expandedTools)}
-              className="flex items-center gap-1 text-[11px] text-white/40 hover:text-white/60 transition-colors"
+              className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
             >
               {expandedTools ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
               {message.toolCalls.length} tool call(s)
@@ -120,9 +120,9 @@ const ChatMessage = memo(function ChatMessage({ message }: { message: ChatMessag
             {expandedTools && (
               <div className="mt-1 space-y-1">
                 {message.toolCalls.map((tc, i) => (
-                  <div key={i} className="bg-white/[0.02] border border-white/5 rounded-lg p-2 text-[11px] font-mono">
+                  <div key={i} className="bg-[var(--border-subtle)] border border-[var(--border-default)] rounded-lg p-2 text-[11px] font-mono">
                     <span className="text-emerald-400/80">{tc.name}</span>
-                    <span className="text-white/30">({tc.args.slice(0, 100)})</span>
+                    <span className="text-[var(--text-tertiary)]">({tc.args.slice(0, 100)})</span>
                   </div>
                 ))}
               </div>
@@ -134,7 +134,7 @@ const ChatMessage = memo(function ChatMessage({ message }: { message: ChatMessag
         {message.content && !message.isStreaming && (
           <button
             onClick={handleCopy}
-            className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60"
+            className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
           >
             {copied ? (
               <><Check className="h-3 w-3" /> Copied</>
