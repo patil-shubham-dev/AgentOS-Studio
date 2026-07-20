@@ -167,8 +167,16 @@ export class ContextManager {
    * Estimate available context based on current model and budget.
    */
   private estimateAvailableContext(): { total: number; used: number; remaining: number } {
-    const windowSize = this.resolver.getContextWindowForModel(this.currentModel, this.currentBetas)
-    const budget = this.budgetTracker.getBudgetState()
+    return this.estimateAvailableContextFor(this.currentModel, this.currentBetas, this.budgetTracker)
+  }
+
+  private estimateAvailableContextFor(
+    model: string,
+    betas: string[],
+    budgetTracker: TokenBudgetTracker,
+  ): { total: number; used: number; remaining: number } {
+    const windowSize = this.resolver.getContextWindowForModel(model, betas)
+    const budget = budgetTracker.getBudgetState()
     return {
       total: Math.max(windowSize, this.config.contextTarget ?? 200000),
       used: budget.used,
@@ -273,9 +281,16 @@ export class ContextManager {
 
   async assembleSystemPrompt(
     input: ContextAssemblyInput,
-    options?: { cacheOptimize?: boolean; skipCache?: boolean }
+    options?: { cacheOptimize?: boolean; skipCache?: boolean; session?: ContextSession }
   ): Promise<ContextAssemblyResult> {
-    const providerCapabilities = resolveCapabilitiesForModel(this.currentModel)
+    const session = options?.session
+    const model = session?.model ?? this.currentModel
+    const betas = session?.betas ?? this.currentBetas
+    const budgetTracker = session?.budgetTracker ?? this.budgetTracker
+    const fileScorer = session?.fileScorer ?? this.fileScorer
+    const fileCache = session?.fileCache ?? this.fileCache
+
+    const providerCapabilities = resolveCapabilitiesForModel(model)
 
     // Inject active persona instruction into custom instructions
     const activePersona = usePersonaStore.getState().activePersona
@@ -337,7 +352,7 @@ ${rules.map(r => r.content).join('\n\n')}`
     const resolveCtx: ResolutionContext = defaultContext({
       role: input.role,
       executionMode: input.executionMode,
-      provider: this.currentModel,
+      provider: model,
       providerCapabilities,
       memorySummary: input.memorySummary,
       namespaceFilter,
@@ -351,8 +366,8 @@ ${rules.map(r => r.content).join('\n\n')}`
     const toolCount = this.runtimeOS?.toolRegistry.size().builtin ?? 0
     const workspaceCtx = this.readWorkspaceContext()
     const taskQuery = input.taskQuery ?? input.userMessage
-    const relevantFiles = await this.scoreRelevantFiles(taskQuery)
-    const contextEstimate = this.estimateAvailableContext()
+    const relevantFiles = await fileScorer.scoreWithTask(taskQuery)
+    const contextEstimate = this.estimateAvailableContextFor(model, betas, budgetTracker)
     const gitContext = await this.getGitContext()
     const workspaceSummary = await this.getWorkspaceSummary()
 
@@ -368,7 +383,7 @@ ${rules.map(r => r.content).join('\n\n')}`
       for (const f of topFiles) {
         const absPath = root ? `${root}\\${f.path.replace(/\//g, '\\')}` : f.path
         try {
-          const cached = await this.fileCache.getContent(
+          const cached = await fileCache.getContent(
             absPath,
             async (p) => {
               const { readTextFile } = await import('@/lib/electron-api')
@@ -478,7 +493,7 @@ ${rules.map(r => r.content).join('\n\n')}`
       ].join('|'))
 
       const cacheKey = this.cacheManager.computeKey(
-        this.currentModel,
+        model,
         input.role,
         resolveCtxFinal.customInstructions?.join('\n') ?? '',
         String(toolCount),
@@ -489,7 +504,7 @@ ${rules.map(r => r.content).join('\n\n')}`
       const cached = this.cacheManager.get(cacheKey)
       if (cached !== null) {
         cacheHit = true
-        console.log(`[ContextManager] ✓ Prompt cache HIT for ${input.role}@${this.currentModel}`)
+        console.log(`[ContextManager] ✓ Prompt cache HIT for ${input.role}@${model}`)
         return {
           systemPrompt: cached,
           staticBlocks: [],
@@ -512,7 +527,7 @@ ${rules.map(r => r.content).join('\n\n')}`
     // Store in cache on miss
     if (useCache && !cacheHit && result.promptText.length > 50) {
       const cacheKey = this.cacheManager.computeKey(
-        this.currentModel,
+        model,
         input.role,
         resolveCtxFinal.customInstructions?.join('\n') ?? '',
         String(toolCount),
@@ -523,7 +538,7 @@ ${rules.map(r => r.content).join('\n\n')}`
         resolveCtxFinal.memorySummary ?? '',
       )
       this.cacheManager.set(cacheKey, result.promptText)
-      console.log(`[ContextManager] ○ Prompt cache MISS for ${input.role}@${this.currentModel} — cached`)
+      console.log(`[ContextManager] ○ Prompt cache MISS for ${input.role}@${model} — cached`)
     }
 
     return {

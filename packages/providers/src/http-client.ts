@@ -29,6 +29,7 @@ function getProxyFetch(): ((req: {
       return w.electronAPI.proxyHttpRequest
     }
   } catch {
+    console.warn("[http-client] window.electronAPI not available for proxy HTTP requests")
   }
   return null
 }
@@ -54,6 +55,7 @@ function getStreamingProxies(): {
       }
     }
   } catch {
+    console.warn("[http-client] window.electronAPI not available for streaming proxy")
   }
   return null
 }

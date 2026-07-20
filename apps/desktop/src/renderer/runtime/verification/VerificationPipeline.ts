@@ -261,6 +261,7 @@ function detectLanguage(): DetectedLanguage {
     if (fs.existsSync(`${root}/requirements.txt`) || fs.existsSync(`${root}/setup.py`) || fs.existsSync(`${root}/pyproject.toml`)) return "python"
     if (fs.existsSync(`${root}/package.json`) || fs.existsSync(`${root}/tsconfig.json`)) return "typescript"
   } catch {
+    console.warn("[VerificationPipeline] detectLanguage failed, defaulting to unknown")
   }
   return "unknown"
 }
@@ -344,7 +345,7 @@ export class VerificationPipeline {
         }
       }
     } catch {
-      // Fall through to pattern-based matching
+      console.debug("[VerificationPipeline] TestIntelligence unavailable, falling back to pattern matching")
     }
 
     // Pattern-based matching as fallback
