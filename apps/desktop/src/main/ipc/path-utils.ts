@@ -1,6 +1,7 @@
 import { resolve, normalize, basename } from 'path'
 import { existsSync, realpathSync, appendFileSync, mkdirSync } from 'fs'
 import { app } from 'electron'
+import { sep } from 'path'
 
 /**
  * When no workspace is open, ALL paths are DENIED by default.
@@ -46,6 +47,22 @@ const SENSITIVE_PATH_PATTERNS = [
 let allowedWorkspacePath: string | null = null
 let auditLogPath: string | null = null
 
+function isPathInsideDirectory(targetPath: string, directoryPath: string): boolean {
+  const normalizedTarget = resolve(normalize(targetPath))
+  const normalizedDirectory = resolve(normalize(directoryPath))
+  const target = process.platform === 'win32' ? normalizedTarget.toLowerCase() : normalizedTarget
+  const directory = process.platform === 'win32' ? normalizedDirectory.toLowerCase() : normalizedDirectory
+  const root = directory.endsWith('\\') || directory.endsWith('/')
+    ? directory.slice(0, -1)
+    : directory
+
+  return target === root || target.startsWith(`${root}${sep}`)
+}
+
+function toPortablePath(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+
 export function setAllowedWorkspacePath(path: string | null): void {
   allowedWorkspacePath = path ? resolve(normalize(path)) : null
 }
@@ -81,11 +98,12 @@ export function isPathAllowed(targetPath: string): boolean {
   try {
     const resolved = resolveSymlinks(targetPath)
     const allowedResolved = resolveSymlinks(allowedWorkspacePath)
-    if (!resolved.startsWith(allowedResolved)) return false
+    if (!isPathInsideDirectory(resolved, allowedResolved)) return false
 
     // Check against sensitive path patterns (case-insensitive on Windows)
     const fileName = basename(resolved).toLowerCase()
     const resolvedLower = resolved.toLowerCase()
+    const portableResolved = toPortablePath(resolvedLower)
     for (const pattern of SENSITIVE_PATH_PATTERNS) {
       const p = pattern.toLowerCase()
       if (p.startsWith('*')) {
@@ -93,7 +111,11 @@ export function isPathAllowed(targetPath: string): boolean {
         if (fileName.endsWith(p.slice(1))) return false
       } else if (p.endsWith('/')) {
         // Directory pattern: .ssh/
-        if (resolvedLower.includes('/' + p) || resolvedLower.endsWith('/' + p.slice(0, -1))) return false
+        const dirPattern = `/${p}`
+        if (portableResolved.includes(dirPattern) || portableResolved.endsWith(dirPattern.slice(0, -1))) return false
+      } else if (p.includes('/')) {
+        // Nested file pattern: .aws/credentials
+        if (portableResolved.endsWith(`/${p}`)) return false
       } else {
         // Exact filename match
         if (fileName === p) return false
@@ -142,7 +164,7 @@ export function clearGitAllowedPaths(): void {
 export function assertGitRepoPath(repoPath: string): void {
   const resolved = resolve(normalize(repoPath))
   for (const allowed of GIT_ALLOWED_PATHS) {
-    if (resolved.startsWith(allowed)) return
+    if (isPathInsideDirectory(resolved, allowed)) return
   }
   // Fall back to workspace path check
   assertPathAllowed(repoPath)
