@@ -19,6 +19,31 @@ export function matchDeniedPath(filePath: string, deniedPatterns: string[]): boo
   const normalized = filePath.replace(/\\/g, '/').toLowerCase()
   for (const pattern of deniedPatterns) {
     const normalizedPattern = pattern.replace(/\\/g, '/').toLowerCase()
+
+    // `**/` prefix: match file/dir name at any directory depth
+    if (normalizedPattern.startsWith('**/')) {
+      const suffix = normalizedPattern.slice(3)
+      if (suffix.endsWith('*')) {
+        const prefix = suffix.slice(0, -1)
+        if (normalized.includes('/' + prefix) || normalized.startsWith(prefix)) return true
+      } else if (suffix.endsWith('/**')) {
+        const dirPrefix = suffix.slice(0, -3)
+        if (normalized.includes('/' + dirPrefix + '/') || normalized.startsWith(dirPrefix + '/')) return true
+      } else {
+        const fileName = normalized.split('/').pop() ?? ''
+        if (fileName === suffix) return true
+        if (normalized.includes('/' + suffix)) return true
+      }
+      continue
+    }
+
+    // `*/` prefix but not `**/`: match only in root
+    if (normalizedPattern.startsWith('*') && !normalizedPattern.startsWith('**')) {
+      const suffix = normalizedPattern.slice(1)
+      if (normalized.endsWith(suffix)) return true
+      continue
+    }
+
     if (normalizedPattern.endsWith('*')) {
       const prefix = normalizedPattern.slice(0, -1)
       if (normalized.startsWith(prefix)) return true

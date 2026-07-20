@@ -38,6 +38,7 @@ export const DelegateSubtaskTool: AgentTool = buildTool({
     const rawDepth = input.depth
     const parentId = String(input.parentId ?? '')
     const currentDepth = typeof rawDepth === 'number' ? rawDepth : 0
+    const parentTimeoutAt = input.parentTimeoutAt as number | undefined
 
     if (currentDepth >= MAX_SUBAGENT_DEPTH) {
       return { data: null, error: `Max sub-agent nesting depth (${MAX_SUBAGENT_DEPTH}) reached`, isError: true }
@@ -76,6 +77,7 @@ export const DelegateSubtaskTool: AgentTool = buildTool({
       modelOverride: String(input.model ?? '') || undefined,
       treeNodeId: treeId,
       depth: currentDepth,
+      parentTimeoutAt,
     })
 
     ctx.agentStore?.updateAgentTreeNode(treeId, {

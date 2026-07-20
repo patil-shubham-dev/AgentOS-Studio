@@ -8,6 +8,7 @@ import type { ExecutionEvent } from "@/runtime/ExecutionEvent"
 import type { RuntimeRole } from "@/types"
 import { execTrace } from "@/runtime/execution-tracer"
 import { traceStage as reqTraceStage } from "@/runtime/RequestTracer"
+import { runtimeDebugTrace } from "@/runtime/runtime-debug"
 
 export interface GatewayOptions {
   input: string
@@ -49,7 +50,7 @@ export class UnifiedExecutionGateway {
     const _traceId = correlationId ?? "no-id"
     const _reqId = requestId ?? _traceId
     execTrace("UnifiedExecutionGateway.execute", _traceId, { inputLen: input.length, role: activeRole, mode, correlationId })
-    console.trace(`[XTRACE:${_traceId}] Gateway.execute CALL STACK`)
+    runtimeDebugTrace(`[XTRACE:${_traceId}] Gateway.execute CALL STACK`)
     if (requestId) {
       reqTraceStage(requestId, "UnifiedExecutionGateway.execute", { mode, role: activeRole })
     }

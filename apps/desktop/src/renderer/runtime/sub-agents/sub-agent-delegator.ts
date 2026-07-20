@@ -174,6 +174,11 @@ export interface SubAgentDelegationRequest {
   treeNodeId?: string
   /** Optional: current nesting depth (for recursion limit) */
   depth?: number
+  /**
+   * Optional: absolute deadline timestamp (performance.now() basis) inherited from parent.
+   * Prevents deep chains from each getting a full 60s timeout.
+   */
+  parentTimeoutAt?: number
 }
 
 export interface SubAgentDelegationResult {
@@ -249,8 +254,15 @@ function emitResult(opts: {
  */
 export async function executeSubAgent(request: SubAgentDelegationRequest): Promise<SubAgentDelegationResult> {
   const t0 = performance.now()
-  const { type, task, modelOverride, signal, treeNodeId, depth = 0 } = request
+  const { type, task, modelOverride, signal, treeNodeId, depth = 0, parentTimeoutAt } = request
   const logTag = `[SubAgent:${type}${depth > 0 ? `:depth=${depth}` : ''}]`
+
+  // ── Timeout inheritance: child inherits parent's remaining time ──
+  const remainingFromParent = parentTimeoutAt
+    ? Math.max(0, parentTimeoutAt - performance.now())
+    : Infinity
+  const effectiveTimeoutMs = Math.min(remainingFromParent, SUBAGENT_TIMEOUT_MS)
+  const deadlineAt = performance.now() + effectiveTimeoutMs
 
   totalSubAgentCount++
   if (totalSubAgentCount > MAX_TOTAL_SUBAGENTS) {
@@ -368,8 +380,8 @@ export async function executeSubAgent(request: SubAgentDelegationRequest): Promi
     }
 
     const elapsed = performance.now() - t0
-    if (elapsed > SUBAGENT_TIMEOUT_MS) {
-      return emitResult({ success: false, type, error: `Sub-agent exceeded ${SUBAGENT_TIMEOUT_MS / 1000}s timeout`, duration: performance.now() - t0, toolCalls: totalToolCalls, tokens: totalTokens })
+    if (elapsed > effectiveTimeoutMs) {
+      return emitResult({ success: false, type, error: `Sub-agent exceeded ${effectiveTimeoutMs / 1000}s timeout${parentTimeoutAt ? ' (inherited from parent)' : ''}`, duration: performance.now() - t0, toolCalls: totalToolCalls, tokens: totalTokens })
     }
 
     console.log(`${logTag} round ${round + 1}/${MAX_SUBAGENT_ROUNDS}`, {
@@ -407,7 +419,7 @@ export async function executeSubAgent(request: SubAgentDelegationRequest): Promi
 
     if (res.message.tool_calls && res.message.tool_calls.length > 0) {
       totalToolCalls += res.message.tool_calls.length
-      const toolResults = await executeSubAgentTools(res.message.tool_calls)
+      const toolResults = await executeSubAgentTools(res.message.tool_calls, deadlineAt)
       msgs.push(...toolResults)
     } else {
       console.log(`${logTag} completed in round ${round + 1}`, { contentLength: res.message.content?.length ?? 0, totalToolCalls, totalTokens })
@@ -443,7 +455,7 @@ interface InlineToolResult {
  * Execute tools inline for the sub-agent's tool calls.
  * Uses the ToolRegistry from RuntimeOS for consolidated execution.
  */
-async function executeSubAgentTools(toolCalls: ToolCall[]): Promise<ChatMessage[]> {
+async function executeSubAgentTools(toolCalls: ToolCall[], deadlineAt?: number): Promise<ChatMessage[]> {
   const runtimeOS = RuntimeOS.getInstance()
   const toolRegistry = runtimeOS.toolRegistry
   const sandbox = ToolExecutionSandbox.getInstance()
@@ -455,6 +467,11 @@ async function executeSubAgentTools(toolCalls: ToolCall[]): Promise<ChatMessage[
         args = JSON.parse(tc.function.arguments)
       } catch {
         return { tool_call_id: tc.id, role: "tool", content: `Error: Invalid JSON in arguments — ${tc.function.arguments}` }
+      }
+
+      // Inject timeout inheritance for nested delegate_subtask calls
+      if (tc.function.name === 'delegate_subtask' && deadlineAt) {
+        args = { ...args, parentTimeoutAt: deadlineAt }
       }
 
       try {

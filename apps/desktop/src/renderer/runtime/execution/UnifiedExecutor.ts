@@ -32,6 +32,7 @@ import { AgentPipelineOrchestrator } from "./AgentPipelineOrchestrator"
 import { autoCompact, shouldAutoCompact } from "@/runtime/context/autoCompact"
 import { TokenEstimator } from "@/runtime/context/TokenEstimator"
 import { BackgroundTaskManager } from "@/runtime/BackgroundTaskManager"
+import { runtimeDebugLog, runtimeDebugTrace } from "@/runtime/runtime-debug"
 
 export type ExecutionMode = "fast" | "full" | "autonomous"
 
@@ -77,7 +78,7 @@ export class UnifiedExecutor {
       getProcessedHistory: this.getProcessedHistory.bind(this),
     })
     this.autonomousPath = new AutonomousExecutionPath({
-      fullPath: this.fullPath.bind(this),
+      fullPath: this.orchestrator.execute.bind(this.orchestrator),
       getProcessedHistory: this.getProcessedHistory.bind(this),
       getWorkspaceSnapshot: this.getWorkspaceSnapshot.bind(this),
       detectFileChanges: this.detectFileChanges.bind(this),
@@ -127,7 +128,7 @@ export class UnifiedExecutor {
     }
 
     execTrace("UnifiedExecutor.execute", _traceId, { inputLen: input.length, role: activeRole, mode: reqMode, correlationId, executionId })
-    console.trace(`[XTRACE:${_traceId}] UnifiedExecutor.execute CALL STACK`)
+    runtimeDebugTrace(`[XTRACE:${_traceId}] UnifiedExecutor.execute CALL STACK`)
     if (requestId) {
       reqTraceStage(requestId, "Planner", { executionId, mode: reqMode })
       assertSingleExecution(requestId)
@@ -243,7 +244,7 @@ export class UnifiedExecutor {
           yield { type: "AGENT_ASSIGNED", executionId, correlationId, roleId: "assistant", roleName: "Assistant", modelName: "", providerName: "", stepId: `${executionId}_step`, executionStrategy: "single-agent", timestamp: Date.now() }
           StreamManager.getInstance().append(`${executionId}_step`, noWsMsg)
           StreamManager.getInstance().complete(`${executionId}_step`)
-          yield { type: "MESSAGE_COMPLETE", executionId, stepId: `${executionId}_step`, content: noWsMsg, finishReason: "stop", timestamp: Date.now() }
+          yield { type: "MESSAGE_COMPLETE", executionId, stepId: `${executionId}_step`, content: noWsMsg, finishReason: "stop", timestamp: Date.now(), tokensIn: 0, tokensOut: 0 }
           const durationMs = Math.round(performance.now() - t0)
           recordAgentExecution(durationMs, 0, 0)
           yield { type: "EXECUTION_COMPLETE", executionId, content: noWsMsg, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now(), executionMode: "fast" }
@@ -283,7 +284,7 @@ export class UnifiedExecutor {
           }
         }
 
-        console.log("[FLOW:2] UnifiedExecutor.execute: entering path (mode=" + agentMode + ", activeRole=" + activeRole + ")")
+        runtimeDebugLog("[FLOW:2] UnifiedExecutor.execute: entering path (mode=" + agentMode + ", activeRole=" + activeRole + ")")
         if (requestId) {
           reqTraceStage(requestId, "Provider", { agentMode, executionId })
           reqTraceStage(requestId, "Streaming", { agentMode, executionId })
@@ -293,7 +294,7 @@ export class UnifiedExecutor {
         } else if (reqMode === "autonomous") {
           yield* this.autonomousPath.execute(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId, goalId, goalObjective)
         } else {
-          yield* this.fullPath(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId, _reqId)
+          yield* this.orchestrator.execute(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId, _reqId)
         }
 
         if (usePlanStore.getState().currentPlan?.status === "executing") {
@@ -339,20 +340,6 @@ export class UnifiedExecutor {
         RuntimeCleanupManager.getInstance().unregister(cleanupId)
       }
     }
-  }
-
-  private async *fullPath(
-    input: string,
-    activeRole: RuntimeRole,
-    decision: RoutingDecision,
-    ctrl: AbortController,
-    executionId: string,
-    providers: any[],
-    t0: number,
-    correlationId?: string,
-    requestId?: string,
-  ): AsyncGenerator<ExecutionEvent> {
-    yield* this.orchestrator.execute(input, activeRole, decision, ctrl, executionId, providers, t0, correlationId, requestId)
   }
 
   private getProcessedHistory(activeRole: RuntimeRole): any[] {

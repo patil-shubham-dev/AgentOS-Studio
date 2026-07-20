@@ -1,3 +1,5 @@
+import { Compactor } from "./Compactor"
+
 const COMPACTABLE_TOOL_RESULTS = new Set([
   'read_file', 'bash', 'run_command',
   'grep_files', 'glob_files',
@@ -5,6 +7,21 @@ const COMPACTABLE_TOOL_RESULTS = new Set([
   'edit_file', 'write_file',
 ])
 
+let _sharedCompactor: Compactor | null = null
+
+function getSharedCompactor(): Compactor {
+  if (!_sharedCompactor) {
+    const { TokenBudgetTracker } = require('./TokenBudgetTracker')
+    const { ContextWindowResolver } = require('./ContextWindowResolver')
+    _sharedCompactor = new Compactor(new ContextWindowResolver(), new TokenBudgetTracker())
+  }
+  return _sharedCompactor
+}
+
+/**
+ * @deprecated Use Compactor.microCompact() instead. This function is kept for
+ * backward compatibility and delegates to a shared Compactor instance.
+ */
 export function microCompact(
   messages: Array<{ role: string; content?: string; metadata?: Record<string, unknown>; [key: string]: unknown }>,
 ): Array<{ role: string; content?: string; metadata?: Record<string, unknown>; [key: string]: unknown }> {

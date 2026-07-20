@@ -14,7 +14,7 @@ import { FeatureFlagManager } from "@/runtime/feature-flags/FeatureFlagManager"
 import { GoalState } from "@/runtime/autonomous/GoalState"
 import type { GoalSnapshot } from "@/runtime/autonomous/GoalState"
 import { MemoryArchitecture } from "@/runtime/memory/unified/MemoryArchitecture"
-import { StreamManager } from "@/runtime/streaming/StreamManager"
+import { RUNTIME_TOKEN_LIMITS } from "@/runtime/runtime-token-config"
 
 type FullPathFn = (
   input: string,
@@ -25,6 +25,7 @@ type FullPathFn = (
   providers: any[],
   t0: number,
   correlationId?: string,
+  requestId?: string,
 ) => AsyncGenerator<ExecutionEvent>
 
 type GetProcessedHistoryFn = (activeRole: RuntimeRole) => any[]
@@ -71,7 +72,11 @@ export class AutonomousExecutionPath {
     const browserContinuity = ff.isEnabled("browserContinuity")
 
     const goal = goalState.createGoal(objective, undefined, actualGoalId)
-    const budgetId = budgetMgr.createBudget({})
+    const budgetId = budgetMgr.createBudget({
+      maxTokens: RUNTIME_TOKEN_LIMITS.DEFAULT_MAX_TOKENS * 10,
+      maxIterations: 50,
+      maxTimeMs: 600_000,
+    })
 
     browserBridge.setExecutionId(executionId)
     if (browserContinuity) {
@@ -85,6 +90,12 @@ export class AutonomousExecutionPath {
 
     let iteration = 0
     while (goal.status === "active" && !ctrl.signal.aborted && iteration < 50) {
+      const budget = budgetMgr.getBudget(budgetId)
+      if (budget?.status === "exhausted") {
+        goalState.completeGoal(actualGoalId, "failed")
+        yield { type: "EXECUTION_FAILED", executionId, error: "Budget exhausted - token or iteration limit reached", durationMs: Math.round(performance.now() - t0), timestamp: Date.now() }
+        break
+      }
       iteration++
 
       yield { type: "THINKING_STARTED", executionId, label: "Planning approach", timestamp: Date.now() }
@@ -118,8 +129,9 @@ export class AutonomousExecutionPath {
 
       for await (const event of executor.execute()) {
         if (event.type === "MESSAGE_COMPLETE") {
-          budgetMgr.recordUsage(budgetId, { tokens: (event as any).tokensIn ?? 0 + (event as any).tokensOut ?? 0 })
-          StreamManager.getInstance().flushImmediate()
+          const tokens = event.tokensIn + event.tokensOut
+          budgetMgr.recordUsage(budgetId, { tokens })
+          goalState.updateBudgetUsed(actualGoalId, { tokens })
         }
         yield event
       }
@@ -156,7 +168,7 @@ export class AutonomousExecutionPath {
       const achieved = await this.checkGoalAchieved(goal, ctrl.signal)
       if (achieved) {
         goalState.completeGoal(actualGoalId, "completed")
-        yield { type: "GOAL_ACHIEVED", executionId, goalId: actualGoalId, objective, iterations, stepsCompleted: goal.steps.length, reflectionsCount: goal.reflection.length, timestamp: Date.now() }
+        yield { type: "GOAL_ACHIEVED", executionId, goalId: actualGoalId, objective, iterations: iteration, stepsCompleted: goal.steps.length, reflectionsCount: goal.reflection.length, timestamp: Date.now() }
         break
       }
 

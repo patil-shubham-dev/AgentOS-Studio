@@ -27,7 +27,7 @@ export async function* mockExecutionPath(
       filesEdited = result.filesCreated
       yield { type: "PROVIDER_CONNECTED", executionId, model: "mock-model", provider: "mock", temperature: 0.7, timestamp: Date.now() }
       StreamManager.getInstance().complete(stepId)
-      yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: result.message, finishReason: "stop", timestamp: Date.now() }
+      yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: result.message, finishReason: "stop", timestamp: Date.now(), tokensIn: 0, tokensOut: 0 }
       const durationMs = Math.round(performance.now() - (t0 ?? performance.now()))
       yield { type: "EXECUTION_COMPLETE", executionId, content: result.message, filesEdited, commandsRun: 0, toolCalls: filesEdited, durationMs, timestamp: Date.now(), executionMode: "fast" }
       return
@@ -43,7 +43,7 @@ export async function* mockExecutionPath(
 
   yield { type: "PROVIDER_CONNECTED", executionId, model: "mock-model", provider: "mock", temperature: 0.7, timestamp: Date.now() }
   StreamManager.getInstance().complete(stepId)
-  yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: fullText, finishReason: "stop", timestamp: Date.now() }
+  yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: fullText, finishReason: "stop", timestamp: Date.now(), tokensIn: 0, tokensOut: 0 }
 
   const durationMs = Math.round(performance.now() - (t0 ?? performance.now()))
   yield { type: "EXECUTION_COMPLETE", executionId, content: fullText, filesEdited, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now(), executionMode: "fast" }

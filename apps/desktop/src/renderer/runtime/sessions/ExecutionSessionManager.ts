@@ -163,8 +163,6 @@ export class ExecutionSessionManager {
     const requestId = createRequestTrace(options.input)
     traceStage(requestId, "ExecutionSessionManager.start", { inputLen: options.input.length, role: options.activeRole, correlationId: options.correlationId })
     execTrace("ExecutionSessionManager.start", _traceId, { inputLen: options.input.length, role: options.activeRole, correlationId: options.correlationId })
-    console.trace(`[XTRACE:${_traceId}] SessionManager.start CALL STACK`)
-    console.log(`${mgrTag} ▶ start (inputLen=${options.input.length}, role=${options.activeRole}, correlationId=${options.correlationId})`)
 
     // Clear committed set for this correlationId
     const reqCorrId = options.correlationId
@@ -288,8 +286,6 @@ export class ExecutionSessionManager {
       } finally {
         clearTimeout(durationTimeout)
       }
-
-      console.log(`${mgrTag} ✓ event stream ended (${Math.round(performance.now() - sessionStartTime)}ms, events=${eventCount})`)
 
       // Safety net: force-complete any agent sessions still in "streaming" state.
       // This prevents the UI from hanging on "Thinking..." indefinitely when a
@@ -430,7 +426,6 @@ export class ExecutionSessionManager {
     this.pruneSessions()
 
     this.activeSessionId = null
-    console.log(`${mgrTag} ✓ return session ${id} (${Date.now() - sessionStartTime}ms, status=${session.status})`)
     return session
   }
 
@@ -1100,8 +1095,9 @@ export class ExecutionSessionManager {
 
       case "TOKEN": {
         const tokenStepId = this.stepByExecId.get(event.executionId)
+        const tokenText = (event as any).token ?? ""
         if (tokenStepId) {
-          StreamManager.getInstance().append(tokenStepId, (event as any).token ?? "")
+          StreamManager.getInstance().append(tokenStepId, tokenText)
         }
         // First token arrived — clear the loading_slowly timeout
         const tTimeout = this.loadingSlowTimeouts.get(event.executionId)

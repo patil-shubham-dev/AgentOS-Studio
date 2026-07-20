@@ -82,6 +82,10 @@ export class ToolExecutionPolicy {
         if (rolePerms && !rolePerms.has(neededPerm)) {
           return { allowed: false, reason: `Role "${ctx.role}" does not have "${neededPerm}" permission for tool "${tool.name}"` }
         }
+        // If role permissions exist but the tool isn't in the allowed set, default deny
+        if (rolePerms && rolePerms.size > 0) {
+          return { allowed: false, reason: `Role "${ctx.role}" is not explicitly granted permission for tool "${tool.name}"` }
+        }
       }
     }
 
@@ -91,7 +95,9 @@ export class ToolExecutionPolicy {
       return { allowed: false, reason: 'Destructive operation requires explicit approval' }
     }
 
-    return { allowed: true }
+    // Default-deny: only read-only tools are allowed by default
+    if (tool.isReadOnly(ctx)) return { allowed: true }
+    return { allowed: false, reason: `Tool "${tool.name}" requires explicit permission — default-deny for non-read-only tools` }
   }
 
   getDefaultPolicy(): ExecutionPolicy {

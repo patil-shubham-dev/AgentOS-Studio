@@ -6,6 +6,7 @@ import type { GatewayProvider } from "@/types"
 import { classifyProviderError, type ProviderErrorCode, type ProviderErrorInfo } from "./ProviderError"
 import { generateMockResponse } from "./MockProviderRuntime"
 import { execTrace } from "@/runtime/execution-tracer"
+import { runtimeDebugLog } from "@/runtime/runtime-debug"
 
 export type ProviderStreamEvent =
   | { type: "token"; text: string }
@@ -163,7 +164,7 @@ export class ProviderGateway {
         model = currentModel
 
         for (let attempt = 0; attempt < 3; attempt++) {
-          console.log("[FLOW:4] ProviderGateway.stream: attempt " + attempt + " for model " + model + " on provider " + pid)
+          runtimeDebugLog("[FLOW:4] ProviderGateway.stream: attempt " + attempt + " for model " + model + " on provider " + pid)
           yield { type: "status", status: "connecting", model }
 
           const tokenQueue: string[] = []
@@ -175,7 +176,7 @@ export class ProviderGateway {
           let streamResolve: (() => void) | null = null
 
           try {
-            console.log("[FLOW:5] ProviderGateway.stream: calling streamChatCompletion")
+            runtimeDebugLog("[FLOW:5] ProviderGateway.stream: calling streamChatCompletion")
             const streamPromise = streamChatCompletion(
               active.baseUrl,
               active.apiKey,
@@ -206,7 +207,7 @@ export class ProviderGateway {
             )
 
             while (!done || tokenQueue.length > 0 || reasoningQueue.length > 0) {
-              console.log("[FLOW:6] ProviderGateway.stream: while loop iteration (done=" + done + ", queueLen=" + tokenQueue.length + ", reasoningLen=" + reasoningQueue.length + ")")
+              runtimeDebugLog("[FLOW:6] ProviderGateway.stream: while loop iteration (done=" + done + ", queueLen=" + tokenQueue.length + ", reasoningLen=" + reasoningQueue.length + ")")
               if (request.signal?.aborted) {
                 done = true; tokenQueue.length = 0; reasoningQueue.length = 0
                 yield { type: "error", code: "cancelled", message: "Request was cancelled", userMessage: "Request cancelled", retryable: false }
@@ -220,7 +221,7 @@ export class ProviderGateway {
                 await new Promise<void>((resolve) => { streamResolve = resolve })
               }
             }
-            console.log("[FLOW:7] ProviderGateway.stream: while loop exited (done=" + done + ", error=" + !!streamErrorHolder.value + ")")
+            runtimeDebugLog("[FLOW:7] ProviderGateway.stream: while loop exited (done=" + done + ", error=" + !!streamErrorHolder.value + ")")
 
             if (streamErrorHolder.value) {
               lastError = streamErrorHolder.value

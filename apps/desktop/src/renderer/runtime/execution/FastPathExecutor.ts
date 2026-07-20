@@ -35,15 +35,17 @@ export class FastPathExecutor {
     })
 
     let content = ""
+    let totalTokensIn = 0
+    let totalTokensOut = 0
     for await (const event of executor.execute()) {
       if (ctrl.signal.aborted) break
-      if (event.type === "MESSAGE_COMPLETE") { content = event.content; continue }
+      if (event.type === "MESSAGE_COMPLETE") { content = event.content; totalTokensIn += event.tokensIn; totalTokensOut += event.tokensOut; continue }
       yield event
     }
     if (ctrl.signal.aborted) return
 
     StreamManager.getInstance().complete(stepId)
-    yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: content || "", finishReason: "stop", timestamp: Date.now() }
+    yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: content || "", finishReason: "stop", timestamp: Date.now(), tokensIn: totalTokensIn, tokensOut: totalTokensOut }
     yield { type: "EXECUTION_COMPLETE", executionId, content: content || "", filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: Math.round(performance.now() - (t0 ?? performance.now())), timestamp: Date.now(), executionMode: "fast" }
   }
 }

@@ -1,20 +1,15 @@
-const WORD_BOUNDARY = /[\s\n\r.!?;:)]$/
+const MAX_BUFFERED_STREAMS = 100
 
 export class WordBoundaryStreamBuffer {
   private buffer = new Map<string, string>()
-  private pendingBoundary = false
-  private wordCount = 0
 
   append(stepId: string, token: string): string | null {
     const existing = this.buffer.get(stepId) ?? ""
-    const combined = existing + token
-    this.buffer.set(stepId, combined)
-    if (!this.pendingBoundary && WORD_BOUNDARY.test(combined)) {
-      this.pendingBoundary = true
-      this.wordCount++
-    }
-    if (this.pendingBoundary && this.wordCount >= 1) {
-      return this.flush(stepId)
+    this.buffer.set(stepId, existing + token)
+    // Bound buffer size: evict oldest entries when over limit
+    if (this.buffer.size > MAX_BUFFERED_STREAMS) {
+      const oldest = this.buffer.keys().next().value
+      if (oldest !== undefined && oldest !== stepId) this.buffer.delete(oldest)
     }
     return null
   }
@@ -23,8 +18,6 @@ export class WordBoundaryStreamBuffer {
     const text = this.buffer.get(stepId)
     if (!text || text.length === 0) return null
     this.buffer.delete(stepId)
-    this.pendingBoundary = false
-    this.wordCount = 0
     return text
   }
 
@@ -36,8 +29,6 @@ export class WordBoundaryStreamBuffer {
       }
     }
     this.buffer.clear()
-    this.pendingBoundary = false
-    this.wordCount = 0
     return result
   }
 
@@ -56,7 +47,5 @@ export class WordBoundaryStreamBuffer {
 
   clearAll(): void {
     this.buffer.clear()
-    this.pendingBoundary = false
-    this.wordCount = 0
   }
 }

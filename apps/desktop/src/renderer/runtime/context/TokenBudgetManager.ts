@@ -7,21 +7,19 @@ import type {
   TokenBudgetBreakdown,
 } from "./context-types"
 import { classifyContextWindow } from "./context-types"
+import { TokenBudget } from "./TokenBudget"
 
 export class TokenBudgetManager {
-  private global: { total: number; used: number; reserved: number } = { total: 200_000, used: 0, reserved: 0 }
+  private global: TokenBudget = new TokenBudget(200_000)
+  private reservedOutput = 0
   private agents = new Map<string, AgentTokenBudget>()
   private providers = new Map<string, ProviderTokenBudget>()
   private sections = new Map<string, number>()
   private allocationHistory: { agentId: string; amount: number; purpose: string; timestamp: number }[] = []
 
   initializeGlobalBudget(contextWindow: number): void {
-    const reservedOutput = Math.min(16_000, Math.floor(contextWindow * 0.05))
-    this.global = {
-      total: contextWindow,
-      used: 0,
-      reserved: reservedOutput,
-    }
+    this.global.reset(contextWindow)
+    this.reservedOutput = Math.min(16_000, Math.floor(contextWindow * 0.05))
   }
 
   initializeProviderBudget(providerName: string, capabilities: ProviderCapabilities): void {
@@ -47,8 +45,8 @@ export class TokenBudgetManager {
   unregisterAgent(agentId: string): void {
     const budget = this.agents.get(agentId)
     if (budget) {
-      this.global.used -= budget.used
-      this.global.reserved -= budget.reserved
+      this.global.release(budget.used)
+      this.reservedOutput = Math.max(0, this.reservedOutput - budget.reserved)
       this.agents.delete(agentId)
     }
   }
@@ -71,7 +69,7 @@ export class TokenBudgetManager {
 
     agent.used += allocAmount
     agent.allocated += allocAmount
-    this.global.used += allocAmount
+    this.global.recordUsage(allocAmount)
     this.sections.set(request.purpose, (this.sections.get(request.purpose) ?? 0) + allocAmount)
 
     this.allocationHistory.push({
@@ -91,7 +89,7 @@ export class TokenBudgetManager {
     const released = Math.min(amount, agent.used)
     agent.used -= released
     agent.allocated -= released
-    this.global.used -= released
+    this.global.release(released)
   }
 
   reserve(agentId: string, amount: number): boolean {
@@ -102,7 +100,7 @@ export class TokenBudgetManager {
     if (amount > available) return false
 
     agent.reserved += amount
-    this.global.reserved += amount
+    this.reservedOutput += amount
     return true
   }
 
@@ -112,11 +110,11 @@ export class TokenBudgetManager {
 
     const released = Math.min(amount, agent.reserved)
     agent.reserved -= released
-    this.global.reserved -= released
+    this.reservedOutput = Math.max(0, this.reservedOutput - released)
   }
 
   available(): number {
-    return this.global.total - this.global.used - this.global.reserved
+    return this.global.total - this.global.used - this.reservedOutput
   }
 
   getAgentBudget(agentId: string): AgentTokenBudget | undefined {

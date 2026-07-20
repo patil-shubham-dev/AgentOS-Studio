@@ -56,7 +56,7 @@ export class ContextSession {
   }
 
   updateBudget(messages: MessageLike[]): void {
-    this.budgetTracker.update(messages)
+    this.budgetTracker.updateAfterResponse(messages)
   }
 
   compact(messages: MessageLike[], model?: string, betas?: string[]): CompactResult | null {
