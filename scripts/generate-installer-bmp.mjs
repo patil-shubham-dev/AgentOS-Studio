@@ -5,10 +5,19 @@ import { fileURLToPath } from 'url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
 
-function createSolidBmp(width, height, hexColor) {
-  const r = parseInt(hexColor.slice(0, 2), 16)
-  const g = parseInt(hexColor.slice(2, 4), 16)
-  const b = parseInt(hexColor.slice(4, 6), 16)
+function hexToRgb(hexColor) {
+  return {
+    r: parseInt(hexColor.slice(0, 2), 16),
+    g: parseInt(hexColor.slice(2, 4), 16),
+    b: parseInt(hexColor.slice(4, 6), 16),
+  }
+}
+
+function mix(a, b, t) {
+  return Math.round(a + (b - a) * t)
+}
+
+function createBmp(width, height, pixelAt) {
 
   // BMP header (14 bytes) + DIB header (40 bytes) = 54 bytes
   const rowSize = Math.ceil((width * 3) / 4) * 4
@@ -39,6 +48,7 @@ function createSolidBmp(width, height, hexColor) {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const offset = 54 + y * rowSize + x * 3
+      const { r, g, b } = pixelAt(x, height - y - 1)
       buf.writeUInt8(b, offset)          // Blue
       buf.writeUInt8(g, offset + 1)      // Green
       buf.writeUInt8(r, offset + 2)      // Red
@@ -48,12 +58,32 @@ function createSolidBmp(width, height, hexColor) {
   return buf
 }
 
-const brandingDir = join(root, 'resources/branding')
+function createGradientBmp(width, height, fromHex, toHex, accentHex) {
+  const from = hexToRgb(fromHex)
+  const to = hexToRgb(toHex)
+  const accent = hexToRgb(accentHex)
 
-// NSIS installer header: 150x57, solid #0D0D0D
-writeFileSync(join(brandingDir, 'installer-header.bmp'), createSolidBmp(150, 57, '0D0D0D'))
-console.log('Generated resources/branding/installer-header.bmp (150x57, #0D0D0D)')
+  return createBmp(width, height, (x, y) => {
+    const t = (x / Math.max(1, width - 1)) * 0.65 + (y / Math.max(1, height - 1)) * 0.35
+    const glow = Math.max(0, 1 - Math.hypot((x - width * 0.18) / width, (y - height * 0.18) / height) * 2.8)
+    const base = {
+      r: mix(from.r, to.r, t),
+      g: mix(from.g, to.g, t),
+      b: mix(from.b, to.b, t),
+    }
 
-// NSIS installer sidebar: 164x314, solid #0D0D0D
-writeFileSync(join(brandingDir, 'installer-sidebar.bmp'), createSolidBmp(164, 314, '0D0D0D'))
-console.log('Generated resources/branding/installer-sidebar.bmp (164x314, #0D0D0D)')
+    return {
+      r: mix(base.r, accent.r, glow * 0.22),
+      g: mix(base.g, accent.g, glow * 0.22),
+      b: mix(base.b, accent.b, glow * 0.22),
+    }
+  })
+}
+
+const assetsDir = join(root, 'build/assets')
+
+writeFileSync(join(assetsDir, 'header.bmp'), createGradientBmp(150, 57, '0E1011', '121518', '3694C8'))
+console.log('Generated build/assets/header.bmp (150x57)')
+
+writeFileSync(join(assetsDir, 'sidebar.bmp'), createGradientBmp(164, 314, '121518', '0E1011', '3694C8'))
+console.log('Generated build/assets/sidebar.bmp (164x314)')

@@ -6,10 +6,13 @@ dist/
 out/
 release/
 build/*
-!build/installer.nsh
+!build/installer-redesign.nsh
 !build/installer-hooks.nsh
 !build/entitlements.mac.plist
 !build/wix-template.xml
+!build/assets/
+!build/assets/header.bmp
+!build/assets/sidebar.bmp
 
 # Stray build artifacts at root
 index-*.js

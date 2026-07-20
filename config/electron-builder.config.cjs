@@ -37,7 +37,7 @@ const config = {
     createDesktopShortcut: false,
     createStartMenuShortcut: true,
     shortcutName: 'AgenticOS',
-    include: 'build/installer.nsh',
+    include: 'build/installer-redesign.nsh',
     uninstallDisplayName: 'AgenticOS ${version}',
     menuCategory: true,
     warningsAsErrors: false,
