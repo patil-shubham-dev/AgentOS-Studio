@@ -11,9 +11,10 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace;
   --font-serif: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
   --font-display: 'Cormorant Garamond Variable', Georgia, 'Times New Roman', serif;
-  --motion-fast: 100ms;
-  --motion-normal: 200ms;
-  --motion-slow: 300ms;
+  --motion-instant: 80ms;
+  --motion-fast: 120ms;
+  --motion-normal: 180ms;
+  --motion-slow: 260ms;
   --motion-easing: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* ── Semantic typography scale ── */
@@ -82,6 +83,11 @@
   --space-15: 64px;
   --space-16: 80px;
 
+  /* ── Radii ── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
   /* ── Animation Tokens ── */
   --animate-shimmer: shimmer 1.5s infinite;
   --animate-spring-up: spring-up 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
@@ -120,13 +126,16 @@
   --surface-tooltip: #1e1e22;
 
   --text-primary: rgba(255, 255, 255, 0.95);
-  --text-secondary: rgba(255, 255, 255, 0.65);
-  --text-tertiary: rgba(255, 255, 255, 0.40);
-  --text-quaternary: rgba(255, 255, 255, 0.25);
+  --text-secondary: rgba(255, 255, 255, 0.75);
+  --text-tertiary: rgba(255, 255, 255, 0.45);
+  --text-quaternary: rgba(255, 255, 255, 0.28);
 
-  --border-default: rgba(255, 255, 255, 0.08);
-  --border-subtle: rgba(255, 255, 255, 0.04);
-  --border-hover: rgba(255, 255, 255, 0.12);
+  --border-default: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.03);
+  --border-hover: rgba(255, 255, 255, 0.10);
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 2px var(--surface-app), 0 0 0 4px var(--color-accent-brand);
 
   /* Semantic state colors */
   --color-accent-blue: #3b82f6;
@@ -140,6 +149,11 @@
   --color-accent-brand-muted: rgba(91, 155, 255, 0.12);
   --color-accent-brand-border: rgba(91, 155, 255, 0.3);
   --color-accent-brand-text: #5B9BFF;
+
+  /* AI state — restrained violet */
+  --color-ai: #A78BFA;
+  --color-ai-muted: rgba(167, 139, 250, 0.10);
+  --color-ai-border: rgba(167, 139, 250, 0.20);
 
   /* Semantic state — Success (green) */
   --color-success: #22c55e;
@@ -185,13 +199,15 @@
   --surface-tooltip: #E5DFD2;
 
   --text-primary: #2D2621;
-  --text-secondary: #6B6258;
-  --text-tertiary: #9A9186;
-  --text-quaternary: #C2BAAF;
+  --text-secondary: #5C5348;
+  --text-tertiary: #8A8176;
+  --text-quaternary: #B8B0A5;
 
-  --border-default: rgba(45, 38, 33, 0.10);
-  --border-subtle: rgba(45, 38, 33, 0.05);
-  --border-hover: rgba(45, 38, 33, 0.18);
+  --border-default: rgba(45, 38, 33, 0.08);
+  --border-subtle: rgba(45, 38, 33, 0.04);
+  --border-hover: rgba(45, 38, 33, 0.14);
+
+  --focus-ring: 0 0 0 2px var(--surface-app), 0 0 0 4px var(--color-accent-brand);
 
   --color-accent-blue: #2563EB;
   --color-accent-green: #16A34A;
@@ -294,8 +310,16 @@ body {
 
 /* ── Focus & Accessibility ── */
 *:focus-visible {
-  outline: 2px solid var(--color-accent-brand);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* ── Active Surface: thin left-border state indicator ── */
@@ -558,13 +582,7 @@ body {
   --tw-ring-opacity: 0.1;
 }
 
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: none;
-  ring: 2px solid var(--color-ring);
-  ring-offset: 2px;
-}
+
 
 ::selection {
   background: var(--color-primary);
@@ -871,6 +889,11 @@ kbd {
   initial-value: 0deg;
 }
 
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 @keyframes thinking-rotate {
   from { --thinking-angle: 0deg; }
   to { --thinking-angle: 360deg; }
@@ -1051,6 +1074,55 @@ kbd {
   height: 10px !important;
   margin-left: 6px;
   margin-top: 5px;
+}
+
+/* ── Empty state component tokens ── */
+.empty-state-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 4rem;
+  width: 4rem;
+  border-radius: 1rem;
+  background-color: var(--color-accent-brand-muted);
+  border: 1px solid var(--color-accent-brand-border);
+}
+
+.empty-state-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  background-color: var(--color-accent-brand-muted);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+.empty-state-action:hover {
+  border-color: var(--color-accent-brand-border);
+}
+
+.shortcut-kbd {
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 8px;
+  font-family: var(--font-mono);
+  background-color: var(--surface-panel);
+  border: 1px solid var(--border-default);
+}
+
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-tertiary { color: var(--text-tertiary); }
+.text-quaternary { color: var(--text-quaternary); }
+.text-accent-brand { color: var(--color-accent-brand); }
+.bg-accent-green { background-color: var(--color-accent-green); }
+
+/* ── Thinking card streaming pulse ── */
+.thinking-card-pulse {
+  animation: thinking-pulse 2s ease-in-out infinite;
 }
 
 /* ── Reduced motion support ── */
