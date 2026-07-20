@@ -607,6 +607,35 @@ export class GitHubClient {
     return response.text()
   }
 
+  async compareBranches(owner: string, repo: string, base: string, head: string): Promise<{ diff: string; status: string; ahead_by: number; behind_by: number; total_commits: number; files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number }> }> {
+    const url = `${this.baseUrl}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github.v3.diff',
+    }
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`
+    }
+    const diffResponse = await fetch(url, { headers })
+    if (!diffResponse.ok) {
+      throw new GitHubError(`Failed to compare branches: ${diffResponse.statusText}`, diffResponse.status, await diffResponse.text())
+    }
+    const diff = await diffResponse.text()
+
+    const metaHeaders: Record<string, string> = {
+      Accept: 'application/vnd.github.v3+json',
+    }
+    if (this.token) {
+      metaHeaders['Authorization'] = `Bearer ${this.token}`
+    }
+    const metaResponse = await fetch(url, { headers: metaHeaders })
+    if (!metaResponse.ok) {
+      throw new GitHubError(`Failed to fetch compare metadata: ${metaResponse.statusText}`, metaResponse.status, await metaResponse.text())
+    }
+    const meta = await metaResponse.json() as { status: string; ahead_by: number; behind_by: number; total_commits: number; files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number }> }
+
+    return { diff, ...meta }
+  }
+
   async getPullRequestCommits(owner: string, repo: string, prNumber: number): Promise<Array<{ sha: string; message: string; author: { name: string; date: string } }>> {
     return this.request('GET', `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${prNumber}/commits`)
   }

@@ -1,5 +1,12 @@
 import type { FileChangeEvent, FileChangeKind } from "@/types"
 
+export interface RecentWorkspace {
+  path: string
+  name: string
+  lastOpened: number
+  pinned: boolean
+}
+
 // ── Electron bridge ──
 const eapi = (typeof window !== 'undefined' && (window as any).electronAPI) ? (window as any).electronAPI : null
 
@@ -101,7 +108,7 @@ export async function onFileChange(callback: (event: FileChangeEvent) => void): 
 }
 
 // ── Recent workspaces ──
-export async function getRecentWorkspaces(): Promise<Array<{ path: string; name: string; lastOpened: number; pinned: boolean }>> {
+export async function getRecentWorkspaces(): Promise<RecentWorkspace[]> {
   if (isElectron()) {
     return await eapi.workspaceGetRecent()
   }

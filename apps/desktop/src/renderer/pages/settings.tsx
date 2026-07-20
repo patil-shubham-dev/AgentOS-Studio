@@ -6,6 +6,7 @@ import { ModelsTab } from "@/components/settings/models-tab"
 import { ToolsTab } from "@/components/settings/tools-tab"
 import { RuntimeTab } from "@/components/settings/runtime-tab"
 import { ThinkingTab } from "@/components/settings/thinking-tab"
+import { CompletionSettings } from "@/components/settings/completion-settings"
 import { LogsTab } from "@/components/settings/logs-tab"
 import { AgentsPage } from "@/pages/agents"
 import { MemoryPage } from "@/pages/memory"
@@ -13,7 +14,7 @@ import { ContextDashboardPage } from "@/pages/context-dashboard"
 import { PersonasPage } from "@/pages/personas"
 import { PluginsPage } from "@/pages/plugins"
 import {
-  Cpu, Box, Brain, Wrench, Terminal, Sparkles,
+  Cpu, Box, Brain, Wrench, Terminal, Sparkles, Zap,
   Search, Command, ChevronLeft, Settings2,
   Users, Palette, Puzzle, ScrollText, Activity,
 } from "lucide-react"
@@ -40,14 +41,15 @@ const coreNavItems: NavItem[] = [
   { id: "tools", label: "MCP Servers", icon: Wrench, shortcut: "3", description: "MCP server connections & tools" },
   { id: "runtime", label: "Runtime", icon: Terminal, shortcut: "4", description: "Execution environment & sandbox config" },
   { id: "thinking", label: "Thinking", icon: Sparkles, shortcut: "5", description: "Thinking visualization & budget" },
+  { id: "completions", label: "Completions", icon: Zap, shortcut: "6", description: "Inline code completion settings" },
 ]
 
 const advancedNavItems: NavItem[] = [
-  { id: "agents", label: "Agents", icon: Users, shortcut: "6", description: "Agent role management & capabilities" },
-  { id: "memory", label: "Memory", icon: Brain, shortcut: "7", description: "Memory system management & inspection" },
-  { id: "context", label: "Context", icon: Activity, shortcut: "8", description: "Context budget monitoring & usage" },
-  { id: "personas", label: "Personas", icon: Palette, shortcut: "9", description: "Persona management & creation" },
-  { id: "plugins", label: "Plugins", icon: Puzzle, shortcut: "0", description: "Plugin management & configuration" },
+  { id: "agents", label: "Agents", icon: Users, shortcut: "7", description: "Agent role management & capabilities" },
+  { id: "memory", label: "Memory", icon: Brain, shortcut: "8", description: "Memory system management & inspection" },
+  { id: "context", label: "Context", icon: Activity, shortcut: "9", description: "Context budget monitoring & usage" },
+  { id: "personas", label: "Personas", icon: Palette, shortcut: "0", description: "Persona management & creation" },
+  { id: "plugins", label: "Plugins", icon: Puzzle, shortcut: undefined, description: "Plugin management & configuration" },
 ]
 
 const logNavItems: NavItem[] = [
@@ -362,6 +364,7 @@ export function SettingsPage() {
               {activeTab === "tools" && <div className="p-6 max-w-6xl mx-auto"><ToolsTab /></div>}
               {activeTab === "runtime" && <div className="p-6 max-w-6xl mx-auto"><RuntimeTab /></div>}
               {activeTab === "thinking" && <div className="p-6 max-w-6xl mx-auto"><ThinkingTab /></div>}
+              {activeTab === "completions" && <div className="p-6 max-w-6xl mx-auto"><CompletionSettings /></div>}
               {activeTab === "agents" && <div className="p-6 max-w-6xl mx-auto"><AgentsPage /></div>}
               {activeTab === "memory" && <div className="p-6 max-w-6xl mx-auto"><MemoryPage /></div>}
               {activeTab === "context" && <div className="p-6 max-w-6xl mx-auto"><ContextDashboardPage /></div>}

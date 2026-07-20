@@ -1,6 +1,7 @@
-import { useRef, useEffect, useMemo, useState, useCallback } from "react"
+import { memo, useRef, useEffect, useMemo, useState, useCallback } from "react"
 import { useShallow } from "zustand/shallow"
-import { motion, AnimatePresence } from "framer-motion"
+import { useVirtualizer } from "@tanstack/react-virtual"
+import { AnimatePresence, motion } from "framer-motion"
 import { ChevronDown, Terminal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTimelineStore } from "../timeline/timeline-store"
@@ -25,9 +26,59 @@ interface ConversationTurn {
   sessionIds: string[]
 }
 
-export function ConversationTimeline({ onSendMessage }: ConversationTimelineProps) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
+const TURN_ESTIMATED_HEIGHT = 180
+
+const TurnSeparator = memo(function TurnSeparator({ timestamp }: { timestamp: number }) {
+  return (
+    <div className="flex items-center gap-3 mx-2 my-4 select-none">
+      <div className="flex-1 h-px" style={{
+        background: "linear-gradient(to right, transparent, var(--border-subtle), transparent)"
+      }} />
+      <span className="text-[7px] font-mono tracking-wider uppercase whitespace-nowrap"
+        style={{ color: "var(--text-quaternary)" }}
+      >
+        {new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+      </span>
+    </div>
+  )
+})
+
+const TurnContent = memo(function TurnContent({ turn, isLatest, idx, onSendMessage, turnCount, messageReferences, currentPack }: {
+  turn: ConversationTurn
+  isLatest: boolean
+  idx: number
+  onSendMessage?: (prompt: string) => void
+  turnCount: number
+  messageReferences: Map<string, any[]>
+  currentPack: any
+}) {
+  return (
+    <div className="space-y-2 px-0.5">
+      {turn.userEvent && (
+        <>
+          {(() => {
+            const refs = messageReferences.get(turn.userEvent.correlationId ?? turn.userEvent.id)
+            return refs && refs.length > 0 ? <ReferenceChipRow references={refs} /> : null
+          })()}
+          <UserPill content={turn.userEvent.content} timestamp={turn.userEvent.timestamp} />
+          {currentPack && <ContextBreakdown pack={currentPack} />}
+        </>
+      )}
+      <UnifiedAssistantResponse
+        stepIds={turn.sessionIds}
+        isLatest={isLatest}
+        onRetry={onSendMessage}
+        originalInput={turn.userEvent?.content}
+      />
+      {idx < turnCount - 1 && turn.userEvent && (
+        <TurnSeparator timestamp={turn.userEvent.timestamp} />
+      )}
+    </div>
+  )
+})
+
+export const ConversationTimeline = memo(function ConversationTimeline({ onSendMessage }: ConversationTimelineProps) {
+  const parentRef = useRef<HTMLDivElement>(null)
   const events = useTimelineStore((s) => s.events)
   const sessionOrder = useTimelineStore((s) => s.sessionOrder)
   const streamingTextsSize = useTimelineStore((s) => s.streamingTexts.size)
@@ -35,7 +86,7 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [terminalPaneOpen, setTerminalPaneOpen] = useState(false)
-  const reduced = useReducedMotion()
+  const { reducedMotion: reduced } = useReducedMotion()
   const currentPack = useContextPackSlot((s) => s.currentPack)
 
   const latestTerminalInfo = useTimelineStore(
@@ -49,40 +100,6 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
       return null
     })
   )
-
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el || !isAtBottom) return
-    const raf = requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
-    return () => cancelAnimationFrame(raf)
-  }, [isAtBottom, events.length, streamingTextsSize])
-
-  useEffect(() => {
-    if (!isAtBottom || !bottomRef.current) return
-    bottomRef.current.scrollIntoView({ behavior: reduced ? "auto" : "smooth" })
-  }, [events.length, streamingTextsSize, isAtBottom, reduced])
-
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    const handleScroll = () => {
-      const threshold = 80
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
-      setIsAtBottom(atBottom)
-      setShowScrollButton(!atBottom)
-    }
-    el.addEventListener("scroll", handleScroll, { passive: true })
-    return () => el.removeEventListener("scroll", handleScroll)
-  }, [])
-
-  const scrollToBottom = useCallback(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: reduced ? "auto" : "smooth",
-    })
-  }, [reduced])
-
-  const hasItems = events.length > 0 || sessionOrder.length > 0
 
   const conversationTurns: ConversationTurn[] = useMemo(() => {
     const sessions = useTimelineStore.getState().agentSessions
@@ -107,9 +124,48 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
     return turns
   }, [events, sessionOrder])
 
+  const virtualizer = useVirtualizer({
+    count: conversationTurns.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => TURN_ESTIMATED_HEIGHT,
+    overscan: 5,
+  })
+
+  const lastTurnCount = useRef(0)
+  const isAutoScrolling = useRef(false)
+
+  useEffect(() => {
+    if (!isAtBottom || conversationTurns.length === 0) return
+    if (conversationTurns.length > lastTurnCount.current) {
+      isAutoScrolling.current = true
+      virtualizer.scrollToIndex(conversationTurns.length - 1, { align: "end", behavior: reduced ? "auto" : "smooth" })
+    }
+    lastTurnCount.current = conversationTurns.length
+  }, [conversationTurns.length, streamingTextsSize, virtualizer, isAtBottom, reduced])
+
+  useEffect(() => {
+    const el = parentRef.current
+    if (!el) return
+    const handleScroll = () => {
+      const threshold = 80
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+      setIsAtBottom(atBottom)
+      setShowScrollButton(!atBottom)
+    }
+    el.addEventListener("scroll", handleScroll, { passive: true })
+    return () => el.removeEventListener("scroll", handleScroll)
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    virtualizer.scrollToIndex(conversationTurns.length - 1, { align: "end", behavior: reduced ? "auto" : "smooth" })
+  }, [virtualizer, conversationTurns.length, reduced])
+
+  const hasItems = events.length > 0 || sessionOrder.length > 0
+  const turnCount = conversationTurns.length
+
   return (
     <div className="relative h-full">
-      <div ref={scrollRef}
+      <div ref={parentRef}
         className="h-full overflow-y-auto scrollbar-thin"
         style={{ scrollbarColor: "var(--border-subtle) transparent" }}
         role="log" aria-label="Conversation" aria-live="polite"
@@ -118,45 +174,28 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
           {!hasItems ? (
             <EmptyState onSendMessage={onSendMessage} className="py-16" />
           ) : (
-            <div className="py-3 space-y-4">
-              {conversationTurns.map((turn, idx) => {
-                const isLatestTurn = idx === conversationTurns.length - 1
+            <div className="py-3 relative" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+              {virtualizer.getVirtualItems().map((virtualItem) => {
+                const turn = conversationTurns[virtualItem.index]
+                if (!turn) return null
                 return (
-                  <motion.div key={turn.userEvent?.id ?? `turn-${idx}`} {...ANIM.fadeIn} className="space-y-2">
-                    {turn.userEvent && (
-                      <>
-                        {(() => {
-                          const refs = messageReferences.get(turn.userEvent.correlationId ?? turn.userEvent.id)
-                          return refs && refs.length > 0 ? <ReferenceChipRow references={refs} /> : null
-                        })()}
-                        <UserPill content={turn.userEvent.content} timestamp={turn.userEvent.timestamp} />
-                        {currentPack && <ContextBreakdown pack={currentPack} />}
-                      </>
-                    )}
-                    <UnifiedAssistantResponse key={turn.userEvent?.id ?? `turn-${idx}`}
-                      stepIds={turn.sessionIds}
-                      isLatest={isLatestTurn}
-                      onRetry={onSendMessage}
-                      originalInput={turn.userEvent?.content}
+                  <div
+                    key={turn.userEvent?.id ?? `turn-${virtualItem.index}`}
+                    className="absolute left-0 w-full px-3"
+                    style={{ transform: `translateY(${virtualItem.start}px)` }}
+                  >
+                    <TurnContent
+                      turn={turn}
+                      isLatest={virtualItem.index === turnCount - 1}
+                      idx={virtualItem.index}
+                      turnCount={turnCount}
+                      onSendMessage={onSendMessage}
+                      messageReferences={messageReferences}
+                      currentPack={currentPack}
                     />
-                    {idx < conversationTurns.length - 1 && (
-                      <div className="flex items-center gap-3 mx-2 my-4 select-none">
-                        <div className="flex-1 h-px" style={{
-                          background: "linear-gradient(to right, transparent, var(--border-subtle), transparent)"
-                        }} />
-                        {turn.userEvent && (
-                          <span className="text-[7px] font-mono tracking-wider uppercase whitespace-nowrap"
-                            style={{ color: "var(--text-quaternary)" }}
-                          >
-                            {new Date(turn.userEvent.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </motion.div>
+                  </div>
                 )
               })}
-              <div ref={bottomRef} />
             </div>
           )}
         </div>
@@ -200,4 +239,4 @@ export function ConversationTimeline({ onSendMessage }: ConversationTimelineProp
       </AnimatePresence>
     </div>
   )
-}
+})

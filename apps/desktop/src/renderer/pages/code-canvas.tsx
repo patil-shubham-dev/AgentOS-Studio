@@ -6,7 +6,7 @@ import { useAgentStore } from "@/stores/agent-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 
 import { loadFileTree, readFile, createFile, createFolder } from "@/lib/filesystem"
-import { pickWorkspaceFolder, startWatching, onFileChange } from "@/lib/workspace"
+import { addRecentWorkspace, getRecentWorkspaces, pickWorkspaceFolder, startWatching, onFileChange, type RecentWorkspace } from "@/lib/workspace"
 import type { FileEntry } from "@/types"
 import { safeCapitalize } from "@/lib/safeCapitalize"
 import { workspaceIndex } from "@/lib/search-index"
@@ -22,8 +22,8 @@ import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
 
 import { dirtyBufferManager, type DirtyBuffer } from "@/lib/dirty-buffer-manager"
 import { DirtyBufferRecoveryDialog } from "@/components/workspace/DirtyBufferRecoveryDialog"
-import { PremiumGeometricEmptyState } from "@/components/workspace/PremiumGeometricEmptyState"
 import { WorkflowModeIndicator } from "@/components/workspace/WorkflowModeIndicator"
+import { WorkspaceEmptyState } from "@/components/workspace/WorkspaceEmptyState"
 import { GlobalSearch } from "@/components/workspace/global-search"
 import { ShortcutHint } from "@/components/ui/ShortcutHint"
 import { CommandPalette } from "@/components/workspace/command-palette"
@@ -47,7 +47,7 @@ import { WorkspacePanelController, type WorkspacePanel } from "@/lib/workspace-p
 import { useLeakTracker } from "@/performance/leak-detector"
 import {
   PanelRightClose, PanelRight, PanelLeftClose, PanelLeft,
-  FolderOpen, Loader2,
+  Loader2,
   XCircle,
   FileDiff,
 } from "lucide-react"
@@ -153,6 +153,7 @@ export function CodeCanvasPage() {
   const hasStaleConfig = useWorkspaceRuntime((s) => s.hasStaleConfig)
   const [recoveredBuffers, setRecoveredBuffers] = useState<DirtyBuffer[]>([])
   const [missingWorkspace, setMissingWorkspace] = useState<string | null>(null)
+  const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspace[]>([])
   const refreshRuntime = useWorkspaceRuntime((s) => s.refresh)
   const initializeRuntime = useWorkspaceRuntime((s) => s.initialize)
   const openFile = useWorkspaceStore((s) => s.openFile)
@@ -276,10 +277,8 @@ export function CodeCanvasPage() {
     if (fileTree.length > 0) return
     if (loadingTreeRef.current) return
     loadingTreeRef.current = true
-    console.log("[CodeCanvas] rootPath set but fileTree empty — loading tree", { rootPath })
     setLoading(true)
     loadFileTree(rootPath).then((tree) => {
-      console.log(`[CodeCanvas] File tree loaded: ${tree.length} roots, ${countAllNodes(tree)} total nodes`)
       setFileTree(tree)
       startWatching(rootPath)
     }).catch((err) => {
@@ -289,15 +288,6 @@ export function CodeCanvasPage() {
       loadingTreeRef.current = false
     })
   }, [rootPath])
-
-  function countAllNodes(entries: FileEntry[]): number {
-    let count = 0
-    for (const e of entries) {
-      count++
-      if (e.is_dir) count += countAllNodes(e.children)
-    }
-    return count
-  }
 
   async function loadRestoredFileContent(rp: string) {
     const state = useWorkspaceStore.getState()
@@ -364,7 +354,6 @@ export function CodeCanvasPage() {
     if (!storedRoot) return
     if (loadingTreeRef.current) return
     loadingTreeRef.current = true
-    console.log('[CodeCanvas] Restoring workspace from localStorage:', storedRoot)
     setRootPath(storedRoot)
     setLoading(true)
     loadFileTree(storedRoot).then((tree) => {
@@ -374,7 +363,6 @@ export function CodeCanvasPage() {
         setLoading(false)
         return
       }
-      console.log(`[CodeCanvas] Restored file tree: ${tree.length} roots`)
       setFileTree(tree)
       startWatching(storedRoot)
       restoreWorkspaceState()
@@ -409,14 +397,37 @@ export function CodeCanvasPage() {
   }, [openFilesSnapshot, activeFileSnapshot, cursorSnapshot, persistWorkspaceState])
 
   // ── Workspace operations ──
-  async function openWorkspace() {
-    const folder = await pickWorkspaceFolder()
-    if (!folder) return
+  useEffect(() => {
+    refreshRecentWorkspaces()
+  }, [])
+
+  async function refreshRecentWorkspaces() {
+    try {
+      setRecentWorkspaces(await getRecentWorkspaces())
+    } catch {
+      setRecentWorkspaces([])
+    }
+  }
+
+  async function openWorkspacePath(folder: string) {
     setRootPath(folder)
     setLoading(true)
     const tree = await loadFileTree(folder)
+    if (tree.length === 0) {
+      setMissingWorkspace(folder)
+      setLoading(false)
+      return
+    }
     setFileTree(tree)
-    startWatching(folder)
+    await startWatching(folder)
+    await addRecentWorkspace(folder)
+    await refreshRecentWorkspaces()
+  }
+
+  async function openWorkspace() {
+    const folder = await pickWorkspaceFolder()
+    if (!folder) return
+    await openWorkspacePath(folder)
   }
 
   async function handleNewFile() {
@@ -690,17 +701,22 @@ export function CodeCanvasPage() {
     return () => window.removeEventListener("keydown", handleKey)
   }, [rootPath, setSessionSidebarOpen])
 
-  // ── Auto-collapse explorer on narrow screens ──
+  // ── Auto-collapse panels on narrow screens ──
   useEffect(() => {
     function handleResize() {
-      setWindowWidth(window.innerWidth)
-      if (window.innerWidth < 900 && explorerOpen) {
+      const w = window.innerWidth
+      setWindowWidth(w)
+      if (w < 900 && explorerOpen) {
         setExplorerOpen(false)
+      }
+      if (w < 700 && workspacePanelOpen) {
+        setWorkspacePanelOpen(false)
+        panelCtrlRef.current?.syncOpenState(false)
       }
     }
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
-  }, [explorerOpen])
+  }, [explorerOpen, workspacePanelOpen])
 
     // ── Persist panel state on change ──
   useEffect(() => { persistPanelState("explorerOpen", explorerOpen) }, [explorerOpen])
@@ -950,73 +966,35 @@ export function CodeCanvasPage() {
       </div>
 
       ) : (
-        <div className="flex flex-1 flex-col items-center justify-center gap-5 p-8 text-center overflow-y-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="flex flex-col items-center gap-5 max-w-sm w-full"
-          >
-            <PremiumGeometricEmptyState />
-            <div>
-              <h2 className="text-lg font-semibold text-[var(--text-secondary)]">No workspace open</h2>
-              <p className="text-sm text-[var(--text-tertiary)] mt-1.5 max-w-xs mx-auto leading-relaxed">
-                Open a project folder to start coding with AI-powered file context, safe edit reviews, and intelligent assistance.
-              </p>
-            </div>
-            <button
-              onClick={openWorkspace}
-              className="flex items-center gap-2 rounded-xl bg-[var(--accent-code)]/15 border border-[var(--accent-code)]/20 px-5 py-2.5 text-sm font-medium text-[var(--accent-code)] hover:bg-[var(--accent-code)]/25 transition-all"
-            >
-              <FolderOpen className="h-4 w-4" />
-              Open Workspace
-            </button>
-            <p className="text-[10px] text-[var(--text-quaternary)]">Or drag and drop a folder onto the window</p>
-            <div className="w-full pt-3 border-t border-[var(--border-subtle)]">
-              <p className="text-[9px] font-medium text-[var(--text-quaternary)] uppercase tracking-wider mb-2">Keyboard Shortcuts</p>
-              <div className="space-y-1">
-                {[
-                  { keys: "⌘P", desc: "Quick open" },
-                  { keys: "⌘⇧P", desc: "Command palette" },
-                  { keys: "⌘B", desc: "Toggle explorer" },
-                  { keys: "⌘J", desc: "Toggle panel" },
-                  { keys: "⌘S", desc: "Save file" },
-                  { keys: "⌘W", desc: "Close tab" },
-                  { keys: "⌘⇧S", desc: "Toggle session sidebar" },
-                ].map(({ keys, desc }) => (
-                  <div key={keys} className="flex items-center justify-between">
-                    <span className="text-[10px] text-[var(--text-quaternary)]">{desc}</span>
-                    <kbd className="text-[9px] font-mono text-[var(--text-quaternary)] bg-[var(--border-subtle)] px-1.5 py-0.5 rounded">{keys}</kbd>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        </div>
+        <WorkspaceEmptyState
+          recentWorkspaces={recentWorkspaces}
+          onOpenWorkspace={openWorkspace}
+          onOpenRecent={openWorkspacePath}
+        />
       )}
       </WorkspaceErrorBoundary>
 
-      {/* Global Search — overlay above everything */}
+      {/* Global Search overlay */}
       <GlobalSearch
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
         onOpenFile={handleSearchOpenFile}
       />
 
-      {/* Quick Open — overlay above everything */}
+      {/* Quick Open overlay */}
       <QuickOpen
         open={quickOpenOpen}
         onClose={() => setQuickOpenOpen(false)}
       />
 
-      {/* Command Palette — overlay above everything */}
+      {/* Command Palette overlay */}
       <CommandPalette
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         context={commandPaletteContext}
       />
 
-      {/* Side Chat — Cmd+; overlay */}
+      {/* Side Chat overlay */}
       <SideChat />
 
       {/* Dirty Buffer Recovery Dialog */}
@@ -1065,11 +1043,7 @@ export function CodeCanvasPage() {
                   const folder = await pickWorkspaceFolder()
                   if (folder) {
                     setMissingWorkspace(null)
-                    setRootPath(folder)
-                    setLoading(true)
-                    const tree = await loadFileTree(folder)
-                    if (tree.length > 0) setFileTree(tree)
-                    startWatching(folder)
+                    await openWorkspacePath(folder)
                   }
                 }}
                 style={{

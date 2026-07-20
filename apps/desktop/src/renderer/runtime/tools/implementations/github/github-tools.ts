@@ -1,6 +1,7 @@
 import { buildTool, ToolCapabilities, type AgentTool, type ToolContext, type ToolResult } from '../../core'
 import { GitHubClient } from '@/lib/github/github-client'
 import { reviewDiff } from './ReviewChecker'
+import { aggregateReviewResults } from './ReviewAggregator'
 import { PRReviewStore } from './PRReviewStore'
 
 function getClient(ctx: ToolContext): GitHubClient {
@@ -264,6 +265,7 @@ export const GithubCreatePullRequestTool: AgentTool = buildTool({
       base: { type: 'string', description: 'Branch name to merge into' },
       body: { type: 'string', description: 'Pull request body content' },
       draft: { type: 'boolean', description: 'Create as draft PR' },
+      skip_review: { type: 'boolean', description: 'Skip self-review before creating the PR (default: false)' },
     },
     required: ['owner', 'repo', 'title', 'head', 'base'],
   },
@@ -284,12 +286,44 @@ export const GithubCreatePullRequestTool: AgentTool = buildTool({
     const title = String(input.title ?? '')
     const head = String(input.head ?? '')
     const base = String(input.base ?? '')
+    const skipReview = Boolean(input.skip_review)
+
     if (!owner || !repo) return { data: null, error: 'owner and repo are required', isError: true }
     if (!title) return { data: null, error: 'title is required', isError: true }
     if (!head) return { data: null, error: 'head branch is required', isError: true }
     if (!base) return { data: null, error: 'base branch is required', isError: true }
+
     try {
       const client = getClient(ctx)
+
+      if (!skipReview) {
+        try {
+          const compareResult = await client.compareBranches(owner, repo, base, head)
+          const checkResult = reviewDiff(compareResult.diff)
+
+          if (!checkResult.passed) {
+            const detail = aggregateReviewResults(checkResult.results)
+            return {
+              data: null,
+              error: [
+                `Self-review found ${checkResult.results.length} issue(s) in the diff:`,
+                '',
+                detail,
+                '',
+                `To bypass this check, set skip_review=true.`,
+              ].join('\n'),
+              isError: true,
+            }
+          }
+        } catch {
+          return {
+            data: null,
+            error: 'Self-review failed: could not compare branches. Check that both branches exist. Set skip_review=true to bypass.',
+            isError: true,
+          }
+        }
+      }
+
       const pr = await client.createPullRequest(owner, repo, {
         title,
         head,
@@ -298,26 +332,12 @@ export const GithubCreatePullRequestTool: AgentTool = buildTool({
         draft: input.draft as boolean | undefined,
       })
 
-      let selfReviewMsg = ''
+      let selfReviewMsg = skipReview ? '' : '\n\n✅ **Self-review passed**: No issues detected.'
       try {
-        const diffText = await client.getPullRequestDiff(owner, repo, pr.number)
-        if (diffText) {
-          const checkResult = reviewDiff(diffText)
-          if (!checkResult.passed) {
-            selfReviewMsg = `\n\n---\n### 🤖 Self-Review\n${checkResult.summary}\n\nIssues found:\n`
-            for (const r of checkResult.results.slice(0, 10)) {
-              selfReviewMsg += `- [${r.severity}] ${r.file}:${r.line} — ${r.message}\n`
-            }
-            if (checkResult.results.length > 10) {
-              selfReviewMsg += `- ... and ${checkResult.results.length - 10} more\n`
-            }
-
-            await client.createPullRequestReview(owner, repo, pr.number, {
-              body: selfReviewMsg,
-              event: 'COMMENT',
-            })
-            selfReviewMsg += '\n\n_A self-review comment has been posted._'
-
+        if (!skipReview) {
+          const compareResult = await client.compareBranches(owner, repo, base, head)
+          const checkResult = reviewDiff(compareResult.diff)
+          if (checkResult.passed) {
             PRReviewStore.getInstance().add({
               id: `${owner}/${repo}/pr/${pr.number}`,
               owner,
@@ -325,17 +345,15 @@ export const GithubCreatePullRequestTool: AgentTool = buildTool({
               prNumber: pr.number,
               prTitle: pr.title || '',
               event: 'COMMENT',
-              summary: checkResult.summary,
-              autoCheckPassed: checkResult.passed,
+              summary: 'Self-review passed',
+              autoCheckPassed: true,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             })
-          } else {
-            selfReviewMsg = '\n\n✅ **Self-review**: No issues detected.'
           }
         }
       } catch {
-        selfReviewMsg = '\n\n⚠️ Self-review skipped (could not fetch diff).'
+        selfReviewMsg = '\n\n⚠️ Self-review record not saved.'
       }
 
       return { data: `✅ Pull request created successfully!\n\n${formatPullRequest(pr as unknown as Record<string, unknown>)}\n\n🔗 ${pr.html_url}${selfReviewMsg}` }
