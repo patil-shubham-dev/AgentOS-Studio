@@ -3,15 +3,12 @@ import { WordBoundaryStreamBuffer } from "./WordBoundaryStreamBuffer"
 
 type StreamFlushCallback = (stepId: string, delta: string) => void
 
-const MAX_CONSECUTIVE_MICROTASK_FLUSHES = 5
-
 export class StreamManager {
   private static instance: StreamManager
-  private flushScheduled: "raf" | "microtask" | null = null
+  private flushScheduled: "raf" | null = null
   private rafId: number | null = null
   private flushCallback: StreamFlushCallback | null = null
   private cancelled = false
-  private microtaskFlushCount = 0
   private idle = true
   private lastActivityAt = Date.now()
   private droppedTokenCount = 0
@@ -37,7 +34,6 @@ export class StreamManager {
     this.cancelled = false
     this.wordBuffer.clearAll()
     this.flushScheduled = null
-    this.microtaskFlushCount = 0
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId)
       this.rafId = null
@@ -57,15 +53,10 @@ export class StreamManager {
     this.idle = false
     this.lastActivityAt = Date.now()
 
-    const result = this.wordBuffer.append(stepId, token)
-    if (result !== null) {
-      this.dispatch(stepId, result)
-      return
-    }
-
-    if (priority) {
-      this.scheduleFlush()
-    }
+    this.wordBuffer.append(stepId, token)
+    // Coalesce provider chunks to the browser paint cadence. This prevents a
+    // Zustand update and React render for every streamed word/token.
+    this.scheduleRafFlush()
   }
 
   private dispatch(stepId: string, text: string): void {
@@ -79,28 +70,7 @@ export class StreamManager {
     }
   }
 
-  private scheduleFlush(): void {
-    if (this.microtaskFlushCount >= MAX_CONSECUTIVE_MICROTASK_FLUSHES) {
-      this.microtaskFlushCount = 0
-      this.scheduleRafFlush()
-      return
-    }
-    if (this.flushScheduled === "microtask") return
-    this.flushScheduled = "microtask"
-    if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId)
-      this.rafId = null
-    }
-    this.microtaskFlushCount++
-    queueMicrotask(() => {
-      if (this.flushScheduled !== "microtask") return
-      this.flushScheduled = null
-      this.flush()
-    })
-  }
-
   private scheduleRafFlush(): void {
-    this.microtaskFlushCount = 0
     if (this.flushScheduled === "raf") return
     this.flushScheduled = "raf"
     this.rafId = requestAnimationFrame(() => {
@@ -111,7 +81,6 @@ export class StreamManager {
   }
 
   private flush(): void {
-    this.microtaskFlushCount = 0
     const pending = this.wordBuffer.flushAll()
     if (pending.length === 0) {
       this.checkIdle()
@@ -160,7 +129,6 @@ export class StreamManager {
     this.wordBuffer.clearAll()
     this.flushScheduled = null
     this.cancelled = true
-    this.microtaskFlushCount = 0
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId)
       this.rafId = null

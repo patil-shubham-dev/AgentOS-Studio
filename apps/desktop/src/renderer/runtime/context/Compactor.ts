@@ -126,10 +126,45 @@ export class Compactor {
     return autoResult
   }
 
+  private readonly COMPACTABLE_TOOL_RESULTS = new Set([
+    'read_file', 'bash', 'run_command',
+    'grep_files', 'glob_files',
+    'web_search', 'web_fetch',
+    'edit_file', 'write_file',
+  ])
+
   shouldMicroCompact(messages: MessageLike[]): boolean {
     const budgetState = this.budgetTracker.getBudgetState()
     if (messages.length > this.config.messageCountHardLimit) return true
     return budgetState.percentageUsed >= this.config.microCompactThreshold * 100
+  }
+
+  private microCompactContent(messages: MessageLike[]): MessageLike[] {
+    let lastUserIndex = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const role = (messages[i] as any).role ?? (messages[i] as any).type
+      if (role === 'user') { lastUserIndex = i; break }
+    }
+
+    return messages.map((msg, i) => {
+      if (i >= lastUserIndex) return msg
+      if ((msg as any).role !== 'tool') return msg
+      const toolName = this.extractToolName(msg)
+      if (!toolName || !this.COMPACTABLE_TOOL_RESULTS.has(toolName)) return msg
+      return {
+        ...msg,
+        content: `[${toolName} result from earlier — content cleared to save space]`,
+        metadata: { ...((msg as any).metadata ?? {}), compacted: true, originalLength: ((msg as any).content ?? '').length },
+      } as MessageLike
+    })
+  }
+
+  private extractToolName(msg: MessageLike): string | null {
+    const m = msg as any
+    if (typeof m.tool_name === 'string') return m.tool_name
+    if (typeof m.name === 'string') return m.name
+    if (typeof m.tool === 'string') return m.tool
+    return null
   }
 
   microCompact(messages: MessageLike[]): CompactResult {
@@ -154,8 +189,8 @@ export class Compactor {
       .sort((a, b) => b[1] - a[1])
 
     const removeIndices = new Set(sortedByToolCalls.slice(0, Math.min(5, sortedByToolCalls.length)).map(([i]) => i))
-
-    const retainedConv = conversation.filter((_, i) => !removeIndices.has(i))
+    const contentCompacted = this.microCompactContent(conversation)
+    const retainedConv = contentCompacted.filter((_, i) => !removeIndices.has(i))
     const retained = [...system, ...retainedConv]
     const afterTokens = TokenEstimator.tokenCountWithEstimation(retained)
 

@@ -23,6 +23,7 @@ export interface PatternMatchResult {
   warning: string | null
 }
 
+const MAX_PATTERNS = 500
 const PATTERNS_KEY = "agentic_failure_patterns"
 
 export class FailurePatternMemory {
@@ -148,6 +149,7 @@ export class FailurePatternMemory {
         this.patterns = JSON.parse(raw)
       }
     } catch {
+      console.error("[FailurePatternMemory] Failed to load patterns from disk — corrupt or unreadable file?")
     }
     this.loaded = true
   }
@@ -161,6 +163,7 @@ export class FailurePatternMemory {
       const filePath = path.join(configDir, `${PATTERNS_KEY}.json`)
       fs.writeFileSync(filePath, JSON.stringify(this.patterns, null, 2), "utf-8")
     } catch {
+      console.error("[FailurePatternMemory] Failed to save patterns to disk")
     }
   }
 
@@ -196,6 +199,10 @@ export class FailurePatternMemory {
       successRate: repairSucceeded ? 1 : 0,
     }
 
+    if (this.patterns.length >= MAX_PATTERNS) {
+      this.patterns.sort((a, b) => a.lastSeen - b.lastSeen)
+      this.patterns.splice(0, Math.ceil(MAX_PATTERNS * 0.2))
+    }
     this.patterns.push(pattern)
     return pattern
   }

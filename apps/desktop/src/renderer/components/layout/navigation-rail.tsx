@@ -34,8 +34,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "settings", label: "Settings", icon: <Settings className="h-5 w-5" />, route: "/settings" },
 ]
 
-const COLLAPSED_WIDTH = 52
-const EXPANDED_WIDTH = 220
+const COLLAPSED_WIDTH = 44
+const EXPANDED_WIDTH = 200
 
 const springPreset: Transition = { type: "spring", stiffness: 400, damping: 30 }
 const labelTransition = { duration: DURATION.fast, ease: EASING.default }

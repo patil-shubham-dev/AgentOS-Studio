@@ -60,3 +60,44 @@ export function PreviewPanelIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
+
+/**
+ * Agent Signal — lightweight animated motif using only CSS transforms and opacity.
+ * Three concentric circles that pulse with a staggered delay to suggest
+ * active listening/thinking. Respects prefers-reduced-motion.
+ */
+export function AgentSignal({ size = 12, active = true }: { size?: number; active?: boolean }) {
+  return (
+    <span
+      className="relative inline-flex items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      <span
+        className="absolute inset-0 rounded-full motion-safe:animate-ping"
+        style={{
+          backgroundColor: "var(--color-ai)",
+          opacity: active ? 0.2 : 0,
+          animationDuration: "2s",
+          animationDelay: "0s",
+        }}
+      />
+      <span
+        className="absolute inset-0 rounded-full motion-safe:animate-ping"
+        style={{
+          backgroundColor: "var(--color-ai)",
+          opacity: active ? 0.15 : 0,
+          animationDuration: "2s",
+          animationDelay: "0.4s",
+        }}
+      />
+      <span
+        className="absolute inset-0 rounded-full"
+        style={{
+          backgroundColor: active ? "var(--color-ai)" : "var(--color-ai-muted)",
+          opacity: active ? 0.5 : 0.3,
+          transform: "scale(0.6)",
+        }}
+      />
+    </span>
+  )
+}

@@ -1,14 +1,14 @@
 import type { BudgetState, MessageLike } from './context-types'
 import { TokenEstimator } from './TokenEstimator'
 import { ContextWindowResolver } from './ContextWindowResolver'
+import { TokenBudget } from './TokenBudget'
 
 /**
  * Per-task budget tracker.
  *
- * NOTE: This shares the same budget formula as TokenBudgetManager (contextWindow alone).
- * The 'remaining' tracking here is per-task (a single execution turn), while
- * TokenBudgetManager tracks globally across all agents and tasks.
- * Both should produce consistent 'percentage used' for the same base contextWindow.
+ * Uses TokenBudget (shared with TokenBudgetManager) for the base arithmetic.
+ * This tracker adds per-task concerns: auto-continuation decisions,
+ * diminishing returns detection, and output token accounting.
  */
 
 const COMPLETION_THRESHOLD = 0.9
@@ -26,26 +26,22 @@ export type BudgetDecision = {
 
 export class TokenBudgetTracker {
   private resolver: ContextWindowResolver
+  private budget: TokenBudget
   private continuationCount = 0
   private lastDeltaTokens = 0
   private lastGlobalTurnTokens = 0
-  private taskBudget = 0
-  private remainingBudget = 0
   private outputTokensUsed = 0
   private autoContinueTriggered = false
   private startedAt = 0
 
   constructor(resolver: ContextWindowResolver) {
     this.resolver = resolver
+    this.budget = new TokenBudget()
   }
 
   initializeTask(model: string, betas?: string[]): void {
     const ctxConfig = this.resolver.getModelConfig(model)
-    // Uses contextWindow alone (not contextWindow + maxOutputTokens) to stay
-    // consistent with TokenBudgetManager's formula. Output tokens are accounted
-    // separately via updateAfterResponse().
-    this.taskBudget = ctxConfig.contextWindow
-    this.remainingBudget = this.taskBudget
+    this.budget.reset(ctxConfig.contextWindow)
     this.outputTokensUsed = 0
     this.autoContinueTriggered = false
     this.continuationCount = 0
@@ -58,7 +54,7 @@ export class TokenBudgetTracker {
     const finalWindowTokens = TokenEstimator.finalContextTokensFromLastResponse(messages)
     if (finalWindowTokens > 0) {
       this.lastGlobalTurnTokens = finalWindowTokens
-      this.remainingBudget = Math.max(0, this.taskBudget - finalWindowTokens)
+      this.budget.setUsage(finalWindowTokens)
     }
     const outputTokens = TokenEstimator.messageOutputTokensFromLastResponse(messages)
     if (outputTokens > 0) {
@@ -67,7 +63,7 @@ export class TokenBudgetTracker {
   }
 
   shouldAutoContinue(): boolean {
-    if (this.remainingBudget <= 3_000) {
+    if (this.budget.remaining <= 3_000) {
       this.autoContinueTriggered = true
       this.continuationCount++
       return true
@@ -76,7 +72,7 @@ export class TokenBudgetTracker {
   }
 
   checkBudget(globalTurnTokens: number): BudgetDecision {
-    const pct = Math.round((globalTurnTokens / this.taskBudget) * 100)
+    const pct = Math.round((globalTurnTokens / this.budget.total) * 100)
     const deltaSinceLastCheck = globalTurnTokens - this.lastGlobalTurnTokens
 
     const isDiminishing =
@@ -84,17 +80,17 @@ export class TokenBudgetTracker {
       deltaSinceLastCheck < DIMINISHING_THRESHOLD &&
       this.lastDeltaTokens < DIMINISHING_THRESHOLD
 
-    if (!isDiminishing && globalTurnTokens < this.taskBudget * COMPLETION_THRESHOLD) {
+    if (!isDiminishing && globalTurnTokens < this.budget.total * COMPLETION_THRESHOLD) {
       this.continuationCount++
       this.lastDeltaTokens = deltaSinceLastCheck
       this.lastGlobalTurnTokens = globalTurnTokens
       return {
         action: 'continue',
-        nudgeMessage: `Used ${pct}% of budget (${globalTurnTokens}/${this.taskBudget} tokens). Continue.`,
+        nudgeMessage: `Used ${pct}% of budget (${globalTurnTokens}/${this.budget.total} tokens). Continue.`,
         continuationCount: this.continuationCount,
         pct,
         turnTokens: globalTurnTokens,
-        budget: this.taskBudget,
+        budget: this.budget.total,
         diminishingReturns: false,
       }
     }
@@ -104,7 +100,7 @@ export class TokenBudgetTracker {
       continuationCount: this.continuationCount,
       pct,
       turnTokens: globalTurnTokens,
-      budget: this.taskBudget,
+      budget: this.budget.total,
       diminishingReturns: isDiminishing,
     }
   }
@@ -114,26 +110,23 @@ export class TokenBudgetTracker {
   }
 
   shouldWarning(): boolean {
-    if (this.remainingBudget <= 20_000) return true
-    return this.getPercentageUsed() >= 75
+    if (this.budget.remaining <= 20_000) return true
+    return this.budget.percentageUsed >= 75
   }
 
   getBudgetState(): BudgetState {
-    const percentageUsed = this.getPercentageUsed()
     return {
-      total: this.taskBudget,
-      used: this.taskBudget - this.remainingBudget,
-      remaining: this.remainingBudget,
+      total: this.budget.total,
+      used: this.budget.used,
+      remaining: this.budget.remaining,
       outputTokens: this.outputTokensUsed,
-      percentageUsed,
+      percentageUsed: this.budget.percentageUsed,
       autoContinueTriggered: this.autoContinueTriggered,
     }
   }
 
   getPercentageUsed(): number {
-    if (this.taskBudget === 0) return 0
-    const used = this.taskBudget - this.remainingBudget
-    return Math.round((used / this.taskBudget) * 100)
+    return this.budget.percentageUsed
   }
 
   getConsecutiveAutoContinues(): number {
@@ -141,11 +134,10 @@ export class TokenBudgetTracker {
   }
 
   getRemainingBudget(): number {
-    return this.remainingBudget
+    return this.budget.remaining
   }
 
   shouldCompact(threshold: number): boolean {
-    const used = this.taskBudget - this.remainingBudget
-    return used >= threshold
+    return this.budget.used >= threshold
   }
 }

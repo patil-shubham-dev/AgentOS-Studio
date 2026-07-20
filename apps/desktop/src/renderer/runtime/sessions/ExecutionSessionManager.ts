@@ -163,8 +163,6 @@ export class ExecutionSessionManager {
     const requestId = createRequestTrace(options.input)
     traceStage(requestId, "ExecutionSessionManager.start", { inputLen: options.input.length, role: options.activeRole, correlationId: options.correlationId })
     execTrace("ExecutionSessionManager.start", _traceId, { inputLen: options.input.length, role: options.activeRole, correlationId: options.correlationId })
-    console.trace(`[XTRACE:${_traceId}] SessionManager.start CALL STACK`)
-    console.log(`${mgrTag} ▶ start (inputLen=${options.input.length}, role=${options.activeRole}, correlationId=${options.correlationId})`)
 
     // Clear committed set for this correlationId
     const reqCorrId = options.correlationId
@@ -289,8 +287,6 @@ export class ExecutionSessionManager {
         clearTimeout(durationTimeout)
       }
 
-      console.log(`${mgrTag} ✓ event stream ended (${Math.round(performance.now() - sessionStartTime)}ms, events=${eventCount})`)
-
       // Safety net: force-complete any agent sessions still in "streaming" state.
       // This prevents the UI from hanging on "Thinking..." indefinitely when a
       // MESSAGE_COMPLETE event was never emitted (e.g. swallowed error, silent empty
@@ -303,7 +299,7 @@ export class ExecutionSessionManager {
         const sess = tlAfter.agentSessions.get(stepId)
         if (sess && (sess.streamState === "streaming" || sess.streamState === "loading_slowly")) {
           console.warn(`[SessionManager] Force-completing stuck agent session ${stepId} (state=${sess.streamState})`)
-          StreamManager.getInstance().clearStep(stepId)
+          StreamManager.getInstance().complete(stepId)
           tlAfter.commitStreamingText(stepId)
           tlAfter.updateAgentSession(stepId, { status: "complete", streamState: "completed", completedAt: Date.now() })
         }
@@ -395,7 +391,7 @@ export class ExecutionSessionManager {
       for (const [, stepId] of this.stepByExecId) { allErrorSteps.add(stepId) }
       for (const [, stepIds] of this.stepHistoryByExecId) { for (const sid of stepIds) allErrorSteps.add(sid) }
       for (const stepId of allErrorSteps) {
-        StreamManager.getInstance().clearStep(stepId)
+        StreamManager.getInstance().complete(stepId)
         timeline.commitStreamingText(stepId)
         timeline.flushPendingText(stepId)
         timeline.updateAgentSession(stepId, { status: "complete", streamState: "cancelled" })
@@ -430,7 +426,6 @@ export class ExecutionSessionManager {
     this.pruneSessions()
 
     this.activeSessionId = null
-    console.log(`${mgrTag} ✓ return session ${id} (${Date.now() - sessionStartTime}ms, status=${session.status})`)
     return session
   }
 
@@ -540,8 +535,9 @@ export class ExecutionSessionManager {
         const isError = finishReason === "error"
         const corrId = options.correlationId ?? event.correlationId
 
-        timeline.commitStreamingText(event.stepId)
-        StreamManager.getInstance().clearStep(event.stepId)
+        const sessionStepId = this.stepByExecId.get(event.executionId) ?? event.stepId
+        StreamManager.getInstance().complete(sessionStepId)
+        timeline.commitStreamingText(sessionStepId)
 
         if (isError) {
           const errorMsg = (event as any).content || event.content || "Request failed — provider returned an error"
@@ -847,8 +843,8 @@ export class ExecutionSessionManager {
 
         const efStepId = this.stepByExecId.get(event.executionId)
         if (efStepId) {
+          StreamManager.getInstance().complete(efStepId)
           timeline.commitStreamingText(efStepId)
-          StreamManager.getInstance().clearStep(efStepId)
           timeline.updateAgentSession(efStepId, {
             status: wasCancelled ? "complete" : "error",
             streamState: wasCancelled ? "cancelled" : "failed",
@@ -1072,7 +1068,7 @@ export class ExecutionSessionManager {
       case "GOAL_ACHIEVED": {
         // Goal achieved — final cleanup
         for (const [eid, stepId] of this.stepByExecId) {
-          StreamManager.getInstance().clearStep(stepId)
+          StreamManager.getInstance().complete(stepId)
           timeline.commitStreamingText(stepId)
           timeline.updateAgentSession(stepId, { status: "complete", streamState: "completed" })
         }
@@ -1099,8 +1095,9 @@ export class ExecutionSessionManager {
 
       case "TOKEN": {
         const tokenStepId = this.stepByExecId.get(event.executionId)
+        const tokenText = (event as any).token ?? ""
         if (tokenStepId) {
-          StreamManager.getInstance().append(tokenStepId, (event as any).token ?? "")
+          StreamManager.getInstance().append(tokenStepId, tokenText)
         }
         // First token arrived — clear the loading_slowly timeout
         const tTimeout = this.loadingSlowTimeouts.get(event.executionId)
@@ -1309,7 +1306,8 @@ export class ExecutionSessionManager {
     session.status = "cancelled"
     session.completedAt = Date.now()
 
-    // 1. Stop all streams immediately
+    // 1. Flush all pending word-buffer text to streamingTexts, then clear buffer
+    StreamManager.getInstance().flushImmediate()
     StreamManager.getInstance().clearAll()
 
     // 2. Abort any active runtime

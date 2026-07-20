@@ -6,13 +6,10 @@ export type ExecutionEventType =
   | "THINKING_STARTED"
   | "THINKING_UPDATE"
   | "PLAN_CREATED"
-  | "PLAN_UPDATED"
   | "TOOL_START"
   | "TOOL_PROGRESS"
   | "TOOL_COMPLETE"
   | "TOOL_ERROR"
-  | "FILE_READ"
-  | "FILE_WRITE"
   | "FILE_EDIT"
   | "CONTEXT_LOADING"
   | "CONTEXT_READY"
@@ -31,7 +28,6 @@ export type ExecutionEventType =
   | "ACTION"
   | "SYNTHESIS_COMPLETE"
   | "TOOLS_EXPOSED"
-  | "FALLBACK_ACTIVATED"
   | "VERIFY_PASSED"
   | "VERIFY_FAILED"
   | "GOAL_ACHIEVED"
@@ -48,7 +44,6 @@ export type ExecutionEventType =
   | "BROWSER_NAVIGATE"
   | "BROWSER_CLICK"
   | "BROWSER_TYPE"
-  | "BROWSER_SCROLL"
   | "BROWSER_SCREENSHOT"
   | "BROWSER_DOM_CAPTURE"
   | "BROWSER_JS_EXECUTED"
@@ -98,13 +93,6 @@ export interface PlanCreatedEvent {
   timestamp: number
 }
 
-export interface PlanUpdatedEvent {
-  type: "PLAN_UPDATED"
-  executionId: string
-  steps: string[]
-  timestamp: number
-}
-
 export interface ToolStartEvent {
   type: "TOOL_START"
   executionId: string
@@ -141,23 +129,6 @@ export interface ToolErrorEvent {
   toolName: string
   error: string
   durationMs: number
-  timestamp: number
-}
-
-export interface FileReadEvent {
-  type: "FILE_READ"
-  executionId: string
-  path: string
-  content?: string
-  timestamp: number
-}
-
-export interface FileWriteEvent {
-  type: "FILE_WRITE"
-  executionId: string
-  path: string
-  additions: number
-  deletions: number
   timestamp: number
 }
 
@@ -219,15 +190,6 @@ export interface ReasoningTokenEvent {
   timestamp: number
 }
 
-export interface FallbackActivatedEvent {
-  type: "FALLBACK_ACTIVATED"
-  executionId: string
-  fromModel: string
-  toModel: string
-  reason: string
-  timestamp: number
-}
-
 export interface ToolsExposedEvent {
   type: "TOOLS_EXPOSED"
   executionId: string
@@ -254,8 +216,8 @@ export interface MessageCompleteEvent {
   content: string
   finishReason: string | null
   timestamp: number
-  tokensIn?: number
-  tokensOut?: number
+  tokensIn: number
+  tokensOut: number
 }
 
 export interface ExecutionCompleteEvent {
@@ -453,16 +415,6 @@ export interface BrowserTypeEvent {
   timestamp: number
 }
 
-export interface BrowserScrollEvent {
-  type: "BROWSER_SCROLL"
-  executionId: string
-  sessionId: string
-  tabId: string
-  x: number
-  y: number
-  timestamp: number
-}
-
 export interface BrowserScreenshotEvent {
   type: "BROWSER_SCREENSHOT"
   executionId: string
@@ -535,13 +487,10 @@ export type ExecutionEvent =
   | (ThinkingStartedEvent & ExecutionTraceable)
   | (ThinkingUpdateEvent & ExecutionTraceable)
   | (PlanCreatedEvent & ExecutionTraceable)
-  | (PlanUpdatedEvent & ExecutionTraceable)
   | (ToolStartEvent & ExecutionTraceable)
   | (ToolProgressEvent & ExecutionTraceable)
   | (ToolCompleteEvent & ExecutionTraceable)
   | (ToolErrorEvent & ExecutionTraceable)
-  | (FileReadEvent & ExecutionTraceable)
-  | (FileWriteEvent & ExecutionTraceable)
   | (FileEditEvent & ExecutionTraceable)
   | (ContextLoadingEvent & ExecutionTraceable)
   | (ContextReadyEvent & ExecutionTraceable)
@@ -559,7 +508,6 @@ export type ExecutionEvent =
   | (CommandErrorEvent & ExecutionTraceable)
   | (ActionEvent & ExecutionTraceable)
   | (SynthesisCompleteEvent & ExecutionTraceable)
-  | (FallbackActivatedEvent & ExecutionTraceable)
   | (ToolsExposedEvent & ExecutionTraceable)
   | (VerifyPassedEvent & ExecutionTraceable)
   | (VerifyFailedEvent & ExecutionTraceable)
@@ -573,7 +521,6 @@ export type ExecutionEvent =
   | (BrowserNavigateEvent & ExecutionTraceable)
   | (BrowserClickEvent & ExecutionTraceable)
   | (BrowserTypeEvent & ExecutionTraceable)
-  | (BrowserScrollEvent & ExecutionTraceable)
   | (BrowserScreenshotEvent & ExecutionTraceable)
   | (BrowserDomCaptureEvent & ExecutionTraceable)
   | (BrowserJsExecutedEvent & ExecutionTraceable)

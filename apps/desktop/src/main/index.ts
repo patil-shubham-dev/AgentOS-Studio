@@ -81,13 +81,15 @@ app.whenReady().then(async () => {
 
   // Set Content-Security-Policy via session.webRequest for defense-in-depth
   // Note: CSP is also set in the HTML meta tag; this is redundant but kept for defense-in-depth
+  // In dev mode, allow 'unsafe-inline' for Vite's HMR and React DevTools preamble
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    const scriptSrc = app.isPackaged ? "'self'" : "'self' 'unsafe-inline' 'unsafe-eval'"
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         "Content-Security-Policy": [
-          "default-src 'self'; " +
-          "script-src 'self'; " +
+          `default-src 'self'; ` +
+          `script-src ${scriptSrc}; ` +
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
           "img-src 'self' data: blob: asset: resource:; " +
           "font-src 'self' data: https://fonts.gstatic.com; " +

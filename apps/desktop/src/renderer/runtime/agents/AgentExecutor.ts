@@ -32,7 +32,9 @@ import { toolResultCache } from "@/runtime/tools/core/ToolResultCache"
 import { pluginRegistry } from "@/runtime/plugins/PluginRegistry"
 import { providerGateway } from "@/runtime/providers/ProviderGateway"
 import type { GatewayRequest } from "@/runtime/providers/ProviderGateway"
+import { PerformanceTracker } from "@/runtime/execution/PerformanceTracker"
 import { SkillMatcher } from "@/runtime/skills/SkillMatcher"
+import { runtimeDebugLog, runtimeDebugTrace } from "@/runtime/runtime-debug"
 
 const TOOL_OUTPUT_MAX_CHARS = 50000
 
@@ -107,7 +109,7 @@ export class AgentExecutor {
   async *execute(): AsyncGenerator<ExecutionEvent> {
     const _traceId = this.correlationId ?? this.executionId
     execTrace("AgentExecutor.execute", _traceId, { mode: this.mode, role: this.role, executionId: this.executionId, correlationId: this.correlationId })
-    console.trace(`[XTRACE:${_traceId}] AgentExecutor.execute CALL STACK`)
+    runtimeDebugTrace(`[XTRACE:${_traceId}] AgentExecutor.execute CALL STACK`)
     try {
       if (this.mode === "FAST") {
         yield* this.executeFast()
@@ -148,12 +150,20 @@ export class AgentExecutor {
     let tokensOut = 0
     let failed = false
 
+    const tracker = new PerformanceTracker({
+      executionId: eid,
+      mode: "FAST",
+      providerId: wired.providerId,
+      model: wired.model,
+    })
+
     yield { type: "THINKING_STARTED", executionId: eid, label: "Thinking", timestamp: Date.now() }
 
     const stream = providerGateway.stream({
       systemPrompt: FAST_CHAT_PROMPT,
       messages,
       model: wired.model,
+      providerId: wired.providerId,
       signal: this.signal,
     })
 
@@ -167,6 +177,7 @@ export class AgentExecutor {
           }
           break
         case "token":
+          tracker.recordToken()
           content += event.text
           yield { type: "TOKEN", executionId: eid, token: event.text, timestamp: Date.now() }
           break
@@ -181,13 +192,16 @@ export class AgentExecutor {
           break
         case "error":
           failed = true
+          tracker.markCancelled()
           yield { type: "EXECUTION_FAILED", executionId: eid, error: event.userMessage, durationMs: 0, timestamp: Date.now() }
           break
       }
     }
 
-    if (failed) return
+    if (failed) { tracker.emit(); return }
 
+    tracker.recordComplete()
+    tracker.emit()
     yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content, finishReason: "stop", timestamp: Date.now(), tokensIn, tokensOut }
   }
 
@@ -286,6 +300,12 @@ export class AgentExecutor {
     let softDeadlineLogged = false
     let consecutiveToolOnlyRounds = 0
     let finalResponse = ""
+    const tracker = new PerformanceTracker({
+      executionId: eid,
+      mode: "FULL",
+      providerId: wired.providerId,
+      model: modelForRole,
+    })
 
     // ── Phase 3: Filter tools by role capabilities + relevance ──
     const runtimeOS = RuntimeOS.getInstance()
@@ -358,7 +378,7 @@ export class AgentExecutor {
         signal: this.signal,
       }
 
-      console.log("[FLOW:14] AgentExecutor.executeFull: calling providerGateway.stream (round " + round + ")")
+      runtimeDebugLog("[FLOW:14] AgentExecutor.executeFull: calling providerGateway.stream (round " + round + ")")
 
       // ── Lifecycle: preModelCall ──
       const lifecycleHooks = RuntimeOS.getInstance()?.lifecycleHooks
@@ -381,6 +401,7 @@ export class AgentExecutor {
             }
             break
           case "token":
+            tracker.recordToken()
             responseContent += event.text
             yield { type: "TOKEN", executionId: eid, token: event.text, timestamp: Date.now() }
             break
@@ -401,12 +422,13 @@ export class AgentExecutor {
             break
           case "error":
             failed = true
+            tracker.markCancelled()
             roundError = event.userMessage
             yield { type: "EXECUTION_FAILED", executionId: eid, error: event.userMessage, durationMs: Math.round(performance.now() - startedAt), timestamp: Date.now() }
             break
         }
       }
-      console.log("[FLOW:15] AgentExecutor.executeFull: provider for-await complete (round " + round + ", failed=" + failed + ", contentLen=" + responseContent.length + ", toolCalls=" + responseToolCalls.length + ")")
+      runtimeDebugLog("[FLOW:15] AgentExecutor.executeFull: provider for-await complete (round " + round + ", failed=" + failed + ", contentLen=" + responseContent.length + ", toolCalls=" + responseToolCalls.length + ")")
 
       // ── Lifecycle: postModelCall ──
       if (lifecycleHooks) {
@@ -556,6 +578,7 @@ export class AgentExecutor {
                   const errorStr = "Parallel execution rejected"
                   msgs.push({ tool_call_id: entry.id, role: 'tool' as const, content: errorStr })
                   yield { type: "TOOL_ERROR", executionId: eid, toolId: entry.id, toolName: entry.name, error: errorStr, durationMs: 0, timestamp: Date.now() }
+                  tracker.recordToolComplete()
                   yield { type: "TOOL_COMPLETE", executionId: eid, toolId: entry.id, toolName: entry.name, result: errorStr, durationMs: 0, timestamp: Date.now() }
                   continue
                 }
@@ -566,12 +589,14 @@ export class AgentExecutor {
                 if (error) {
                   msgs.push({ tool_call_id: entry.id, role: 'tool' as const, content: `Error: ${error}` })
                   yield { type: "TOOL_ERROR", executionId: eid, toolId: entry.id, toolName: entry.name, error, durationMs, timestamp: Date.now() }
+                  tracker.recordToolComplete()
                   yield { type: "TOOL_COMPLETE", executionId: eid, toolId: entry.id, toolName: entry.name, result: `Error: ${error}`, durationMs, timestamp: Date.now() }
                   continue
                 }
 
                 const resultContent = capOutputSize(typeof result === 'string' ? result : JSON.stringify(result, null, 2))
                 msgs.push({ tool_call_id: entry.id, role: 'tool' as const, content: resultContent })
+                tracker.recordToolComplete()
                 yield { type: "TOOL_COMPLETE", executionId: eid, toolId: entry.id, toolName: entry.name, result: resultContent, durationMs, timestamp: Date.now() }
                 if (entry.name === 'read_file') {
                   this.recordToolInScratchpad(entry, result)
@@ -599,6 +624,7 @@ export class AgentExecutor {
                   durationMs: 0,
                   timestamp: Date.now(),
                 }
+                tracker.recordToolComplete()
                 yield {
                   type: "TOOL_COMPLETE",
                   executionId: eid,
@@ -702,6 +728,7 @@ export class AgentExecutor {
                   durationMs: Math.round(toolDuration),
                   timestamp: Date.now(),
                 }
+                tracker.recordToolComplete()
                 yield {
                   type: "TOOL_COMPLETE",
                   executionId: eid,
@@ -724,6 +751,7 @@ export class AgentExecutor {
                 content: resultContent,
               })
 
+              tracker.recordToolComplete()
               yield {
                 type: "TOOL_COMPLETE",
                 executionId: eid,
@@ -895,8 +923,10 @@ export class AgentExecutor {
     const assistantMessages = msgs.filter((m) => m.role === "assistant" && !m.tool_calls)
     const lastResponse = assistantMessages[assistantMessages.length - 1]?.content || finalResponse || ""
 
+    tracker.recordComplete()
+    tracker.emit()
     trace("AgentExecutor", "complete", { role: this.role, mode: this.mode, elapsedMs: totalElapsedMs })
-    console.log("[FLOW:16] AgentExecutor.executeFull: yielding MESSAGE_COMPLETE (contentLen=" + lastResponse.length + ")")
+    runtimeDebugLog("[FLOW:16] AgentExecutor.executeFull: yielding MESSAGE_COMPLETE (contentLen=" + lastResponse.length + ")")
 
     yield { type: "MESSAGE_COMPLETE", executionId: eid, stepId: eid, content: lastResponse, finishReason: "stop", timestamp: Date.now(), tokensIn: totalUsage.prompt_tokens, tokensOut: totalUsage.completion_tokens }
   }

@@ -52,7 +52,8 @@ function detectReasoningByName(model: string): boolean {
 /** Normalize base URL to a clean v1-style URL for API calls */
 function normalizeProbeUrl(base: string): string {
   let url = normalizeBaseUrl(base).replace(/\/chat\/completions$/, "")
-  if (!url.includes("/v1")) url = `${url}/v1`
+  url = url.replace(/\/v1\/v1/, "/v1")
+  if (!url.endsWith("/v1")) url = `${url}/v1`
   return url
 }
 
@@ -87,6 +88,7 @@ async function probeViaModelsEndpoint(req: ProbeRequest): Promise<boolean | null
     // Fall back to name-based detection on the server-reported model id
     return detectReasoningByName(modelEntry.id)
   } catch {
+    console.warn("[capability-probe] Model endpoint probe failed for:", req.baseUrl, req.model)
     return null
   }
 }
@@ -136,7 +138,7 @@ async function probeViaMinimalChat(req: ProbeRequest): Promise<boolean | null> {
               foundReasoning = true
             }
           } catch {
-            // skip unparseable chunks
+            console.debug("[capability-probe] Unparseable stream chunk:", data.slice(0, 100))
           }
         }
         if (foundReasoning) break
@@ -147,6 +149,7 @@ async function probeViaMinimalChat(req: ProbeRequest): Promise<boolean | null> {
 
     return foundReasoning
   } catch {
+    console.warn("[capability-probe] Minimal chat probe failed for:", req.baseUrl, req.model)
     return null
   }
 }

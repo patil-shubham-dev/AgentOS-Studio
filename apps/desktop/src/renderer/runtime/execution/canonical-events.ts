@@ -30,13 +30,9 @@ export type CanonicalEventType =
   | "command_output"
   | "command_completed"
   | "changeset_created"
-  | "diff_ready"
-  | "verification_started"
   | "verification_completed"
-  | "approval_requested"
   | "session_completed"
   | "session_failed"
-  | "session_cancelled"
 
 // ── Individual event interfaces ──
 export interface SessionStartedEvent extends CanonicalEventBase {
@@ -130,26 +126,10 @@ export interface ChangeSetCreatedEvent extends CanonicalEventBase {
   files: string[]
 }
 
-export interface DiffReadyEvent extends CanonicalEventBase {
-  type: "diff_ready"
-  changeSetId: ChangeSetId
-}
-
-export interface VerificationStartedEvent extends CanonicalEventBase {
-  type: "verification_started"
-}
-
 export interface VerificationCompletedEvent extends CanonicalEventBase {
   type: "verification_completed"
   passed: boolean
   details: string
-}
-
-export interface ApprovalRequestedEvent extends CanonicalEventBase {
-  type: "approval_requested"
-  kind: "file_edit" | "command" | "browser" | "general"
-  title: string
-  risk: "low" | "medium" | "high"
 }
 
 export interface SessionCompletedEvent extends CanonicalEventBase {
@@ -160,10 +140,6 @@ export interface SessionCompletedEvent extends CanonicalEventBase {
 export interface SessionFailedEvent extends CanonicalEventBase {
   type: "session_failed"
   error: string
-}
-
-export interface SessionCancelledEvent extends CanonicalEventBase {
-  type: "session_cancelled"
 }
 
 // ── Union type ──
@@ -182,13 +158,9 @@ export type CanonicalExecutionEvent =
   | CommandOutputEvent
   | CommandCompletedEvent
   | ChangeSetCreatedEvent
-  | DiffReadyEvent
-  | VerificationStartedEvent
   | VerificationCompletedEvent
-  | ApprovalRequestedEvent
   | SessionCompletedEvent
   | SessionFailedEvent
-  | SessionCancelledEvent
 
 // ── TimelineItem — projection of canonical events for UI ──
 export type TimelineItemType =

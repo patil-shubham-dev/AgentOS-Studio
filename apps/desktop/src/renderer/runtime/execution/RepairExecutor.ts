@@ -2,7 +2,13 @@ import { RepositoryKnowledgeGraph } from "@/runtime/intelligence/RepositoryKnowl
 import { FailureAnalysisEngine, type FailureAnalysis } from "@/runtime/execution/FailureAnalysisEngine"
 import type { VerificationResult } from "@/runtime/verification/types"
 import { ToolExecutionPipeline } from "@/runtime/tools/execution/ToolExecutionPipeline"
+import { PermissionEngine } from "@/runtime/permissions/PermissionEngine"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
+
+const REPAIR_PERMISSION_CONTEXT = {
+  operation: "auto-repair" as const,
+  requireExplicitApproval: true,
+}
 
 export interface RepairEdit {
   file: string
@@ -21,6 +27,18 @@ export class RepairExecutor {
   private graph = RepositoryKnowledgeGraph.getInstance()
   private fileEdits = new Map<string, string>()
   private fileContents = new Map<string, string>()
+
+  private async checkPermission(operation: string): Promise<boolean> {
+    const os = RuntimeOS.getInstance()
+    const permEngine: PermissionEngine | undefined = (os as any).permissionEngine
+    if (!permEngine) return false
+    const result = await permEngine.evaluate("auto-repair", {
+      behavior: "ask",
+      reason: `Auto-repair wants to: ${operation}`,
+      approved: false,
+    }, { role: "repair", signal: new AbortController().signal })
+    return result.behavior === "allow"
+  }
 
   async executeFromAnalyses(analyses: FailureAnalysis[]): Promise<RepairResult> {
     const edits: RepairEdit[] = []
@@ -155,9 +173,13 @@ export class RepairExecutor {
   }
 
   private async runLintFix(): Promise<RepairResult> {
+    const permitted = await this.checkPermission("run eslint --fix on the project")
+    if (!permitted) {
+      return { attempted: false, success: false, editsApplied: [], message: "Auto-repair blocked: eslint --fix requires explicit approval" }
+    }
     try {
       const pipeline = RuntimeOS.getInstance().toolExecutionPipeline
-      const result = await pipeline.execute("run_command", { command: "npx eslint --fix --quiet --ext .ts,.tsx", timeout: 30_000 }, { role: "repair", signal: new AbortController().signal })
+      const result = await pipeline.execute("run_command", { command: "npx eslint --fix --quiet --ext .ts,.tsx", timeout: 30_000 }, { role: "repair", signal: new AbortController().signal, skipPermission: false })
       if (result.isError) {
         return { attempted: true, success: false, editsApplied: [], message: `Lint auto-fix failed: ${result.error}` }
       }
@@ -194,11 +216,17 @@ export class RepairExecutor {
 
   private async applyAllEdits(): Promise<void> {
     if (this.fileEdits.size === 0) return
+    const permitted = await this.checkPermission(`write ${this.fileEdits.size} auto-repair file(s)`)
+    if (!permitted) {
+      this.fileEdits.clear()
+      console.warn("[RepairExecutor] Auto-repair writes blocked — no explicit approval")
+      return
+    }
     const os = RuntimeOS.getInstance()
     const pipeline = os.toolExecutionPipeline
     for (const [file, content] of this.fileEdits) {
       try {
-        const result = await pipeline.execute("write_file", { path: file, content }, { role: "repair", signal: new AbortController().signal })
+        const result = await pipeline.execute("write_file", { path: file, content }, { role: "repair", signal: new AbortController().signal, skipPermission: false })
         if (result.isError) {
           console.error(`[RepairExecutor] write_file failed for ${file}: ${result.error}`)
         }

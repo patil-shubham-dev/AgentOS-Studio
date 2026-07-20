@@ -72,13 +72,41 @@ export interface GatewayProvider {
   id: string
   name: string
   baseUrl: string
-  /** Use SecureString to prevent accidental credential leakage via serialization */
+  /** Store apiKey as SecureString to prevent accidental credential leakage via serialization.
+   *  Access via `safeUnwrap(key)` for the raw value. All JSON serialization and logging
+   *  paths are required to use `redactProvider()` or `safeProviderLog()` instead of
+   *  serializing GatewayProvider directly. */
   apiKey: string | null
   runtime: string | null
   isLocal: boolean
   isOpenAiCompatible: boolean
   models: ProviderModel[]
   createdAt: string
+}
+
+/** Return a copy of `provider` suitable for logging or serialization — apiKey is replaced
+ *  with a presence indicator. Use whenever a GatewayProvider might end up in a log, trace,
+ *  IPC payload, or localStorage. */
+export function redactProvider(p: GatewayProvider): Record<string, unknown> {
+  return {
+    id: p.id,
+    name: p.name,
+    baseUrl: p.baseUrl,
+    apiKeyPresent: p.apiKey !== null && p.apiKey.length > 0,
+    apiKeyPrefix: p.apiKey && p.apiKey.length >= 8 ? `${p.apiKey.slice(0, 4)}...${p.apiKey.slice(-4)}` : null,
+    runtime: p.runtime,
+    isLocal: p.isLocal,
+    isOpenAiCompatible: p.isOpenAiCompatible,
+    modelCount: p.models?.length ?? 0,
+    createdAt: p.createdAt,
+  }
+}
+
+/** Safely unwrap a potentially-sensitive string for provider contexts.
+ *  Use in place of direct `.apiKey` access on GatewayProvider to make the
+ *  sensitive access explicit. */
+export function safeUnwrap(value: string | null | undefined): string | null {
+  return value ?? null
 }
 
 export interface ValidationResult {

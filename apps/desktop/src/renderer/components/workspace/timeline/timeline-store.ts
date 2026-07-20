@@ -603,47 +603,24 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   },
 
   appendStreamingText: (stepId, text) => {
-    set((s) => {
-      if (!text) return s
-      const existing = s.streamingTexts.get(stepId) ?? ""
-      if (existing.endsWith(text)) return s
-      const next = new Map(s.streamingTexts)
-      next.set(stepId, existing + text)
-      if (next.size > 200) {
-        const keys = [...next.keys()]
-        const toRemove = keys.slice(0, keys.length - 200)
-        for (const k of toRemove) next.delete(k)
-      }
-      const now = performance.now()
-      const metrics = s.streamingMetrics
-      metrics.tokensReceived += 1
-      metrics.lastTokenTimestamp = now
-      if (metrics.firstTokenLatency === 0) {
-        metrics.firstTokenLatency = now - (metrics.totalLatency || now)
-      }
-      if (metrics.totalLatency === 0) {
-        metrics.totalLatency = now
-      }
-      const elapsed = (now - metrics.totalLatency) / 1000
-      metrics.tokensPerSecond = Math.round(metrics.tokensReceived / Math.max(elapsed, 0.01))
-      if (elapsed >= 1) {
-        metrics.totalLatency = now
-        metrics.tokensReceived = 0
-      }
-      return { streamingTexts: next, streamingMetrics: metrics }
-    })
+    if (!text) return
+    const existing = _batchQueue.get(stepId)
+    _batchQueue.set(stepId, existing ? existing + text : text)
+    _scheduleBatch()
   },
 
   commitStreamingText: (stepId) => {
+    _flushBatchSync()
     set((s) => {
-      const liveText = s.streamingTexts.get(stepId)
-      if (liveText === undefined) return s
+      const liveText = s.streamingTexts.get(stepId) ?? _batchQueue.get(stepId)
+      if (liveText === undefined) {
+        return s
+      }
       const nextStreaming = new Map(s.streamingTexts)
       nextStreaming.delete(stepId)
       const nextSessions = new Map(s.agentSessions)
       const session = nextSessions.get(stepId)
       if (!session) {
-        // Session doesn't exist yet — buffer in pendingStreamTexts for recovery
         const nextPending = new Map(s.pendingStreamTexts)
         const current = nextPending.get(stepId) ?? ""
         nextPending.set(stepId, current + liveText)
@@ -816,6 +793,69 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 
 const PERSIST_DEBOUNCE_MS = 300
 const PERSIST_STREAMING_DEBOUNCE_MS = 3000
+// ── Streaming batch buffer ──
+// Debounces rapid token arrivals into a single zustand set() per animation frame.
+const _batchQueue = new Map<string, string>()
+let _batchScheduled: number | null = null
+
+function _flushBatch(): void {
+  _batchScheduled = null
+  if (_batchQueue.size === 0) return
+  const entries = [..._batchQueue]
+  _batchQueue.clear()
+  useTimelineStore.setState((s) => {
+    const next = new Map(s.streamingTexts)
+    for (const [stepId, text] of entries) {
+      const existing = next.get(stepId) ?? ""
+      if (existing.endsWith(text)) continue
+      next.set(stepId, existing + text)
+    }
+    if (next.size > 200) {
+      const keys = [...next.keys()]
+      const toRemove = keys.slice(0, keys.length - 200)
+      for (const k of toRemove) next.delete(k)
+    }
+    const now = performance.now()
+    const metrics = { ...s.streamingMetrics }
+    metrics.tokensReceived += entries.length
+    metrics.lastTokenTimestamp = now
+    if (metrics.firstTokenLatency === 0) {
+      metrics.firstTokenLatency = now - (metrics.totalLatency || now)
+    }
+    if (metrics.totalLatency === 0) {
+      metrics.totalLatency = now
+    }
+    const elapsed = (now - metrics.totalLatency) / 1000
+    metrics.tokensPerSecond = Math.round(metrics.tokensReceived / Math.max(elapsed, 0.01))
+    if (elapsed >= 1) {
+      metrics.totalLatency = now
+      metrics.tokensReceived = 0
+    }
+    return { streamingTexts: next, streamingMetrics: metrics }
+  })
+}
+
+function _scheduleBatch(): void {
+  if (_batchScheduled !== null) return
+  if (typeof requestAnimationFrame !== "undefined") {
+    _batchScheduled = requestAnimationFrame(() => { _batchScheduled = null; _flushBatch() })
+  } else {
+    _batchScheduled = setTimeout(_flushBatch, 16) as unknown as number
+  }
+}
+
+function _flushBatchSync(): void {
+  if (_batchScheduled !== null) {
+    if (typeof cancelAnimationFrame !== "undefined") {
+      cancelAnimationFrame(_batchScheduled)
+    } else {
+      clearTimeout(_batchScheduled)
+    }
+    _batchScheduled = null
+  }
+  _flushBatch()
+}
+
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let _pendingPersist = false
 

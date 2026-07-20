@@ -1,6 +1,15 @@
 import { BrowserWindow } from 'electron'
 import { readFileSync, writeFileSync } from 'fs'
 
+export function isAllowedBrowserUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export interface BrowserTab {
   id: string
   url: string
@@ -26,7 +35,17 @@ export class BrowserManager {
     this.startHealthMonitor()
   }
 
+  private configureWindow(win: BrowserWindow): void {
+    win.webContents.setWindowOpenHandler(({ url }) => (
+      isAllowedBrowserUrl(url) ? { action: 'allow' } : { action: 'deny' }
+    ))
+    win.webContents.on('will-navigate', (event, url) => {
+      if (!isAllowedBrowserUrl(url)) event.preventDefault()
+    })
+  }
+
   private startHealthMonitor(): void {
+    if (this.healthInterval) return
     this.healthInterval = setInterval(() => {
       const now = Date.now()
       for (const [id, session] of this.sessions) {
@@ -37,15 +56,16 @@ export class BrowserManager {
     }, 5000)
   }
 
-  async launch(_showWindow?: boolean): Promise<{ sessionId: string } | { error: string }> {
+  async launch(showWindow?: boolean): Promise<{ sessionId: string } | { error: string }> {
     try {
+      this.startHealthMonitor()
       const sessionId = `browser-${this.nextId++}`
       const tabId = `tab-1`
 
       const win = new BrowserWindow({
         width: 1280,
         height: 720,
-        show: false,
+        show: showWindow ?? false,
         webPreferences: {
           contextIsolation: true,
           nodeIntegration: false,
@@ -53,7 +73,7 @@ export class BrowserManager {
         },
       })
 
-      win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+      this.configureWindow(win)
 
       this.windows.set(tabId, win)
       this.tabWindows.set(tabId, win)
@@ -103,6 +123,10 @@ export class BrowserManager {
   async showSession(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId)
     if (!session) return false
+    const win = this.getPage(sessionId)
+    if (!win) return false
+    win.show()
+    win.focus()
     session.lastActivity = Date.now()
     return true
   }
@@ -111,6 +135,7 @@ export class BrowserManager {
     const win = this.getPage(sessionId)
     if (!win) return false
     try {
+      if (!isAllowedBrowserUrl(url)) return false
       await win.webContents.loadURL(url)
       const session = this.sessions.get(sessionId)
       if (session && session.activeTabId) {
@@ -134,7 +159,7 @@ export class BrowserManager {
     } catch { console.warn("[BrowserManager] reload failed"); return false }
   }
 
-  async newTab(sessionId: string, url?: string, _showWindow = false): Promise<string | null> {
+  async newTab(sessionId: string, url?: string, showWindow = false): Promise<string | null> {
     const session = this.sessions.get(sessionId)
     if (!session) return null
     try {
@@ -142,14 +167,15 @@ export class BrowserManager {
       const win = new BrowserWindow({
         width: 1280,
         height: 720,
-        show: false,
+        show: showWindow,
         webPreferences: {
           contextIsolation: true,
           nodeIntegration: false,
           sandbox: true,
         },
       })
-      if (url) await win.webContents.loadURL(url).catch(() => {})
+      this.configureWindow(win)
+      if (url && isAllowedBrowserUrl(url)) await win.webContents.loadURL(url).catch(() => {})
       this.tabWindows.set(tabId, win)
       session.tabs.push({ id: tabId, url: win.webContents.getURL(), title: win.webContents.getTitle() || 'New Tab' })
       session.activeTabId = tabId
@@ -413,22 +439,26 @@ export class BrowserManager {
       const session = this.sessions.get(sessionId)
       if (!session) return { sessionId, restoredTabs: 0 }
       let restored = 0
+      let firstRestoredTabId: string | null = null
       for (const savedTab of first.tabs.slice(0, 10)) {
-        if (savedTab.url && savedTab.url !== 'about:blank') {
+        if (savedTab.url && isAllowedBrowserUrl(savedTab.url)) {
           const tabId = `restored-${Date.now()}-${restored}`
           const win = new BrowserWindow({
             width: 1280, height: 720, show: false,
             webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
           })
-          win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+          this.configureWindow(win)
           await win.webContents.loadURL(savedTab.url).catch(() => {})
           this.tabWindows.set(tabId, win)
           session.tabs.push({ id: tabId, url: win.webContents.getURL(), title: win.webContents.getTitle() || savedTab.title })
+          if (!firstRestoredTabId || savedTab.id === first.activeTabId) firstRestoredTabId = tabId
           restored++
         }
       }
-      if (restored > 0 && first.activeTabId) {
-        session.activeTabId = Array.from(this.tabWindows.keys())[0] ?? session.tabs[0]?.id ?? null
+      if (restored > 0) {
+        session.activeTabId = firstRestoredTabId ?? session.tabs[0]?.id ?? null
+        const activeWin = session.activeTabId ? this.getWin(session.activeTabId) : null
+        activeWin?.show()
       }
       session.lastActivity = Date.now()
       return { sessionId, restoredTabs: restored }

@@ -121,6 +121,7 @@ export function parseOpenAiStreamChunk(data: string): ParsedChunk | null {
 
     return result
   } catch {
+    console.debug("[streaming] Failed to parse OpenAI stream chunk")
     return null
   }
 }
@@ -155,6 +156,7 @@ export function parseGeminiStreamChunk(data: string): ParsedChunk | null {
     // Return null only if we extracted nothing at all (malformed chunk)
     return Object.keys(result).length > 0 ? result : null
   } catch {
+    console.debug("[streaming] Failed to parse Gemini stream chunk")
     return null
   }
 }
@@ -253,7 +255,7 @@ export class SseParser {
             const normalized = raw === "end_turn" ? "stop" : raw === "max_tokens" ? "length" : raw === "tool_use" ? "tool_calls" : raw
             this.options.onFinishReason?.(normalized)
           }
-        } catch { /* skip */ }
+        } catch { console.debug("[streaming] Failed to parse message_delta:", data?.slice(0, 80)) }
         break
       }
       case "content_block_start":

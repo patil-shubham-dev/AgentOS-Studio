@@ -50,6 +50,7 @@ export interface UnifiedHealthRecord {
 
 // ── Singleton Health Store ──
 
+const MAX_HEALTH_RECORDS = 200
 const healthRecords = new Map<string, UnifiedHealthRecord>()
 
 // ── Public API ──
@@ -88,6 +89,10 @@ export function getOrCreateHealth(baseUrl: string, providerId?: string): Unified
       recentTraces: [],
       maxTraces: 100,
       maxValidationHistory: 20,
+    }
+    if (healthRecords.size >= MAX_HEALTH_RECORDS) {
+      const oldest = healthRecords.keys().next().value
+      if (oldest) healthRecords.delete(oldest)
     }
     healthRecords.set(baseUrl, record)
   }

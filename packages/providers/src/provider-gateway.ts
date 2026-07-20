@@ -77,6 +77,7 @@ interface ProviderHealthEntry {
   streamingSupported: boolean | null
 }
 
+const MAX_CACHED_HEALTH = 200
 const providerHealthCache = new Map<string, ProviderHealthEntry>()
 
 export function getGatewayProviderHealth(baseUrl: string): ProviderHealthEntry | undefined {
@@ -91,6 +92,10 @@ export function recordProviderSuccess(baseUrl: string, latencyMs: number, stream
     existing.samples += 1
     if (streamingSupported !== undefined) existing.streamingSupported = streamingSupported
   } else {
+    if (providerHealthCache.size >= MAX_CACHED_HEALTH) {
+      const oldest = providerHealthCache.keys().next().value
+      if (oldest) providerHealthCache.delete(oldest)
+    }
     providerHealthCache.set(baseUrl, {
       lastSuccess: Date.now(),
       lastFailure: 0,
@@ -108,6 +113,10 @@ export function recordProviderFailure(baseUrl: string): void {
   if (existing) {
     existing.lastFailure = Date.now()
   } else {
+    if (providerHealthCache.size >= MAX_CACHED_HEALTH) {
+      const oldest = providerHealthCache.keys().next().value
+      if (oldest) providerHealthCache.delete(oldest)
+    }
     providerHealthCache.set(baseUrl, {
       lastSuccess: 0,
       lastFailure: Date.now(),
@@ -201,9 +210,9 @@ export async function detectRuntime(baseUrl: string): Promise<RuntimeInfo> {
   // Local detection
   if (url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0")) {
     if (url.includes("11434")) return { runtime: "Ollama", isOpenAiCompatible: true, isLocal: true }
-    try { const port = new URL(baseUrl).port; if (port === "8000") return { runtime: "vLLM", isOpenAiCompatible: true, isLocal: true } } catch {}
+    try { const port = new URL(baseUrl).port; if (port === "8000") return { runtime: "vLLM", isOpenAiCompatible: true, isLocal: true } } catch { console.warn("[provider-gateway] Failed to parse URL for vLLM port detection:", baseUrl) }
     if (url.includes("1234")) return { runtime: "LM Studio", isOpenAiCompatible: true, isLocal: true }
-    try { const port = new URL(baseUrl).port; if (port === "8080") return { runtime: "LocalAI", isOpenAiCompatible: true, isLocal: true } } catch {}
+    try { const port = new URL(baseUrl).port; if (port === "8080") return { runtime: "LocalAI", isOpenAiCompatible: true, isLocal: true } } catch { console.warn("[provider-gateway] Failed to parse URL for LocalAI port detection:", baseUrl) }
     if (url.includes("4000")) return { runtime: "LiteLLM", isOpenAiCompatible: true, isLocal: true }
     // Unknown local service — assume OpenAI-compatible
     return { runtime: "Local", isOpenAiCompatible: true, isLocal: true }
@@ -223,7 +232,7 @@ export async function detectRuntime(baseUrl: string): Promise<RuntimeInfo> {
       return { runtime: "OpenAI-compatible", isOpenAiCompatible: true, isLocal: false }
     }
   } catch {
-    // Fall through to default
+    console.debug("[provider-gateway] Fetch-based runtime detection failed for:", baseUrl)
   }
 
   // Default: assume OpenAI-compatible but unknown runtime
@@ -243,11 +252,11 @@ function getAdapterId(baseUrl: string): string {
   if (url.includes("together.xyz")) return "together"
   if (url.includes("nvidia.com")) return "nvidia-nim"
   if (url.includes("azure.com") || url.includes("azure-api.net")) return "azure"
-  if (url.includes("localhost") || url.includes("127.0.0.1") || url.includes("host.docker.internal")) {
+    if (url.includes("localhost") || url.includes("127.0.0.1") || url.includes("host.docker.internal")) {
     if (url.includes("11434")) return "ollama"
-    try { const port = new URL(baseUrl).port; if (port === "8000") return "vllm" } catch {}
+    try { const port = new URL(baseUrl).port; if (port === "8000") return "vllm" } catch { console.warn("[provider-gateway] Failed to parse URL for vLLM adapter detection:", baseUrl) }
     if (url.includes("1234")) return "lm-studio"
-    try { const port = new URL(baseUrl).port; if (port === "8080") return "local-ai" } catch {}
+    try { const port = new URL(baseUrl).port; if (port === "8080") return "local-ai" } catch { console.warn("[provider-gateway] Failed to parse URL for LocalAI adapter detection:", baseUrl) }
     if (url.includes("4000")) return "litellm"
   }
   return "unknown"

@@ -27,6 +27,15 @@ export interface BudgetSnapshot {
   status: "active" | "exhausted" | "cancelled"
 }
 
+const LIMIT_TO_USAGE_KEY: Record<keyof BudgetLimits, keyof BudgetUsage> = {
+  maxTokens: "tokens",
+  maxTimeMs: "timeMs",
+  maxCost: "cost",
+  maxBrowserActions: "browserActions",
+  maxToolCalls: "toolCalls",
+  maxIterations: "iterations",
+}
+
 export class ExecutionBudgetManager {
   private static instance: ExecutionBudgetManager
   private budgets = new Map<string, BudgetSnapshot>()
@@ -100,7 +109,8 @@ export class ExecutionBudgetManager {
     const percentage: Record<string, number> = {}
     for (const [key, limit] of Object.entries(budget.limits)) {
       if (typeof limit === "number" && limit > 0) {
-        const used = budget.usage[key as keyof BudgetUsage] ?? 0
+        const usageKey = LIMIT_TO_USAGE_KEY[key as keyof BudgetLimits]
+        const used = usageKey ? budget.usage[usageKey] : 0
         percentage[key] = Math.round((used / limit) * 100)
       }
     }
@@ -114,7 +124,8 @@ export class ExecutionBudgetManager {
     const remaining: Record<string, number> = {}
     for (const [key, limit] of Object.entries(budget.limits)) {
       if (typeof limit === "number") {
-        const used = budget.usage[key as keyof BudgetUsage] ?? 0
+        const usageKey = LIMIT_TO_USAGE_KEY[key as keyof BudgetLimits]
+        const used = usageKey ? budget.usage[usageKey] : 0
         remaining[key] = Math.max(0, limit - used)
       }
     }

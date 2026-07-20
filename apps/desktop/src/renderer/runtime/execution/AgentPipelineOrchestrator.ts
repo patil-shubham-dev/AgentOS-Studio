@@ -16,6 +16,7 @@ import { WorktreeSandboxManager } from "@/lib/git/WorktreeSandbox"
 import { orderPipelineRoles, checkMultiAgentEligibility } from "./ExecutionRouter"
 import { execTrace } from "@/runtime/execution-tracer"
 import { traceStage as reqTraceStage } from "@/runtime/RequestTracer"
+import { runtimeDebugLog, runtimeDebugTrace } from "@/runtime/runtime-debug"
 
 type GetHistoryFn = (role: RuntimeRole) => any[]
 
@@ -43,7 +44,7 @@ export class AgentPipelineOrchestrator {
     if (requestId) {
       reqTraceStage(requestId, "Planner", { selectedRoles: decision.selectedRoles, strategy: decision.executionStrategy })
     }
-    console.trace(`[XTRACE:${_traceId}] AgentPipelineOrchestrator.execute CALL STACK`)
+    runtimeDebugTrace(`[XTRACE:${_traceId}] AgentPipelineOrchestrator.execute CALL STACK`)
     const scratchpad = new ExecutionScratchpad(input.slice(0, 200))
     const orderedRoles = orderPipelineRoles(decision.selectedRoles)
     const results: { role: string; content: string }[] = []
@@ -84,14 +85,14 @@ export class AgentPipelineOrchestrator {
       previousOutput = finalContent
       const stepId = `${executionId}_multi`
       StreamManager.getInstance().complete(stepId)
-      yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: finalContent, finishReason: "stop", timestamp: Date.now() }
+      yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: finalContent, finishReason: "stop", timestamp: Date.now(), tokensIn: 0, tokensOut: 0 }
       const durMs = Math.round(performance.now() - t0)
       yield { type: "EXECUTION_COMPLETE", executionId, content: finalContent, filesEdited: 0, commandsRun: 0, toolCalls: 0, durationMs: durMs, timestamp: Date.now(), executionMode: "full" }
       return
     }
 
     for (const role of orderedRoles) {
-      console.log("[FLOW:3] AgentPipelineOrchestrator.execute: role=" + role + " (index " + orderedRoles.indexOf(role) + "/" + orderedRoles.length + ")")
+      runtimeDebugLog("[FLOW:3] AgentPipelineOrchestrator.execute: role=" + role + " (index " + orderedRoles.indexOf(role) + "/" + orderedRoles.length + ")")
       if (ctrl.signal.aborted) break
       const runtimeRole = normalizeRole(role) ?? role
       if (!runtimeRole) continue
@@ -120,20 +121,22 @@ export class AgentPipelineOrchestrator {
 
       let content = ""
       let agentFailed = false
+      let totalTokensIn = 0
+      let totalTokensOut = 0
       for await (const event of executor.execute()) {
         if (ctrl.signal.aborted) break
         if (performance.now() - agentT0 > 120_000) {
           throw new Error(`Agent ${runtimeRole} timed out`)
         }
-        if (event.type === "MESSAGE_COMPLETE") { content = event.content; continue }
+        if (event.type === "MESSAGE_COMPLETE") { content = event.content; totalTokensIn += event.tokensIn; totalTokensOut += event.tokensOut; continue }
         if (event.type === "EXECUTION_FAILED") { agentFailed = true }
         yield event
       }
 
-      console.log("[FLOW:12] AgentPipelineOrchestrator.execute: agent for-await complete for role=" + role)
+      runtimeDebugLog("[FLOW:12] AgentPipelineOrchestrator.execute: agent for-await complete for role=" + role)
       StreamManager.getInstance().complete(stepId)
       if (!ctrl.signal.aborted) {
-        yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: content || "", finishReason: agentFailed ? "error" : "stop", timestamp: Date.now() }
+        yield { type: "MESSAGE_COMPLETE", executionId, stepId, content: content || "", finishReason: agentFailed ? "error" : "stop", timestamp: Date.now(), tokensIn: totalTokensIn, tokensOut: totalTokensOut }
         results.push({ role: runtimeRole, content: content || "" })
         previousOutput = content
       }
@@ -179,7 +182,7 @@ export class AgentPipelineOrchestrator {
     }
 
     const durationMs = Math.round(performance.now() - t0)
-    console.log("[FLOW:13] AgentPipelineOrchestrator.execute: yielding EXECUTION_COMPLETE")
+    runtimeDebugLog("[FLOW:13] AgentPipelineOrchestrator.execute: yielding EXECUTION_COMPLETE")
     yield { type: "EXECUTION_COMPLETE", executionId, content: results.map((r) => r.content).join("\n"), filesEdited: uniqueFiles.length, commandsRun: 0, toolCalls: 0, durationMs, timestamp: Date.now(), executionMode: "full" }
   }
 

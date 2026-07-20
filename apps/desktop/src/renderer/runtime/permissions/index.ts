@@ -4,4 +4,5 @@ export { PolicyResolver } from './PolicyResolver'
 export type { PolicyRule } from './PolicyResolver'
 export { ApprovalManager } from './ApprovalManager'
 export type { ApprovalRequest, ApprovalCallback } from './ApprovalManager'
+export { isPathDenied, setDeniedPaths, getDeniedPaths, filterDeniedPaths, isPathDeniedSilent } from './PathVisibilityFilter'
 

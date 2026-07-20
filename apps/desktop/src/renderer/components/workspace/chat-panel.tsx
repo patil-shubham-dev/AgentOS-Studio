@@ -183,8 +183,8 @@ export function ChatPanel() {
   const rootPath = useWorkspaceStore((s) => s.rootPath)
   const workspaceName = rootPath ? rootPath.split(/[/\\]/).pop() || rootPath : null
 
-  const providers = useAppStore((s) => s.providers)
-  const roleConfigs = useAppStore((s) => s.roleConfigs)
+  const providers = useAppStore(useShallow((s) => s.providers))
+  const roleConfigs = useAppStore(useShallow((s) => s.roleConfigs))
 
   const [input, setInput] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -233,7 +233,10 @@ export function ChatPanel() {
   const sendMessage = useCallback(async (prompt?: string) => {
     const _traceId = execTraceId()
     const _caller = prompt ? `sendMessage(prompt="${prompt.slice(0, 40)}")` : "sendMessage()"
-    execTrace("chat-panel.sendMessage", _traceId, { caller: _caller, hasPrompt: !!prompt, sendingRef: sendingRef.current, isProcessing: useAgentStore.getState().isProcessing, canSend })
+    const _canSendNow = useAppStore.getState().mockMode ||
+      (useAppStore.getState().providers.length > 0 &&
+       useAppStore.getState().providers.some((p) => p.apiKey.length > 0))
+    execTrace("chat-panel.sendMessage", _traceId, { caller: _caller, hasPrompt: !!prompt, sendingRef: sendingRef.current, isProcessing: useAgentStore.getState().isProcessing, canSend: _canSendNow })
     console.trace(`[XTRACE:${_traceId}] sendMessage CALL STACK`)
     const rawInput = prompt ?? inputStateRef.current
     if (typeof rawInput !== "string") {
@@ -241,8 +244,8 @@ export function ChatPanel() {
       return
     }
     const currentInput = rawInput
-    if (!currentInput.trim() || sendingRef.current || useAgentStore.getState().isProcessing || !canSend) {
-      execTrace("chat-panel.sendMessage-guard-blocked", _traceId, { reason: sendingRef.current ? "sendingRef" : useAgentStore.getState().isProcessing ? "isProcessing" : !canSend ? "!canSend" : "empty" })
+    if (!currentInput.trim() || sendingRef.current || useAgentStore.getState().isProcessing || !_canSendNow) {
+      execTrace("chat-panel.sendMessage-guard-blocked", _traceId, { reason: sendingRef.current ? "sendingRef" : useAgentStore.getState().isProcessing ? "isProcessing" : !_canSendNow ? "!canSend" : "empty" })
       return
     }
 
@@ -364,7 +367,7 @@ export function ChatPanel() {
         }
       }
     })
-  }, [activeRole, addMessage, canSend])
+  }, [activeRole, addMessage])
 
   // ── Pipeline diagnostics — derives current execution stage from timeline agent sessions ──
   const pipelineStage = useTimelineStore(

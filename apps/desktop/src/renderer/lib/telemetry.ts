@@ -12,6 +12,7 @@ export type TelemetryEventType =
   | "execution_complete"
   | "session_pruned"
   | "stream_token_dropped"
+  | "performance_metrics"
 
 export interface TelemetryEvent {
   type: TelemetryEventType

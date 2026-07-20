@@ -13,10 +13,18 @@
     "verify-build": "node scripts/verify-build.mjs",
     "preview": "electron-vite preview",
     "start": "electron .",
-    "lint": "eslint apps/desktop/src/renderer --ext .ts,.tsx",
+    "lint": "node --max-old-space-size=4096 ./node_modules/eslint/bin/eslint.js apps/desktop/src/renderer --ext .ts,.tsx",
+    "lint:renderer": "node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js apps/desktop/src/renderer --ext .ts,.tsx",
+    "lint:main": "node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js apps/desktop/src/main --ext .ts",
+    "lint:packages": "node --max-old-space-size=2048 ./node_modules/eslint/bin/eslint.js packages --ext .ts,.tsx",
+    "lint:changed": "node scripts/lint-changed.mjs",
     "check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/check-clean-worktree.mjs && vitest run",
+    "test": "node scripts/check-clean-worktree.mjs && vitest run --exclude \"**/RealProviderStreaming.verify.test.ts\" --exclude \"**/ProductionHardening.test.ts\" --exclude \"**/MemoryLeakMeasurementV2.test.ts\" --exclude \"**/benchmarks.test.ts\" --exclude \"**/provider-streaming-stress.test.ts\"",
+    "test:unit": "vitest run --exclude \"**/RealProviderStreaming.verify.test.ts\" --exclude \"**/ProductionHardening.test.ts\" --exclude \"**/MemoryLeakMeasurementV2.test.ts\" --exclude \"**/benchmarks.test.ts\" --exclude \"**/provider-streaming-stress.test.ts\"",
+    "test:stress": "vitest run \"**/ProductionHardening.test.ts\" \"**/MemoryLeakMeasurementV2.test.ts\" \"**/provider-streaming-stress.test.ts\"",
+    "test:provider": "vitest run \"**/RealProviderStreaming.verify.test.ts\"",
+    "test:benchmark": "vitest run \"**/benchmarks.test.ts\"",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "postinstall": "electron-builder install-app-deps",
@@ -77,6 +85,11 @@
     "tiktoken": "^1.0.22",
     "zod": "^3.23.8",
     "zustand": "^5.0.13"
+  },
+  "overrides": {
+    "monaco-editor": {
+      "dompurify": "^3.4.11"
+    }
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",

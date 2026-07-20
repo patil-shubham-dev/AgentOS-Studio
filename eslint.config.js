@@ -8,7 +8,11 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
+    'out',
     'packages/*/dist',
+    '**/__snapshots__',
+    'tests/scratch',
+    'tests/e2e/fixtures',
   ]),
   {
     files: ['**/*.{ts,tsx}'],

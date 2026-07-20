@@ -1,4 +1,5 @@
 import { WebContentsView, BrowserWindow } from 'electron'
+import { isAllowedBrowserUrl } from './browser-manager'
 
 export interface ViewportBounds {
   x: number
@@ -186,6 +187,10 @@ export class ViewportManager {
 
   async navigate(url: string): Promise<boolean> {
     if (!this.view) return false
+    if (!isAllowedBrowserUrl(url)) {
+      console.warn(`[ViewportManager] Blocked navigation to disallowed URL: ${url.slice(0, 200)}`)
+      return false
+    }
     try {
       await this.view.webContents.loadURL(url)
       return true
