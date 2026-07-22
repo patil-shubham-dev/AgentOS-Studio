@@ -6,6 +6,7 @@ import { toolResultCache } from '../core/ToolResultCache'
 import { fileContentCache } from '@/lib/FileContentCache'
 import { FileStateCache } from '../storage/FileStateCache'
 import { isPathDenied, isPathDeniedSilent } from '@/runtime/permissions/PathVisibilityFilter'
+import { useWorkspaceStore } from '@/stores/workspace-store'
 
 const BINARY_NULL_BYTES_CHECK = 512
 const DEFAULT_MAX_LINES = 500
@@ -36,6 +37,10 @@ function resolvePath(rootPath: string | null, inputPath: string): string {
   if (!rootPath) return inputPath
   if (/^[a-zA-Z]:[\\/]/.test(inputPath)) return inputPath
   return `${rootPath}\\${inputPath.replace(/\//g, '\\')}`
+}
+
+function resolveRootPath(ctx: ToolContext): string | null {
+  return ctx.workspaceStore?.rootPath ?? useWorkspaceStore.getState().rootPath ?? null
 }
 
 function validatePath(fullPath: string, rootPath: string | null): string | null {
@@ -144,7 +149,7 @@ export const ReadFileTool: AgentTool = buildTool({
     const path = String(input.path ?? '')
     if (!path) return { data: null, error: 'path is required', isError: true }
 
-    const rootPath = _ctx.workspaceStore?.rootPath ?? null
+    const rootPath = resolveRootPath(_ctx)
     const fullPath = resolvePath(rootPath, path)
 
     const validationError = validatePath(fullPath, rootPath)

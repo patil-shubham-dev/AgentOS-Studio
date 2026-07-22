@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils"
 import { motion } from "framer-motion"
 import { Folder } from "lucide-react"
+import { CommitMessageGen } from "@/components/workspace/chat/CommitMessageGen"
 import type { RuntimeRole } from "@/types"
 
 interface ContextBarProps {
@@ -24,6 +25,10 @@ export function ContextBar({
         <span className="text-[9px] text-white/35 truncate max-w-[160px] font-medium">
           {workspaceName || "No workspace"}
         </span>
+      </div>
+
+      <div className="ml-auto">
+        <CommitMessageGen />
       </div>
     </motion.div>
   )

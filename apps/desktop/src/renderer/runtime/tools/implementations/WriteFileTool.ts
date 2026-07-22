@@ -4,9 +4,10 @@ import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
 import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
 import { fileContentCache } from '@/lib/FileContentCache'
-import { createFile } from '@/lib/filesystem'
 import { FileStateCache } from '../storage/FileStateCache'
 import { isPathDenied } from '@/runtime/permissions/PathVisibilityFilter'
+import { useWorkspaceStore } from '@/stores/workspace-store'
+import { buildDiffFileEntry } from '@/lib/diff-review'
 
 const changesetByTrace = new Map<string, string>()
 const CHANGESET_MAP_MAX_SIZE = 200
@@ -52,27 +53,12 @@ async function readTextFile(path: string): Promise<string | null> {
   try {
     if (typeof window !== 'undefined' && (window as any).electronAPI) {
       const { readTextFile: shimRead } = await import('@/lib/electron-api')
-        return shimRead(path)
+      return shimRead(path)
     }
     const fs = await import('@/lib/electron-api')
     return await fs.readTextFile(path)
   } catch {
     return null
-  }
-}
-
-async function writeTextFile(path: string, content: string): Promise<void> {
-  try {
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      const { writeTextFile: shimWrite } = await import('@/lib/electron-api')
-      await shimWrite(path, content)
-      return
-    }
-    const fs = await import('@/lib/electron-api')
-    await fs.writeTextFile(path, content)
-  } catch {
-    // Fall back to filesystem lib
-    await createFile(path, content)
   }
 }
 
@@ -88,9 +74,13 @@ function validatePath(normalized: string, rootPath: string | null): string | nul
   return null
 }
 
+function resolveRootPath(ctx: ToolContext): string | null {
+  return ctx.workspaceStore?.rootPath ?? useWorkspaceStore.getState().rootPath ?? null
+}
+
 export const WriteFileTool: AgentTool = buildTool({
   name: 'write_file',
-  description: 'Write content to a file (creates directories if needed), updating the file on disk immediately',
+  description: 'Propose writing content to a file (creates directories if needed). Changes are staged for user review and only written to disk after acceptance. For existing files, read the file first.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -112,7 +102,7 @@ export const WriteFileTool: AgentTool = buildTool({
     const path = String(input.path ?? '')
     const content = String(input.content ?? '')
     if (!path) return { data: null, error: 'path is required', isError: true }
-    const rootPath = ctx.workspaceStore?.rootPath ?? null
+    const rootPath = resolveRootPath(ctx)
     const fullPath = resolvePath(rootPath, path)
 
     const validationError = validatePath(fullPath, rootPath)
@@ -122,46 +112,65 @@ export const WriteFileTool: AgentTool = buildTool({
       return { data: null, error: `Cannot write to "${path}". The path is not accessible.`, isError: true }
     }
 
-    // Read-before-write enforcement (P1.2)
+    const cachedContent = fileContentCache.get(fullPath)
+    const existingContent = cachedContent !== null ? cachedContent : await readTextFile(fullPath)
+    const isNewFile = existingContent === null
+
+    // Read-before-write: required for existing files, not for brand-new creates.
     const fileState = FileStateCache.getInstance()
-    if (!fileState.wasRead(fullPath)) {
-      return { data: null, error: `File "${path}" has not been read yet. Use read_file to read it first before writing.`, isError: true }
-    }
-    try {
-      const { stat: fsStat } = await import('@/lib/electron-api')
-      const stats = await fsStat(fullPath)
-      const currentMtime = typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now()
-      if (fileState.isStale(fullPath, currentMtime)) {
-        const currentContent = await readTextFile(fullPath)
-        if (currentContent !== fileState.getContent(fullPath)) {
-          return { data: null, error: `File "${path}" has been modified since it was read. Use read_file to see the latest content before writing.`, isError: true }
-        }
-        fileState.recordRead(fullPath, currentContent, currentMtime)
+    if (!isNewFile && !fileState.wasRead(fullPath) && cachedContent === null) {
+      return {
+        data: null,
+        error: `File "${path}" has not been read yet. Use read_file to read it first before writing.`,
+        isError: true,
       }
-    } catch {
-      // mtime not available — skip staleness check
     }
 
-    const existingContent = await readTextFile(fullPath)
-
-    // Write to disk immediately so the file appears in the explorer
-    try {
-      await writeTextFile(fullPath, content)
-    } catch (writeErr) {
-      return { data: null, error: `Failed to write file: ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`, isError: true }
+    if (!isNewFile) {
+      try {
+        const { stat: fsStat } = await import('@/lib/electron-api')
+        const stats = await fsStat(fullPath)
+        const currentMtime = typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now()
+        if (fileState.isStale(fullPath, currentMtime)) {
+          const currentContent = await readTextFile(fullPath)
+          if (currentContent !== null && currentContent !== fileState.getContent(fullPath)) {
+            if (cachedContent === null || currentContent !== cachedContent) {
+              return {
+                data: null,
+                error: `File "${path}" has been modified since it was read. Use read_file to see the latest content before writing.`,
+                isError: true,
+              }
+            }
+          }
+          if (currentContent !== null) {
+            fileState.recordRead(fullPath, currentContent, currentMtime)
+          }
+        }
+      } catch {
+        // mtime not available — skip staleness check
+      }
     }
 
-    // Update in-memory cache so subsequent reads see current content
+    // Propose only — update in-memory cache. Disk writes happen via
+    // ChangeSetManager.writeAcceptedChanges / diff-review accept path.
     fileContentCache.set(fullPath, content)
+
+    // Register the diff for review when a store is available
+    const beforeForDiff = existingContent ?? ''
+    const diffEntry = buildDiffFileEntry(path, beforeForDiff, content)
+    ctx.diffStore?.addFileDiff(diffEntry)
 
     const relativePath = path.replace(/^[/\\]/, '')
     recordWriteChangeSetEntry(ctx, relativePath, existingContent, content)
 
+    // Mark as read so subsequent edits/writes in the same session can compose
+    fileState.recordRead(fullPath, content, Date.now())
+
     return {
-      data: `File written to ${relativePath}${existingContent !== null ? ' (modified)' : ' (created)'}`,
+      data: `Change proposed: ${relativePath} has been staged for review. Awaiting user acceptance in the diff panel.`,
       meta: {
         path: relativePath,
-        status: 'written',
+        status: 'pending_review',
         changeType: existingContent !== null ? 'modify' : 'create',
       },
     }

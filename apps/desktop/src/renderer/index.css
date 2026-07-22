@@ -1120,6 +1120,28 @@ kbd {
 .text-accent-brand { color: var(--color-accent-brand); }
 .bg-accent-green { background-color: var(--color-accent-green); }
 
+/* ── Celebration & micro-interaction keyframes ── */
+@keyframes particle-fall {
+  0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+}
+@keyframes gradient-burst {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { opacity: 0.5; }
+  100% { transform: scale(2); opacity: 0; }
+}
+@keyframes checkmark-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes glow-pulse-soft {
+  0%, 100% { box-shadow: 0 0 8px rgba(16,185,129,0.1); }
+  50% { box-shadow: 0 0 20px rgba(16,185,129,0.2); }
+}
+@keyframes border-glow {
+  0%, 100% { border-color: rgba(59,130,246,0.1); }
+  50% { border-color: rgba(59,130,246,0.3); }
+}
+
 /* ── Thinking card streaming pulse ── */
 .thinking-card-pulse {
   animation: thinking-pulse 2s ease-in-out infinite;

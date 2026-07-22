@@ -38,6 +38,8 @@ const MAX_FILE_OPS_PER_SESSION = 200
 const MAX_TERMINAL_OUTPUTS_PER_SESSION = 200
 const MAX_PHASE_HISTORY_PER_SESSION = 100
 
+export type ViewMode = "verbose" | "normal" | "summary"
+
 /**
  * Timeline state is persisted to localStorage so conversations survive restarts.
  * On launch, the app restores the last chat session automatically.
@@ -58,6 +60,7 @@ function persistStorage(state: TimelineState): void {
       messageReferences: Array.from(state.messageReferences.entries()),
       streamingMetrics: state.streamingMetrics,
       canonicalEventLog: state.canonicalEventLog,
+      viewMode: state.viewMode,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
   } catch (err) {
@@ -165,6 +168,8 @@ interface TimelineState {
   messageReferences: Map<string, ResolvedReferenceChip[]>
   /** Canonical event log — parallel event stream for replay and persistence */
   canonicalEventLog: CanonicalExecutionEvent[]
+  /** Chat view mode: "verbose" shows all details, "normal" hides reasoning/tool noise, "summary" shows only response text */
+  viewMode: ViewMode
 
   addEvent: (event: TimelineEvent) => void
   updateEvent: (id: string, updates: Partial<TimelineEvent>) => void
@@ -221,6 +226,8 @@ interface TimelineState {
   clearCanonicalEventLog: () => void
 
   generateId: () => string
+
+  setViewMode: (mode: ViewMode) => void
 }
 
 function generateId(): string {
@@ -272,6 +279,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     totalLatency: 0,
   },
   canonicalEventLog: persisted?.canonicalEventLog ?? [],
+  viewMode: (persisted as any)?.viewMode ?? "normal",
 
   addEvent: (event) => {
     set((s) => ({
@@ -302,6 +310,8 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     })
     clearStorage()
   },
+
+  setViewMode: (mode) => set({ viewMode: mode }),
 
   addCanonicalEventLog: (events) => {
     set((s) => ({

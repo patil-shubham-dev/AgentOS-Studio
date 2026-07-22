@@ -17,12 +17,22 @@ const AGENT_BADGE_STYLES: Record<string, { text: string; label: string }> = {
 export function useTreeModel(
   searchQuery: string,
   onSelectionChange?: (paths: readonly string[]) => void,
+  fileActivities?: { path: string; activity: string }[],
 ) {
   const rootPath = useWorkspaceStore((s) => s.rootPath)
   const fileTree = useWorkspaceStore((s) => s.fileTree)
 
   const badgeMapRef = useRef<Map<string, string>>(new Map())
   const prevFileTreeRef = useRef(fileTree)
+
+  // Sync file activities into badge map
+  const prevActivitiesRef = useRef(fileActivities)
+  if (fileActivities !== prevActivitiesRef.current) {
+    prevActivitiesRef.current = fileActivities
+    badgeMapRef.current = new Map(
+      (fileActivities ?? []).map((fa) => [fa.path, fa.activity])
+    )
+  }
 
   const decorationRenderer = useCallback(
     (context: FileTreeRowDecorationContext): FileTreeRowDecoration | null => {

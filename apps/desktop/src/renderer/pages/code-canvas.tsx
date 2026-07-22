@@ -16,12 +16,14 @@ import { ExplorerResizer } from "@/components/workspace/explorer/ExplorerResizer
 import { CodeWorkspace } from "@/components/workspace/code-workspace"
 import { ChatPanel } from "@/components/workspace/chat-panel"
 import { PaneContainer } from "@/components/workspace/pane-layout/PaneContainer"
+import { MainPaneContainer } from "@/components/workspace/pane-layout/MainPaneContainer"
 
 const DesignWorkspace = lazy(() => import("@/components/workspace/design-workspace").then(m => ({ default: m.DesignWorkspace })))
 import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
 
 import { dirtyBufferManager, type DirtyBuffer } from "@/lib/dirty-buffer-manager"
 import { DirtyBufferRecoveryDialog } from "@/components/workspace/DirtyBufferRecoveryDialog"
+import { IssueToPRDialog } from "@/components/workspace/IssueToPRDialog"
 import { WorkflowModeIndicator } from "@/components/workspace/WorkflowModeIndicator"
 import { WorkspaceEmptyState } from "@/components/workspace/WorkspaceEmptyState"
 import { GlobalSearch } from "@/components/workspace/global-search"
@@ -183,6 +185,7 @@ export function CodeCanvasPage() {
   const [quickOpenOpen, setQuickOpenOpen] = useState(false)
 
   const panes = usePaneStore((s) => s.panes)
+  const mainPaneIds = usePaneStore((s) => s.mainPaneIds)
   const setPaneVisibility = usePaneStore((s) => s.setPaneVisibility)
   const dispatchPaneAction = usePanelCoordinator((s) => s.dispatch)
   const paneState = usePanelCoordinator((s) => s.paneState)
@@ -816,153 +819,129 @@ export function CodeCanvasPage() {
         {/* Checkpoint Timeline */}
         <CheckpointTimeline />
 
-        {/* PANEL 0: Explorer — flex-based split pane, animated width */}
-        <div
-          style={{ width: explorerOpen ? explorerWidth : 0 }}
-          className={cn(
-            "flex-shrink-0 flex flex-col overflow-hidden bg-[#0c0c0d] min-h-0",
-            "transition-[width] duration-[180ms] ease-out",
-            explorerOpen && "border-r border-[var(--border-default)]",
-          )}
-        >
-          {explorerOpen && (
-            <Explorer ref={explorerRef} onOpenWorkspace={openWorkspace} />
-          )}
-        </div>
-
-        {/* Resize handle: Explorer | Chat */}
-        {explorerOpen && (
-          <ExplorerResizer
-            onResize={handleExplorerResize}
-            minWidth={260}
-            maxWidth={500}
-          />
-        )}
-
-      {/* PANEL 1: Chat — flex-1, shrinks when explorer opens */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0" role="region" aria-label="Chat panel">
-        {/* Chat header bar — minimal */}
-        <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--border-default)] bg-[var(--surface-panel)]">
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setExplorerOpen(!explorerOpen)}
-                className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
-                title="Toggle explorer (⌘B)"
-              >
-                {explorerOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
-              </button>
-              <span className="text-[10px] font-medium text-[var(--text-quaternary)]">Chat</span>
-              <WorkflowModeIndicator />
-              {/* Runtime dot */}
-              <span className={cn(
-                "inline-block h-1.5 w-1.5 rounded-full",
-                runtimeReady && runtimeHealth === "healthy" ? "bg-[var(--color-accent-green)]" :
-                runtimeStatus === "error" ? "bg-[var(--color-accent-red)]" :
-                runtimeStatus === "initializing" ? "bg-[var(--color-accent-blue)] animate-pulse" :
-                "bg-[var(--text-quaternary)]"
-              )} title={runtimeReady ? "Runtime ready" : runtimeError || runtimeMessage || "Initializing"} />
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              {/* Context usage indicator */}
-              <ContextRadar />
-
-              {/* Toggle diff viewer pane */}
-              <button
-                onClick={handleToggleDiffReview}
-                className={cn(
-                  "rounded p-0.5 transition-all",
-                  editorMode === "diff"
-                    ? "text-[var(--color-accent-blue)] bg-[var(--color-accent-blue)]/10"
-                    : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]"
-                )}
-                title="Toggle diff viewer (⌘⇧D)"
-              >
-                <FileDiff className="h-3.5 w-3.5" />
-              </button>
-
-              {/* Toggle workspace panel */}
-              <button
-                onClick={() => {
-                  const next = !workspacePanelOpen
-                  setWorkspacePanelOpen(next)
-                  panelCtrlRef.current?.syncOpenState(next)
-                }}
-                className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
-                title="Toggle workspace panel (⌘J)"
-              >
-                {workspacePanelOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
-                <ShortcutHint keys="⌘J" className="ml-0.5 hidden sm:inline-flex" />
-              </button>
-            </div>
-          </div>
-
-          {/* Assistant content */}
-          <div className="flex-1 overflow-hidden min-h-0">
-            <ErrorBoundary name="ChatPanel"><ChatPanel /></ErrorBoundary>
-          </div>
-        </div>
-
-        {/* Resize handle: Chat | Workspace Panel */}
-        {workspacePanelOpen && (
-          <ExplorerResizer
-            onResize={handleWorkspaceResize}
-            minWidth={300}
-            maxWidth={700}
-          />
-        )}
-
-        {/* PANEL 2: Workspace Panel — Code/Browser/Design */}
-        <motion.div
-          animate={{ width: workspacePanelOpen ? workspacePanelWidth : 0 }}
-          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-          className={cn(
-            "flex-shrink-0 flex flex-col overflow-hidden bg-[var(--surface-app)] min-h-0",
-            workspacePanelOpen && "border-l border-[var(--border-default)]",
-          )}
-          role="region"
-          aria-label="Workspace panel"
-        >
-          {/* Pane toggle bar */}
-          <div className="flex items-center bg-[var(--surface-panel)] border-b border-[var(--border-subtle)] px-1.5 overflow-x-auto shrink-0">
-            {WORKSPACE_PANEL_OPTIONS.map((opt) => {
-              const Icon = opt.icon
-              const pane = panes.find((p) => p.type === opt.id)
-              const visible = pane?.visible ?? false
-              const isMainPanel = workspacePanel === opt.id
-              return (
-                <button
-                  key={opt.id}
-                  onClick={() => {
-                    if (visible && isMainPanel) {
-                      setPaneVisibility(opt.id, false)
-                    } else {
-                      panes.forEach((p) => { if (["code", "design"].includes(p.type)) setPaneVisibility(p.type, false) })
-                      setPaneVisibility(opt.id, true)
-                      setWorkspacePanel(opt.id)
-                    }
-                    panelCtrlRef.current?.handleManualTabClick(opt.id)
-                  }}
-                  className={cn(
-                    "flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-all duration-150 shrink-0 border-b-2 border-transparent active:scale-95",
-                    visible
-                      ? "text-[var(--text-primary)] border-[var(--accent-code)]"
-                      : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--border-hover)]"
-                  )}
-                >
-                  <Icon className={cn("h-3.5 w-3.5", visible ? "text-[var(--accent-code)]" : "text-[var(--text-tertiary)]")} />
-                  <span>{opt.label}</span>
+        <MainPaneContainer
+          panes={mainPaneIds.map((id) => ({
+            id,
+            children: id === "explorer" ? (
+              <div className="h-full flex flex-col bg-[#0c0c0d] min-h-0 overflow-hidden" role="region" aria-label="Explorer">
+                <Explorer ref={explorerRef} onOpenWorkspace={openWorkspace} />
+              </div>
+            ) : id === "chat" ? (
+              <div className="h-full flex flex-col overflow-hidden min-h-0" role="region" aria-label="Chat panel">
+                <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--border-default)] bg-[var(--surface-panel)] shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setExplorerOpen(!explorerOpen)}
+                      className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
+                      title="Toggle explorer (⌘B)"
+                    >
+                      {explorerOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
+                    </button>
+                    <span className="text-[10px] font-medium text-[var(--text-quaternary)]">Chat</span>
+                    <WorkflowModeIndicator />
+                    <span className={cn(
+                      "inline-block h-1.5 w-1.5 rounded-full",
+                      runtimeReady && runtimeHealth === "healthy" ? "bg-[var(--color-accent-green)]" :
+                      runtimeStatus === "error" ? "bg-[var(--color-accent-red)]" :
+                      runtimeStatus === "initializing" ? "bg-[var(--color-accent-blue)] animate-pulse" :
+                      "bg-[var(--text-quaternary)]"
+                    )} title={runtimeReady ? "Runtime ready" : runtimeError || runtimeMessage || "Initializing"} />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <ContextRadar />
+                    <button
+                      onClick={handleToggleDiffReview}
+                      className={cn(
+                        "rounded p-0.5 transition-all",
+                        editorMode === "diff"
+                          ? "text-[var(--color-accent-blue)] bg-[var(--color-accent-blue)]/10"
+                          : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]"
+                      )}
+                      title="Toggle diff viewer (⌘⇧D)"
+                    >
+                      <FileDiff className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        const next = !workspacePanelOpen
+                        setWorkspacePanelOpen(next)
+                        panelCtrlRef.current?.syncOpenState(next)
+                      }}
+                      className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
+                      title="Toggle workspace panel (⌘J)"
+                    >
+                      {workspacePanelOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
+                      <ShortcutHint keys="⌘J" className="ml-0.5 hidden sm:inline-flex" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-hidden min-h-0">
+                  <ErrorBoundary name="ChatPanel"><ChatPanel /></ErrorBoundary>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full flex flex-col overflow-hidden min-h-0" role="region" aria-label="Workspace panel">
+                <div className="flex items-center bg-[var(--surface-panel)] border-b border-[var(--border-subtle)] px-1.5 overflow-x-auto shrink-0">
+                  {WORKSPACE_PANEL_OPTIONS.map((opt) => {
+                    const Icon = opt.icon
+                    const pane = panes.find((p) => p.type === opt.id)
+                    const visible = pane?.visible ?? false
+                    const isMainPanel = workspacePanel === opt.id
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={() => {
+                          if (visible && isMainPanel) {
+                            setPaneVisibility(opt.id, false)
+                          } else {
+                            panes.forEach((p) => { if (["code", "design"].includes(p.type)) setPaneVisibility(p.type, false) })
+                            setPaneVisibility(opt.id, true)
+                            setWorkspacePanel(opt.id)
+                          }
+                          panelCtrlRef.current?.handleManualTabClick(opt.id)
+                        }}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-all duration-150 shrink-0 border-b-2 border-transparent active:scale-95",
+                          visible
+                            ? "text-[var(--text-primary)] border-[var(--accent-code)]"
+                            : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--border-hover)]"
+                        )}
+                      >
+                        <Icon className={cn("h-3.5 w-3.5", visible ? "text-[var(--accent-code)]" : "text-[var(--text-tertiary)]")} />
+                        <span>{opt.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="flex-1 overflow-hidden min-h-0">
+                  <PaneContainer panes={paneConfigs} />
+                </div>
+              </div>
+            ),
+            minWidth: id === "explorer" ? 180 : id === "chat" ? 300 : 300,
+            maxWidth: id === "explorer" ? 500 : id === "chat" ? Infinity : 700,
+            defaultSize: id === "explorer" ? (explorerOpen ? explorerWidth : 0) : id === "chat" ? 1 : (workspacePanelOpen ? workspacePanelWidth : 0),
+            header: id === "explorer" ? (
+              <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border-subtle)] shrink-0" style={{ background: "var(--surface-panel)" }}>
+                <span className="text-[10px] font-medium text-[var(--text-quaternary)]">Explorer</span>
+                <button onClick={() => setExplorerOpen(false)} className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all" title="Close explorer">
+                  <PanelLeftClose className="h-3 w-3" />
                 </button>
-              )
-            })}
-          </div>
-
-          {/* PaneContainer — single active pane */}
-          <div className="flex-1 overflow-hidden min-h-0">
-            <PaneContainer panes={paneConfigs} />
-          </div>
-        </motion.div>
-
+              </div>
+            ) : undefined,
+          }))}
+          onReorder={(ids) => usePaneStore.getState().reorderMainPanes(ids)}
+          onResize={(id, size) => {
+            if (id === "explorer") setExplorerWidth(size)
+            if (id === "code") setWorkspacePanelWidth(size)
+          }}
+          getSize={(id) => {
+            if (id === "explorer") return explorerOpen ? explorerWidth : 0
+            if (id === "chat") return -1
+            if (id === "code") return workspacePanelOpen ? workspacePanelWidth : 0
+            return 0
+          }}
+        />
       </div>
 
       ) : (
@@ -1006,6 +985,9 @@ export function CodeCanvasPage() {
           onClose={() => setRecoveredBuffers([])}
         />
       )}
+
+      {/* Issue → PR Dialog */}
+      <IssueToPRDialog />
 
       {/* Missing Workspace Dialog */}
       {missingWorkspace && (

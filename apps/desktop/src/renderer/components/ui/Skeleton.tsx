@@ -113,6 +113,19 @@ function SkeletonCard({ variant, delay }: { variant: "tool" | "thinking" | "mess
   )
 }
 
+export function FileTreeSkeleton() {
+  return (
+    <div className="px-2 py-2 space-y-1.5">
+      {Array.from({ length: 8 }, (_, i) => (
+        <div key={i} className="flex items-center gap-2 px-1" style={{ paddingLeft: `${8 + (i % 3) * 12}px` }}>
+          <Skeleton className="h-3 w-3 shrink-0" />
+          <Skeleton className="h-2.5" width={`${50 + Math.random() * 40}%`} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function ChatTimelineSkeleton({ count = 3 }: { count?: number }) {
   const variants: Array<"tool" | "thinking" | "message"> = ["thinking", "tool", "message", "tool", "thinking", "message"]
   return (

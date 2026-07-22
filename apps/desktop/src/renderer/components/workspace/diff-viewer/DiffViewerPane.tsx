@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useDiffStore } from "@/stores/diff-store"
+import { useDiffReviewStore } from "@/stores/diff-review-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { SideBySideDiff } from "./SideBySideDiff"
 import {
@@ -12,26 +13,27 @@ import {
   rejectDiffReviewFile,
   rejectDiffReviewHunk,
 } from "@/lib/diff-review"
+import { reviewDiffWithAI } from "@/lib/diff-review-agent"
 import {
-  Code2, CheckCheck, XCircle, FileText, GitBranch,
+  CheckCheck, XCircle, GitBranch,
   Eye, EyeOff, ChevronLeft, ChevronRight, Loader2,
-  Check, X, AlertTriangle,
+  Check, X, AlertTriangle, Sparkles,
 } from "lucide-react"
 
 interface DiffViewerPaneProps {
-  /** When provided, renders in inline mode with a Back button */
   onSwitchToEditor?: () => void
-  /** File path to focus when switching to diff mode */
   diffReviewFile?: string | null
 }
 
 export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerPaneProps) {
   const files = useDiffStore((s) => s.files)
   const clear = useDiffStore((s) => s.clear)
+  const reviewInProgress = useDiffReviewStore((s) => s.reviewInProgress)
+  const reviewError = useDiffReviewStore((s) => s.reviewError)
+  const setReviewError = useDiffReviewStore((s) => s.setReviewError)
 
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [showSidebar, setShowSidebar] = useState(true)
-  const [focusedHunk, setFocusedHunk] = useState(0)
   const fileList = useMemo(() => Array.from(files.values()), [files])
 
   const isInline = !!onSwitchToEditor
@@ -96,6 +98,12 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
     }
   }, [isInline])
 
+  const handleReview = useCallback(() => {
+    if (fileList.length === 0) return
+    setReviewError(null)
+    void reviewDiffWithAI(fileList)
+  }, [fileList, setReviewError])
+
   if (fileList.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
@@ -117,7 +125,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
       {/* ── Global toolbar ── */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border-default)] bg-[var(--surface-panel)]/50 shrink-0">
         <div className="flex items-center gap-2">
-          {/* Back button (inline mode only) */}
           {isInline && (
             <>
               <button
@@ -132,7 +139,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
             </>
           )}
 
-          {/* Toggle sidebar */}
           <button
             onClick={() => setShowSidebar((v) => !v)}
             className={cn(
@@ -150,7 +156,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
             )}
           </button>
 
-          {/* Summary stats */}
           <span className="text-[9px] font-medium text-[var(--text-tertiary)] uppercase tracking-widest">
             Changes
           </span>
@@ -165,7 +170,26 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
         </div>
 
         <div className="flex items-center gap-1.5">
-          {/* Sidebar toggle button */}
+          {/* Review with AI button */}
+          <button
+            onClick={handleReview}
+            disabled={reviewInProgress || fileList.length === 0}
+            className={cn(
+              "flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-all",
+              reviewInProgress
+                ? "text-[var(--color-accent-amber)]/60 bg-[var(--color-accent-amber)]/8"
+                : "text-[var(--accent-code)]/60 hover:text-[var(--accent-code)] hover:bg-[var(--accent-code)]/10",
+            )}
+            title="Review code changes with AI"
+          >
+            {reviewInProgress ? (
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-2.5 w-2.5" />
+            )}
+            {reviewInProgress ? "Reviewing..." : "Review"}
+          </button>
+
           <button
             onClick={() => setShowSidebar((v) => !v)}
             className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
@@ -179,7 +203,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
 
           <div className="w-px h-4 bg-[var(--border-default)]" />
 
-          {/* Accept All / Reject All */}
           <button
             onClick={() => { void rejectAllDiffReviews() }}
             disabled={totals.pending === 0}
@@ -207,7 +230,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
             Accept All
           </button>
 
-          {/* Clear (panel mode only) */}
           {!isInline && (
             <>
               <div className="w-px h-4 bg-[var(--border-default)]" />
@@ -222,9 +244,31 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
         </div>
       </div>
 
+      {/* Review error banner */}
+      <AnimatePresence>
+        {reviewError && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 border-b border-red-500/20">
+              <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
+              <span className="text-[9px] text-red-300 flex-1">{reviewError}</span>
+              <button
+                onClick={() => setReviewError(null)}
+                className="text-[9px] text-red-400/60 hover:text-red-300 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Main content: sidebar + diff viewer ── */}
       <div className="flex flex-1 min-h-0">
-        {/* File sidebar */}
         <AnimatePresence>
           {showSidebar && (
             <motion.div
@@ -235,7 +279,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
               className="flex-shrink-0 border-r border-[var(--border-default)] overflow-hidden"
             >
               <div className="flex flex-col h-full">
-                {/* Sidebar header */}
                 <div className="flex items-center justify-between px-2 py-1.5 border-b border-[var(--border-subtle)]">
                   <span className="text-[9px] font-medium text-[var(--text-quaternary)] uppercase tracking-wider">
                     Files
@@ -243,7 +286,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
                   <span className="text-[8px] text-[var(--text-quaternary)]">{fileList.length}</span>
                 </div>
 
-                {/* File list */}
                 <div className="flex-1 overflow-y-auto min-h-0 py-1">
                   {fileList.map((file) => {
                     const isSelected = selectedPath === file.path
@@ -258,7 +300,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
                             : "hover:bg-[var(--border-subtle)]",
                         )}
                       >
-                        {/* Status dot */}
                         <div className={cn(
                           "h-1.5 w-1.5 rounded-full shrink-0",
                           file.status === "accepted" ? "bg-[var(--color-accent-green)]" :
@@ -266,7 +307,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
                           "bg-[var(--color-accent-amber)]",
                         )} />
 
-                        {/* File name */}
                         <div className="flex-1 min-w-0">
                           <span className={cn(
                             "text-[10px] font-mono truncate block",
@@ -279,7 +319,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
                           </span>
                         </div>
 
-                        {/* Line counts */}
                         <div className="text-right shrink-0">
                           <div className="text-[8px] text-[var(--color-accent-green)]/50 font-mono">
                             +{file.hunks.reduce((s, h) => s + h.additions, 0)}
@@ -319,7 +358,6 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
 
       {/* ── Status bar ── */}
       <div className="flex items-center gap-3 px-3 py-1 border-t border-[var(--border-subtle)] bg-[var(--surface-panel)]/30 shrink-0">
-        {/* Prev/Next navigation (inline mode) */}
         {isInline && fileList.length > 1 && (
           <div className="flex items-center gap-1 mr-2">
             <button
@@ -358,7 +396,13 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
           </div>
         )}
         <div className="flex-1" />
-        {selectedFile && hunkSummary && (
+        {reviewInProgress && (
+          <span className="flex items-center gap-1 text-[8px] text-[var(--color-accent-amber)]/60">
+            <Loader2 className="h-2 w-2 animate-spin" />
+            AI review in progress...
+          </span>
+        )}
+        {selectedFile && hunkSummary && !reviewInProgress && (
           <span className="text-[8px] text-[var(--text-quaternary)] font-mono">{hunkSummary}</span>
         )}
       </div>

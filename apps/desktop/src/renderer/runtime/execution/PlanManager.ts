@@ -34,6 +34,7 @@ export async function* runPlanPhase(
   ctrl: AbortController,
   t0: number,
 ): AsyncGenerator<ExecutionEvent> {
+  usePlanStore.getState().setPlanningPhase(true)
   yield { type: "THINKING_STARTED", executionId, label: "Planning approach", timestamp: Date.now() }
   const plan = await PlanGenerator.getInstance().generatePlan(input, ctrl.signal)
   const complexity = ComplexityAnalyzer.getInstance().analyze(input)
@@ -48,12 +49,14 @@ export async function* runPlanPhase(
 
   const approved = await waitForPlanApproval(plan.id, ctrl.signal)
   if (!approved) {
+    usePlanStore.getState().setPlanningPhase(false)
     yield { type: "PLAN_REJECTED", executionId, planId: plan.id, reason: "User rejected the plan", timestamp: Date.now() }
     yield { type: "EXECUTION_FAILED", executionId, error: "Plan rejected", durationMs: Math.round(performance.now() - t0), timestamp: Date.now() }
     usePlanStore.getState().clearPlan()
     return
   }
 
+  usePlanStore.getState().setPlanningPhase(false)
   yield { type: "PLAN_APPROVED", executionId, planId: plan.id, timestamp: Date.now() }
   const current = usePlanStore.getState().currentPlan
   if (current) {

@@ -29,6 +29,7 @@ interface InlineEditOverlayProps {
   filePath: string
   language: string
   fullFileContent: string
+  position?: { top: number; left: number; width?: number } | null
 }
 
 function StreamingProgress({ tokenCount, text }: { tokenCount: number; text: string }) {
@@ -97,6 +98,7 @@ export function InlineEditOverlay({
   filePath,
   language,
   fullFileContent,
+  position,
 }: InlineEditOverlayProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -108,13 +110,22 @@ export function InlineEditOverlay({
     }
   }, [state.active, state.loading, state.streaming, state.generatedPatch])
 
+  const acceptRef = useRef<(() => void) | null>(null)
+  acceptRef.current = () => {
+    if (state.editedCode) { onApplyEdit(state.editedCode); onClose() }
+  }
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && state.active && !state.loading && !state.streaming) onClose()
+      if ((e.key === "Tab" || (e.metaKey && e.key === "Enter")) && state.active && state.generatedPatch && !state.streaming && !state.loading) {
+        e.preventDefault()
+        acceptRef.current?.()
+      }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [state.active, state.loading, state.streaming, onClose])
+  }, [state.active, state.loading, state.streaming, state.generatedPatch, state.editedCode, onApplyEdit, onClose])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -197,15 +208,26 @@ export function InlineEditOverlay({
   const streaming = state.streaming
   const loading = state.loading
 
+  const inlineStyle: React.CSSProperties | undefined = position
+    ? {
+        position: "fixed",
+        top: Math.max(8, position.top),
+        left: Math.max(8, position.left),
+        width: Math.min(480, position.width ?? 420),
+        zIndex: 50,
+      }
+    : undefined
+
   return (
-    <div className="absolute inset-0 z-40 flex items-start justify-center pt-20 pointer-events-none">
+    <div className={cn("z-40 pointer-events-none", position ? "fixed inset-0" : "absolute inset-0 flex items-start justify-center pt-20")}>
       <motion.div
         ref={overlayRef}
         initial={{ opacity: 0, y: -10, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -10, scale: 0.95 }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
-        className="pointer-events-auto w-full max-w-lg mx-4"
+        className={cn("pointer-events-auto", position ? "" : "w-full max-w-lg mx-4")}
+        style={inlineStyle}
       >
         <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-panel)]/95 backdrop-blur-xl shadow-2xl shadow-black/50 overflow-hidden">
           {/* Header */}
@@ -289,7 +311,8 @@ export function InlineEditOverlay({
                   )}
                 >
                   <X className="h-3 w-3" />
-                  Reject
+                  <span>Reject</span>
+                  <span className="text-[8px] opacity-60 ml-0.5">Esc</span>
                 </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.03 }}
@@ -304,7 +327,8 @@ export function InlineEditOverlay({
                   )}
                 >
                   <Check className="h-3 w-3" />
-                  Accept
+                  <span>Accept</span>
+                  <span className="text-[8px] opacity-60 ml-0.5">Tab</span>
                 </motion.button>
               </div>
             </div>

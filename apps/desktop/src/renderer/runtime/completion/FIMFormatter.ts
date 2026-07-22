@@ -1,118 +1,171 @@
-export type FIMModel = "deepseek-coder" | "codellama" | "starcoder" | "starcoder2" | "codegemma" | "qwen-coder"
-
 export interface FIMRequest {
   prefix: string
   suffix: string
   language: string
   filePath: string
+  maxLines: number
 }
 
-export interface FIMResult {
-  prompt: string
-  modelFormat: FIMModel
+export interface FIMResponse {
+  text: string
+  finishReason: "stop" | "length" | "error"
+  latencyMs: number
 }
 
-const MODEL_FORMATS: Record<FIMModel, { prefix: string; suffix: string; middle: string }> = {
-  "deepseek-coder": {
-    prefix: "<｜｜▁pad▁｜｜>",
-    suffix: "<｜｜place_holder_mm_span_0440｜｜>",
-    middle: "�",
-  },
-  "codellama": {
-    prefix: "<PRE>",
-    suffix: "<SUF>",
-    middle: "<MID>",
-  },
-  "starcoder": {
-    prefix: "<fim_prefix>",
-    suffix: "<fim_suffix>",
-    middle: "<fim_middle>",
-  },
-  "starcoder2": {
-    prefix: "<fim_prefix>",
-    suffix: "<fim_suffix>",
-    middle: "<fim_middle>",
-  },
-  "codegemma": {
-    prefix: "<|fim_prefix|>",
-    suffix: "<|fim_suffix|>",
-    middle: "<|fim_middle|>",
-  },
-  "qwen-coder": {
-    prefix: "<fim_prefix>",
-    suffix: "<fim_suffix>",
-    middle: "<fim_middle>",
-  },
+export interface FIMProviderConfig {
+  type: "openai-compatible" | "anthropic" | "custom"
+  baseUrl: string
+  apiKey: string
+  model: string
 }
 
-export function detectFIMModel(modelId: string): FIMModel | null {
-  const id = modelId.toLowerCase()
-  if (id.includes("deepseek")) return "deepseek-coder"
-  if (id.includes("codellama") || id.includes("llama")) return "codellama"
-  if (id.includes("starcoder2")) return "starcoder2"
-  if (id.includes("starcoder")) return "starcoder"
-  if (id.includes("codegemma")) return "codegemma"
-  if (id.includes("qwen") && (id.includes("coder") || id.includes("code"))) return "qwen-coder"
-  return null
+export const FIM_LANGUAGE_MAP: Record<string, string> = {
+  typescript: "TypeScript",
+  javascript: "JavaScript",
+  python: "Python",
+  rust: "Rust",
+  go: "Go",
+  java: "Java",
+  cpp: "C++",
+  c: "C",
+  ruby: "Ruby",
+  php: "PHP",
+  swift: "Swift",
+  kotlin: "Kotlin",
+  scala: "Scala",
+  shell: "Shell",
+  sql: "SQL",
+  html: "HTML",
+  css: "CSS",
+  json: "JSON",
+  yaml: "YAML",
+  markdown: "Markdown",
 }
 
-export function getFIMModelName(modelId: string): FIMModel {
-  return detectFIMModel(modelId) ?? "starcoder"
-}
+export function buildFIMBody(
+  request: FIMRequest,
+  config: FIMProviderConfig,
+): Record<string, unknown> {
+  const { prefix, suffix, language, maxLines } = request
 
-export function formatFIMPrompt(request: FIMRequest, format: FIMModel): string {
-  const fmt = MODEL_FORMATS[format]
-  if (!fmt) return request.prefix
+  const truncatedPrefix = prefix.length > 3000 ? prefix.slice(-3000) : prefix
+  const truncatedSuffix = suffix.length > 1500 ? suffix.slice(0, 1500) : suffix
 
-  const prefix = truncatePrefix(request.prefix, 4000)
-  const suffix = truncateSuffix(request.suffix, 2000)
-
-  return `${fmt.prefix}${prefix}${fmt.suffix}${suffix}${fmt.middle}`
-}
-
-export function parseFIMCompletion(raw: string, format: FIMModel): string {
-  const fmt = MODEL_FORMATS[format]
-  const eosMarkers = [
-    "<|endoftext|>", "<|eos|>", "</s>", "<EOS>",
-    "<|im_end|>", "<|end|>", "<|END|>",
-  ]
-
-  let cleaned = raw
-  for (const marker of eosMarkers) {
-    const idx = cleaned.indexOf(marker)
-    if (idx >= 0) cleaned = cleaned.substring(0, idx)
+  switch (config.type) {
+    case "openai-compatible":
+      return buildOpenAIFIMBody(truncatedPrefix, truncatedSuffix, config.model, language, maxLines)
+    case "anthropic":
+      return buildAnthropicFIMBody(truncatedPrefix, truncatedSuffix, config.model, maxLines)
+    case "custom":
+      return buildOpenAIFIMBody(truncatedPrefix, truncatedSuffix, config.model, language, maxLines)
   }
-
-  // Remove any remaining special tokens
-  cleaned = cleaned.replace(/<\|?fim_\w+\|?>/g, "").trim()
-
-  return cleaned
 }
 
-export function formatStandardPrompt(request: FIMRequest): string {
-  return [
-    `You are a code completion engine. Complete the code at cursor position.`,
-    `Return ONLY the completion text with no explanation.`,
-    ``,
-    `Language: ${request.language}`,
-    `File: ${request.filePath}`,
-    ``,
-    `Code before cursor:`,
-    `\`\`\`${request.language}`,
-    truncatePrefix(request.prefix, 3000),
-    `\`\`\``,
-    ``,
-    request.suffix ? `Code after cursor:\n\`\`\`${request.language}\n${truncateSuffix(request.suffix, 1000)}\n\`\`\`\n` : "",
-    `Completion:`,
-  ].filter(Boolean).join("\n")
+function buildOpenAIFIMBody(
+  prefix: string,
+  suffix: string,
+  model: string,
+  language: string,
+  maxLines: number,
+): Record<string, unknown> {
+  const maxTokens = Math.min(maxLines * 30, 512)
+  return {
+    model,
+    prompt: `<fim_prefix>${prefix}<fim_suffix>${suffix}<fim_middle>`,
+    suffix: "",
+    max_tokens: maxTokens,
+    temperature: 0.1,
+    stop: ["<fim_end>", "<|endoftext|>", "\\n\\n\\n"],
+    stream: false,
+  }
 }
 
-function truncatePrefix(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text
-  return "..." + text.slice(-maxChars)
+function buildAnthropicFIMBody(
+  prefix: string,
+  suffix: string,
+  model: string,
+  maxLines: number,
+): Record<string, unknown> {
+  const maxTokens = Math.min(maxLines * 30, 512)
+  return {
+    model,
+    max_tokens: maxTokens,
+    temperature: 0.1,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `You are a code completion engine. Complete the code at the cursor position.
+The cursor is between PREFIX and SUFFIX.
+Only output the completion text, no explanation.
+
+PREFIX:
+\`\`\`
+${prefix.slice(-2000)}
+\`\`\`
+
+SUFFIX:
+\`\`\`
+${suffix.slice(0, 1000)}
+\`\`\`
+
+Complete the code at the cursor:`,
+          },
+        ],
+      },
+    ],
+  }
 }
 
-function truncateSuffix(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text
-  return text.slice(0, maxChars) + "..."
+export function parseFIMResponse(
+  raw: string,
+  config: FIMProviderConfig,
+): string {
+  switch (config.type) {
+    case "openai-compatible":
+      return parseOpenAIResponse(raw)
+    case "anthropic":
+      return parseAnthropicResponse(raw)
+    case "custom":
+      return parseOpenAIResponse(raw)
+  }
+}
+
+function parseOpenAIResponse(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw)
+    const text = parsed.choices?.[0]?.text ?? parsed.choices?.[0]?.message?.content ?? ""
+    return text
+      .replace(/<fim_end>/g, "")
+      .replace(/<\|endoftext\|>/g, "")
+      .trim()
+  } catch {
+    return raw
+      .replace(/<fim_end>/g, "")
+      .replace(/<\|endoftext\|>/g, "")
+      .trim()
+  }
+}
+
+function parseAnthropicResponse(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed.content?.[0]?.text ?? ""
+      .replace(/<fim_end>/g, "")
+      .trim()
+  } catch {
+    return raw.trim()
+  }
+}
+
+export function truncatePrefix(prefix: string, maxChars: number = 3000): string {
+  if (prefix.length <= maxChars) return prefix
+  return "..." + prefix.slice(-(maxChars - 3))
+}
+
+export function truncateSuffix(suffix: string, maxChars: number = 1500): string {
+  if (suffix.length <= maxChars) return suffix
+  return suffix.slice(0, maxChars - 3) + "..."
 }

@@ -1,14 +1,17 @@
-import { memo, useRef, useEffect, useMemo } from "react"
+import { memo, useRef, useEffect, useMemo, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Terminal, X, CheckCircle2, XCircle, MinusCircle } from "lucide-react"
+import { Terminal, X, CheckCircle2, XCircle, MinusCircle, Play, Ban } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTimelineStore } from "../timeline/timeline-store"
+import { usePermissionModeStore } from "@/stores/chat/permission-mode-store"
+import { ClickableTerminalOutput } from "./ClickableTerminalOutput"
 import type { TerminalRecord } from "../timeline/step-card"
 
 interface TerminalPaneProps {
   stepId: string
   expanded: boolean
   onClose: () => void
+  onOpenFile?: (path: string) => void
 }
 
 function stripAnsi(str: string): string {
@@ -42,10 +45,12 @@ function StatusIcon({ terminal }: { terminal: TerminalRecord }) {
   return <MinusCircle className="h-3 w-3 text-white/30 flex-shrink-0" />
 }
 
-export const TerminalPane = memo(function TerminalPane({ stepId, expanded, onClose }: TerminalPaneProps) {
+export const TerminalPane = memo(function TerminalPane({ stepId, expanded, onClose, onOpenFile }: TerminalPaneProps) {
   const session = useTimelineStore((s) => s.agentSessions.get(stepId))
   const terminals = useMemo(() => session?.terminalOutputs ?? [], [session?.terminalOutputs])
   const scrollRef = useRef<HTMLDivElement>(null)
+  const permissionMode = usePermissionModeStore((s) => s.mode)
+  const requireApproval = usePermissionModeStore((s) => s.requireApproval)
 
   useEffect(() => {
     if (expanded && scrollRef.current) {
@@ -121,12 +126,40 @@ export const TerminalPane = memo(function TerminalPane({ stepId, expanded, onClo
                       {term.exitCode != null && term.exitCode !== 0 && term.status !== "running" && (
                         <span className="text-[10px] text-red-400/30 font-mono">exit {term.exitCode}</span>
                       )}
+                      {/* Permission-mode Run/Deny buttons */}
+                      {requireApproval() && term.status === "running" && (
+                        <div className="flex items-center gap-1 ml-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); /* approve */ }}
+                            className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium transition-all hover:bg-emerald-500/10 hover:text-emerald-400/80"
+                            style={{ color: "var(--text-quaternary)" }}
+                            title="Approve command"
+                          >
+                            <Play className="h-2.5 w-2.5" />
+                            <span>Run</span>
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); /* deny */ }}
+                            className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium transition-all hover:bg-red-500/10 hover:text-red-400/80"
+                            style={{ color: "var(--text-quaternary)" }}
+                            title="Deny command"
+                          >
+                            <Ban className="h-2.5 w-2.5" />
+                            <span>Deny</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {cleanOutput && (
-                      <pre className="mt-1 pl-5 text-[10px] font-mono text-white/30 whitespace-pre-wrap break-all leading-relaxed max-h-[80px] overflow-hidden">
-                        {cleanOutput.length > 500 ? cleanOutput.slice(0, 500) + "..." : cleanOutput}
-                      </pre>
+                      <div className="mt-1 pl-5 max-h-[80px] overflow-hidden">
+                        <ClickableTerminalOutput
+                          text={cleanOutput}
+                          maxLength={500}
+                          maxHeight={80}
+                          isError={term.status === "error" || (term.exitCode != null && term.exitCode !== 0)}
+                        />
+                      </div>
                     )}
                   </div>
                 )

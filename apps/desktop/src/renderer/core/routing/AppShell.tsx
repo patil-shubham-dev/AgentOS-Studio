@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useState, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { motion as _motion, AnimatePresence } from 'framer-motion'
 const motion = _motion
@@ -10,10 +10,12 @@ import { SafeErrorBoundary, SidebarBoundary, WorkspaceBoundary } from '../error-
 import { SandboxStatusIndicator } from '@/components/workspace/sandbox/SandboxStatusIndicator'
 import { useApprovalStore } from '../../runtime/approval-gate'
 import { useAgentStore } from '../../stores/agent-store'
+import { useAppStore } from '@/stores/settings/app-store'
 import { useLeakTracker } from '@/performance/leak-detector'
 import { ExecutionSessionManager } from '@/runtime/sessions/ExecutionSessionManager'
 import { fadeInUp } from '@/lib/motion'
 import { useReducedMotion } from '@/lib/reduced-motion'
+import { QuickStartWizard } from '@/components/workspace/QuickStartWizard'
 
 function ApprovalToast() {
   const { current: pending, queue, approve, reject } = useApprovalStore()
@@ -118,6 +120,20 @@ function AgentActivityBadge() {
 
 export function AppShell() {
   useLeakTracker("AppShell")
+  const providers = useAppStore((s) => s.providers)
+  const mockMode = useAppStore((s) => s.mockMode)
+  const hasProvider = providers.length > 0 && providers.some((p) => p.apiKey)
+  const [showQuickStart, setShowQuickStart] = useState(false)
+
+  useEffect(() => {
+    if (!hasProvider && !mockMode) {
+      const dismissed = localStorage.getItem("agenticOS.quickStart.dismissed")
+      if (!dismissed) {
+        setShowQuickStart(true)
+      }
+    }
+  }, [hasProvider, mockMode])
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <SidebarBoundary>
@@ -134,6 +150,11 @@ export function AppShell() {
       <ApprovalToast />
       <AgentActivityBadge />
       <SandboxStatusIndicator />
+      <QuickStartWizard
+        open={showQuickStart}
+        onComplete={() => { setShowQuickStart(false); localStorage.removeItem("agenticOS.quickStart.dismissed") }}
+        onDismiss={() => { setShowQuickStart(false); localStorage.setItem("agenticOS.quickStart.dismissed", "true") }}
+      />
     </div>
   )
 }

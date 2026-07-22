@@ -8,6 +8,9 @@ import { RuntimeTab } from "@/components/settings/runtime-tab"
 import { ThinkingTab } from "@/components/settings/thinking-tab"
 import { CompletionSettings } from "@/components/settings/completion-settings"
 import { LogsTab } from "@/components/settings/logs-tab"
+import { ScheduledTasksTab } from "@/components/settings/scheduled-tasks-tab"
+import { ConnectorsTab } from "@/components/settings/connectors-tab"
+import { UsageTab } from "@/components/settings/usage-tab"
 import { AgentsPage } from "@/pages/agents"
 import { MemoryPage } from "@/pages/memory"
 import { ContextDashboardPage } from "@/pages/context-dashboard"
@@ -15,8 +18,9 @@ import { PersonasPage } from "@/pages/personas"
 import { PluginsPage } from "@/pages/plugins"
 import {
   Cpu, Box, Brain, Wrench, Terminal, Sparkles, Zap,
-  Search, Command, ChevronLeft, Settings2,
+  Search, Command, ChevronLeft, Settings2, Link2,
   Users, Palette, Puzzle, ScrollText, Activity,
+  CalendarClock, BarChart3,
 } from "lucide-react"
 import { WiringIndicator } from "@/components/settings/wiring-indicator"
 import { useLeakTracker } from "@/performance/leak-detector"
@@ -42,18 +46,21 @@ const coreNavItems: NavItem[] = [
   { id: "runtime", label: "Runtime", icon: Terminal, shortcut: "4", description: "Execution environment & sandbox config" },
   { id: "thinking", label: "Thinking", icon: Sparkles, shortcut: "5", description: "Thinking visualization & budget" },
   { id: "completions", label: "Completions", icon: Zap, shortcut: "6", description: "Inline code completion settings" },
+  { id: "connectors", label: "Connectors", icon: Link2, shortcut: "7", description: "External service integrations" },
 ]
 
 const advancedNavItems: NavItem[] = [
-  { id: "agents", label: "Agents", icon: Users, shortcut: "7", description: "Agent role management & capabilities" },
-  { id: "memory", label: "Memory", icon: Brain, shortcut: "8", description: "Memory system management & inspection" },
-  { id: "context", label: "Context", icon: Activity, shortcut: "9", description: "Context budget monitoring & usage" },
-  { id: "personas", label: "Personas", icon: Palette, shortcut: "0", description: "Persona management & creation" },
+  { id: "agents", label: "Agents", icon: Users, shortcut: "8", description: "Agent role management & capabilities" },
+  { id: "memory", label: "Memory", icon: Brain, shortcut: "9", description: "Memory system management & inspection" },
+  { id: "context", label: "Context", icon: Activity, shortcut: "0", description: "Context budget monitoring & usage" },
+  { id: "personas", label: "Personas", icon: Palette, shortcut: undefined, description: "Persona management & creation" },
   { id: "plugins", label: "Plugins", icon: Puzzle, shortcut: undefined, description: "Plugin management & configuration" },
 ]
 
 const logNavItems: NavItem[] = [
+  { id: "usage", label: "Usage", icon: BarChart3, shortcut: undefined, description: "Usage analytics & activity metrics" },
   { id: "logs", label: "Logs", icon: ScrollText, shortcut: undefined, description: "System logs & debugging" },
+  { id: "scheduler", label: "Scheduler", icon: CalendarClock, shortcut: undefined, description: "Scheduled tasks & automation" },
 ]
 
 const allNavItems = [...coreNavItems, ...advancedNavItems, ...logNavItems]
@@ -370,7 +377,10 @@ export function SettingsPage() {
               {activeTab === "context" && <div className="p-6 max-w-6xl mx-auto"><ContextDashboardPage /></div>}
               {activeTab === "personas" && <div className="p-6 max-w-6xl mx-auto"><PersonasPage /></div>}
               {activeTab === "plugins" && <div className="p-6 max-w-6xl mx-auto"><PluginsPage /></div>}
+              {activeTab === "connectors" && <div className="p-6 max-w-6xl mx-auto"><ConnectorsTab /></div>}
+              {activeTab === "usage" && <div className="p-6 max-w-6xl mx-auto"><UsageTab /></div>}
               {activeTab === "logs" && <div className="p-6 max-w-6xl mx-auto"><LogsTab /></div>}
+              {activeTab === "scheduler" && <div className="p-6 max-w-6xl mx-auto"><ScheduledTasksTab /></div>}
             </motion.div>
           </AnimatePresence>
         </div>

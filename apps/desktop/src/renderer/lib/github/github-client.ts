@@ -640,6 +640,22 @@ export class GitHubClient {
     return this.request('GET', `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${prNumber}/commits`)
   }
 
+  async getCombinedStatus(owner: string, repo: string, ref: string): Promise<{ state: string; statuses: Array<{ context: string; state: string; description: string; target_url: string; created_at: string }>; total_count: number }> {
+    return this.request('GET', `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(ref)}/status`)
+  }
+
+  async getCheckRuns(owner: string, repo: string, ref: string): Promise<{ total_count: number; check_runs: Array<{ name: string; status: string; conclusion: string | null; app: { name: string }; started_at: string; completed_at: string | null }> }> {
+    return this.request('GET', `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(ref)}/check-runs`)
+  }
+
+  async getCurrentUser(): Promise<GitHubUser> {
+    return this.request<GitHubUser>('GET', '/user')
+  }
+
+  async listUserRepos(type?: 'all' | 'owner' | 'member'): Promise<GitHubRepository[]> {
+    return this.request<GitHubRepository[]>('GET', '/user/repos', undefined, type ? { type } as Record<string, string> : undefined)
+  }
+
   async createPullRequestReview(owner: string, repo: string, prNumber: number, params: { body: string; event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT'; comments?: Array<{ path: string; position: number; body: string }> }): Promise<{ id: number; state: string }> {
     return this.request('POST', `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${prNumber}/reviews`, params)
   }

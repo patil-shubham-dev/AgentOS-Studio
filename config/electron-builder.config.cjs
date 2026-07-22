@@ -29,6 +29,7 @@ const config = {
   nsis: {
     oneClick: false,
     perMachine: false,
+    allowElevation: false,
     allowToChangeInstallationDirectory: false,
     installerIcon: 'resources/branding/icon.ico',
     uninstallerIcon: 'resources/branding/icon.ico',
@@ -37,6 +38,8 @@ const config = {
     createDesktopShortcut: false,
     createStartMenuShortcut: true,
     shortcutName: 'AgenticOS',
+    runAfterFinish: true,
+    deleteAppDataOnUninstall: false,
     include: 'build/installer-redesign.nsh',
     uninstallDisplayName: 'AgenticOS ${version}',
     menuCategory: true,

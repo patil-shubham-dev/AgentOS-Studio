@@ -8,9 +8,12 @@ import { useTimelineStore } from "../timeline/timeline-store"
 import { UnifiedAssistantResponse } from "./UnifiedAssistantResponse"
 import { UserPill } from "./UserPill"
 import { TerminalPane } from "./TerminalPane"
+import { ViewModeToggle } from "./ViewModeToggle"
+import { PermissionModeSelector } from "./PermissionModeSelector"
 import { ReferenceChipRow } from "@/components/workspace/context-refs/ReferenceChip"
 import type { UserMessageEvent } from "../timeline/types"
 import { QuickActions } from "../timeline/QuickActions"
+import { ChatTimelineSkeleton } from "@/components/ui/Skeleton"
 import { ContextBreakdown } from "./ContextBreakdown"
 import { useContextPackSlot } from "@/stores/context-pack-slot"
 import { EmptyState } from "./EmptyState"
@@ -160,18 +163,30 @@ export const ConversationTimeline = memo(function ConversationTimeline({ onSendM
     virtualizer.scrollToIndex(conversationTurns.length - 1, { align: "end", behavior: reduced ? "auto" : "smooth" })
   }, [virtualizer, conversationTurns.length, reduced])
 
+  const [isInitialMount, setIsInitialMount] = useState(true)
+  useEffect(() => {
+    const timer = setTimeout(() => setIsInitialMount(false), 200)
+    return () => clearTimeout(timer)
+  }, [])
   const hasItems = events.length > 0 || sessionOrder.length > 0
   const turnCount = conversationTurns.length
 
   return (
     <div className="relative h-full">
+      <div className="flex items-center justify-between px-3 py-1 border-b select-none"
+        style={{ borderColor: "var(--border-subtle)" }}>
+        <PermissionModeSelector />
+        <ViewModeToggle />
+      </div>
       <div ref={parentRef}
         className="h-full overflow-y-auto scrollbar-thin"
         style={{ scrollbarColor: "var(--border-subtle) transparent" }}
         role="log" aria-label="Conversation" aria-live="polite"
       >
         <div className="mx-auto" style={{ maxWidth: "min(100%, 46rem)" }}>
-          {!hasItems ? (
+          {isInitialMount && !hasItems ? (
+            <ChatTimelineSkeleton count={3} />
+          ) : !hasItems ? (
             <EmptyState onSendMessage={onSendMessage} className="py-16" />
           ) : (
             <div className="py-3 relative" style={{ height: `${virtualizer.getTotalSize()}px` }}>

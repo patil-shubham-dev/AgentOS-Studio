@@ -1,5 +1,7 @@
-import { memo } from "react"
+import { memo, useState } from "react"
 import { motion } from "framer-motion"
+
+const COLLAPSE_THRESHOLD = 280
 
 interface UserPillProps {
   content: string
@@ -7,7 +9,10 @@ interface UserPillProps {
 }
 
 export const UserPill = memo(function UserPill({ content, timestamp }: UserPillProps) {
+  const [collapsed, setCollapsed] = useState(true)
   const timeStr = new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  const isLong = content.length > COLLAPSE_THRESHOLD
+  const displayText = collapsed && isLong ? content.slice(0, COLLAPSE_THRESHOLD) + "…" : content
 
   return (
     <motion.div
@@ -23,8 +28,17 @@ export const UserPill = memo(function UserPill({ content, timestamp }: UserPillP
           <p className="text-sm leading-relaxed whitespace-pre-wrap break-words"
             style={{ color: "var(--text-primary)" }}
           >
-            {content}
+            {displayText}
           </p>
+          {isLong && (
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              className="text-[9px] font-medium mt-1 transition-colors"
+              style={{ color: "var(--text-tertiary)" }}
+            >
+              {collapsed ? "Show more" : "Show less"}
+            </button>
+          )}
         </div>
         <div className="text-[8px] text-right mt-0.5 mr-1"
           style={{ color: "var(--text-quaternary)" }}

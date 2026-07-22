@@ -76,7 +76,7 @@ function nextTrace(): string {
 import { fileContentCache } from "@/lib/FileContentCache"
 import { useDiffStore } from "@/stores/diff-store"
 import { buildDiffFileEntry, acceptDiffReviewFile, rejectDiffReviewFile, acceptAllDiffReviews } from "@/lib/diff-review"
-import { ChangeSetManager } from "@/runtime/changeset/ChangeSetManager"
+import { FileStateCache } from "@/runtime/tools/storage/FileStateCache"
 
 // Helper to seed a file in memfs and set up diff store entry (simulating ExecutionSessionManager)
 function seedEditInDiffStore(original: string, modified: string): void {
@@ -85,17 +85,25 @@ function seedEditInDiffStore(original: string, modified: string): void {
   )
 }
 
+/** Seed disk content + FileStateCache so read-before-edit is satisfied for existing files. */
+function seedExistingFile(content: string): void {
+  memfsSet(FULL_PATH, content)
+  FileStateCache.getInstance().recordRead(FULL_PATH, content, Date.now())
+}
+
 describe("Phase 2.5 — Disk mutation tests (propose-only + accept/reject)", () => {
   beforeEach(() => {
     memfs.clear()
     mockNotifyFileEdited.mockClear()
     mockCreateSnapshot.mockClear()
     fileContentCache.clear()
+    FileStateCache.getInstance().clear()
     useDiffStore.setState({ files: new Map(), correlationId: null })
   })
 
   afterEach(() => {
     memfs.clear()
+    FileStateCache.getInstance().clear()
   })
 
   // ──────────────────────────────────────────────
@@ -136,7 +144,7 @@ describe("Phase 2.5 — Disk mutation tests (propose-only + accept/reject)", () 
 
   describe("EditFileTool — propose-only", () => {
     beforeEach(() => {
-      memfsSet(FULL_PATH, ORIGINAL_CONTENT)
+      seedExistingFile(ORIGINAL_CONTENT)
     })
 
     it("returns success without writing to disk", async () => {
@@ -277,7 +285,7 @@ describe("Phase 2.5 — Disk mutation tests (propose-only + accept/reject)", () 
   // ──────────────────────────────────────────────
   describe("full flow integration", () => {
     beforeEach(() => {
-      memfsSet(FULL_PATH, ORIGINAL_CONTENT)
+      seedExistingFile(ORIGINAL_CONTENT)
     })
 
     it("propose → accept: disk content matches proposed edit", async () => {

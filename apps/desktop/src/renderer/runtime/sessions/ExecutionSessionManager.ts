@@ -67,6 +67,10 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function tryParseJSON(text: string): Record<string, unknown> | undefined {
+  try { return JSON.parse(text) as Record<string, unknown> } catch { return undefined }
+}
+
 export class ExecutionSessionManager {
   private static instance: ExecutionSessionManager
   private sessions: Map<string, ExecutionSession> = new Map()
@@ -101,6 +105,8 @@ export class ExecutionSessionManager {
   private commandLogIds = new Map<string, string>()
   /** Maps sessionId → changeSetId for routing file edits through ChangeSetManager */
   private sessionChangeSets = new Map<string, string>()
+  /** Maps toolId → TOOL_START info for matching with ERROR to extract file paths */
+  private toolStartMap = new Map<string, { toolName: string; args: unknown; executionId: string }>()
 
   // ── Runtime telemetry ──
   private runtimeTelemetry = {
@@ -404,6 +410,7 @@ export class ExecutionSessionManager {
       this.stepHistoryByExecId.clear()
       this.sessionToExecId.clear()
       this.pendingToolArgs.clear()
+      this.toolStartMap.clear()
       // Clean up optimistic session via correlationId
       if (options.correlationId) {
         const optimisticStepId = `optimistic_${options.correlationId}`
@@ -609,10 +616,18 @@ export class ExecutionSessionManager {
         }
         timeline.addToolCallToAgent(stepId, toolCall)
 
+        // Store tool start info for matching with TOOL_ERROR to extract file paths
+        this.toolStartMap.set(event.toolId, {
+          toolName: event.toolName,
+          args: event.args,
+          executionId: event.executionId,
+        })
+
         // Update agent status based on tool being used
         const role = this.execRoleMap.get(event.executionId)
         if (role) {
-          const activity = getActivityForToolCall(event.toolName, typeof event.args === 'object' ? event.args as Record<string, unknown> : undefined)
+          const parsedArgs = typeof event.args === 'string' ? undefined : event.args as Record<string, unknown>
+          const activity = getActivityForToolCall(event.toolName, parsedArgs)
           useAgentStore.getState().setAgentStatus(role, {
             id: role,
             role,
@@ -620,6 +635,15 @@ export class ExecutionSessionManager {
             currentTask: activity.label,
             lastAction: activity.detail ?? activity.label,
           })
+
+          // Track "reading" file activity for read-type tools with a path
+          if (activity.type === "reading") {
+            const argsObj = typeof event.args === 'string' ? tryParseJSON(event.args) : event.args as Record<string, unknown>
+            const filePath = argsObj?.path
+            if (filePath && typeof filePath === "string") {
+              useAgentStore.getState().setFileActivity(filePath, role, "reading")
+            }
+          }
         }
         break
       }
@@ -657,6 +681,17 @@ export class ExecutionSessionManager {
             currentTask: "Handling error",
             lastAction: `Error: ${event.error?.slice(0, 80)}`,
           })
+
+          // Track "error" file activity if the tool had a file path
+          const toolStartInfo = this.toolStartMap.get(event.toolId)
+          if (toolStartInfo) {
+            this.toolStartMap.delete(event.toolId)
+            const argsObj = typeof toolStartInfo.args === 'string' ? tryParseJSON(toolStartInfo.args) : toolStartInfo.args as Record<string, unknown>
+            const filePath = argsObj?.path
+            if (filePath && typeof filePath === "string") {
+              useAgentStore.getState().setFileActivity(filePath, role, "error")
+            }
+          }
         }
         this.runtimeTelemetry.toolErrors++
         break
@@ -1241,6 +1276,11 @@ export class ExecutionSessionManager {
         this.pendingToolArgs.delete(toolId)
       }
     }
+    for (const [toolId, info] of this.toolStartMap) {
+      if (info.executionId === executionId) {
+        this.toolStartMap.delete(toolId)
+      }
+    }
   }
 
   /** Record per-runtime telemetry for side-by-side validation */
@@ -1357,6 +1397,7 @@ export class ExecutionSessionManager {
 
     // Clean up any pending tool args to prevent memory leaks
     this.pendingToolArgs.clear()
+    this.toolStartMap.clear()
 
     // Background safety fallback: only runs if something is genuinely stuck
     this.forceStopTimer = setTimeout(() => {

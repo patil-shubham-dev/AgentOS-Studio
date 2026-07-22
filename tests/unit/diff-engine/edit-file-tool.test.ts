@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest"
 import { fileContentCache } from "@/lib/FileContentCache"
+import { FileStateCache } from "@/runtime/tools/storage/FileStateCache"
 
 // In-memory filesystem for testing — normalizes path separators
 const memfs = new Map<string, string>()
@@ -13,6 +14,7 @@ function memfsSet(path: string, content: string): void {
   memfs.set(normalizePath(path), content)
 }
 
+const WORKSPACE = "/test/workspace"
 const mockNotifyFileEdited = vi.fn()
 
 vi.mock("@/stores/workspace-store", () => ({
@@ -50,16 +52,24 @@ function nextTrace(): string {
   return `test-trace-${++traceCounter}`
 }
 
+/** Seed disk content + FileStateCache so read-before-edit is satisfied. */
+function seedExistingFile(relativePath: string, content: string): void {
+  const fullPath = `${WORKSPACE}\\${relativePath.replace(/\//g, "\\")}`
+  memfsSet(`${WORKSPACE}/${relativePath}`, content)
+  FileStateCache.getInstance().recordRead(fullPath, content, Date.now())
+}
+
 describe("EditFileTool", () => {
   beforeEach(async () => {
     memfs.clear()
     fileContentCache.clear()
+    FileStateCache.getInstance().clear()
     mockNotifyFileEdited.mockClear()
     mockCreateSnapshot.mockClear()
 
-    // Seed initial file
-    memfsSet(
-      "/test/workspace/src/auth/middleware.ts",
+    // Seed initial file (disk + read state)
+    seedExistingFile(
+      "src/auth/middleware.ts",
       [
         "import { Request, Response } from 'express'",
         "import { authenticate } from './authenticate'",
@@ -84,6 +94,7 @@ describe("EditFileTool", () => {
 
   afterEach(() => {
     memfs.clear()
+    FileStateCache.getInstance().clear()
   })
 
   describe("edits array format (new API)", () => {
@@ -156,7 +167,7 @@ describe("EditFileTool", () => {
     })
 
     it("handles multi-occurrence replacement", async () => {
-      memfsSet("/test/workspace/test-file.ts", "foo\nfoo\nfoo")
+      seedExistingFile("test-file.ts", "foo\nfoo\nfoo")
       const { EditFileTool } = await import("@/runtime/tools/implementations/EditFileTool")
       const result = await EditFileTool.execute(
         { role: "coder", traceId: nextTrace() },
@@ -275,7 +286,7 @@ describe("EditFileTool", () => {
     })
 
     it("returns error when no edits provided", async () => {
-      memfsSet("/test/workspace/test.ts", "const x = 1\n")
+      seedExistingFile("test.ts", "const x = 1\n")
       const { EditFileTool } = await import("@/runtime/tools/implementations/EditFileTool")
       const result = await EditFileTool.execute(
         { role: "coder" },
@@ -336,7 +347,7 @@ describe("EditFileTool", () => {
 
     it("applies edits to different files independently", async () => {
       const traceId = nextTrace()
-      memfsSet("/test/workspace/other.ts", "const y = 2\n")
+      seedExistingFile("other.ts", "const y = 2\n")
       const { EditFileTool } = await import("@/runtime/tools/implementations/EditFileTool")
       const r1 = await EditFileTool.execute(
         { role: "coder", traceId },

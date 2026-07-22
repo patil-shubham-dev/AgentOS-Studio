@@ -82,8 +82,8 @@ function createGradientBmp(width, height, fromHex, toHex, accentHex) {
 
 const assetsDir = join(root, 'build/assets')
 
-writeFileSync(join(assetsDir, 'header.bmp'), createGradientBmp(150, 57, '0E1011', '121518', '3694C8'))
+writeFileSync(join(assetsDir, 'header.bmp'), createGradientBmp(150, 57, 'F7F8FA', 'EDF1F4', '3694C8'))
 console.log('Generated build/assets/header.bmp (150x57)')
 
-writeFileSync(join(assetsDir, 'sidebar.bmp'), createGradientBmp(164, 314, '121518', '0E1011', '3694C8'))
+writeFileSync(join(assetsDir, 'sidebar.bmp'), createGradientBmp(164, 314, 'F9FAFB', 'E8EEF2', '3694C8'))
 console.log('Generated build/assets/sidebar.bmp (164x314)')

@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS: CompletionProviderSettings = {
   providerId: null,
   model: "",
   useFIM: true,
-  maxTokens: 64,
+  maxTokens: 256,
   temperature: 0.1,
   debounceMs: 300,
   enabled: true,

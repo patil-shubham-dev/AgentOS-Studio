@@ -3,6 +3,7 @@ type ITextModel = editor.ITextModel
 import { workspaceIndex } from "@/lib/search-index"
 import { useCompletionStore, type CompletionSource } from "./completion-store"
 import { requestAiCompletion } from "./completion-ai"
+import { globalCompletionProvider, getCompletionConfig, updateCompletionConfig } from "@/runtime/completion/CompletionProvider"
 
 const MAX_SCAN_LINES = 3000
 
@@ -37,7 +38,30 @@ function setCache(key: string, text: string, lineHash: string): void {
 }
 
 function getLinePrefix(model: ITextModel, position: Position): string {
-  return model.getLineContent(position.lineNumber).substring(0, position.column - 1)
+  const currentLine = model.getLineContent(position.lineNumber).substring(0, position.column - 1)
+  const linesAbove: string[] = []
+  const startLine = Math.max(1, position.lineNumber - 3)
+  for (let i = startLine; i < position.lineNumber; i++) {
+    linesAbove.push(model.getLineContent(i))
+  }
+  if (linesAbove.length > 0) {
+    return linesAbove.join("\n") + "\n" + currentLine
+  }
+  return currentLine
+}
+
+function getSuffix(model: ITextModel, position: Position): string {
+  const currentLineRest = model.getLineContent(position.lineNumber).substring(position.column - 1)
+  const linesBelow: string[] = []
+  const totalLines = model.getLineCount()
+  const endLine = Math.min(totalLines, position.lineNumber + 3)
+  for (let i = position.lineNumber + 1; i <= endLine; i++) {
+    linesBelow.push(model.getLineContent(i))
+  }
+  if (linesBelow.length > 0) {
+    return currentLineRest + "\n" + linesBelow.join("\n")
+  }
+  return currentLineRest
 }
 
 function computeLineHash(model: ITextModel, lineNumber: number): string {
@@ -86,31 +110,52 @@ function findSimilarPatterns(model: ITextModel, position: Position, maxResults =
 }
 
 function findMultiLinePattern(model: ITextModel, position: Position): string | null {
-  const prefix = getLinePrefix(model, position)
-  if (!prefix.trim()) return null
+  const currentLinePrefix = model.getLineContent(position.lineNumber).substring(0, position.column - 1)
+  if (!currentLinePrefix.trim()) return null
 
   const totalLines = model.getLineCount()
   if (totalLines > MAX_SCAN_LINES) return null
 
-  const currentIndent = (model.getLineContent(position.lineNumber).match(/^\s*/)?.[0] ?? "").length
+  const currentLine = model.getLineContent(position.lineNumber)
+  const currentIndent = (currentLine.match(/^\s*/)?.[0] ?? "").length
+  let bestMatch: string | null = null
+  let bestScore = 0
 
   for (let i = 1; i <= totalLines; i++) {
     if (i === position.lineNumber) continue
     const line = model.getLineContent(i)
-    if (!line.trim().startsWith(prefix.trim()) || line.trim().length <= prefix.trim().length) continue
+    if (!line.trim().startsWith(currentLinePrefix.trim()) || line.trim().length <= currentLinePrefix.trim().length) continue
 
     const followingLines: string[] = []
-    for (let j = i + 1; j <= Math.min(i + 5, totalLines); j++) {
+    let bodyDepth: number | null = null
+    for (let j = i + 1; j <= Math.min(i + 19, totalLines); j++) {
       const nextLine = model.getLineContent(j)
       const nextIndent = (nextLine.match(/^\s*/)?.[0] ?? "").length
-      if (nextIndent > currentIndent && nextLine.trim()) followingLines.push(nextLine)
-      else break
+      if (bodyDepth === null) {
+        if (nextIndent > currentIndent && nextLine.trim()) {
+          bodyDepth = nextIndent
+          followingLines.push(nextLine)
+        } else {
+          break
+        }
+      } else {
+        if (nextLine.trim() && (nextLine.match(/^\s*/)?.[0] ?? "").length >= currentIndent + 2) {
+          followingLines.push(nextLine)
+        } else {
+          break
+        }
+      }
     }
     if (followingLines.length > 0) {
-      return "\n" + [line.trim().substring(prefix.trim().length), ...followingLines].join("\n")
+      const score = followingLines.length
+      if (score > bestScore) {
+        bestScore = score
+        const trailing = line.trim().substring(currentLinePrefix.trim().length)
+        bestMatch = "\n" + [trailing, ...followingLines].join("\n")
+      }
     }
   }
-  return null
+  return bestMatch
 }
 
 async function searchIndexCompletions(prefix: string, _language: string, maxResults = 2): Promise<string[]> {
@@ -188,11 +233,13 @@ async function requestAiCompletionInternal(
   if (pendingAiCompletion) { pendingAiCompletion(null); pendingAiCompletion = null }
   if (signal.aborted) return null
 
-  await new Promise<void>((resolve) => { aiRequestTimer = setTimeout(resolve, 400) })
+  await new Promise<void>((resolve) => { aiRequestTimer = setTimeout(resolve, 300) })
   if (signal.aborted) return null
 
   currentAiCancelled = false
-  const suffix = model.getValue().length > 2000 ? "" : model.getLineContent(position.lineNumber).substring(position.column - 1)
+  const suffix = model.getValue().length > 2000
+    ? model.getLineContent(position.lineNumber).substring(position.column - 1)
+    : getSuffix(model, position)
 
   const result = await requestAiCompletion({
     prefix,
@@ -292,7 +339,26 @@ class InlineCompletionsProvider {
       return { items: [createInlineCompletion(this.monaco, model, position, indexResults[0])] }
     }
 
-    // 4. AI-powered
+    // 4. Dedicated FIM completion provider (fast, sub-300ms)
+    const fimConfig = getCompletionConfig()
+    if (fimConfig.enabled && fimConfig.providerType === "dedicated") {
+      const fimResult = await globalCompletionProvider.complete({
+        prefix: getLinePrefix(model, position),
+        suffix: getSuffix(model, position),
+        language,
+        filePath,
+        maxLines: fimConfig.maxLines,
+        signal: cancellationToken,
+      })
+      if (fimResult && fimResult.text) {
+        setCache(key, fimResult.text, lineHash)
+        store.recordSuggestion("ai")
+        store.recordLatency(performance.now() - startTime)
+        return { items: [createInlineCompletion(this.monaco, model, position, fimResult.text)] }
+      }
+    }
+
+    // 5. AI-powered (agent provider fallback)
     const aiResult = await requestAiCompletionInternal(this.monaco, model, position, prefix, filePath, language, new AbortController().signal)
     if (aiResult) {
       setCache(key, aiResult, lineHash)

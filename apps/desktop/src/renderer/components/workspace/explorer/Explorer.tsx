@@ -1,13 +1,18 @@
 import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from "react"
 import { FileTree } from "@pierre/trees/react"
+import type { FileTreeContextMenuItem, FileTreeContextMenuOpenContext } from "@pierre/trees"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useAgentStore } from "@/stores/agent-store"
 import { useTreeModel } from "./hooks/useTreeModel"
 import { useFileActions } from "./hooks/useFileActions"
+import { FileTreeContextMenu } from "./FileTreeContextMenu"
 import { WorkspaceHeader } from "./components/WorkspaceHeader"
 import { SearchBar } from "./components/SearchBar"
 import { PinnedFilesSection, RecentFilesSection, OpenEditorsSection } from "./components/PinnedFilesSection"
+import { SemanticSearchSection } from "./components/SemanticSearchSection"
+import { RelatedFilesSection } from "./components/RelatedFilesSection"
 import { FolderOpen, Loader2, Files, FolderPlus } from "lucide-react"
+import { Skeleton, FileTreeSkeleton } from "@/components/ui/Skeleton"
 
 export interface ExplorerHandle {
   collapseAll: () => void
@@ -49,6 +54,7 @@ export const Explorer = forwardRef<ExplorerHandle, ExplorerProps>(function Explo
   const { model, loadTree, refreshTree, collapseAll, expandAll } = useTreeModel(
     searchQuery,
     handleSelectionChange,
+    fileActivities as { path: string; activity: string }[],
   )
 
   const { openFile, createFile, createFolder } = useFileActions(refreshTree)
@@ -89,6 +95,25 @@ export const Explorer = forwardRef<ExplorerHandle, ExplorerProps>(function Explo
       input?.focus()
     }, 50)
   }, [rootPath])
+
+  // ── Context menu state ──
+  const [contextMenu, setContextMenu] = useState<{
+    item: FileTreeContextMenuItem
+    context: FileTreeContextMenuOpenContext
+  } | null>(null)
+
+  const handleRenderContextMenu = useCallback(
+    (item: FileTreeContextMenuItem, context: FileTreeContextMenuOpenContext) => {
+      return (
+        <FileTreeContextMenu
+          item={item}
+          context={context}
+          onClose={() => setContextMenu(null)}
+        />
+      )
+    },
+    [],
+  )
 
   const commitCreateFile = useCallback(async (name: string) => {
     if (!rootPath || !creatingFile) return
@@ -144,10 +169,17 @@ export const Explorer = forwardRef<ExplorerHandle, ExplorerProps>(function Explo
 
   if (isLoading && !fileTree) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 select-none"
+      <div className="flex flex-col h-full select-none"
         style={{ background: "var(--surface-panel)" }}>
-        <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--color-accent-blue)" }} />
-        <span className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>Loading workspace...</span>
+        <div className="flex items-center justify-between px-3 py-1.5 border-b" style={{ borderColor: "var(--border-subtle)" }}>
+          <Skeleton className="h-2.5" width={80} />
+          <div className="flex items-center gap-1">
+            <Skeleton className="h-3 w-3" />
+            <Skeleton className="h-3 w-3" />
+            <Skeleton className="h-3 w-3" />
+          </div>
+        </div>
+        <FileTreeSkeleton />
       </div>
     )
   }
@@ -173,7 +205,7 @@ export const Explorer = forwardRef<ExplorerHandle, ExplorerProps>(function Explo
       <RecentFilesSection rootPath={rootPath} onOpenPath={handleOpenFile} />
       <OpenEditorsSection rootPath={rootPath} onOpenPath={handleOpenFile} />
       <div className="flex-1 overflow-y-auto min-h-0">
-        <FileTree model={model} className="min-h-full" />
+        <FileTree model={model} className="min-h-full" renderContextMenu={handleRenderContextMenu} />
         {creatingFile && (
           <CreateInline type="file" onSubmit={commitCreateFile} onCancel={() => setCreatingFile(null)} />
         )}
@@ -186,6 +218,12 @@ export const Explorer = forwardRef<ExplorerHandle, ExplorerProps>(function Explo
             <Files className="h-4 w-4" />
             <span>Empty workspace</span>
           </div>
+        )}
+        {!searchQuery && activeFilePath && (
+          <RelatedFilesSection rootPath={rootPath} onOpenPath={handleOpenFile} />
+        )}
+        {searchQuery && (
+          <SemanticSearchSection query={searchQuery} rootPath={rootPath} onOpenPath={handleOpenFile} />
         )}
       </div>
     </div>

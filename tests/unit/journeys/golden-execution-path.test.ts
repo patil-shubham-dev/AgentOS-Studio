@@ -46,10 +46,18 @@ describe("Golden E2E Execution Path", () => {
     for (const id of Array.from(useChangeSetStore.getState().changeSets.keys())) {
       useChangeSetStore.getState().removeChangeSet(id)
     }
+    // Seed read-before-write for existing file (product contract)
+    const { FileStateCache } = await import("@/runtime/tools/storage/FileStateCache")
+    const { fileContentCache } = await import("@/lib/FileContentCache")
+    FileStateCache.getInstance().clear()
+    fileContentCache.clear()
+    FileStateCache.getInstance().recordRead(FULL_PATH, ORIGINAL_CONTENT, Date.now())
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     memfs.clear()
+    const { FileStateCache } = await import("@/runtime/tools/storage/FileStateCache")
+    FileStateCache.getInstance().clear()
   })
 
   it("EP-1: WriteFileTool proposes without modifying disk", async () => {

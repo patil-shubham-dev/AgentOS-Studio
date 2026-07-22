@@ -7,7 +7,9 @@ import {
   Globe, Bug, Search, RefreshCw, FileText,
   Terminal, Paperclip, Loader2, Sparkles,
   FolderOpen, GitBranch, AlertTriangle, Braces, Link, X,
+  Rocket, HeartPulse, GitCommitHorizontal, MessagesSquare,
 } from "lucide-react"
+import { ModelPicker } from "./ModelPicker"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import {
   ReferenceAutocomplete,
@@ -28,6 +30,9 @@ const SLASH_COMMANDS = [
   { id: "/browse", label: "Browse", icon: Globe, description: "Browse or scrape a URL" },
   { id: "/terminal", label: "Terminal", icon: Terminal, description: "Run a terminal command" },
   { id: "/plan", label: "Plan", icon: Sparkles, description: "Plan approach before executing" },
+  { id: "/init", label: "Init", icon: Rocket, description: "Initialize project config (AGENTIC.md)" },
+  { id: "/doctor", label: "Doctor", icon: HeartPulse, description: "Run project health diagnostics" },
+  { id: "/commit", label: "Commit", icon: GitCommitHorizontal, description: "Generate commit message from git diff" },
 ]
 
 const CONTEXT_REFERENCES = [
@@ -50,6 +55,8 @@ interface ComposerProps {
   isCancelling?: boolean
   inputRef?: React.RefObject<HTMLTextAreaElement | null>
   placeholder?: string
+  onSideChat?: () => void
+  hideSideChat?: boolean
 }
 
 export function Composer({
@@ -61,6 +68,8 @@ export function Composer({
   isCancelling,
   inputRef: externalRef,
   placeholder = "Ask anything...",
+  onSideChat,
+  hideSideChat,
 }: ComposerProps) {
   const internalRef = useRef<HTMLTextAreaElement>(null)
   const textareaRef = externalRef || internalRef
@@ -79,6 +88,8 @@ export function Composer({
   const menuRef = useRef<HTMLDivElement>(null)
   const sendLockRef = useRef(0)
   const traceIdRef = useRef("")
+  const [selectedProviderId, setSelectedProviderId] = useState("")
+  const [selectedModel, setSelectedModel] = useState("")
 
   const guardedSend = useCallback((source: "enter" | "button") => {
     const traceId = execTraceId()
@@ -170,6 +181,12 @@ export function Composer({
   const filteredContextRefs = CONTEXT_REFERENCES.filter((r) => r.id.slice(1).startsWith(contextRefFilter))
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    // Cmd+; (or Ctrl+;) — open side chat
+    if ((e.metaKey || e.ctrlKey) && e.key === ";") {
+      e.preventDefault()
+      onSideChat?.()
+      return
+    }
     if (showCommands && filteredCommands.length > 0) {
       if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex((p) => Math.min(p + 1, filteredCommands.length - 1)); return }
       if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex((p) => Math.max(p - 1, 0)); return }
@@ -406,6 +423,23 @@ export function Composer({
                   <AtSign className="h-2.5 w-2.5" style={{ color: "var(--text-quaternary)" }} />
                   <span className="text-[8px] font-medium" style={{ color: "var(--text-quaternary)" }}>refs</span>
                 </span>
+                <ModelPicker
+                  selectedProviderId={selectedProviderId}
+                  selectedModel={selectedModel}
+                  onSelect={(pId, mId) => { setSelectedProviderId(pId); setSelectedModel(mId) }}
+                  compact
+                />
+                {!hideSideChat && (
+                  <button
+                    onClick={onSideChat}
+                    className="rounded-md p-1 transition-all duration-150 hover:bg-white/[0.04]"
+                    style={{ color: "var(--text-quaternary)" }}
+                    aria-label="New side chat (Cmd+;)"
+                    title="New side chat (Cmd+;)"
+                  >
+                    <MessagesSquare className="h-3 w-3" />
+                  </button>
+                )}
                 <button className="rounded-md p-1 transition-all duration-150 hover:bg-white/[0.04]" aria-label="Attach file"
                   style={{ color: "var(--text-quaternary)" }}
                 >

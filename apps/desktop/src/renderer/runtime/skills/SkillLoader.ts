@@ -6,6 +6,7 @@ import { addTestsSkill } from './bundled/add-tests.skill'
 import { codeReviewSkill } from './bundled/code-review.skill'
 import { batchParallelSkill } from './bundled/batch-parallel.skill'
 import { prReviewSkill } from './bundled/pr-review.skill'
+import { issueToPRSkill } from './bundled/issue-to-pr.skill'
 
 let electronApi: Promise<typeof import("@/lib/electron-api")> | undefined
 async function getElectronApi() {
@@ -207,6 +208,7 @@ export class SkillLoader {
     this.registry.register(codeReviewSkill)
     this.registry.register(batchParallelSkill)
     this.registry.register(prReviewSkill)
+    this.registry.register(issueToPRSkill)
   }
 
   async loadProjectSkills(projectRoot: string): Promise<number> {

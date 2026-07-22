@@ -1,3 +1,60 @@
+import type { editor } from "monaco-editor"
+
+export const EXT_LANG_MAP: Record<string, string> = {
+  ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
+  css: "css", scss: "scss", html: "html", json: "json",
+  md: "markdown", py: "python", rs: "rust", toml: "toml",
+  yaml: "yaml", yml: "yaml", sh: "shell", bash: "shell",
+  sql: "sql", go: "go", java: "java", rb: "ruby",
+  svelte: "html", vue: "html", astro: "html",
+}
+
+export function getMonacoLang(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? ""
+  return EXT_LANG_MAP[ext] ?? "plaintext"
+}
+
+export const DEFAULT_EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
+  fontSize: 13,
+  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+  fontLigatures: true,
+  minimap: { enabled: true, scale: 1, showSlider: "mouseover" },
+  scrollBeyondLastLine: false,
+  lineNumbers: "on",
+  lineNumbersMinChars: 3,
+  glyphMargin: false,
+  folding: true,
+  foldingHighlight: true,
+  renderLineHighlight: "all",
+  renderWhitespace: "selection",
+  bracketPairColorization: { enabled: true },
+  autoClosingBrackets: "always",
+  autoClosingQuotes: "always",
+  formatOnPaste: true,
+  smoothScrolling: true,
+  cursorBlinking: "smooth",
+  cursorSmoothCaretAnimation: "on",
+  stickyScroll: { enabled: true },
+  codeLens: true,
+  wordWrap: "off",
+  tabSize: 2,
+  insertSpaces: true,
+  renderControlCharacters: false,
+  padding: { top: 12 },
+  suggest: {
+    showMethods: true, showFunctions: true, showConstructors: true,
+    showDeprecated: false, showFields: true, showVariables: true,
+    showClasses: true, showStructs: true, showInterfaces: true,
+    showModules: true, showProperties: true, showEvents: true,
+    showOperators: true, showUnits: true, showValues: true,
+    showConstants: true, showEnums: true, showEnumMembers: true,
+    showKeywords: true, showWords: true, showColors: true,
+    showFiles: true, showReferences: true, showSnippets: true,
+    showTypeParameters: true,
+  },
+  "semanticHighlighting.enabled": true,
+}
+
 const CACHE_MAX = 100
 
 class LRUCache<T> {

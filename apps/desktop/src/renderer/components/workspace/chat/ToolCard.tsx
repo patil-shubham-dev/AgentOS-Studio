@@ -1,7 +1,8 @@
-import { useState, memo, useMemo } from "react"
+import { useState, memo, useMemo, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { ANIM } from "./chat-animations"
+import { ClickableTerminalOutput } from "./ClickableTerminalOutput"
 import type { ToolCallRecord } from "../timeline/types"
 import type { FileEditRecord, TerminalRecord } from "../timeline/step-card"
 import { getSpringConfig } from "@/lib/motion"
@@ -556,13 +557,24 @@ export const FileEditCard = memo(function FileEditCard({ edit, onOpenFile }: Fil
 // ── Terminal Card ──
 interface TerminalCardProps {
   terminal: TerminalRecord
+  onOpenFile?: (path: string) => void
 }
 
-export const TerminalCard = memo(function TerminalCard({ terminal }: TerminalCardProps) {
+export const TerminalCard = memo(function TerminalCard({ terminal, onOpenFile }: TerminalCardProps) {
   const [expanded, setExpanded] = useState(false)
   const isRunning = terminal.status === "running"
+  const isError = terminal.status === "error"
   const hasOutput = terminal.output.length > 0
   const cssVar = "--tool-terminal"
+
+  // Auto-expand on error or non-zero exit
+  useEffect(() => {
+    if (isError || (terminal.status === "success" && terminal.exitCode !== 0 && terminal.exitCode !== undefined)) {
+      setExpanded(true)
+    }
+  }, [isError, terminal.status, terminal.exitCode])
+
+  const effectiveStatus = terminal.status === "success" && terminal.exitCode !== 0 && terminal.exitCode !== undefined ? "error" : terminal.status
 
   return (
     <motion.div
@@ -572,29 +584,47 @@ export const TerminalCard = memo(function TerminalCard({ terminal }: TerminalCar
       transition={getSpringConfig("fast")}
       className="rounded-xl overflow-hidden transition-all duration-200"
       style={{
-        backgroundColor: `color-mix(in srgb, var(${cssVar}) 6%, transparent)`,
-        border: `1px solid ${isRunning ? `color-mix(in srgb, var(${cssVar}) 20%, transparent)` : `color-mix(in srgb, var(${cssVar}) 15%, transparent)`}`,
+        backgroundColor: `color-mix(in srgb, ${isError ? "var(--color-accent-red)" : `var(${cssVar})`} 6%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${isError ? "var(--color-accent-red)" : `var(${cssVar})`} ${isRunning ? 20 : 15}%, transparent)`,
       }}
     >
+      {/* Running shimmer */}
+      {isRunning && (
+        <motion.div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: `linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(${cssVar}) 3%, transparent) 50%, transparent 100%)`,
+            backgroundSize: "200% 100%",
+          }}
+          animate={{ backgroundPosition: ["200% 0", "-200% 0"] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+        />
+      )}
+
       <div className="flex items-center gap-2.5 px-3 py-2">
-        <div className="flex items-center justify-center h-[24px] w-[24px] rounded-lg shrink-0" style={{ backgroundColor: `color-mix(in srgb, var(${cssVar}) 12%, transparent)` }}>
-          <svg viewBox="0 0 14 14" className="h-[14px] w-[14px] shrink-0" fill="none" stroke={`var(${cssVar})`} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <div className="flex items-center justify-center h-[24px] w-[24px] rounded-lg shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${isError ? "var(--color-accent-red)" : `var(${cssVar})`} 12%, transparent)` }}>
+          <svg viewBox="0 0 14 14" className="h-[14px] w-[14px] shrink-0" fill="none" stroke={isError ? "var(--color-accent-red)" : `var(${cssVar})`} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 4.5l3 2.5-3 2.5" />
             <path d="M8 9.5h3" />
           </svg>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold" style={{ color: isRunning ? `var(${cssVar})` : "var(--text-secondary)" }}>
-              {isRunning ? "Running" : "Command"}
+            <span className="text-[11px] font-semibold" style={{ color: isRunning ? `var(${cssVar})` : isError ? "var(--color-accent-red)" : "var(--text-secondary)" }}>
+              {isRunning ? "Running" : effectiveStatus === "error" ? "Failed" : "Command"}
             </span>
-            <span className="text-[10px] font-mono truncate" style={{ color: "var(--text-tertiary)" }}>
+            <span className="text-[10px] font-mono truncate" style={{ color: isError ? "var(--color-accent-red)" : "var(--text-tertiary)" }}>
               {terminal.command}
             </span>
           </div>
           {terminal.cwd && (
-            <div className="text-[9px] mt-0.5 font-mono" style={{ color: "var(--text-quaternary)" }}>
+            <div className="text-[9px] mt-0.5 font-mono truncate" style={{ color: "var(--text-quaternary)" }}>
               {terminal.cwd}
+            </div>
+          )}
+          {terminal.durationMs && !isRunning && (
+            <div className="text-[9px] mt-0.5 tabular-nums" style={{ color: "var(--text-quaternary)" }}>
+              {formatMs(terminal.durationMs)}
             </div>
           )}
         </div>
@@ -605,8 +635,8 @@ export const TerminalCard = memo(function TerminalCard({ terminal }: TerminalCar
               Running
             </span>
           ) : (
-            <span className="text-[9px] font-medium" style={{ color: terminal.status === "success" ? "var(--color-accent-green)" : "var(--color-accent-red)" }}>
-              {terminal.status === "success" ? "Exit 0" : `Exit ${terminal.exitCode ?? 1}`}
+            <span className={`text-[9px] font-medium tabular-nums ${terminal.exitCode === 0 ? "text-emerald-400" : "text-red-400"}`}>
+              Exit {terminal.exitCode ?? 0}
             </span>
           )}
           {hasOutput && (
@@ -633,16 +663,15 @@ export const TerminalCard = memo(function TerminalCard({ terminal }: TerminalCar
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="px-3 pb-2" style={{ borderTop: `1px solid color-mix(in srgb, var(${cssVar}) 15%, transparent)` }}>
-              <pre
-                className="mt-2 text-[10px] font-mono overflow-x-auto whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto rounded-lg p-2"
-                style={{
-                  backgroundColor: "var(--surface-elevated)",
-                  color: terminal.status === "error" ? "var(--color-accent-red)" : "var(--text-tertiary)",
-                }}
-              >
-                {terminal.output.length > 1000 ? terminal.output.slice(0, 1000) + "\n… (truncated)" : terminal.output}
-              </pre>
+            <div className="px-3 pb-2" style={{ borderTop: `1px solid color-mix(in srgb, ${isError ? "var(--color-accent-red)" : `var(${cssVar})`} 15%, transparent)` }}>
+              <div className="mt-2 rounded-lg p-2 overflow-hidden" style={{ backgroundColor: isError ? "color-mix(in srgb, var(--color-accent-red) 4%, transparent)" : "var(--surface-elevated)" }}>
+                <ClickableTerminalOutput
+                  text={terminal.output}
+                  maxLength={5000}
+                  maxHeight={300}
+                  isError={isError}
+                />
+              </div>
             </div>
           </motion.div>
         )}

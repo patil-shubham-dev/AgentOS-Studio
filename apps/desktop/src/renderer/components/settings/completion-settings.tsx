@@ -3,6 +3,7 @@ import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useAppStore } from "@/stores/app-store"
 import { setCompletionSettings, getCompletionSettings } from "@/lib/completion/completion-ai"
+import { updateCompletionConfig } from "@/runtime/completion/CompletionProvider"
 import { Badge, Button, TooltipSimple as Tooltip } from "@agentic-os/ui"
 import { Zap, Cpu, Brain, Save, RotateCcw, AlertTriangle } from "lucide-react"
 
@@ -34,6 +35,20 @@ export function CompletionSettings() {
       maxTokens,
       temperature: 0.1,
     })
+    // Sync with the FIM completion provider
+    updateCompletionConfig({
+      enabled: enabled && useFIM,
+      providerType: providerId ? "dedicated" : "agent-fallback",
+      fimConfig: providerId ? {
+        type: "openai-compatible",
+        baseUrl: providers.find(p => p.id === providerId)?.baseUrl ?? "",
+        apiKey: providers.find(p => p.id === providerId)?.apiKey ?? "",
+        model: model || "deepseek-coder-1.3b-instruct",
+      } : null,
+      debounceMs,
+      maxLines: Math.round(maxTokens / 30),
+      useCache: true,
+    })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -45,6 +60,14 @@ export function CompletionSettings() {
     setModel("")
     setDebounceMs(300)
     setMaxTokens(64)
+    updateCompletionConfig({
+      enabled: true,
+      providerType: "agent-fallback",
+      fimConfig: null,
+      debounceMs: 300,
+      maxLines: 5,
+      useCache: true,
+    })
   }
 
   return (

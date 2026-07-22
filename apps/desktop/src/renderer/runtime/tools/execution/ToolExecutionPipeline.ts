@@ -14,6 +14,8 @@ import { RuntimeOS } from '../../RuntimeOS'
 import { EventBus } from '../../EventBus'
 import { ToolFallbackRegistry } from '../policies/ToolFallbackRegistry'
 import { ToolRollbackManager } from './ToolRollbackManager'
+import { usePlanStore } from '@/stores/plan-store'
+import { usePermissionModeStore } from '@/stores/chat/permission-mode-store'
 
 const WRITE_TOOLS = new Set([
   'write_file', 'edit_file', 'file_delete', 'file_move', 'file_copy',
@@ -94,6 +96,14 @@ export class ToolExecutionPipeline {
 
     if (ctx.signal?.aborted) {
       return { data: null, error: 'Tool execution aborted', isError: true }
+    }
+
+    // ── Plan mode restriction: block write tools during planning phase ──
+    if ((usePlanStore.getState().isPlanningPhase || !usePermissionModeStore.getState().allowWriteTools()) && WRITE_TOOLS.has(toolName)) {
+      const errResult: ToolResult = { data: null, error: `Tool "${toolName}" is restricted during planning phase — only read-only tools are allowed`, isError: true }
+      this.emit(opts, { type: 'tool:error', toolName, timestamp: Date.now(), error: `Restricted in planning phase: ${toolName}` })
+      eventBus.emit({ type: 'EXECUTION_ERROR', stepId: ctx.sessionId ?? '', role: '', message: `Write tool "${toolName}" blocked during planning phase` })
+      return errResult
     }
 
     let processedInput = input

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { createMockStorage } from "../e2e/helpers/workspace-test-utils"
+import { createMockStorage } from "../../e2e/helpers/workspace-test-utils"
 
 const fileContents = new Map<string, string>()
 const writeFileMock = vi.fn(async (path: string, content: string) => { fileContents.set(path, content) })

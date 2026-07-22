@@ -31,14 +31,6 @@ npm run dev
 2. Open a workspace folder
 3. Start coding — ask the AI to explain code, refactor, or build features
 
-### Headless CLI
-
-```bash
-npm run cli -- --print "Explain the event system"
-echo "Hello" | npm run cli -- --stdin
-npm run cli -- --file prompt.txt --json
-```
-
 ---
 
 ## Codebase Audit (2026-07-05)
@@ -68,7 +60,7 @@ npm run cli -- --file prompt.txt --json
 
 ### Known Issues / Tech Debt
 
-1. **Heap snapshots at root** — 3 files totaling ~78 MB (`heap-iter-*.heapsnapshot`) — should be gitignored or deleted.
+1. **Heap snapshots** — `*.heapsnapshot` is gitignored; do not commit local heap dumps.
 2. **Runtime sprawl** — 34 immediate subdirectories under `runtime/` should be grouped into domains (engine, communication, governance, lifecycle, etc.).
 3. **Lib inconsistency** — `lib/` has 53 root files alongside 11 subdirectories; domain files like `git.ts` coexist with `git/WorktreeSandbox.ts`.
 4. **Config sprawl** — 17 config files at root (vite, vitest, electron-vite, eslint, tsconfig x2, electron-builder, etc.) — candidate for a `config/` directory.
@@ -136,7 +128,6 @@ StreamManager → TimelineStore → React UI
 | `npm run typecheck` | TypeScript strict type checking |
 | `npm run lint` | ESLint code quality |
 | `npm run dist` | Build distribution packages |
-| `npm run cli` | Headless CLI mode |
 
 ---
 

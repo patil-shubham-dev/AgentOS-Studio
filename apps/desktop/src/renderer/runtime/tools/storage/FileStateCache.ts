@@ -6,6 +6,10 @@ interface FileState {
   lastWriteAt: number
 }
 
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, '/').toLowerCase()
+}
+
 export class FileStateCache {
   private static instance: FileStateCache
   private cache = new Map<string, FileState>()
@@ -19,33 +23,38 @@ export class FileStateCache {
 
   recordRead(path: string, content: string, mtime: number): void {
     this.evictIfNeeded()
-    this.cache.set(path, { lastReadAt: mtime, lastReadContent: content, lastWriteAt: 0 })
+    this.cache.set(normalizePath(path), { lastReadAt: mtime, lastReadContent: content, lastWriteAt: 0 })
   }
 
   recordWrite(path: string): void {
-    const existing = this.cache.get(path)
+    const existing = this.cache.get(normalizePath(path))
     if (existing) {
       existing.lastWriteAt = Date.now()
     }
   }
 
   wasRead(path: string): boolean {
-    const state = this.cache.get(path)
+    const state = this.cache.get(normalizePath(path))
     return state !== undefined && state.lastReadAt > 0
   }
 
   isStale(path: string, currentMtime: number): boolean {
-    const state = this.cache.get(path)
+    const state = this.cache.get(normalizePath(path))
     if (!state) return false
     return currentMtime > state.lastReadAt
   }
 
   getContent(path: string): string | undefined {
-    return this.cache.get(path)?.lastReadContent
+    return this.cache.get(normalizePath(path))?.lastReadContent
   }
 
   invalidate(path: string): void {
-    this.cache.delete(path)
+    this.cache.delete(normalizePath(path))
+  }
+
+  /** Clear all cached file state. Intended for tests. */
+  clear(): void {
+    this.cache.clear()
   }
 
   private evictIfNeeded(): void {

@@ -6,9 +6,9 @@ import { applyEdits, generateUnifiedDiff, type DiffEdit, type DiffEngineResult }
 import { fileContentCache } from '@/lib/FileContentCache'
 import { ChangeSetManager } from '@/runtime/changeset/ChangeSetManager'
 import { buildDiffFileEntry } from '@/lib/diff-review'
-import { createFile } from '@/lib/filesystem'
 import { FileStateCache } from '../storage/FileStateCache'
 import { isPathDenied } from '@/runtime/permissions/PathVisibilityFilter'
+import { useWorkspaceStore } from '@/stores/workspace-store'
 
 const changesetByTrace = new Map<string, string>()
 const CHANGESET_MAP_MAX_SIZE = 200
@@ -37,27 +37,11 @@ function sanitizeFnResult(text: string): string {
   return text.replace(/<fnr>/g, '<function_results>').replace(/<\/fnr>/g, '</function_results>')
 }
 
-async function writeTextFile(path: string, content: string): Promise<void> {
-  try {
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      const { writeTextFile: shimWrite } = await import('@/lib/electron-api')
-      await shimWrite(path, content)
-      return
-    }
-    const fs = await import('@/lib/electron-api')
-    await fs.writeTextFile(path, content)
-  } catch {
-    await createFile(path, content)
-  }
-}
-
 function recordChangeSetEntry(
   ctx: ToolContext,
-  fullPath: string,
   relativePath: string,
   originalContent: string,
   modifiedContent: string,
-  diff: string,
   changeType: 'modify' | 'create'
 ): void {
   const traceId = ctx.traceId ?? 'unknown'
@@ -86,8 +70,8 @@ function recordChangeSetEntry(
 
 async function readTextFile(path: string): Promise<string> {
   if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      const { readTextFile: shimRead } = await import('@/lib/electron-api')
-        return shimRead(path)
+    const { readTextFile: shimRead } = await import('@/lib/electron-api')
+    return shimRead(path)
   }
   try {
     const fs = await import('@/lib/electron-api')
@@ -97,9 +81,21 @@ async function readTextFile(path: string): Promise<string> {
   }
 }
 
+async function tryReadTextFile(path: string): Promise<string | null> {
+  try {
+    return await readTextFile(path)
+  } catch {
+    return null
+  }
+}
+
 function resolvePath(rootPath: string | null, inputPath: string): string {
   if (!rootPath) return inputPath
   if (/^[a-zA-Z]:[\\/]/.test(inputPath)) return inputPath
+  if (inputPath.startsWith('/') && !rootPath.match(/^[a-zA-Z]:/)) {
+    // Absolute POSIX path
+    if (inputPath.startsWith(rootPath)) return inputPath
+  }
   return `${rootPath}\\${inputPath.replace(/\//g, '\\')}`
 }
 
@@ -107,6 +103,10 @@ function validatePath(normalized: string, rootPath: string | null): string | nul
   if (normalized.includes('..')) return 'Path traversal denied'
   if (rootPath && !normalized.startsWith(rootPath)) return 'Path escapes workspace root'
   return null
+}
+
+function resolveRootPath(ctx: ToolContext): string | null {
+  return ctx.workspaceStore?.rootPath ?? useWorkspaceStore.getState().rootPath ?? null
 }
 
 function toDiffEdits(input: Record<string, unknown>): DiffEdit[] {
@@ -197,7 +197,12 @@ function applySearchReplace(
   }
 
   if (matchCount === 0) {
-    return { content, matchCount: 0, applied: false, error: 'old_string not found in file' }
+    return {
+      content,
+      matchCount: 0,
+      applied: false,
+      error: `EDIT_FAILED: target text not found\nExpected to find:\n\`\`\`\n${oldString}\n\`\`\`\nBut it was not found in the file.`,
+    }
   }
 
   if (matchCount > 1 && !replaceAll) {
@@ -205,7 +210,7 @@ function applySearchReplace(
       content,
       matchCount,
       applied: false,
-      error: `Found ${matchCount} occurrences of old_string. Set replace_all=true to replace all, or provide a more unique old_string with surrounding context (2-4 lines)`,
+      error: `EDIT_FAILED: Found ${matchCount} occurrences of old_string. Set replace_all=true to replace all, or provide a more unique old_string with surrounding context (2-4 lines)`,
     }
   }
 
@@ -223,7 +228,7 @@ function applySearchReplace(
 
 export const EditFileTool: AgentTool = buildTool({
   name: 'edit_file',
-  description: 'Apply targeted text replacements in a file using exact search-and-replace (old_string/new_string). For safety, read the file first. Provide enough surrounding context (2-4 lines) in old_string for a unique match.',
+  description: 'Propose targeted text replacements in a file using exact search-and-replace (old_string/new_string). Changes are staged for user review and only written to disk after acceptance. For existing files, read the file first. Provide enough surrounding context (2-4 lines) in old_string for a unique match.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -246,7 +251,7 @@ export const EditFileTool: AgentTool = buildTool({
       },
       file: { type: 'string', description: 'Backward-compatible absolute file path' },
     },
-    required: ['file_path'],
+    required: [],
   },
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
@@ -260,7 +265,6 @@ export const EditFileTool: AgentTool = buildTool({
     const p = (input as any)?.file_path || (input as any)?.path || (input as any)?.file
     const oldStr = (input as any)?.old_string ?? (input as any)?.oldStr ?? ''
     const newStr = (input as any)?.new_string ?? (input as any)?.newStr ?? ''
-    const ext = p ? p.split('.').pop() ?? '' : ''
     return {
       usePreview: {
         type: 'diff',
@@ -271,7 +275,7 @@ export const EditFileTool: AgentTool = buildTool({
       resultPreview: result?.data
         ? {
             type: 'file',
-            label: `Edited ${p}`,
+            label: `Proposed edit to ${p}`,
             path: p,
             content: undefined,
           }
@@ -282,10 +286,10 @@ export const EditFileTool: AgentTool = buildTool({
   execute: async (ctx: ToolContext, input: Record<string, unknown>): Promise<ToolResult> => {
     const filePath = (input.file_path as string) ?? (input.path as string) ?? (input.file as string)
     if (!filePath) {
-      return { data: null, error: 'edit_file requires file_path (or path/file for backward compatibility)', isError: true }
+      return { data: null, error: "edit_file requires either 'path' or 'file'", isError: true }
     }
 
-    const rootPath = ctx.workspaceStore?.rootPath ?? null
+    const rootPath = resolveRootPath(ctx)
     const fullPath = resolvePath(rootPath, filePath)
 
     const validationError = validatePath(fullPath, rootPath)
@@ -295,80 +299,111 @@ export const EditFileTool: AgentTool = buildTool({
       return { data: null, error: `File not found: "${filePath}". The file may not exist at this location.`, isError: true }
     }
 
-    // Read-before-edit enforcement (P1.2)
-    const fileState = FileStateCache.getInstance()
-    if (!fileState.wasRead(fullPath)) {
-      return { data: null, error: `File "${filePath}" has not been read yet. Use read_file to read it first before editing.`, isError: true }
-    }
-    try {
-      const { stat: fsStat } = await import('@/lib/electron-api')
-      const stats = await fsStat(fullPath)
-      const currentMtime = typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now()
-      if (fileState.isStale(fullPath, currentMtime)) {
-        const currentContent = await readTextFile(fullPath)
-        if (currentContent !== fileState.getContent(fullPath)) {
-          return { data: null, error: `File "${filePath}" has been modified since it was read. Use read_file to see the latest content before editing.`, isError: true }
-        }
-        fileState.recordRead(fullPath, currentContent, currentMtime)
-      }
-    } catch {
-      // mtime not available — skip staleness check
+    // Prefer proposed content from cache so sequential edits compose.
+    const cachedContent = fileContentCache.get(fullPath)
+    const diskContent = cachedContent === null ? await tryReadTextFile(fullPath) : null
+    const fileExistsOnDisk = diskContent !== null || cachedContent !== null
+    // When cache hit, still need to know if this is a brand-new create vs modify of existing.
+    let originalContent: string
+    if (cachedContent !== null) {
+      originalContent = cachedContent
+    } else if (diskContent !== null) {
+      originalContent = diskContent
+    } else {
+      originalContent = ''
     }
 
-    const cachedContent = fileContentCache.get(fullPath)
-    const originalContent = cachedContent ?? await readTextFile(fullPath)
+    const isNewFile = originalContent.length === 0 && cachedContent === null && diskContent === null
+
+    // Read-before-edit: required for existing files, not for brand-new creates.
+    const fileState = FileStateCache.getInstance()
+    if (!isNewFile && fileExistsOnDisk && !fileState.wasRead(fullPath) && cachedContent === null) {
+      return {
+        data: null,
+        error: `File "${filePath}" has not been read yet. Use read_file to read it first before editing.`,
+        isError: true,
+      }
+    }
+
+    if (!isNewFile && fileExistsOnDisk) {
+      try {
+        const { stat: fsStat } = await import('@/lib/electron-api')
+        const stats = await fsStat(fullPath)
+        const currentMtime = typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : Date.now()
+        if (fileState.isStale(fullPath, currentMtime)) {
+          const currentContent = await tryReadTextFile(fullPath)
+          if (currentContent !== null && currentContent !== fileState.getContent(fullPath)) {
+            // If we already have a proposed cache version that matches our last proposal, allow composing.
+            if (cachedContent === null || currentContent !== cachedContent) {
+              return {
+                data: null,
+                error: `File "${filePath}" has been modified since it was read. Use read_file to see the latest content before editing.`,
+                isError: true,
+              }
+            }
+          }
+          if (currentContent !== null) {
+            fileState.recordRead(fullPath, currentContent, currentMtime)
+          }
+        }
+      } catch {
+        // mtime not available — skip staleness check
+      }
+    }
 
     const hasEditsArray = Array.isArray(input.edits) && (input.edits as Array<unknown>).length > 0
     const hasOldNew = (input.old_string as string | undefined) !== undefined
       || (input.new_string as string | undefined) !== undefined
 
     if (!hasEditsArray && !hasOldNew) {
-      return { data: null, error: 'edit_file requires old_string/new_string (or edits array for backward compatibility)', isError: true }
+      return { data: null, error: 'edit_file requires edits, old_string/new_string, or old_content/new_content pairs', isError: true }
     }
 
     let modifiedContent: string
     let diff: string
     let totalHunks = 0
-    let changeType: 'modify' | 'create' = 'modify'
+    let editResults: DiffEngineResult['results'] | undefined
+    const changeType: 'modify' | 'create' = isNewFile ? 'create' : 'modify'
 
     if (hasOldNew) {
       // ── Primary search-and-replace path ──
       const oldString = String(input.old_string ?? '')
       const newString = String(input.new_string ?? '')
 
-      // Validation: no-op
       if (oldString === newString) {
         return { data: null, error: 'old_string and new_string are identical — nothing to change', isError: true }
       }
 
-      // Validation: file size
       if (originalContent.length > MAX_FILE_SIZE_BYTES) {
         return { data: null, error: `File too large (${(originalContent.length / 1024 / 1024).toFixed(1)} MB) — max is 1 GiB`, isError: true }
       }
 
-      // Check if file exists
-      const isNewFile = originalContent.length === 0
-
-      // Validation: empty file with old_string
+      // Creating a new file: old_string must be empty
       if (isNewFile && oldString !== '') {
         return { data: null, error: 'File is empty or does not exist. Use old_string="" to create a new file, or write_file to create it first', isError: true }
       }
 
-      // Validation: file has content but old_string is empty
-      if (!isNewFile && oldString === '') {
+      // Existing file with content: old_string must not be empty
+      if (!isNewFile && originalContent.length > 0 && oldString === '') {
         return { data: null, error: 'old_string is empty but file has content. Provide the exact text to replace', isError: true }
       }
 
-      const replaceAll = (input.replace_all as boolean) ?? false
-      const result = applySearchReplace(originalContent, oldString, newString, replaceAll)
+      if (isNewFile && oldString === '') {
+        modifiedContent = newString
+        diff = generateUnifiedDiff('', modifiedContent, fullPath)
+        totalHunks = 1
+      } else {
+        const replaceAll = (input.replace_all as boolean) ?? false
+        const result = applySearchReplace(originalContent, oldString, newString, replaceAll)
 
-      if (!result.applied) {
-        return { data: null, error: result.error ?? 'Search-and-replace failed', isError: true, meta: { matchCount: result.matchCount } }
+        if (!result.applied) {
+          return { data: null, error: result.error ?? 'EDIT_FAILED: Search-and-replace failed', isError: true, meta: { matchCount: result.matchCount } }
+        }
+
+        modifiedContent = result.content
+        diff = generateUnifiedDiff(originalContent, modifiedContent, fullPath)
+        totalHunks = 1
       }
-
-      modifiedContent = result.content
-      diff = generateUnifiedDiff(originalContent, modifiedContent, fullPath)
-      totalHunks = 1
     } else {
       // ── Backward-compatible edits[] path ──
       const edits = toDiffEdits(input)
@@ -380,7 +415,7 @@ export const EditFileTool: AgentTool = buildTool({
 
       if (!engineResult.allApplied) {
         const failureResult = engineResult.results.find(r => !r.applied)
-        const errorMsg = failureResult?.error ?? 'Edit failed: could not apply the requested changes'
+        const errorMsg = failureResult?.error ?? 'EDIT_FAILED: could not apply the requested changes'
         return {
           data: null,
           error: errorMsg,
@@ -403,34 +438,39 @@ export const EditFileTool: AgentTool = buildTool({
       modifiedContent = engineResult.content
       diff = generateUnifiedDiff(originalContent, modifiedContent, fullPath)
       totalHunks = engineResult.results.reduce((sum, r) => sum + r.hunks, 0)
+      editResults = engineResult.results
     }
 
-    // Write to disk
-    try {
-      await writeTextFile(fullPath, modifiedContent)
-    } catch (writeErr) {
-      return {
-        data: null,
-        error: `Failed to write edited file: ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`,
-        isError: true,
-      }
-    }
-
-    // Update in-memory cache
+    // Propose only — update in-memory cache. Disk writes happen via
+    // ChangeSetManager.writeAcceptedChanges / diff-review accept path.
     fileContentCache.set(fullPath, modifiedContent)
 
-    // Register the diff in the review panel
+    // Register the diff in the review panel when a store is available
     const diffEntry = buildDiffFileEntry(filePath, originalContent, modifiedContent)
     ctx.diffStore?.addFileDiff(diffEntry)
 
     const relativePath = filePath.replace(/^[/\\]/, '')
-    recordChangeSetEntry(ctx, fullPath, relativePath, originalContent, modifiedContent, diff, changeType)
+    recordChangeSetEntry(ctx, relativePath, originalContent, modifiedContent, changeType)
+
+    // Mark as "read" so subsequent edits in the same session can compose
+    fileState.recordRead(fullPath, modifiedContent, Date.now())
 
     return {
-      data: `Applied edit to ${relativePath}. Changes written to disk and available for review.`,
+      data: `Change proposed: ${totalHunks} edit(s) applied to ${relativePath}. Awaiting user review in the diff panel.`,
       meta: {
+        ...(editResults
+          ? {
+              editResults: editResults.map(r => ({
+                applied: r.applied,
+                operation: r.operation,
+                hunks: r.hunks,
+                locations: r.locations,
+              })),
+            }
+          : {}),
+        totalHunks,
         diff,
-        status: 'written',
+        status: 'pending_review',
       },
     }
   },
