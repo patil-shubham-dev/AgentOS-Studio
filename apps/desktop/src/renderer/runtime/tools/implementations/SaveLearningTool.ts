@@ -3,7 +3,7 @@ import type { ToolContext } from '../core/ToolContext'
 import type { ToolResult } from '../core/ToolResult'
 import { ToolCapabilities } from '../core/ToolCapabilities'
 import { MemoryArchitecture } from '@/runtime/memory/unified/MemoryArchitecture'
-import { MemoryCategory } from '@/runtime/memory/unified/types'
+import type { MemoryCategory } from '@/runtime/memory/unified/types'
 
 export const SaveLearningTool: AgentTool = buildTool({
   name: 'save_learning',
@@ -38,7 +38,8 @@ export const SaveLearningTool: AgentTool = buildTool({
   isConcurrencySafe: () => true,
   requiredCapabilities: () => [ToolCapabilities.WRITE],
   getActivityDescription: (input) => {
-    const c = (input as any)?.content
+    const c = (input as { content?: unknown })?.content
+    if (typeof c !== 'string') return 'Saving a learning'
     return c ? `Saving learning: ${c.slice(0, 60)}...` : 'Saving a learning'
   },
   permissions: async () => ({ behavior: 'allow' }),

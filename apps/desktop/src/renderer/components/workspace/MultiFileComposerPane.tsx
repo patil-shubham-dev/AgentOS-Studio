@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import { useTimelineStore } from "./timeline/timeline-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useAgentStore } from "@/stores/agent-store"
-import { executionSessionManager } from "@/runtime/sessions/ExecutionSessionManager"
+import { ExecutionSessionManager } from "@/runtime/sessions/ExecutionSessionManager"
 import { useHaptic } from "@/lib/haptics"
 import { useCommitPRStore } from "@/stores/commit-pr-store"
 import { gitStatus } from "@/lib/git"
@@ -47,7 +47,7 @@ export function MultiFileComposerPane() {
     const composerPrefix = "You are in multi-file composer mode. The user wants cross-file changes. Read all relevant files, plan the changes, then edit each file. For each file, output the full new content."
 
     try {
-      const session = await executionSessionManager.start({
+      const session = await ExecutionSessionManager.getInstance().start({
         input: `${composerPrefix}\n\n${input.trim()}`,
         activeRole: "coder",
         correlationId,

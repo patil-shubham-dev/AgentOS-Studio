@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import {
   Command, File, Settings, PanelLeft, PanelRight, X,
   Globe, Palette, RefreshCw, Search, GitBranch, LayoutDashboard,
-  History, MessageSquare, Layers, HelpCircle, Github,
+  History, MessageSquare, Layers, HelpCircle, GitPullRequest,
 } from "lucide-react"
 import { ShortcutHint } from "@/components/ui/ShortcutHint"
 
@@ -203,7 +203,7 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
       id: "issue-to-pr",
       label: "Issue → Pull Request",
       description: "Create a pull request from a GitHub issue",
-      icon: <Github className="h-3.5 w-3.5" />,
+      icon: <GitPullRequest className="h-3.5 w-3.5" />,
       action: () => {
         import("@/stores/issue-pr-store").then(({ useIssuePRStore }) => {
           useIssuePRStore.getState().setOpen(true)

@@ -1,6 +1,6 @@
 import { useAppStore } from "@/stores/app-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
-import { formatFIMPrompt, formatStandardPrompt, getFIMModelName, parseFIMCompletion, type FIMRequest } from "@/runtime/completion/FIMFormatter"
+import { buildFIMBody, parseFIMResponse, truncatePrefix, truncateSuffix, type FIMRequest, type FIMProviderConfig } from "@/runtime/completion/FIMFormatter"
 
 interface AiCompletionRequest {
   prefix: string
@@ -84,61 +84,66 @@ export async function requestAiCompletion(req: AiCompletionRequest): Promise<str
   const timeout = setTimeout(() => controller.abort(), 2000)
 
   try {
-    const fimModel = getFIMModelName(config.model)
-    const useFIM = settings.useFIM && fimModel !== "starcoder" // only FIM when we detect a FIM-capable model
+    const fimModel = config.model.includes("deepseek") ? "deepseek-coder" : config.model.includes("starcoder") ? "starcoder" : "default"
+    const useFIM = settings.useFIM && fimModel !== "starcoder"
 
-    let userContent: string
-    let systemContent: string
+    const fimConfig: FIMProviderConfig = {
+      type: "openai-compatible",
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
+      model: config.model,
+    }
 
+    let requestBody: Record<string, unknown>
     if (useFIM) {
       const fimReq: FIMRequest = {
         prefix: req.prefix,
         suffix: req.suffix,
         language: req.language,
         filePath: req.filePath,
+        maxLines: 20,
       }
-      userContent = formatFIMPrompt(fimReq, fimModel)
-      systemContent = "Complete the code at the cursor. Return only the completion text, no explanation."
+      requestBody = buildFIMBody(fimReq, fimConfig)
+      requestBody = {
+        ...requestBody,
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens,
+        stream: false,
+      }
     } else {
-      userContent = formatStandardPrompt({
-        prefix: req.prefix,
-        suffix: req.suffix,
-        language: req.language,
-        filePath: req.filePath,
-      })
-      systemContent = "You are a code completion engine. Generate concise, context-aware code completions. Never explain. Never format. Return only the completion text."
+      const truncatedPrefix = truncatePrefix(req.prefix)
+      const truncatedSuffix = truncateSuffix(req.suffix)
+      requestBody = {
+        model: config.model,
+        messages: [
+          { role: "system", content: "You are a code completion engine. Generate concise, context-aware code completions. Never explain. Never format. Return only the completion text." },
+          { role: "user", content: `Complete the code at the cursor. Prefix:\n\`\`\`\n${truncatedPrefix}\n\`\`\`\n\nSuffix:\n\`\`\`\n${truncatedSuffix}\n\`\`\`\n\nCursor position completion:` },
+        ],
+        max_tokens: settings.maxTokens,
+        temperature: settings.temperature,
+        stop: ["\n\n\n"],
+      }
     }
 
-    const body: Record<string, unknown> = {
-      model: config.model,
-      messages: [
-        { role: "system", content: systemContent },
-        { role: "user", content: userContent },
-      ],
-      max_tokens: settings.maxTokens,
-      temperature: settings.temperature,
-      stop: ["\n\n\n"],
-    }
-
-    // FIM-compatible models may use a different API format
-    if (useFIM && fimModel === "deepseek-coder") {
-      body.stop = ["<|endoftext|>", "�"]
-    }
+    const rawBody = JSON.stringify(requestBody)
 
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.apiKey}` },
-      body: JSON.stringify(body),
+      body: rawBody,
       signal: controller.signal,
     })
 
     if (!response.ok) return null
 
     const json = await response.json()
-    let text = json?.choices?.[0]?.message?.content?.trim() ?? null
+    let text = json?.choices?.[0]?.message?.content?.trim()
+      ?? json?.choices?.[0]?.text?.trim()
+      ?? json?.content?.[0]?.text?.trim()
+      ?? null
 
     if (text && useFIM) {
-      text = parseFIMCompletion(text, fimModel)
+      text = parseFIMResponse(JSON.stringify(json), fimConfig)
     }
 
     return text

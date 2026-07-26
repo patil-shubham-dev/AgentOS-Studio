@@ -1,4 +1,4 @@
-import { safeSetItem, safeGetItem, safeRemoveItem } from './safe-storage'
+import { safeSetItem, safeGetItem, safeRemoveItem } from '@/lib/security/safe-storage'
 
 export interface DirtyBuffer {
   path: string

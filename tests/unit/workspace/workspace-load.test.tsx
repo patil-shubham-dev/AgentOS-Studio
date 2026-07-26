@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import React from "react"
 
 // Mock all the dependencies that CodeCanvas needs
@@ -67,24 +67,22 @@ vi.mock("react-router-dom", () => ({
 
 describe("Workspace Load Smoke Test", () => {
   it("CodeCanvas can be imported without error", async () => {
-    let CodeCanvas: React.ComponentType
-    expect(async () => {
-      const mod = await import("@/pages/code-canvas")
-      CodeCanvas = mod.default
-    }).not.toThrow()
+    const mod = await import("@/pages/code-canvas")
+    const CodeCanvas: React.ComponentType = mod.CodeCanvasPage
+    expect(CodeCanvas).toBeDefined()
   })
 
   it("all workspace panel imports resolve", async () => {
     const imports = [
       "@/components/workspace/WorkspaceErrorBoundary",
-      "@/components/workspace/explorer/WorkspaceExplorer",
+      "@/components/workspace/explorer/Explorer",
       "@/components/workspace/code-workspace",
       "@/components/workspace/browser/browser-workspace",
       "@/components/workspace/design-workspace",
       "@/components/workspace/diff-viewer/DiffViewerPane",
       "@/components/workspace/preview/PreviewPane",
       "@/components/workspace/chat-panel",
-      "@/components/workspace/timeline/conversation/conversation-timeline",
+      "@/components/workspace/timeline/conversation",
     ]
 
     for (const importPath of imports) {

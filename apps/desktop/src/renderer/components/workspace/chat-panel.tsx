@@ -356,6 +356,8 @@ export function ChatPanel() {
     textareaRef.current?.focus()
   }, [activeRole])
 
+  const addToast = useToastStore((s) => s.addToast)
+
   const canSend = useMemo(() => {
     const mockMode = useAppStore.getState().mockMode
     if (mockMode) return true
@@ -774,8 +776,6 @@ ${currentPlan.verificationCriteria.map((c) => `- ${c}`).join("\n")}`
     })
     setPlanEditOpen(false)
   }, [planEditText])
-
-  const addToast = useToastStore((s) => s.addToast)
 
   const handleGenerateAgenticMd = useCallback(async () => {
     const rootPath = useWorkspaceStore.getState().rootPath

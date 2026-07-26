@@ -142,7 +142,7 @@ class EditPredictionStore {
     const now = Date.now()
     let decayed = false
     for (const [, occ] of this.coOccurrences) {
-      const age = now - this.events.find(e => e.filePath === occ.fileA || e.filePath === occ.fileB)?.timestamp ?? now
+      const age = now - (this.events.find(e => e.filePath === occ.fileA || e.filePath === occ.fileB)?.timestamp ?? now)
       if (age > 24 * 60 * 60 * 1000 && occ.count > 1) {
         occ.count = Math.max(1, Math.round(occ.count * DECAY_FACTOR))
         decayed = true

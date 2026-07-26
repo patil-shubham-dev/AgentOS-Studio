@@ -112,16 +112,13 @@ export class WorkspacePanelController {
     this._state.runtimeTab = runtimeTab
 
     let resolved: WorkspacePanel
-    let didOverride = false
-
     if (runtimeTab && recentlyManual && this._state.userTab && runtimeTab !== this._state.userTab) {
       resolved = this._state.userTab
       this._emit({ type: "ROUTE_BLOCKED_BY_USER", from: this._state.resolvedTab, to: runtimeTab, reason: `manual override window (${this.MANUAL_OVERRIDE_WINDOW}ms)` })
-      didOverride = true
     } else if (runtimeTab) {
       resolved = runtimeTab
       if (runtimeTab !== this._state.resolvedTab) {
-        this._emit({ type: "AUTO_ROUTE", from: this._state.resolvedTab, to: runtimeTab, reason: this._reasonText(runtimeTab, agentState) })
+        this._emit({ type: "AUTO_ROUTE", from: this._state.resolvedTab, to: runtimeTab, reason: this._reasonText(runtimeTab) })
       }
     } else {
       resolved = this._state.userTab ?? this._state.resolvedTab
@@ -154,7 +151,7 @@ export class WorkspacePanelController {
     const browserAssignment = agentState.agentAssignments.find(
       (a: AgentAssignment) => a.role === "browser" && a.status === "active",
     )
-    if (browserStep || browserAssignment) return "browser"
+    if (browserStep || browserAssignment) return "design"
 
     const designStep = agentState.orchestrationSteps.find(
       (s: OrchestrationStep) => s.agent === "design" && s.status === "running",
@@ -172,9 +169,8 @@ export class WorkspacePanelController {
     return null
   }
 
-  private _reasonText(panel: WorkspacePanel, agentState: AgentStore): string {
+  private _reasonText(panel: WorkspacePanel): string {
     switch (panel) {
-      case "browser": return "browser agent running"
       case "design": return "design agent running"
       case "code": return "coder agent running"
       default: return ""

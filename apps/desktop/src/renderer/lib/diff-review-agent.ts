@@ -58,7 +58,7 @@ function parseReviewResponse(
   filePath: string,
   fileHunkCount: number,
 ): ReviewComment[] {
-  const now = Date.now()
+  let now = Date.now()
   const result: ReviewComment[] = []
 
   let json = content.trim()

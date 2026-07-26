@@ -164,6 +164,13 @@ export function checkCodeQuality(diffFiles: Map<string, { additions: Array<{ lin
   return results
 }
 
+export class ReviewChecker {
+  checkDiff(diffText: string): ReviewCheckResult[] {
+    const summary = reviewDiff(diffText)
+    return summary.results
+  }
+}
+
 export function reviewDiff(diffText: string): ReviewCheckSummary {
   const diffFiles = parseDiff(diffText)
   const secrets = checkSecrets(diffText)

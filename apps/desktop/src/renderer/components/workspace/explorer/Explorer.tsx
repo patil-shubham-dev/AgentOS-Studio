@@ -36,6 +36,7 @@ export const Explorer = forwardRef<ExplorerHandle, ExplorerProps>(function Explo
   const fileTree = useWorkspaceStore((s) => s.fileTree)
   const closeWorkspace = useWorkspaceStore((s) => s.closeWorkspace)
   const fileActivities = useAgentStore((s) => s.fileActivities)
+  const activeFilePath = useWorkspaceStore((s) => s.activeFilePath)
 
   const [searchQuery, setSearchQuery] = useState("")
   const [creatingFile, setCreatingFile] = useState<string | null>(null)

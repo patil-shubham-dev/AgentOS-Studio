@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  Github, ExternalLink, Loader2, CheckCircle2, XCircle, AlertCircle,
+  GitPullRequest, ExternalLink, Loader2, CheckCircle2, XCircle, AlertCircle,
   GitBranch, FileCode, ArrowRight, Eye, EyeOff, Copy, Terminal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -180,7 +180,7 @@ export function IssueToPRDialog() {
       >
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-          <Github className="h-4 w-4" />
+          <GitPullRequest className="h-4 w-4" />
           <span className="text-[12px] font-semibold" style={{ color: "var(--text-secondary)" }}>Issue → Pull Request</span>
           {store.step !== "idle" && store.step !== "done" && store.step !== "error" && (
             <motion.span

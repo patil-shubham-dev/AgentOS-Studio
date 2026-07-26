@@ -1,22 +1,15 @@
-import { motion } from "framer-motion"
 import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from "react"
 import { useNavigate } from "react-router-dom"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useAgentStore } from "@/stores/agent-store"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
 
-import { loadFileTree, readFile, createFile, createFolder } from "@/lib/filesystem"
+import { loadFileTree, readFile } from "@/lib/filesystem"
 import { addRecentWorkspace, getRecentWorkspaces, pickWorkspaceFolder, startWatching, onFileChange, type RecentWorkspace } from "@/lib/workspace"
-import type { FileEntry } from "@/types"
-import { safeCapitalize } from "@/lib/safeCapitalize"
 import { workspaceIndex } from "@/lib/search-index"
-import { invoke } from "@/lib/electron-api"
 import { Explorer, type ExplorerHandle } from "@/components/workspace/explorer/Explorer"
-import { ExplorerResizer } from "@/components/workspace/explorer/ExplorerResizer"
 import { CodeWorkspace } from "@/components/workspace/code-workspace"
 import { ChatPanel } from "@/components/workspace/chat-panel"
-import { PaneContainer } from "@/components/workspace/pane-layout/PaneContainer"
-import { MainPaneContainer } from "@/components/workspace/pane-layout/MainPaneContainer"
 
 const DesignWorkspace = lazy(() => import("@/components/workspace/design-workspace").then(m => ({ default: m.DesignWorkspace })))
 import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
@@ -27,7 +20,6 @@ import { IssueToPRDialog } from "@/components/workspace/IssueToPRDialog"
 import { WorkflowModeIndicator } from "@/components/workspace/WorkflowModeIndicator"
 import { WorkspaceEmptyState } from "@/components/workspace/WorkspaceEmptyState"
 import { GlobalSearch } from "@/components/workspace/global-search"
-import { ShortcutHint } from "@/components/ui/ShortcutHint"
 import { CommandPalette } from "@/components/workspace/command-palette"
 import { QuickOpen } from "@/components/workspace/QuickOpen"
 
@@ -39,11 +31,11 @@ import { SessionSidebar } from "@/components/workspace/timeline/SessionSidebar"
 import { CheckpointTimeline } from "@/components/workspace/CheckpointTimeline"
 import { useSessionStore } from "@/stores/session-store"
 import { useCheckpointStore } from "@/stores/checkpoint-store"
-import { usePaneStore } from "@/stores/pane-store"
 import { usePanelCoordinator } from "@/stores/panel-coordinator"
 import { useDiffStore } from "@/stores/diff-store"
 
-import { Button, TooltipSimple as Tooltip } from "@agentic-os/ui"
+import { usePanelResize } from "@/hooks/use-panel-resize"
+import { Button } from "@agentic-os/ui"
 import { cn } from "@/lib/utils"
 import { WorkspacePanelController, type WorkspacePanel } from "@/lib/workspace-panel-controller"
 import { useLeakTracker } from "@/performance/leak-detector"
@@ -65,6 +57,10 @@ const WORKSPACE_PANEL_OPTIONS: { id: WorkspacePanel; label: string; icon: typeof
 
 const PANEL_STORAGE_KEY_PREFIX = "aos-panel-"
 
+function isWorkspacePanel(panel: string): panel is WorkspacePanel {
+  return panel === "code" || panel === "design"
+}
+
 function loadPanelState<T>(key: string, defaultVal: T): T {
   try {
     const raw = localStorage.getItem(`${PANEL_STORAGE_KEY_PREFIX}${key}`)
@@ -81,58 +77,6 @@ function persistPanelState(key: string, value: unknown): void {
   } catch { /* quota exceeded — ignore */ }
 }
 
-async function updateImportsOnMove(rootPath: string, oldPath: string, newPath: string): Promise<{ updated: number; files: string[] }> {
-  const affectedFiles: string[] = []
-  let updatedCount = 0
-  try {
-    const tree = await invoke<FileEntry[]>("list_directory", { path: rootPath })
-    const allFiles: string[] = []
-    function flatten(entries: FileEntry[], base: string) {
-      for (const e of entries) {
-        const p = base ? `${base}/${e.name}` : e.name
-        if (e.is_dir) flatten(e.children, p)
-        else if (!e.name.endsWith(".map")) allFiles.push(p)
-      }
-    }
-    flatten(tree, "")
-    const oldBasename = oldPath.replace(/\\/g, "/").split("/").pop() || ""
-    const oldImportPaths = [
-      oldPath.replace(/\\/g, "/"),
-      oldPath.replace(/\\/g, "/").replace(/\.[^.]+$/, ""),
-      `./${oldPath.replace(/\\/g, "/").replace(/\.[^.]+$/, "")}`,
-    ]
-    const newBasename = newPath.replace(/\\/g, "/").split("/").pop() || ""
-    const newRelBase = newPath.replace(/\\/g, "/").replace(/\.[^.]+$/, "")
-    const newRelative = `./${newRelBase}`
-
-    for (const relPath of allFiles) {
-      if (relPath === oldPath.replace(/\\/g, "/")) continue
-      try {
-        const fullPath = `${rootPath}/${relPath}`
-        const content = await invoke<string>("read_text_file", { path: fullPath })
-        let modified = content
-        for (const oldImport of oldImportPaths) {
-          const escaped = oldImport.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-          const regex = new RegExp(escaped, "g")
-          if (regex.test(modified)) {
-            modified = modified.replace(regex, newRelative)
-          }
-        }
-        if (modified !== content) {
-          await invoke("write_text_file", { path: fullPath, content: modified })
-          affectedFiles.push(relPath)
-          updatedCount++
-        }
-      } catch {
-        // Skip files that can't be read
-      }
-    }
-  } catch {
-    // Tauri not available
-  }
-  return { updated: updatedCount, files: affectedFiles }
-}
-
 export function CodeCanvasPage() {
   useLeakTracker("CodeCanvasPage")
   const rootPath = useWorkspaceStore((s) => s.rootPath)
@@ -147,11 +91,6 @@ export function CodeCanvasPage() {
   const runtimeMessage = useWorkspaceRuntime((s) => s.statusMessage)
   const runtimeError = useWorkspaceRuntime((s) => s.error)
   const runtimeReady = useWorkspaceRuntime((s) => s.isReady)
-  const wiredAgents = useWorkspaceRuntime((s) => s.wiredAgents)
-  const totalProviders = useWorkspaceRuntime((s) => s.totalProviders)
-  const wiredRoles = useWorkspaceRuntime((s) => s.wiredRoles)
-  const memoryPressure = useWorkspaceRuntime((s) => s.memoryPressure)
-  const tokenUsage = useWorkspaceRuntime((s) => s.tokenUsage)
   const hasStaleConfig = useWorkspaceRuntime((s) => s.hasStaleConfig)
   const [recoveredBuffers, setRecoveredBuffers] = useState<DirtyBuffer[]>([])
   const [missingWorkspace, setMissingWorkspace] = useState<string | null>(null)
@@ -171,11 +110,9 @@ export function CodeCanvasPage() {
   const unlistenRef = useRef<(() => void) | null>(null)
 
   // ── Panel state (persisted to localStorage) ──
-  const [explorerOpen, setExplorerOpen] = useState(() => loadPanelState("explorerOpen", false))
-  const [explorerWidth, setExplorerWidth] = useState(() => loadPanelState("explorerWidth", 320))
+  const [explorerOpen, setExplorerOpen] = useState(() => loadPanelState("explorerOpen", true))
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel>(() => loadPanelState("workspacePanel", "code"))
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(() => loadPanelState("workspacePanelOpen", true))
-  const [workspacePanelWidth, setWorkspacePanelWidth] = useState(() => loadPanelState("workspacePanelWidth", 420))
   const [sessionSidebarOpen, setSessionSidebarOpen] = useState(() => loadPanelState("sessionSidebarOpen", false))
   const [windowWidth, setWindowWidth] = useState(window.innerWidth)
   const isNarrow = windowWidth < 900
@@ -184,41 +121,46 @@ export function CodeCanvasPage() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [quickOpenOpen, setQuickOpenOpen] = useState(false)
 
-  const panes = usePaneStore((s) => s.panes)
-  const mainPaneIds = usePaneStore((s) => s.mainPaneIds)
-  const setPaneVisibility = usePaneStore((s) => s.setPaneVisibility)
-  const dispatchPaneAction = usePanelCoordinator((s) => s.dispatch)
-  const paneState = usePanelCoordinator((s) => s.paneState)
   const lastPaneAction = usePanelCoordinator((s) => s.lastAction)
 
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const layoutRef = useRef<HTMLDivElement>(null)
+  const explorerResize = usePanelResize(layoutRef, {
+    id: "explorer",
+    defaultWidth: 300,
+    minWidth: 200,
+    maxWidth: 500,
+    direction: "horizontal",
+  })
+  const workspaceResize = usePanelResize(layoutRef, {
+    id: "workspace",
+    defaultWidth: 480,
+    minWidth: 380,
+    maxWidth: 900,
+    direction: "horizontal",
+  })
+
   const explorerRef = useRef<ExplorerHandle>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loadingTreeRef = useRef(false)
-  const explorerResizingRef = useRef(false)
-  const workspaceResizingRef = useRef(false)
-  const resizeCleanupFns = useRef<(() => void)[]>([])
   const panelCtrlRef = useRef<WorkspacePanelController | null>(null)
 
-  // ── Pane configs for PaneContainer ──
-  const visiblePanes = useMemo(
-    () => panes
-      .filter((p) => p.visible && !["explorer", "chat", "terminal", "output", "diff"].includes(p.type))
-      .sort((a, b) => a.order - b.order),
-    [panes],
-  )
-  const paneConfigs = useMemo(() => {
-    const paneRenderers: Record<string, () => React.ReactNode> = {
-      code: () => <WorkspaceErrorBoundary><CodeWorkspace /></WorkspaceErrorBoundary>,
-      design: () => <WorkspaceErrorBoundary><Suspense fallback={<div className="flex-1 flex items-center justify-center text-[var(--text-tertiary)] text-xs">Loading design...</div>}><DesignWorkspace /></Suspense></WorkspaceErrorBoundary>,
+  const refreshTree = useCallback(async () => {
+    const rp = useWorkspaceStore.getState().rootPath
+    if (!rp) return
+    setLoading(true)
+    try {
+      const tree = await loadFileTree(rp)
+      setFileTree(tree)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[Explorer] refresh tree FAILED`, { error: msg })
     }
-    return visiblePanes.map((p) => ({
-      id: p.id,
-      type: p.type,
-      title: safeCapitalize(p.type, ""),
-      children: paneRenderers[p.type]?.() ?? null,
-    }))
-  }, [visiblePanes])
+  }, [setFileTree, setLoading])
+
+  const debouncedRefresh = useCallback(() => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    refreshTimerRef.current = setTimeout(() => void refreshTree(), 150)
+  }, [refreshTree])
 
   const commandPaletteContext = useMemo(() => ({
     navigate,
@@ -235,10 +177,12 @@ export function CodeCanvasPage() {
     },
     refreshTree,
     switchPanel: (panel: string) => {
-      setWorkspacePanel(panel as WorkspacePanel)
+      if (!isWorkspacePanel(panel)) return
+      setWorkspacePanel(panel)
       setWorkspacePanelOpen(true)
+      panelCtrlRef.current?.handleManualTabClick(panel)
     },
-  }), [navigate, refreshTree])
+  }), [navigate, refreshTree, setSearchOpen])
 
   const handleToggleDiffReview = useCallback(() => {
     if (editorMode === "diff") {
@@ -253,12 +197,8 @@ export function CodeCanvasPage() {
       ?? allDiffFiles[0]?.path
       ?? useWorkspaceStore.getState().activeFilePath
 
-    if (!workspacePanelOpen) {
-      setWorkspacePanelOpen(true)
-      panelCtrlRef.current?.syncOpenState(true)
-    }
-
-    setPaneVisibility("code", true)
+    setWorkspacePanelOpen(true)
+    setWorkspacePanel("code")
     panelCtrlRef.current?.handleManualTabClick("code")
 
     if (preferredTarget) {
@@ -266,7 +206,7 @@ export function CodeCanvasPage() {
     } else {
       setEditorMode("diff")
     }
-  }, [diffFiles, diffReviewFile, editorMode, openFileInDiffMode, setEditorMode, setPaneVisibility, workspacePanelOpen])
+  }, [diffFiles, diffReviewFile, editorMode, openFileInDiffMode, setEditorMode])
 
   useEffect(() => {
     if (runtimeStatus === "uninitialized" && rootPath) {
@@ -290,9 +230,9 @@ export function CodeCanvasPage() {
     }).finally(() => {
       loadingTreeRef.current = false
     })
-  }, [rootPath])
+  }, [fileTree.length, rootPath, setFileTree, setLoading])
 
-  async function loadRestoredFileContent(rp: string) {
+  const loadRestoredFileContent = useCallback(async (rp: string) => {
     const state = useWorkspaceStore.getState()
     // Load active tab content immediately
     if (state.activeFilePath) {
@@ -321,7 +261,7 @@ export function CodeCanvasPage() {
         }
       }, { timeout: 2000 })
     }
-  }
+  }, [])
 
   const handleKeepDirtyBuffers = useCallback((paths: string[]) => {
     for (const path of paths) {
@@ -367,6 +307,7 @@ export function CodeCanvasPage() {
         return
       }
       setFileTree(tree)
+      if (window.innerWidth >= 900) setExplorerOpen(true)
       startWatching(storedRoot)
       restoreWorkspaceState()
       loadRestoredFileContent(storedRoot)
@@ -381,7 +322,7 @@ export function CodeCanvasPage() {
     }).finally(() => {
       loadingTreeRef.current = false
     })
-  }, []) // only on mount
+  }, [loadRestoredFileContent, restoreWorkspaceState, rootPath, setFileTree, setLoading, setRootPath])
 
   // ── State persistence — persist on changes ──
   useEffect(() => {
@@ -390,7 +331,7 @@ export function CodeCanvasPage() {
       restoreWorkspaceState()
       loadRestoredFileContent(rootPath)
     }
-  }, [rootPath, restoreWorkspaceState])
+  }, [loadRestoredFileContent, rootPath, restoreWorkspaceState])
 
   const openFilesSnapshot = useWorkspaceStore(s => s.openFiles.map(f => f.path).join(','))
   const activeFileSnapshot = useWorkspaceStore(s => s.activeFilePath)
@@ -422,6 +363,7 @@ export function CodeCanvasPage() {
       return
     }
     setFileTree(tree)
+    if (!isNarrow) setExplorerOpen(true)
     await startWatching(folder)
     await addRecentWorkspace(folder)
     await refreshRecentWorkspaces()
@@ -433,54 +375,7 @@ export function CodeCanvasPage() {
     await openWorkspacePath(folder)
   }
 
-  async function handleNewFile() {
-    if (!rootPath) return
-    const name = prompt("File name:")
-    if (!name) return
-    try {
-      await createFile(`${rootPath}\\${name}`)
-      const tree = await loadFileTree(rootPath)
-      setFileTree(tree)
-    } catch (err) {
-      console.error("[CodeCanvas] Failed to create file:", err)
-    }
-  }
-
-  async function handleNewFolder() {
-    if (!rootPath) return
-    const name = prompt("Folder name:")
-    if (!name) return
-    try {
-      await createFolder(`${rootPath}\\${name}`)
-      const tree = await loadFileTree(rootPath)
-      setFileTree(tree)
-    } catch (err) {
-      console.error("[CodeCanvas] Failed to create folder:", err)
-    }
-  }
-
-  async function refreshTree() {
-    const rp = useWorkspaceStore.getState().rootPath
-    if (!rp) return
-    setIsRefreshing(true)
-    setLoading(true)
-    try {
-      const tree = await loadFileTree(rp)
-      setFileTree(tree)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error(`[Explorer] refresh tree FAILED`, { error: msg })
-    } finally {
-      setIsRefreshing(false)
-    }
-  }
-
-  function debouncedRefresh() {
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-    refreshTimerRef.current = setTimeout(() => refreshTree(), 150)
-  }
-
-  const handleSearchOpenFile = useCallback((path: string, line?: number) => {
+  const handleSearchOpenFile = useCallback((path: string) => {
     const rootPath = useWorkspaceStore.getState().rootPath
     const fetchAndOpen = async () => {
       try {
@@ -488,7 +383,7 @@ export function CodeCanvasPage() {
         const content = await readFile(fullPath)
         const name = path.split("/").pop() || path
         useWorkspaceStore.getState().openFile({ path, name, content, isDirty: false })
-      } catch (err) {
+      } catch {
         // File may already be open — just navigate
         useWorkspaceStore.getState().setActiveFile(path)
       }
@@ -524,7 +419,7 @@ export function CodeCanvasPage() {
     return () => {
       unlistenRef.current?.()
     }
-  }, [handleFileChange, rootPath])
+  }, [debouncedRefresh, handleFileChange, rootPath])
 
   // ── Workspace Panel Controller ──
   // Three-layer state: USER_TAB (manual click + timestamp), RUNTIME_TAB (agent step), RESOLVED (final).
@@ -628,7 +523,7 @@ export function CodeCanvasPage() {
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "b") {
         e.preventDefault()
-        panelCtrlRef.current?.handleManualTabClick("browser")
+        panelCtrlRef.current?.handleManualTabClick("design")
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "m") {
         e.preventDefault()
@@ -721,58 +616,31 @@ export function CodeCanvasPage() {
     return () => window.removeEventListener("resize", handleResize)
   }, [explorerOpen, workspacePanelOpen])
 
-    // ── Persist panel state on change ──
+  // ── Persist panel state on change ──
   useEffect(() => { persistPanelState("explorerOpen", explorerOpen) }, [explorerOpen])
-  useEffect(() => { persistPanelState("explorerWidth", explorerWidth) }, [explorerWidth])
   useEffect(() => { persistPanelState("workspacePanel", workspacePanel) }, [workspacePanel])
   useEffect(() => { persistPanelState("workspacePanelOpen", workspacePanelOpen) }, [workspacePanelOpen])
-  useEffect(() => { persistPanelState("workspacePanelWidth", workspacePanelWidth) }, [workspacePanelWidth])
   useEffect(() => { persistPanelState("sessionSidebarOpen", sessionSidebarOpen) }, [sessionSidebarOpen])
 
-  // ── Resize drag cleanup on unmount — guarantees no leaked listeners or body styles ──
-  useEffect(() => {
-    return () => {
-      for (const fn of resizeCleanupFns.current) fn()
-      resizeCleanupFns.current = []
-      explorerResizingRef.current = false
-      workspaceResizingRef.current = false
-      document.body.style.cursor = ""
-      document.body.style.userSelect = ""
-    }
-  }, [])
-
-  // ── Pane routing: sync AI actions to pane visibility and URL ──
+  // ── Workbench routing: sync AI actions to fixed workspace regions ──
   useEffect(() => {
     if (!lastPaneAction) return
-    if (lastPaneAction.type === "focus" || lastPaneAction.type === "open" || lastPaneAction.type === "navigate") {
-      const target = lastPaneAction.type === "navigate" ? lastPaneAction.pane : lastPaneAction.pane
-      const pane = panes.find((p) => p.type === target)
-      if (pane) {
-        setPaneVisibility(target, true)
-        setWorkspacePanel(target as WorkspacePanel)
-      }
+    if ((lastPaneAction.type === "focus" || lastPaneAction.type === "open") && isWorkspacePanel(lastPaneAction.pane)) {
+      setWorkspacePanel(lastPaneAction.pane)
+      setWorkspacePanelOpen(true)
+      return
     }
-  }, [lastPaneAction])
-
-  // ── Navigate pane to URL when AI dispatches a navigate action ──
-  useEffect(() => {
-    if (!lastPaneAction || lastPaneAction.type !== "navigate") return
-    const paneConfig = panes.find((p) => p.type === lastPaneAction.pane)
-    if (!paneConfig) return
-    setPaneVisibility(lastPaneAction.pane, true)
-    setWorkspacePanel(lastPaneAction.pane)
-  }, [lastPaneAction, panes])
-
-  // ── Resize handlers ──
-  const handleExplorerResize = useCallback((width: number) => {
-    setExplorerWidth(width)
-  }, [])
-
-  const handleWorkspaceResize = useCallback((width: number) => {
-    setWorkspacePanelWidth(width)
-  }, [])
-
-
+    if (lastPaneAction.type === "navigate") {
+      setWorkspacePanel("design")
+      setWorkspacePanelOpen(true)
+      return
+    }
+    if (lastPaneAction.type === "showDiff") {
+      setWorkspacePanel("code")
+      setWorkspacePanelOpen(true)
+      openFileInDiffMode(lastPaneAction.filePath)
+    }
+  }, [lastPaneAction, openFileInDiffMode])
 
 
   return (
@@ -805,7 +673,7 @@ export function CodeCanvasPage() {
       {/* ── MAIN PANEL LAYOUT or Empty State ── */}
       <WorkspaceErrorBoundary onOpenFolder={openWorkspace}>
       {rootPath && typeof rootPath === 'string' && rootPath.length > 0 ? (
-      <div className="flex flex-1 overflow-hidden min-h-0">
+      <div ref={layoutRef} className="relative flex flex-1 overflow-hidden min-h-0 bg-[var(--surface-app)]">
         {/* Session Sidebar */}
         {sessionSidebarOpen && (
           <SessionSidebar
@@ -819,129 +687,209 @@ export function CodeCanvasPage() {
         {/* Checkpoint Timeline */}
         <CheckpointTimeline />
 
-        <MainPaneContainer
-          panes={mainPaneIds.map((id) => ({
-            id,
-            children: id === "explorer" ? (
-              <div className="h-full flex flex-col bg-[#0c0c0d] min-h-0 overflow-hidden" role="region" aria-label="Explorer">
-                <Explorer ref={explorerRef} onOpenWorkspace={openWorkspace} />
-              </div>
-            ) : id === "chat" ? (
-              <div className="h-full flex flex-col overflow-hidden min-h-0" role="region" aria-label="Chat panel">
-                <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--border-default)] bg-[var(--surface-panel)] shrink-0">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => setExplorerOpen(!explorerOpen)}
-                      className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
-                      title="Toggle explorer (⌘B)"
-                    >
-                      {explorerOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
-                    </button>
-                    <span className="text-[10px] font-medium text-[var(--text-quaternary)]">Chat</span>
-                    <WorkflowModeIndicator />
-                    <span className={cn(
+        {explorerOpen && (
+          <aside
+            className={cn(
+              "z-30 flex h-full flex-col overflow-hidden bg-[var(--surface-panel)]",
+              isNarrow
+                ? "absolute inset-y-0 left-0 w-[min(320px,88vw)] shadow-2xl shadow-black/40"
+                : "relative shrink-0",
+            )}
+            style={isNarrow ? undefined : { width: explorerResize.width }}
+            aria-label="Explorer"
+          >
+            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+              <Explorer ref={explorerRef} onOpenWorkspace={openWorkspace} />
+            </div>
+          </aside>
+        )}
+
+        {explorerOpen && !isNarrow && (
+          <div
+            className="flex w-1 cursor-col-resize shrink-0 items-center justify-center bg-transparent hover:bg-[var(--border-subtle)] active:bg-[var(--color-accent-blue)]/30 transition-colors group"
+            onMouseDown={explorerResize.handleDragStart}
+            onDoubleClick={explorerResize.resetWidth}
+          >
+            <div className="h-8 w-0.5 rounded-full bg-[var(--border-default)] opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        )}
+
+        {isNarrow && explorerOpen && (
+          <button
+            type="button"
+            className="absolute inset-0 z-20 bg-black/45"
+            aria-label="Close explorer overlay"
+            onClick={() => setExplorerOpen(false)}
+          />
+        )}
+
+        <section
+          className="flex min-w-[320px] flex-1 flex-col overflow-hidden border-r border-[var(--border-subtle)] bg-[var(--surface-app)]"
+          aria-label="Chat workspace"
+        >
+          <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-panel)] px-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setExplorerOpen((open) => !open)}
+                className={cn(
+                  "grid h-7 w-7 place-items-center rounded-md border border-transparent text-[var(--text-tertiary)] transition-colors",
+                  explorerOpen
+                    ? "bg-[var(--border-subtle)] text-[var(--text-secondary)]"
+                    : "hover:border-[var(--border-default)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-secondary)]",
+                )}
+                title="Toggle explorer"
+                aria-label="Toggle explorer"
+              >
+                {explorerOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+              </button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[11px] font-semibold text-[var(--text-secondary)]">Assistant</span>
+                  <WorkflowModeIndicator />
+                  <span
+                    className={cn(
                       "inline-block h-1.5 w-1.5 rounded-full",
                       runtimeReady && runtimeHealth === "healthy" ? "bg-[var(--color-accent-green)]" :
                       runtimeStatus === "error" ? "bg-[var(--color-accent-red)]" :
-                      runtimeStatus === "initializing" ? "bg-[var(--color-accent-blue)] animate-pulse" :
-                      "bg-[var(--text-quaternary)]"
-                    )} title={runtimeReady ? "Runtime ready" : runtimeError || runtimeMessage || "Initializing"} />
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <ContextRadar />
+                      runtimeStatus === "initializing" ? "animate-pulse bg-[var(--color-accent-blue)]" :
+                      "bg-[var(--text-quaternary)]",
+                    )}
+                    title={runtimeReady ? "Runtime ready" : runtimeError || runtimeMessage || "Initializing"}
+                  />
+                </div>
+                <p className="truncate text-[9px] text-[var(--text-quaternary)]">
+                  {rootPath.split(/[\\/]/).pop() || rootPath}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ContextRadar />
+              <button
+                type="button"
+                onClick={handleToggleDiffReview}
+                className={cn(
+                  "grid h-7 w-7 place-items-center rounded-md transition-colors",
+                  editorMode === "diff"
+                    ? "bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]"
+                    : "text-[var(--text-tertiary)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-secondary)]",
+                )}
+                title="Toggle diff review"
+                aria-label="Toggle diff review"
+              >
+                <FileDiff className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !workspacePanelOpen
+                  setWorkspacePanelOpen(next)
+                  panelCtrlRef.current?.syncOpenState(next)
+                }}
+                className={cn(
+                  "grid h-7 w-7 place-items-center rounded-md border border-transparent text-[var(--text-tertiary)] transition-colors",
+                  workspacePanelOpen
+                    ? "bg-[var(--border-subtle)] text-[var(--text-secondary)]"
+                    : "hover:border-[var(--border-default)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-secondary)]",
+                )}
+                title="Toggle workbench"
+                aria-label="Toggle workbench"
+              >
+                {workspacePanelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ErrorBoundary name="ChatPanel"><ChatPanel /></ErrorBoundary>
+          </div>
+        </section>
+
+        {workspacePanelOpen && !isNarrow && (
+          <div
+            className="flex w-1 cursor-col-resize shrink-0 items-center justify-center bg-transparent hover:bg-[var(--border-subtle)] active:bg-[var(--color-accent-blue)]/30 transition-colors group"
+            onMouseDown={workspaceResize.handleDragStart}
+            onDoubleClick={workspaceResize.resetWidth}
+          >
+            <div className="h-8 w-0.5 rounded-full bg-[var(--border-default)] opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        )}
+
+        {workspacePanelOpen && (
+          <aside
+            className={cn(
+              "z-30 flex h-full flex-col overflow-hidden bg-[var(--surface-panel)]",
+              isNarrow
+                ? "absolute inset-y-0 right-0 w-[min(620px,94vw)] border-l border-[var(--border-subtle)] shadow-2xl shadow-black/40"
+                : "relative shrink-0 border-l border-[var(--border-subtle)]",
+            )}
+            style={isNarrow ? undefined : { width: workspaceResize.width }}
+            aria-label="Workbench"
+          >
+            <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-panel)] px-2">
+              <div className="flex min-w-0 items-center gap-1">
+                {WORKSPACE_PANEL_OPTIONS.map((opt) => {
+                  const Icon = opt.icon
+                  const active = workspacePanel === opt.id
+                  return (
                     <button
-                      onClick={handleToggleDiffReview}
-                      className={cn(
-                        "rounded p-0.5 transition-all",
-                        editorMode === "diff"
-                          ? "text-[var(--color-accent-blue)] bg-[var(--color-accent-blue)]/10"
-                          : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]"
-                      )}
-                      title="Toggle diff viewer (⌘⇧D)"
-                    >
-                      <FileDiff className="h-3.5 w-3.5" />
-                    </button>
-                    <button
+                      key={opt.id}
+                      type="button"
                       onClick={() => {
-                        const next = !workspacePanelOpen
-                        setWorkspacePanelOpen(next)
-                        panelCtrlRef.current?.syncOpenState(next)
+                        setWorkspacePanel(opt.id)
+                        setWorkspacePanelOpen(true)
+                        panelCtrlRef.current?.handleManualTabClick(opt.id)
                       }}
-                      className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all"
-                      title="Toggle workspace panel (⌘J)"
+                      className={cn(
+                        "flex h-8 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors",
+                        active
+                          ? "bg-[var(--border-subtle)] text-[var(--text-primary)]"
+                          : "text-[var(--text-tertiary)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-secondary)]",
+                      )}
                     >
-                      {workspacePanelOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
-                      <ShortcutHint keys="⌘J" className="ml-0.5 hidden sm:inline-flex" />
+                      <Icon className={cn("h-3.5 w-3.5", active ? "text-[var(--accent-code)]" : "text-[var(--text-tertiary)]")} />
+                      <span>{opt.label}</span>
                     </button>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-hidden min-h-0">
-                  <ErrorBoundary name="ChatPanel"><ChatPanel /></ErrorBoundary>
-                </div>
+                  )
+                })}
               </div>
-            ) : (
-              <div className="h-full flex flex-col overflow-hidden min-h-0" role="region" aria-label="Workspace panel">
-                <div className="flex items-center bg-[var(--surface-panel)] border-b border-[var(--border-subtle)] px-1.5 overflow-x-auto shrink-0">
-                  {WORKSPACE_PANEL_OPTIONS.map((opt) => {
-                    const Icon = opt.icon
-                    const pane = panes.find((p) => p.type === opt.id)
-                    const visible = pane?.visible ?? false
-                    const isMainPanel = workspacePanel === opt.id
-                    return (
-                      <button
-                        key={opt.id}
-                        onClick={() => {
-                          if (visible && isMainPanel) {
-                            setPaneVisibility(opt.id, false)
-                          } else {
-                            panes.forEach((p) => { if (["code", "design"].includes(p.type)) setPaneVisibility(p.type, false) })
-                            setPaneVisibility(opt.id, true)
-                            setWorkspacePanel(opt.id)
-                          }
-                          panelCtrlRef.current?.handleManualTabClick(opt.id)
-                        }}
-                        className={cn(
-                          "flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-all duration-150 shrink-0 border-b-2 border-transparent active:scale-95",
-                          visible
-                            ? "text-[var(--text-primary)] border-[var(--accent-code)]"
-                            : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--border-hover)]"
-                        )}
-                      >
-                        <Icon className={cn("h-3.5 w-3.5", visible ? "text-[var(--accent-code)]" : "text-[var(--text-tertiary)]")} />
-                        <span>{opt.label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className="flex-1 overflow-hidden min-h-0">
-                  <PaneContainer panes={paneConfigs} />
-                </div>
-              </div>
-            ),
-            minWidth: id === "explorer" ? 180 : id === "chat" ? 300 : 300,
-            maxWidth: id === "explorer" ? 500 : id === "chat" ? Infinity : 700,
-            defaultSize: id === "explorer" ? (explorerOpen ? explorerWidth : 0) : id === "chat" ? 1 : (workspacePanelOpen ? workspacePanelWidth : 0),
-            header: id === "explorer" ? (
-              <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border-subtle)] shrink-0" style={{ background: "var(--surface-panel)" }}>
-                <span className="text-[10px] font-medium text-[var(--text-quaternary)]">Explorer</span>
-                <button onClick={() => setExplorerOpen(false)} className="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--border-subtle)] transition-all" title="Close explorer">
-                  <PanelLeftClose className="h-3 w-3" />
-                </button>
-              </div>
-            ) : undefined,
-          }))}
-          onReorder={(ids) => usePaneStore.getState().reorderMainPanes(ids)}
-          onResize={(id, size) => {
-            if (id === "explorer") setExplorerWidth(size)
-            if (id === "code") setWorkspacePanelWidth(size)
-          }}
-          getSize={(id) => {
-            if (id === "explorer") return explorerOpen ? explorerWidth : 0
-            if (id === "chat") return -1
-            if (id === "code") return workspacePanelOpen ? workspacePanelWidth : 0
-            return 0
-          }}
-        />
+              <button
+                type="button"
+                onClick={() => {
+                  setWorkspacePanelOpen(false)
+                  panelCtrlRef.current?.syncOpenState(false)
+                }}
+                className="grid h-7 w-7 place-items-center rounded-md text-[var(--text-tertiary)] transition-colors hover:bg-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
+                title="Close workbench"
+                aria-label="Close workbench"
+              >
+                <PanelRightClose className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {workspacePanel === "code" ? (
+                <WorkspaceErrorBoundary><CodeWorkspace /></WorkspaceErrorBoundary>
+              ) : (
+                <WorkspaceErrorBoundary>
+                  <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--text-tertiary)]">Loading design...</div>}>
+                    <DesignWorkspace />
+                  </Suspense>
+                </WorkspaceErrorBoundary>
+              )}
+            </div>
+          </aside>
+        )}
+
+        {isNarrow && workspacePanelOpen && (
+          <button
+            type="button"
+            className="absolute inset-0 z-20 bg-black/45"
+            aria-label="Close workbench overlay"
+            onClick={() => {
+              setWorkspacePanelOpen(false)
+              panelCtrlRef.current?.syncOpenState(false)
+            }}
+          />
+        )}
       </div>
 
       ) : (
