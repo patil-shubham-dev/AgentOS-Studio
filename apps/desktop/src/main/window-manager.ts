@@ -43,7 +43,7 @@ export function createWindowManager(): WindowManager {
       })
 
       // Log renderer console messages (guarded against EPIPE on shutdown)
-      ;(mainWindow.webContents as any).on('console-message', (_event: Electron.Event & { level: number; message: string; line: number; sourceId: string }) => {
+      ;(mainWindow.webContents as unknown as { on: (event: string, listener: (...args: unknown[]) => void) => void }).on('console-message', (_event: Electron.Event & { level: number; message: string; line: number; sourceId: string }) => {
         try {
           const levelName = ['verbose', 'info', 'warning', 'error'][_event.level] || 'unknown'
           process.stdout.write(`[Renderer:${levelName}] ${_event.message} (${_event.sourceId}:${_event.line})\n`)

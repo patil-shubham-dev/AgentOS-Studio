@@ -1,5 +1,7 @@
 import { TransportError } from './transport-errors'
 
+type ElectronWindow = { electronAPI?: Record<string, unknown> }
+
 interface ProxyHttpResponse {
   ok: boolean
   status: number
@@ -24,7 +26,7 @@ function getProxyFetch(): ((req: {
   timeout?: number
 }) => Promise<ProxyHttpResponse>) | null {
   try {
-    const w = (typeof window !== 'undefined' ? window : null) as any
+    const w = (typeof window !== 'undefined' ? (window as unknown as ElectronWindow) : null)
     if (w?.electronAPI?.proxyHttpRequest) {
       return w.electronAPI.proxyHttpRequest
     }
@@ -43,10 +45,10 @@ function getStreamingProxies(): {
     body?: string
   }) => Promise<ProxyStreamHeaders>
   abort: (streamId: string) => Promise<void>
-  on: (channel: string, cb: (...args: any[]) => void) => (() => void) | undefined
+  on: (channel: string, cb: (...args: unknown[]) => void) => (() => void) | undefined
 } | null {
   try {
-    const w = (typeof window !== 'undefined' ? window : null) as any
+    const w = (typeof window !== 'undefined' ? (window as unknown as ElectronWindow) : null)
     if (w?.electronAPI?.proxyHttpStreamStart && w?.electronAPI?.on) {
       return {
         start: w.electronAPI.proxyHttpStreamStart,
@@ -83,7 +85,7 @@ export async function tauriFetch(
     const method = (init?.method ?? 'GET') as string
     const headers = init?.headers as Record<string, string> | undefined
     const body = init?.body as string | undefined
-    const timeout = (init as any)?.timeout ?? 30000
+    const timeout = (init as RequestInit & { timeout?: number })?.timeout ?? 30000
 
     let parsedHeaders = headers ?? {}
     if (init?.headers instanceof Headers) {
@@ -158,8 +160,8 @@ export async function tauriFetchStreaming(
     let streamController: ReadableStreamDefaultController<Uint8Array> | null = null
     const pending: Array<{ type: 'chunk'; data: number[] } | { type: 'end' } | { type: 'error'; error: string }> = []
 
-    function onChunk(...args: any[]) {
-      const _payload = args[0]
+    function onChunk(...args: unknown[]) {
+      const _payload = args[0] as { data?: number[] } | undefined
       console.log("[FLOW:18] tauriFetchStreaming: onChunk called (streamController=" + !!streamController + ", dataLen=" + (_payload?.data?.length ?? 0) + ")")
       if (!_payload?.data) return
       if (streamController) {
@@ -169,7 +171,7 @@ export async function tauriFetchStreaming(
       }
     }
 
-    function onEnd(..._args: any[]) {
+    function onEnd() {
       console.log("[FLOW:19] tauriFetchStreaming: onEnd called (streamController=" + !!streamController + ")")
       if (streamController) {
         streamController.close()
@@ -177,9 +179,9 @@ export async function tauriFetchStreaming(
       pending.push({ type: 'end' })
     }
 
-    function onError(...args: any[]) {
+    function onError(...args: unknown[]) {
       console.log("[FLOW:20] tauriFetchStreaming: onError called (streamController=" + !!streamController + ")")
-      const payload = args[0]
+      const payload = args[0] as { error?: string } | undefined
       const errMsg = payload?.error || 'Stream error'
       if (streamController) {
         streamController.error(new Error(errMsg))

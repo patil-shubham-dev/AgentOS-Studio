@@ -309,7 +309,7 @@ export async function validateCompletion(
 
   try {
     let url: string
-    let headers: Record<string, string> = { "Content-Type": "application/json" }
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
     let body: Record<string, unknown>
 
     if (isAnthropic) {
@@ -352,7 +352,7 @@ export async function validateCompletion(
       // Verify response structure
       const hasChoices = isAnthropic
         ? !!(parsed.content || parsed.content === "")
-        : !!(parsed.choices || (parsed as any).choices)
+        : !!parsed.choices
 
       if (isAnthropic) {
         return {
@@ -665,7 +665,7 @@ export function detectCapabilities(modelIds: string[]): ProviderCapabilities {
 
   for (const { key, pattern } of CAPABILITY_PATTERNS) {
     if (pattern.test(allModels)) {
-      (caps as any)[key] = true
+      Object.assign(caps, { [key]: true })
     }
   }
 

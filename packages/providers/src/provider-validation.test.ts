@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { RuntimeInfo } from '@agentic-os/shared'
 import { normalizeError, ProviderError, safeValidateProvider, safeDetectRuntime, resolveProviderManagerAdapter } from './provider-manager'
 import { validateProvider } from './provider-gateway'
 
@@ -116,7 +117,7 @@ describe('safeDetectRuntime', () => {
       runtime: 'OpenAI',
       isOpenAiCompatible: true,
       isLocal: false,
-    } as any)
+    } as RuntimeInfo)
 
     const info = await safeDetectRuntime('https://api.openai.com/v1')
     expect(info).not.toBeNull()

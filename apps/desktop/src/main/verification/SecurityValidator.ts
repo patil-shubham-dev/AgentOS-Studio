@@ -135,7 +135,7 @@ export class SecurityValidator {
       const vulnerabilities = parsed.metadata?.vulnerabilities?.total ?? 0
       const advisories: Array<{ name: string; version: string; title: string; severity: string; recommendation?: string }> = []
       if (parsed.vulnerabilities) {
-        for (const [name, info] of Object.entries(parsed.vulnerabilities) as Array<[string, any]>) {
+        for (const [name, info] of Object.entries(parsed.vulnerabilities) as Array<[string, unknown]>) {
           advisories.push({
             name,
             version: info.range ?? "unknown",

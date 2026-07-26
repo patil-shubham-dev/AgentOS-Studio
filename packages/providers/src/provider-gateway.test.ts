@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   buildChatUrl,
   buildStreamUrl,
@@ -203,7 +203,7 @@ describe('ai-service — Streaming (via unified transport)', () => {
 
     it('collects tool calls from the stream', async () => {
       const stream = sseStream(
-        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"get_weather","arguments":"{\\\"city\\\":\\\"NYC\\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"get_weather","arguments":"{"city":"NYC"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
         'data: [DONE]\n\n',
       )
       mockFetchStream(stream)

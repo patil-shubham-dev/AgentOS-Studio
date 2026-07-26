@@ -87,9 +87,10 @@ export class BrowserManager {
       })
 
       return { sessionId }
-    } catch (err: any) {
-      console.warn("[BrowserManager] createSession failed:", err.message)
-      return { error: err.message }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn("[BrowserManager] createSession failed:", message)
+      return { error: message }
     }
   }
 
@@ -359,7 +360,7 @@ export class BrowserManager {
     } catch { console.warn("[BrowserManager] screenshot failed"); return null }
   }
 
-  async executeJs(sessionId: string, js: string): Promise<any> {
+  async executeJs(sessionId: string, js: string): Promise<unknown> {
     const win = this.getPage(sessionId)
     if (!win) return null
     const allowedPatterns = [

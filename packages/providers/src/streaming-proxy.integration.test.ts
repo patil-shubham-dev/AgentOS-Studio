@@ -3,14 +3,26 @@ import { tauriFetchStreaming } from "./http-client"
 import { streamingTransportFetch } from "./streaming-transport"
 import type { StreamMetrics } from "./transport-types"
 
+type MockElectronAPI = {
+  proxyHttpStreamStart: ReturnType<typeof vi.fn>
+  proxyHttpStreamAbort: ReturnType<typeof vi.fn>
+  on: ReturnType<typeof vi.fn>
+}
+
+type MockWindow = {
+  electronAPI: MockElectronAPI
+}
+
+const _g = globalThis as typeof globalThis & { window?: MockWindow }
+
 describe("Streaming HTTP Proxy Integration", () => {
-  let listeners: Record<string, (...args: any[]) => void>
+  let listeners: Record<string, (...args: unknown[]) => void>
   let capturedStreamId: string
 
   beforeEach(() => {
     listeners = {}
     capturedStreamId = ""
-    globalThis.window = {
+    _g.window = {
       electronAPI: {
         proxyHttpStreamStart: vi.fn().mockImplementation(
           ({ streamId }: { streamId: string }) => {
@@ -25,7 +37,7 @@ describe("Streaming HTTP Proxy Integration", () => {
         ),
         proxyHttpStreamAbort: vi.fn().mockResolvedValue(undefined),
         on: vi.fn().mockImplementation(
-          (channel: string, cb: (...args: any[]) => void) => {
+          (channel: string, cb: (...args: unknown[]) => void) => {
             listeners[channel] = cb
             return () => {
               delete listeners[channel]
@@ -33,11 +45,11 @@ describe("Streaming HTTP Proxy Integration", () => {
           },
         ),
       },
-    } as any
+    }
   })
 
   afterEach(() => {
-    delete (globalThis as any).window
+    delete _g.window
     vi.restoreAllMocks()
   })
 
@@ -92,8 +104,8 @@ describe("Streaming HTTP Proxy Integration", () => {
 
   it("abort signal cancels proxy request", async () => {
     const abortCtrl = new AbortController()
-    const abortMock = (globalThis.window as any).electronAPI
-      .proxyHttpStreamAbort as ReturnType<typeof vi.fn>
+    const abortMock = _g.window!.electronAPI
+      .proxyHttpStreamAbort
 
     const response = await tauriFetchStreaming(
       "https://api.openai.com/v1/chat/completions",
@@ -114,21 +126,23 @@ describe("Streaming HTTP Proxy Integration", () => {
   it("subscribe-before-start prevents race condition", async () => {
     const callOrder: string[] = []
 
-    ;(globalThis.window as any).electronAPI = {
-      proxyHttpStreamStart: vi.fn().mockImplementation(() => {
-        callOrder.push("start")
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          headers: { "content-type": "text/event-stream" },
-        })
-      }),
-      proxyHttpStreamAbort: vi.fn().mockResolvedValue(undefined),
-      on: vi.fn().mockImplementation((channel: string) => {
-        callOrder.push(`on:${channel}`)
-        return () => {}
-      }),
+    _g.window = {
+      electronAPI: {
+        proxyHttpStreamStart: vi.fn().mockImplementation(() => {
+          callOrder.push("start")
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            headers: { "content-type": "text/event-stream" },
+          })
+        }),
+        proxyHttpStreamAbort: vi.fn().mockResolvedValue(undefined),
+        on: vi.fn().mockImplementation((channel: string) => {
+          callOrder.push(`on:${channel}`)
+          return () => {}
+        }),
+      },
     }
 
     await tauriFetchStreaming(
@@ -146,10 +160,10 @@ describe("Streaming HTTP Proxy Integration", () => {
   })
 
   it("buffer replays events that arrive before ReadableStream", async () => {
-    const capturedChunk: Array<(...args: any[]) => void> = []
-    const capturedEnd: Array<(...args: any[]) => void> = []
+    const capturedChunk: Array<(...args: unknown[]) => void> = []
+    const capturedEnd: Array<(...args: unknown[]) => void> = []
 
-    ;(globalThis.window as any).electronAPI = {
+    _g.window!.electronAPI = {
       proxyHttpStreamStart: vi.fn().mockImplementation(() => {
         if (capturedChunk.length > 0) {
           capturedChunk[0]({
@@ -168,7 +182,7 @@ describe("Streaming HTTP Proxy Integration", () => {
       }),
       proxyHttpStreamAbort: vi.fn().mockResolvedValue(undefined),
       on: vi.fn().mockImplementation(
-        (channel: string, cb: (...args: any[]) => void) => {
+        (channel: string, cb: (...args: unknown[]) => void) => {
           if (channel.includes("stream-chunk")) capturedChunk.push(cb)
           if (channel.includes("stream-end")) capturedEnd.push(cb)
           return () => {}

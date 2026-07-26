@@ -1,5 +1,4 @@
 import * as React from "react"
-import { cn } from "@agentic-os/shared"
 import { AlertTriangle, RefreshCw } from "lucide-react"
 import { Button } from "./button"
 

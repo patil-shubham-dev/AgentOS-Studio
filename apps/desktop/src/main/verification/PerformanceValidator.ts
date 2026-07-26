@@ -42,8 +42,9 @@ export class PerformanceValidator {
         stdio: ["pipe", "pipe", "pipe"],
       }) as string
       return { stdout, exitCode: 0 }
-    } catch (err: any) {
-      return { stdout: err.stdout ?? err.message ?? "Unknown error", exitCode: err.status ?? 1 }
+    } catch (err: unknown) {
+      const execErr = err as { stdout?: string; message?: string; status?: number }
+      return { stdout: execErr.stdout ?? execErr.message ?? "Unknown error", exitCode: execErr.status ?? 1 }
     }
   }
 

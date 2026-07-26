@@ -133,8 +133,10 @@ export function providerSupportsStreaming(baseUrl: string): boolean | null {
   return providerHealthCache.get(baseUrl)?.streamingSupported ?? null
 }
 
-export function getAllProviderCache(): Record<string, { lastSuccess: number; lastFailure: number; avgLatencyMs: number; samples: number; firstTokenMs: number[]; lastStreamingSuccess: number; totalRequests: number }> {
-  const result: Record<string, any> = {}
+type ProviderCacheEntry = { lastSuccess: number; lastFailure: number; avgLatencyMs: number; samples: number; firstTokenMs: number[]; lastStreamingSuccess: number; totalRequests: number }
+
+export function getAllProviderCache(): Record<string, ProviderCacheEntry> {
+  const result: Record<string, ProviderCacheEntry> = {}
   for (const [key, entry] of providerHealthCache) {
     result[key] = {
       lastSuccess: entry.lastSuccess,
@@ -264,7 +266,7 @@ function getAdapterId(baseUrl: string): string {
 
 const DIAG_PREFIX_VAL = "[ValProvider]"
 
-export async function validateProvider(baseUrl: string, apiKey: string, _token?: number): Promise<ValidationResult> {
+export async function validateProvider(baseUrl: string, apiKey: string): Promise<ValidationResult> {
   const t0 = performance.now()
   const cleanUrl = normalizeBaseUrl(baseUrl)
   const adapterId = getAdapterId(cleanUrl)
@@ -300,6 +302,7 @@ export async function validateProvider(baseUrl: string, apiKey: string, _token?:
           return { success: true, runtime: "Ollama", latencyMs, error: null }
         }
       } catch {
+        // intentionally empty
       }
     }
     
@@ -533,7 +536,7 @@ function extractContextWindow(id: string): number | undefined {
   return undefined
 }
 
-export async function discoverModels(baseUrl: string, apiKey: string, _token?: number): Promise<DiscoveryResult> {
+export async function discoverModels(baseUrl: string, apiKey: string): Promise<DiscoveryResult> {
   const cleanUrl = normalizeBaseUrl(baseUrl)
   
   // Determine provider type
@@ -546,7 +549,7 @@ export async function discoverModels(baseUrl: string, apiKey: string, _token?: n
       const resp = await fetchWithTimeout(tagsUrl, { method: "GET", timeout: 10000 })
       if (resp.ok) {
         const data = await resp.json()
-        const models: ProviderModel[] = (data.models || []).map((m: any) => {
+        const models: ProviderModel[] = (data.models || []).map((m: { name?: string; model?: string }) => {
           const id = m.name || m.model || ""
           return {
             id,
@@ -596,8 +599,8 @@ export async function discoverModels(baseUrl: string, apiKey: string, _token?: n
       }
       
       const models: ProviderModel[] = modelsArray
-        .filter((m: any) => m.id || m.name || m.model)
-        .map((m: any) => {
+        .filter((m: { id?: string; name?: string; model?: string }) => m.id || m.name || m.model)
+        .map((m: { id?: string; name?: string; model?: string }) => {
           const id = String(m.id || m.name || m.model || "")
           return {
             id,

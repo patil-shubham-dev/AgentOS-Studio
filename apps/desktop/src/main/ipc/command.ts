@@ -22,7 +22,7 @@ const ALLOWED_COMMANDS = new Set([
   'date', 'time',
 ])
 
-const SHELL_METACHARACTERS = /[;&|`$(){}\[\]<>!\\]/
+const SHELL_METACHARACTERS = /[;&|`$(){}[]<>!\\]/
 
 function validateArgs(args: string[]): { valid: boolean; reason?: string } {
   for (const arg of args) {
@@ -91,7 +91,7 @@ export function registerCommandHandlers(): void {
       child.stdout?.on('data', (data: Buffer) => { output += data.toString() })
       child.stderr?.on('data', (data: Buffer) => { output += data.toString() })
       child.on('error', (err) => reject(err.message))
-      child.on('close', (_code) => resolve(output))
+      child.on('close', () => resolve(output))
     })
   })
 
@@ -130,10 +130,9 @@ export function registerCommandHandlers(): void {
         } catch { /* ignore */ }
       }
 
-      let stdoutBuffer = ''
       child.stdout?.on('data', (data: Buffer) => {
         const chunk = data.toString()
-        stdoutBuffer += chunk
+
         const lines = chunk.split('\n').filter((l: string) => l.length > 0)
         for (const line of lines) {
           send(`terminal-output:${streamId}`, line)
@@ -142,7 +141,6 @@ export function registerCommandHandlers(): void {
 
       child.stderr?.on('data', (data: Buffer) => {
         const chunk = data.toString()
-        stdoutBuffer += chunk
         const lines = chunk.split('\n').filter((l: string) => l.length > 0)
         for (const line of lines) {
           send(`terminal-output:${streamId}`, line)

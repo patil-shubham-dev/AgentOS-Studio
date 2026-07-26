@@ -163,7 +163,7 @@ function detectClaudeDesktop(): DetectedSource {
       if (parsed.anthropic?.apiKey) providerCount++
       if (parsed.openai?.apiKey) providerCount++
       if (parsed.providers && Array.isArray(parsed.providers)) {
-        providerCount += parsed.providers.filter((p: any) => p.apiKey).length
+        providerCount += parsed.providers.filter((p: unknown) => (p as Record<string, unknown>).apiKey).length
       }
 
       // Count MCP servers
@@ -254,7 +254,7 @@ function importFromClaudeDesktop(): ImportedSettings | null {
       }
     } else if (config.mcp_servers && typeof config.mcp_servers === 'object') {
       for (const [name, server] of Object.entries(config.mcp_servers)) {
-        const s = server as any
+        const s = server as { command?: string; args?: string[] }
         mcpServers.push({
           name: name,
           command: s.command || '',

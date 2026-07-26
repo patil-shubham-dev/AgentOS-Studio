@@ -56,9 +56,10 @@ function registerDevHandlers(): void {
         })()
       `)
       return JSON.parse(result)
-    } catch (err: any) {
-      console.warn("[IPC] test-runner failed:", err.message)
-      return { error: err.message }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn("[IPC] test-runner failed:", message)
+      return { error: message }
     }
   })
 }
@@ -246,12 +247,12 @@ function registerFileSystemHandlers(): void {
 
   ipcMain.handle('list-directory', (_e, dirPath: string) => {
     assertPathAllowed(validatePath(dirPath))
-    const result: Array<{ name: string; path: string; children?: any[] }> = []
+    const result: Array<{ name: string; path: string; children?: unknown[] }> = []
     for (const entry of readdirSync(dirPath, { withFileTypes: true })) {
       if (entry.name.startsWith('.') && entry.name !== '.git') continue
       const fullPath = join(dirPath, entry.name)
       if (!isPathAllowed(fullPath)) continue
-      const item: any = { name: entry.name, path: fullPath }
+      const item: Record<string, unknown> = { name: entry.name, path: fullPath }
       if (entry.isDirectory()) {
         try {
           item.children = readdirSync(fullPath)
@@ -439,48 +440,48 @@ function registerBrowserHandlers(bm: BrowserManager): void {
       if (opts.url) validateString(opts.url, 'url', 8192)
     }
     try { return bm.launch(opts) }
-    catch (err: any) { return { error: err?.message ?? 'browser launch failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { error: message } }
   })
   ipcMain.handle('browser-close', async (_e, id: string) => {
     validateString(id, 'session id', 128)
     try { return bm.closeSession(id) }
-    catch (err: any) { return { success: false, error: err?.message ?? 'browser close failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-navigate', async (_e, id: string, url: string) => {
     validateString(id, 'session id', 128)
     validateString(url, 'url', 8192)
     try { return wrapBrowserResult(await bm.navigate(id, url), 'navigate') }
-    catch (err: any) { return { success: false, error: err?.message ?? 'navigate failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-new-tab', async (_e, id: string, url?: string) => {
     validateString(id, 'session id', 128)
     if (url) validateString(url, 'url', 8192)
     try { return wrapBrowserResult(await bm.newTab(id, url), 'newTab') }
-    catch (err: any) { return { success: false, error: err?.message ?? 'newTab failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-close-tab', async (_e, id: string, tabId: string) => {
     validateString(id, 'session id', 128)
     validateString(tabId, 'tab id', 128)
     try { return bm.closeTab(id, tabId) }
-    catch (err: any) { return { success: false, error: err?.message ?? 'closeTab failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-list-tabs', async (_e, id: string) => {
     validateString(id, 'session id', 128)
     try { return { success: true, tabs: await bm.listTabs(id) } }
-    catch (err: any) { return { success: false, error: err?.message ?? 'listTabs failed', tabs: [] } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message, tabs: [] } }
   })
   ipcMain.handle('browser-click', async (_e, id: string, sel: string) => {
     validateString(id, 'session id', 128)
     validateString(sel, 'selector', 4096)
     try { return wrapBrowserResult(await bm.click(id, sel), 'click') }
-    catch (err: any) { return { success: false, error: err?.message ?? 'click failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-type', async (_e, id: string, sel: string, text: string) => {
     validateString(id, 'session id', 128)
     validateString(sel, 'selector', 4096)
     validateString(text, 'text', 10000)
     try { return wrapBrowserResult(await bm.type(id, sel, text), 'type') }
-    catch (err: any) { return { success: false, error: err?.message ?? 'type failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-screenshot', async (_e, id: string) => {
     validateString(id, 'session id', 128)
@@ -489,7 +490,7 @@ function registerBrowserHandlers(bm: BrowserManager): void {
       if (data === null) return { success: false, error: 'screenshot failed' }
       return { success: true, data }
     }
-    catch (err: any) { return { success: false, error: err?.message ?? 'screenshot failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-get-text', async (_e, id: string) => {
     validateString(id, 'session id', 128)
@@ -498,7 +499,7 @@ function registerBrowserHandlers(bm: BrowserManager): void {
       if (text === null) return { success: false, error: 'getText failed' }
       return { success: true, text }
     }
-    catch (err: any) { return { success: false, error: err?.message ?? 'getText failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-get-url', async (_e, id: string) => {
     validateString(id, 'session id', 128)
@@ -507,7 +508,7 @@ function registerBrowserHandlers(bm: BrowserManager): void {
       if (url === null) return { success: false, error: 'getUrl failed' }
       return { success: true, url }
     }
-    catch (err: any) { return { success: false, error: err?.message ?? 'getUrl failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-get-title', async (_e, id: string) => {
     validateString(id, 'session id', 128)
@@ -516,7 +517,7 @@ function registerBrowserHandlers(bm: BrowserManager): void {
       if (title === null) return { success: false, error: 'getTitle failed' }
       return { success: true, title }
     }
-    catch (err: any) { return { success: false, error: err?.message ?? 'getTitle failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-get-content', async (_e, id: string) => {
     validateString(id, 'session id', 128)
@@ -525,7 +526,7 @@ function registerBrowserHandlers(bm: BrowserManager): void {
       if (content === null) return { success: false, error: 'getContent failed' }
       return { success: true, content }
     }
-    catch (err: any) { return { success: false, error: err?.message ?? 'getContent failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-execute-js', async (event, id: string, js: string) => {
     validateString(id, 'session id', 128)
@@ -551,50 +552,51 @@ function registerBrowserHandlers(bm: BrowserManager): void {
       const result = await bm.executeJs(id, js)
       return { success: true, result }
     }
-    catch (err: any) { return { success: false, error: err?.message ?? 'executeJs failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-reload', async (_e, id: string) => {
     validateString(id, 'session id', 128)
     try { return wrapBrowserResult(await bm.reload(id), 'reload') }
-    catch (err: any) { return { success: false, error: err?.message ?? 'reload failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-double-click', async (_e, id: string, sel: string) => {
     validateString(id, 'session id', 128)
     validateString(sel, 'selector', 4096)
     try { return wrapBrowserResult(await bm.doubleClick(id, sel), 'doubleClick') }
-    catch (err: any) { return { success: false, error: err?.message ?? 'doubleClick failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-hover', async (_e, id: string, sel: string) => {
     validateString(id, 'session id', 128)
     validateString(sel, 'selector', 4096)
     try { return wrapBrowserResult(await bm.hover(id, sel), 'hover') }
-    catch (err: any) { return { success: false, error: err?.message ?? 'hover failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-press-key', async (_e, id: string, key: string) => {
     validateString(id, 'session id', 128)
     validateString(key, 'key', 100)
     try { return wrapBrowserResult(await bm.pressKey(id, key), 'pressKey') }
-    catch (err: any) { return { success: false, error: err?.message ?? 'pressKey failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-wait-element', async (_e, id: string, sel: string, timeout?: number) => {
     validateString(id, 'session id', 128)
     validateString(sel, 'selector', 4096)
     if (timeout !== undefined) validatePositiveInt(timeout, 'timeout')
     try { return wrapBrowserResult(await bm.waitForElement(id, sel, timeout), 'waitForElement') }
-    catch (err: any) { return { success: false, error: err?.message ?? 'waitForElement failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-get-console-logs', async (_e, id: string) => {
     validateString(id, 'session id', 128)
     try { return { success: true, logs: await bm.getConsoleLogs(id) } }
-    catch (err: any) { return { success: false, error: err?.message ?? 'getConsoleLogs failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-save-state', async (_e, path: string) => {
     const validated = validatePath(path)
     try {
       assertPathAllowed(validated)
       return { success: true, result: await bm.saveState(validated) }
-    } catch (err: any) {
-      return { success: false, error: err?.message ?? 'saveState failed' }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, error: message }
     }
   })
   ipcMain.handle('browser-load-state', async (_e, path: string) => {
@@ -604,18 +606,19 @@ function registerBrowserHandlers(bm: BrowserManager): void {
       const result = await bm.loadState(validated)
       if (result === null) return { success: false, error: 'loadState failed' }
       return { success: true, data: result }
-    } catch (err: any) {
-      return { success: false, error: err?.message ?? 'loadState failed' }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, error: message }
     }
   })
   ipcMain.handle('browser-detect', async () => {
     try { return { success: true, browsers: await bm.detectBrowsers() } }
-    catch (err: any) { return { success: false, error: err?.message ?? 'detectBrowsers failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
   ipcMain.handle('browser-show-session', async (_e, id: string) => {
     validateString(id, 'session id', 128)
     try { return { success: true } }
-    catch (err: any) { return { success: false, error: err?.message ?? 'showSession failed' } }
+    catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); return { success: false, error: message } }
   })
 }
 
@@ -651,7 +654,7 @@ function registerExtensionHandlers(): void {
   ipcMain.handle('browser-extension-list', async () => {
     try {
       const exts = session.defaultSession.getAllExtensions()
-      return exts.map((e: any) => ({
+      return exts.map((e: unknown) => ({
         id: e.id,
         name: e.name,
         version: e.version,
@@ -669,9 +672,10 @@ function registerExtensionHandlers(): void {
       const validated = validatePath(extPath, 'extension path')
       const ext = await session.defaultSession.loadExtension(validated)
       return { id: ext.id, name: ext.manifest.name, version: ext.manifest.version, path: validated }
-    } catch (err: any) {
-      console.warn("[IPC] browser-extension-load failed:", err.message)
-      return { error: err.message }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn("[IPC] browser-extension-load failed:", message)
+      return { error: message }
     }
   })
 
@@ -690,29 +694,29 @@ function registerExtensionHandlers(): void {
 // ── Plugin Browser Handlers ──
 
 const pluginBrowserProviders = new Map<string, {
-  navigate: (url: string) => Promise<any>
-  click: (sel: string) => Promise<any>
-  type: (sel: string, text: string) => Promise<any>
-  screenshot: () => Promise<any>
-  executeJs: (code: string) => Promise<any>
-  getDom: () => Promise<any>
-  getText: () => Promise<any>
-  getUrl: () => Promise<any>
-  getTitle: () => Promise<any>
+  navigate: (url: string) => Promise<unknown>
+  click: (sel: string) => Promise<unknown>
+  type: (sel: string, text: string) => Promise<unknown>
+  screenshot: () => Promise<unknown>
+  executeJs: (code: string) => Promise<unknown>
+  getDom: () => Promise<unknown>
+  getText: () => Promise<unknown>
+  getUrl: () => Promise<unknown>
+  getTitle: () => Promise<unknown>
 }>()
 
 export function registerPluginBrowserProvider(
   name: string,
   provider: {
-    navigate: (url: string) => Promise<any>
-    click: (sel: string) => Promise<any>
-    type: (sel: string, text: string) => Promise<any>
-    screenshot: () => Promise<any>
-    executeJs: (code: string) => Promise<any>
-    getDom: () => Promise<any>
-    getText: () => Promise<any>
-    getUrl: () => Promise<any>
-    getTitle: () => Promise<any>
+    navigate: (url: string) => Promise<unknown>
+    click: (sel: string) => Promise<unknown>
+    type: (sel: string, text: string) => Promise<unknown>
+    screenshot: () => Promise<unknown>
+    executeJs: (code: string) => Promise<unknown>
+    getDom: () => Promise<unknown>
+    getText: () => Promise<unknown>
+    getUrl: () => Promise<unknown>
+    getTitle: () => Promise<unknown>
   }
 ): void {
   pluginBrowserProviders.set(name, provider)
@@ -734,14 +738,14 @@ function registerPluginBrowserHandlers(): void {
       validateString(provider, 'provider name', 256)
       validateString(url, 'url', 8192)
       return await getProvider(provider).navigate(url)
-    } catch (err: any) { console.warn("[IPC] plugin-browser-navigate failed:", err.message); return { error: err.message } }
+    } catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); console.warn("[IPC] plugin-browser-navigate failed:", message); return { error: message } }
   })
   ipcMain.handle('plugin-browser-click', async (_e, provider: string, sel: string) => {
     try {
       validateString(provider, 'provider name', 256)
       validateString(sel, 'selector', 4096)
       return await getProvider(provider).click(sel)
-    } catch (err: any) { console.warn("[IPC] plugin-browser-click failed:", err.message); return { error: err.message } }
+    } catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); console.warn("[IPC] plugin-browser-click failed:", message); return { error: message } }
   })
   ipcMain.handle('plugin-browser-type', async (_e, provider: string, sel: string, text: string) => {
     try {
@@ -749,7 +753,7 @@ function registerPluginBrowserHandlers(): void {
       validateString(sel, 'selector', 4096)
       validateString(text, 'text', 10000)
       return await getProvider(provider).type(sel, text)
-    } catch (err: any) { console.warn("[IPC] plugin-browser-type failed:", err.message); return { error: err.message } }
+    } catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); console.warn("[IPC] plugin-browser-type failed:", message); return { error: message } }
   })
   ipcMain.handle('plugin-browser-screenshot', async (_e, provider: string) => {
     try {
@@ -762,7 +766,7 @@ function registerPluginBrowserHandlers(): void {
       validateString(provider, 'provider name', 256)
       validateString(code, 'javascript', 50000)
       return await getProvider(provider).executeJs(code)
-    } catch (err: any) { console.warn("[IPC] plugin-browser-execute-js failed:", err.message); return { error: err.message } }
+    } catch (err: unknown) { const message = err instanceof Error ? err.message : String(err); console.warn("[IPC] plugin-browser-execute-js failed:", message); return { error: message } }
   })
   ipcMain.handle('plugin-browser-get-dom', async (_e, provider: string) => {
     try {

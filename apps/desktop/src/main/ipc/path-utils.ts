@@ -133,7 +133,7 @@ export function assertPathAllowed(targetPath: string): void {
     persistAuditEvent(`DENY path="${targetPath}" workspace="${allowedWorkspacePath ?? "(none)"}"`)
     // Invisibility mode: throw ENOENT instead of revealing the path exists
     const err = new Error(`ENOENT: no such file or directory`)
-    ;(err as any).code = "ENOENT"
+    ;(err as { code: string }).code = "ENOENT"
     ;(err as NodeJS.ErrnoException).errno = -2
     throw err
   }

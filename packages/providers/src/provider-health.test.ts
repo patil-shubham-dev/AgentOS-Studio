@@ -5,7 +5,6 @@ import {
   recordLatencySample,
   updateHealthState,
   resetAllHealth,
-  getHealth,
   getTraces,
 } from "./provider-health"
 

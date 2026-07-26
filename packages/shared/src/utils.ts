@@ -16,7 +16,8 @@ export function normalizeError(err: unknown, fallback = "An unexpected error occ
   }
 
   if (typeof err === "object") {
-    const msg = (err as any).message ?? (err as any).error ?? (err as any).toString?.()
+    const record = err as unknown as { message?: string; error?: string; toString?(): string }
+    const msg = record.message ?? record.error ?? record.toString?.()
     if (msg && typeof msg === "string" && msg.length > 0 && msg !== "[object Object]") {
       return msg
     }

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { SseParser } from "./streaming-transport"
 import { ProviderTransport } from "./transport"
-import { TransportError } from "./transport-errors"
 import type { TransportAdapterConfig, CompletionRequest } from "./transport-adapters"
 
 // ── Helper: build a ReadableStream from string chunks ──

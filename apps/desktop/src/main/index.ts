@@ -71,7 +71,7 @@ app.whenReady().then(async () => {
   log('Lifecycle', 'Main window created')
 
   // Set up application menu
-  createAppMenu(windowManager, mainWindow)
+  createAppMenu(windowManager)
 
   // Set up system tray
   createTray(windowManager)
@@ -124,7 +124,7 @@ app.whenReady().then(async () => {
   }
 
   // Handle renderer crashes — show a crash page instead of a blank window
-  ;(mainWindow.webContents as any).on('crashed', () => {
+  mainWindow.webContents.on('crashed', () => {
     log('Lifecycle', 'Renderer process CRASHED')
     mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
       <!DOCTYPE html>

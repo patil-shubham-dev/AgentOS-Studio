@@ -1,9 +1,9 @@
-import { Menu, BrowserWindow, app } from 'electron'
+import { Menu, app } from 'electron'
 import type { WindowManager } from './window-manager'
 import { sendToWindow } from './ipc/safe-send'
 import { getWorkspaceManager } from './ipc/workspace'
 
-export function createAppMenu(windowManager: WindowManager, _mainWindow: BrowserWindow): void {
+export function createAppMenu(windowManager: WindowManager): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: 'File',

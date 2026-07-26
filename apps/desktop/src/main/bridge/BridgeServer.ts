@@ -12,7 +12,7 @@ interface BridgeClient {
 
 export class BridgeServer {
   private httpServer: Server | null = null
-  private wsServer: any = null
+  private wsServer: unknown = null
   private auth: BridgeAuth
   private clients = new Map<string, BridgeClient>()
   private port: number
@@ -50,7 +50,7 @@ export class BridgeServer {
     this.httpServer = createServer()
     this.wsServer = new WebSocketServer({ server: this.httpServer })
 
-    this.wsServer.on('connection', (ws: any, _req: any) => {
+    this.wsServer.on('connection', (ws: unknown, _req: unknown) => {
       const clientId = `client_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
       const client: BridgeClient = {
@@ -115,11 +115,11 @@ export class BridgeServer {
   }
 
   generateToken(clientId: string, role: BridgeClient['role']): string {
-    return this.auth.generateToken(clientId, role as any)
+    return this.auth.generateToken(clientId, role)
   }
 
   registerApiKey(apiKey: string, clientId: string, role: string): void {
-    this.auth.registerApiKey(apiKey, clientId, role as any)
+    this.auth.registerApiKey(apiKey, clientId, role)
   }
 
   private handleAuth(client: BridgeClient, credentials: string): void {

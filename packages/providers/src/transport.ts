@@ -8,7 +8,7 @@ import type { StreamCallbacks } from "./streaming-transport"
 import { streamingTransportFetch } from "./streaming-transport"
 import { TransportError } from "./transport-errors"
 import { tauriFetch } from "./http-client"
-import { TokenBucketRateLimiter, getRateLimitForProvider } from "./rate-limiter"
+import { TokenBucketRateLimiter } from "./rate-limiter"
 
 
 export interface TransportOptions {

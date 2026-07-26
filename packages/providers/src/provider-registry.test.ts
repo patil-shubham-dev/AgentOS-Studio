@@ -9,7 +9,7 @@ import {
   createDefaultProviders,
   providerReducer,
 } from './provider-registry'
-import type { GatewayProvider, ProviderModel } from '@agentic-os/shared'
+import type { ProviderModel } from '@agentic-os/shared'
 
 describe('provider-registry', () => {
   describe('resolveByBaseUrl', () => {

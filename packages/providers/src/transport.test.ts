@@ -1,50 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { SseParser, parseSseLine, parseOpenAiStreamChunk, streamingTransportFetch } from "./streaming-transport"
+import { SseParser, parseSseLine, parseOpenAiStreamChunk } from "./streaming-transport"
 import { ProviderTransport } from "./transport"
 import { TransportError, classifyHttpError, classifyNetworkError, isRetryable } from "./transport-errors"
 import { RetryMiddleware, AuthMiddleware, DiagnosticsMiddleware, composeMiddleware } from "./transport-middleware"
 import { OpenAITransportAdapter, NvidiaNimAdapter, OllamaAdapter, AnthropicTransportAdapter, resolveAdapter } from "./transport-adapters"
-import { observabilityStore, createDiagnosticsHandler, formatTimelineSummary, formatStreamMetrics } from "./transport-observability"
-import type { TransportRequest, TransportResponse, StreamMetrics } from "./transport-types"
-
-function sseStream(...chunks: string[]): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder()
-  return new ReadableStream({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue(encoder.encode(chunk))
-      }
-      controller.close()
-    },
-  })
-}
-
-function mockFetchStream(body: string, status = 200): void {
-  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-    ok: status >= 200 && status < 300,
-    status,
-    statusText: status === 200 ? "OK" : "Error",
-    headers: new Headers({ "content-type": "text/event-stream" }),
-    text: () => Promise.resolve(body),
-    json: () => Promise.resolve(JSON.parse(body)),
-    body: sseStream(body),
-  } as Response)
-}
-
-function mockFetchResponse(body: string, status = 200): void {
-  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-    ok: status >= 200 && status < 300,
-    status,
-    statusText: status === 200 ? "OK" : "Error",
-    headers: new Headers({
-      "content-type": "application/json",
-      "x-request-id": "test-123",
-    }),
-    text: () => Promise.resolve(body),
-    json: () => Promise.resolve(JSON.parse(body)),
-    body: sseStream(body),
-  } as Response)
-}
+import { observabilityStore, formatTimelineSummary, formatStreamMetrics } from "./transport-observability"
+import type { TransportRequest, TransportResponse, StreamMetrics, TransportTimeline } from "./transport-types"
 
 function mockFetchError(message: string): void {
   vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error(message))
@@ -58,23 +19,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
 })
-
-// ── Helper: build a latency-later response ──
-function delayedResponse(body: string, delayMs: number, status = 200) {
-  return new Promise<Response>((resolve) => {
-    setTimeout(() => {
-      resolve({
-        ok: status >= 200 && status < 300,
-        status,
-        statusText: status === 200 ? "OK" : "Error",
-        headers: new Headers({ "content-type": "application/json" }),
-        text: () => Promise.resolve(body),
-        json: () => Promise.resolve(JSON.parse(body)),
-        body: sseStream(body),
-      } as Response)
-    }, delayMs)
-  })
-}
 
 // ══════════════════════════════════════════════════════════════
 // SECTION 1: Model Discovery Test
@@ -348,7 +292,6 @@ describe("Streaming Transport", () => {
   })
 
   it("tracks stream metrics", () => {
-    const metrics: StreamMetrics[] = []
     const content: string[] = []
 
     const parser = new SseParser({ onToken: (t) => content.push(t) })
@@ -369,7 +312,7 @@ describe("Tool Calling", () => {
   it("accumulates partial tool call chunks", () => {
     const toolArgs: string[] = []
     const parser = new SseParser({
-      onToolCallBegin: (i, id, name) => { /* noop */ },
+      onToolCallBegin: () => { /* noop */ },
       onToolCallDelta: (i, delta) => toolArgs.push(delta),
     })
 
@@ -502,7 +445,6 @@ describe("Abort / Cancel", () => {
 
   it("transport captures cancellation in state change", async () => {
     const ctrl = new AbortController()
-    const states: string[] = []
 
     mockFetchError("The user aborted a request")
 
@@ -607,9 +549,9 @@ describe("Middleware Pipeline", () => {
 
     const mw1 = {
       name: "mw1",
-      async handle(req: TransportRequest, next: any) {
+      async handle(req: TransportRequest, next: unknown) {
         order.push("mw1-in")
-        const result = await next(req)
+        const result = await (next as (req: TransportRequest) => Promise<TransportResponse>)(req)
         order.push("mw1-out")
         return result
       },
@@ -617,9 +559,9 @@ describe("Middleware Pipeline", () => {
 
     const mw2 = {
       name: "mw2",
-      async handle(req: TransportRequest, next: any) {
+      async handle(req: TransportRequest, next: unknown) {
         order.push("mw2-in")
-        const result = await next(req)
+        const result = await (next as (req: TransportRequest) => Promise<TransportResponse>)(req)
         order.push("mw2-out")
         return result
       },
@@ -681,7 +623,7 @@ describe("Middleware Pipeline", () => {
   it("auth middleware injects Bearer token", async () => {
     const mw = new AuthMiddleware({ getApiKey: () => "sk-test-123" })
 
-    const handler = vi.fn(async (req: TransportRequest) => {
+    const handler = vi.fn(async (_req: TransportRequest) => {
       return { status: 200, ok: true, requestId: "" } as TransportResponse
     })
 
@@ -694,7 +636,7 @@ describe("Middleware Pipeline", () => {
   it("auth middleware injects x-api-key for Anthropic", async () => {
     const mw = new AuthMiddleware({ getApiKey: () => "sk-ant-test" })
 
-    const handler = vi.fn(async (req: TransportRequest) => {
+    const handler = vi.fn(async (_req: TransportRequest) => {
       return { status: 200, ok: true, requestId: "" } as TransportResponse
     })
 
@@ -704,7 +646,7 @@ describe("Middleware Pipeline", () => {
   })
 
   it("diagnostics middleware creates timeline", async () => {
-    const timelines: any[] = []
+    const timelines: TransportTimeline[] = []
     const mw = new DiagnosticsMiddleware({
       onTimelineComplete: (tl) => timelines.push(tl),
     })

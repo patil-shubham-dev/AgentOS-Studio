@@ -239,12 +239,11 @@ export async function tauriStreamChatCompletion(
     signal,
   }
 
-  let fullContent = ""
   let collectedToolCalls: ToolCall[] = []
 
   await transport.streamChatCompletion(adapterConfig, completionRequest, {
     onToken: (token: string) => {
-      fullContent += token
+    
       callbacks.onToken(token)
     },
     onToolCallBegin: () => {},

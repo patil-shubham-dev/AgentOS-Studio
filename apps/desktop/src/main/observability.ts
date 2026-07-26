@@ -1,4 +1,6 @@
 import { app } from 'electron'
+import { writeFileSync, existsSync, mkdirSync } from 'fs'
+import { join } from 'path'
 
 let _initialized = false
 
@@ -75,8 +77,6 @@ export function getMainProcessLogs(filter?: {
 
 function flushToLocalStorage(): void {
   try {
-    const { writeFileSync, existsSync, mkdirSync } = require('fs')
-    const { join } = require('path')
     const logDir = join(app.getPath('userData'), 'logs')
     if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true })
     const filePath = join(logDir, `main-process-${Date.now()}.json`)

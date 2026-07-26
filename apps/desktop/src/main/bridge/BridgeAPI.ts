@@ -45,6 +45,6 @@ export function validateBridgeRequest(data: unknown): BridgeRequest | null {
   if (!data || typeof data !== 'object') return null
   const req = data as Record<string, unknown>
   if (typeof req.id !== 'string' || typeof req.method !== 'string') return null
-  if (!BRIDGE_METHODS.includes(req.method as any)) return null
+  if (!BRIDGE_METHODS.includes(req.method as string)) return null
   return req as unknown as BridgeRequest
 }

@@ -4,18 +4,20 @@ export interface TerminalSession {
   id: string
   shellPath: string
   cwd: string
-  process: any
+  process: unknown
   cols: number
   rows: number
   createdAt: number
 }
 
-let pty: any = null
-try {
-  pty = require('node-pty')
-} catch {
-  // node-pty not available (e.g., during dev without native module)
-}
+let pty: unknown = null
+void (async () => {
+  try {
+    pty = await import('node-pty')
+  } catch {
+    // node-pty not available (e.g., during dev without native module)
+  }
+})()
 
 const ALLOWED_SHELLS = new Set([
   'powershell.exe', 'pwsh.exe', 'cmd.exe', 'bash.exe', 'wsl.exe',
@@ -52,7 +54,7 @@ export class TerminalManager {
         rows: 24,
         cwd,
         env: { ...process.env, TERM: 'xterm-256color' }
-      } as any)
+      } as Record<string, unknown>)
 
       term.onData((data: string) => {
         BrowserWindow.getAllWindows().forEach(win => {

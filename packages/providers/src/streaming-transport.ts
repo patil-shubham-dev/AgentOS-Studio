@@ -111,7 +111,7 @@ export function parseOpenAiStreamChunk(data: string): ParsedChunk | null {
     }
 
     if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
-      result.toolCalls = delta.tool_calls.map((tc: any) => ({
+      result.toolCalls = delta.tool_calls.map((tc: { index?: number; id?: string; function?: { name?: string; arguments?: string } }) => ({
         index: typeof tc.index === "number" ? tc.index : 0,
         id: tc.id,
         name: tc.function?.name,
@@ -137,7 +137,7 @@ export function parseGeminiStreamChunk(data: string): ParsedChunk | null {
 
     // Extract text content from parts (parts may be absent on the terminal chunk)
     if (parts && Array.isArray(parts)) {
-      const text = parts.map((p: any) => p.text ?? "").join("")
+      const text = parts.map((p: { text?: string }) => p.text ?? "").join("")
       if (text) result.content = text
     }
 
@@ -501,7 +501,7 @@ export async function streamingTransportFetch(
   console.log("[FLOW:8] streamingTransportFetch: reader created, entering read loop")
   const decoder = new TextDecoder()
   let firstChunkReceived = false
-  let overallDeadline = setTimeout(() => {
+  const overallDeadline = setTimeout(() => {
     console.log(`${STREAM_LOG} ✗ max duration exceeded ${maxDuration}ms (${Math.round(performance.now() - t0)}ms)`)
     abortCtrl.abort()
     callbacks.onError(new TransportError("STREAM_DURATION_EXCEEDED", `Stream exceeded max duration of ${maxDuration}ms`))

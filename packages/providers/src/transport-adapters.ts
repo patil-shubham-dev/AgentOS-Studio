@@ -1,4 +1,4 @@
-import { tauriFetch } from "./http-client"
+
 
 export interface TransportAdapterConfig {
   baseUrl: string
@@ -128,7 +128,7 @@ export class OpenAITransportAdapter implements TransportAdapter {
     return caps
   }
 
-  buildChatUrl(_requestModel?: string): string {
+  buildChatUrl(): string {
     const base = normalizeBaseUrl(this.config.baseUrl)
     if (base.endsWith("/chat/completions")) return base
     const v1 = base.endsWith("/v1") ? base : `${base}/v1`
@@ -173,7 +173,7 @@ export class OpenAITransportAdapter implements TransportAdapter {
     const choice = data.choices?.[0]
     const rawToolCalls = choice?.message?.tool_calls
     const toolCalls: ToolCallData[] | undefined = rawToolCalls
-      ? rawToolCalls.map((tc: any) => ({
+      ? rawToolCalls.map((tc: { id?: string; type?: string; function?: { name?: string; arguments?: string } }) => ({
           id: tc.id ?? "",
           type: tc.type ?? "function",
           function: { name: tc.function?.name ?? "", arguments: tc.function?.arguments ?? "" },
@@ -195,7 +195,7 @@ export class OpenAITransportAdapter implements TransportAdapter {
     const data = JSON.parse(bodyText)
     const rawModels = data.data || data.models || []
     const models = Array.isArray(rawModels)
-      ? rawModels.map((m: any) => ({
+      ? rawModels.map((m: { id?: string; name?: string; model?: string }) => ({
           id: String(m.id || m.name || m.model || ""),
           name: String(m.id || m.name || m.model || ""),
         }))
@@ -321,7 +321,7 @@ export class OllamaAdapter extends OpenAITransportAdapter {
     const data = JSON.parse(bodyText)
     const raw = data.models || []
     const models = Array.isArray(raw)
-      ? raw.map((m: any) => ({
+      ? raw.map((m: { name?: string; model?: string }) => ({
           id: String(m.name || m.model || ""),
           name: String(m.name || m.model || ""),
         }))
@@ -524,7 +524,7 @@ export class AnthropicTransportAdapter implements TransportAdapter {
     return caps
   }
 
-  buildChatUrl(_requestModel?: string): string {
+  buildChatUrl(): string {
     const base = normalizeBaseUrl(this.config.baseUrl)
     if (base.endsWith("/v1/messages")) return base
     if (base.endsWith("/v1")) return `${base}/messages`
@@ -585,10 +585,10 @@ export class AnthropicTransportAdapter implements TransportAdapter {
 
   parseCompletionResponse(bodyText: string): CompletionResponse {
     const data = JSON.parse(bodyText)
-    const content = data.content?.map((c: any) => c.text).join("") ?? ""
-    const toolUseBlocks = data.content?.filter((c: any) => c.type === "tool_use") ?? []
+    const content = data.content?.map((c: { text?: string }) => c.text ?? "").join("") ?? ""
+    const toolUseBlocks = data.content?.filter((c: { type?: string }) => c.type === "tool_use") ?? []
     const toolCalls: ToolCallData[] | undefined = toolUseBlocks.length > 0
-      ? toolUseBlocks.map((block: any) => ({
+      ? toolUseBlocks.map((block: { id?: string; name?: string; input?: Record<string, unknown> }) => ({
           id: block.id ?? "",
           type: "function",
           function: { name: block.name ?? "", arguments: JSON.stringify(block.input ?? {}) },
@@ -610,7 +610,7 @@ export class AnthropicTransportAdapter implements TransportAdapter {
     const data = JSON.parse(bodyText)
     const raw = data.data || []
     const models = Array.isArray(raw)
-      ? raw.map((m: any) => ({ id: String(m.id || ""), name: String(m.id || "") }))
+      ? raw.map((m: { id?: string }) => ({ id: String(m.id || ""), name: String(m.id || "") }))
       : []
     return { models }
   }
@@ -733,12 +733,12 @@ export class GeminiTransportAdapter implements TransportAdapter {
     const candidate = candidates?.[0]
     const contentParts = candidate?.content?.parts ?? []
 
-    const textParts = contentParts.filter((p: any) => p.text !== undefined)
-    const content = textParts.map((p: any) => p.text).join("")
+    const textParts = contentParts.filter((p: { text?: unknown }) => p.text !== undefined)
+    const content = textParts.map((p: { text?: string }) => p.text ?? "").join("")
 
-    const functionCallParts = contentParts.filter((p: any) => p.functionCall !== undefined)
+    const functionCallParts = contentParts.filter((p: { functionCall?: unknown }): p is { functionCall: { name?: string; args?: string | Record<string, unknown> } } => p.functionCall !== undefined)
     const toolCalls = functionCallParts.length > 0
-      ? functionCallParts.map((p: any, i: number) => ({
+      ? functionCallParts.map((p: { functionCall: { name?: string; args?: string | Record<string, unknown> } }, i: number) => ({
           id: p.functionCall.name + "_" + i,
           type: "function" as const,
           function: {
@@ -765,7 +765,7 @@ export class GeminiTransportAdapter implements TransportAdapter {
     const data = JSON.parse(bodyText)
     const raw = data.models || []
     const models = Array.isArray(raw)
-      ? raw.map((m: any) => ({
+      ? raw.map((m: { name?: string; model?: string }) => ({
           id: String(m.name || m.model || "").replace(/^models\//, ""),
           name: String(m.name || m.model || "").replace(/^models\//, ""),
         }))

@@ -27,10 +27,11 @@ export class VerificationService {
         stdio: ["pipe", "pipe", "pipe"],
       }) as string
       return { exitCode: 0, stdout }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const execErr = err as { status?: number; stdout?: string; message?: string }
       return {
-        exitCode: err.status ?? 1,
-        stdout: err.stdout ?? err.message ?? "Unknown error",
+        exitCode: execErr.status ?? 1,
+        stdout: execErr.stdout ?? execErr.message ?? "Unknown error",
       }
     }
   }
@@ -47,7 +48,7 @@ export class VerificationService {
     return this.regressionValidator.scan(projectRoot)
   }
 
-  async verifyChanges(changedFiles: string[], projectRoot: string, _signal?: AbortSignal): Promise<VerificationResult> {
+  async verifyChanges(changedFiles: string[], projectRoot: string): Promise<VerificationResult> {
     if (changedFiles.length === 0) {
       return { passed: true, verificationStatus: "not_checkable", lintErrors: 0, typeErrors: 0, buildErrors: 0, testFailures: 0, details: ["No changes to verify"], issues: [] }
     }
@@ -145,8 +146,9 @@ export class VerificationService {
         rawOutput: scanResult.summary,
         issues,
       }
-    } catch (err: any) {
-      return { stage: "security", passed: false, errors: 1, warnings: 0, details: [`security: error - ${err.message}`], durationMs: Date.now() - startTime }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { stage: "security", passed: false, errors: 1, warnings: 0, details: [`security: error - ${message}`], durationMs: Date.now() - startTime }
     }
   }
 
@@ -164,8 +166,9 @@ export class VerificationService {
         rawOutput: benchResult.summary,
         issues: [],
       }
-    } catch (err: any) {
-      return { stage: "performance", passed: false, errors: 1, warnings: 0, details: [`performance: error - ${err.message}`], durationMs: Date.now() - startTime }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { stage: "performance", passed: false, errors: 1, warnings: 0, details: [`performance: error - ${message}`], durationMs: Date.now() - startTime }
     }
   }
 
@@ -188,8 +191,9 @@ export class VerificationService {
         rawOutput: regResult.summary,
         issues,
       }
-    } catch (err: any) {
-      return { stage: "regression", passed: false, errors: 1, warnings: 0, details: [`regression: error - ${err.message}`], durationMs: Date.now() - startTime }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { stage: "regression", passed: false, errors: 1, warnings: 0, details: [`regression: error - ${message}`], durationMs: Date.now() - startTime }
     }
   }
 

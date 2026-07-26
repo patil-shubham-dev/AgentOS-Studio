@@ -44,7 +44,7 @@ export function registerWorkspaceIpcHandlers(): void {
 
   // Normalize the main-process FileEntry (camelCase) to renderer FileEntry (snake_case)
   function toRendererEntry(camel: import('../WorkspaceManager').FileEntry): {
-    name: string; path: string; is_dir: boolean; size: number; lastModified: number; children: any[]
+    name: string; path: string; is_dir: boolean; size: number; lastModified: number; children: unknown[]
   } {
     return {
       name: camel.name,

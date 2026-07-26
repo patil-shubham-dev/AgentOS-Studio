@@ -41,10 +41,10 @@ export class ViewportManager {
   private mainWindow: BrowserWindow | null = null
   private state: ViewportState = { url: 'about:blank', title: 'New Tab', isLoading: false, canGoBack: false, canGoForward: false }
   private onStateChange: ((state: ViewportState) => void) | null = null
-  private onNetworkEvent: ((event: { type: string; data: any }) => void) | null = null
+  private onNetworkEvent: ((event: { type: string; data: unknown }) => void) | null = null
   private pendingRequests = new Map<string, NetworkRequest>()
 
-  attach(mainWindow: BrowserWindow, onStateChange?: (state: ViewportState) => void, onNetworkEvent?: (event: { type: string; data: any }) => void): void {
+  attach(mainWindow: BrowserWindow, onStateChange?: (state: ViewportState) => void, onNetworkEvent?: (event: { type: string; data: unknown }) => void): void {
     this.mainWindow = mainWindow
     this.onStateChange = onStateChange || null
     this.onNetworkEvent = onNetworkEvent || null
@@ -105,9 +105,9 @@ export class ViewportManager {
 
   private setupNetworkDebugger(wc: Electron.WebContents): void {
     try {
-      const debugger_ = (wc as any).debugger
+      const debugger_ = (wc as { debugger?: unknown }).debugger
       if (!debugger_) return
-      debugger_.on('message', (_event: any, method: string, params: any) => {
+      debugger_.on('message', (_event: unknown, method: string, params: unknown) => {
         if (!this.onNetworkEvent) return
         if (method === 'Network.requestWillBeSent') {
           const req: NetworkRequest = {
@@ -163,7 +163,7 @@ export class ViewportManager {
   destroy(): void {
     if (this.view && this.mainWindow) {
       try {
-        const debugger_ = (this.view.webContents as any).debugger
+        const debugger_ = (this.view.webContents as { debugger?: unknown }).debugger
         if (debugger_) {
           try { debugger_.sendCommand('Network.disable') } catch { console.warn("[Viewport] Failed to disable network debugger") }
           try { debugger_.detach() } catch { console.warn("[Viewport] Failed to detach debugger") }
@@ -173,8 +173,8 @@ export class ViewportManager {
         this.mainWindow.contentView.removeChildView(this.view)
       } catch { console.warn("[Viewport] Failed to remove child view") }
       try {
-        (this.view as any).close?.()
-        ;(this.view as any).destroy?.()
+        (this.view as { close?: () => void; destroy?: () => void }).close?.()
+        ;(this.view as { close?: () => void; destroy?: () => void }).destroy?.()
       } catch { console.warn("[Viewport] Failed to close/destroy view") }
       this.view = null
       this.pendingRequests.clear()
@@ -233,9 +233,10 @@ export class ViewportManager {
         })()
       `)
       return result
-    } catch (err: any) {
-      console.warn("[ViewportManager] click failed:", err.message)
-      return { success: false, error: err.message }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn("[ViewportManager] click failed:", message)
+      return { success: false, error: message }
     }
   }
 
@@ -259,9 +260,10 @@ export class ViewportManager {
         })()
       `)
       return result
-    } catch (err: any) {
-      console.warn("[ViewportManager] type failed:", err.message)
-      return { success: false, error: err.message }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn("[ViewportManager] type failed:", message)
+      return { success: false, error: message }
     }
   }
 
@@ -292,9 +294,10 @@ export class ViewportManager {
         })()
       `)
       return result
-    } catch (err: any) {
-      console.warn("[ViewportManager] pressKey failed:", err.message)
-      return { success: false, error: err.message }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn("[ViewportManager] pressKey failed:", message)
+      return { success: false, error: message }
     }
   }
 
@@ -306,14 +309,15 @@ export class ViewportManager {
     } catch { console.warn("[ViewportManager] screenshot failed"); return null }
   }
 
-  async executeJs(js: string): Promise<{ success: boolean; result?: any; error?: string }> {
+  async executeJs(js: string): Promise<{ success: boolean; result?: unknown; error?: string }> {
     if (!this.view) return { success: false, error: 'No viewport' }
     try {
       const result = await this.view.webContents.executeJavaScript(js)
       return { success: true, result }
-    } catch (err: any) {
-      console.warn("[ViewportManager] executeJs failed:", err.message)
-      return { success: false, error: err.message }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn("[ViewportManager] executeJs failed:", message)
+      return { success: false, error: message }
     }
   }
 
@@ -376,7 +380,7 @@ export class ViewportManager {
     }
   }
 
-  async getAnnotations(): Promise<any[]> {
+  async getAnnotations(): Promise<unknown[]> {
     if (!this.view) return []
     try {
       return await this.view.webContents.executeJavaScript('window.__agenticAnnotations || []')

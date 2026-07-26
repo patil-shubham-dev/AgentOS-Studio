@@ -123,7 +123,7 @@ describe('path-utils workspace containment', () => {
     try {
       assertPathAllowed(join(root, '.env'))
       expect(true).toBe(false) // should not reach here
-    } catch (err: any) {
+    } catch (err: unknown) {
       expect(err.code).toBe('ENOENT')
       expect(err.errno).toBe(-2)
       expect(err.message).toContain('no such file or directory')

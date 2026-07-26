@@ -7,9 +7,9 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
   globalIgnores([
-    'dist',
-    'out',
-    'packages/*/dist',
+    '**/dist',
+    '**/out',
+    '!packages/*/dist',
     '**/__snapshots__',
     'tests/scratch',
     'tests/e2e/fixtures',
@@ -26,7 +26,7 @@ export default defineConfig([
     rules: {
       'react-hooks/rules-of-hooks': 'warn',
       'react-hooks/exhaustive-deps': 'warn',
-      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-require-imports': 'warn',
       '@typescript-eslint/no-unused-expressions': 'warn',

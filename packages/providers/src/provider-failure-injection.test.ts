@@ -5,6 +5,7 @@ import { ProviderRegistry } from "./provider-registry-engine"
 import { createDefaultScorers } from "./provider-selection-scorers"
 import type { TransportAdapterConfig, CompletionRequest, ProviderCapabilities } from "./transport-adapters"
 import type { ProviderCatalogEntry } from "./provider-selection-types"
+import type { ProviderHealthState } from "./provider-types"
 import type { UnifiedHealthRecord } from "./provider-health"
 
 // ── Helper: build a ReadableStream from string chunks ──
@@ -84,7 +85,7 @@ function makeHealth(state: string, baseUrl = "https://api.openai.com/v1", provid
   return {
     baseUrl,
     providerId,
-    state: state as any,
+    state: state as ProviderHealthState,
     previousState: "unknown",
     stateChangedAt: Date.now(),
     isValidated: true,

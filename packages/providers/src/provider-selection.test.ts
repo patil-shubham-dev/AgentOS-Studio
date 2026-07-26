@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest"
 import { ProviderRegistry } from "./provider-registry-engine"
-import type { RegisteredAdapter, ModelMetadata } from "./provider-registry-engine"
+
 import type { ProviderCatalogEntry } from "./provider-selection-types"
 import { CapabilityNegotiator } from "./capability-negotiation"
-import type { CapabilityRequest, ProviderModelCatalog } from "./capability-negotiation"
-import type { ProviderCapabilities } from "./transport-adapters"
-import type { UnifiedHealthRecord } from "./provider-health"
-import { getOrCreateHealth } from "./provider-health"
-import type { SelectionRequest, SelectionDecision, SelectionScorer, ScoredDimension, ScoredProvider, SelectionContext } from "./provider-selection-types"
+import type { ProviderModelCatalog } from "./capability-negotiation"
+import type { ProviderCapabilities, TransportAdapter } from "./transport-adapters"
+
+import type { ScoredProvider } from "./provider-selection-types"
 import {
   createDefaultScorers, RequiredCapabilitiesScorer, ContextWindowScorer,
   HealthStateScorer, LatencyScorer, ReliabilityScorer, StreamingCapabilityScorer,
@@ -438,7 +437,7 @@ describe("ProviderRegistry", () => {
   })
 
   it("registers and retrieves adapters", () => {
-    const adapter = { name: "openai" } as any
+    const adapter = { name: "openai" } as unknown as TransportAdapter
     registry.registerAdapter("openai", "OpenAI", adapter, "https://api.openai.com/v1")
     expect(registry.getAdapter("openai")).toBeDefined()
     expect(registry.getAdapter("openai")!.providerName).toBe("OpenAI")
@@ -446,14 +445,14 @@ describe("ProviderRegistry", () => {
   })
 
   it("unregisters adapters", () => {
-    const adapter = { name: "openai" } as any
+    const adapter = { name: "openai" } as unknown as TransportAdapter
     registry.registerAdapter("openai", "OpenAI", adapter, "https://api.openai.com/v1")
     registry.unregisterAdapter("openai")
     expect(registry.getAdapter("openai")).toBeUndefined()
   })
 
   it("registers and queries models", () => {
-    const adapter = { getCapabilities: () => mockCapabilities() } as any
+    const adapter = { getCapabilities: () => mockCapabilities() } as unknown as TransportAdapter
     registry.registerAdapter("openai", "OpenAI", adapter, "https://api.openai.com/v1")
     registry.discoverModelsFromAdapter("openai", [
       { id: "gpt-4o", name: "GPT-4o" },
@@ -471,7 +470,7 @@ describe("ProviderRegistry", () => {
         if (model === "gpt-4o") return mockCapabilities({ supportsVision: true })
         return mockCapabilities({ supportsVision: false })
       },
-    } as any
+    } as unknown as TransportAdapter
 
     registry.registerAdapter("openai", "OpenAI", adapter, "https://api.openai.com/v1")
     registry.discoverModelsFromAdapter("openai", [
@@ -485,7 +484,7 @@ describe("ProviderRegistry", () => {
   })
 
   it("selectProvider returns decision", () => {
-    const adapter = { getCapabilities: () => mockCapabilities() } as any
+    const adapter = { getCapabilities: () => mockCapabilities() } as unknown as TransportAdapter
     registry.registerAdapter("openai", "OpenAI", adapter, "https://api.openai.com/v1")
     registry.discoverModelsFromAdapter("openai", [{ id: "gpt-4o", name: "GPT-4o" }])
 
@@ -496,7 +495,7 @@ describe("ProviderRegistry", () => {
   })
 
   it("negotiateCapabilities finds matches", () => {
-    const adapter = { getCapabilities: () => mockCapabilities({ supportsToolCalling: true }) } as any
+    const adapter = { getCapabilities: () => mockCapabilities({ supportsToolCalling: true }) } as unknown as TransportAdapter
     registry.registerAdapter("openai", "OpenAI", adapter, "https://api.openai.com/v1")
     registry.discoverModelsFromAdapter("openai", [{ id: "gpt-4o", name: "GPT-4o" }])
 
@@ -505,7 +504,7 @@ describe("ProviderRegistry", () => {
   })
 
   it("records decision history", () => {
-    const adapter = { getCapabilities: () => mockCapabilities() } as any
+    const adapter = { getCapabilities: () => mockCapabilities() } as unknown as TransportAdapter
     registry.registerAdapter("openai", "OpenAI", adapter, "https://api.openai.com/v1")
     registry.discoverModelsFromAdapter("openai", [
       { id: "gpt-4o", name: "GPT-4o" },
@@ -537,7 +536,7 @@ describe("ProviderRegistry", () => {
   })
 
   it("queryModels with isLocal filter", () => {
-    const adapter = { getCapabilities: () => mockCapabilities() } as any
+    const adapter = { getCapabilities: () => mockCapabilities() } as unknown as TransportAdapter
     registry.registerAdapter("ollama", "Ollama", adapter, "http://localhost:11434")
     registry.discoverModelsFromAdapter("ollama", [{ id: "llama3.2", name: "Llama 3.2" }])
 
@@ -550,7 +549,7 @@ describe("ProviderRegistry", () => {
   })
 
   it("queryModels with isAvailable filter", () => {
-    const adapter = { getCapabilities: () => mockCapabilities() } as any
+    const adapter = { getCapabilities: () => mockCapabilities() } as unknown as TransportAdapter
     registry.registerAdapter("openai", "OpenAI", adapter, "https://api.openai.com/v1")
     registry.discoverModelsFromAdapter("openai", [{ id: "gpt-4o", name: "GPT-4o" }])
 
@@ -560,7 +559,7 @@ describe("ProviderRegistry", () => {
   })
 
   it("negotiateCapabilities with multimodal request (vision + tool calling)", () => {
-    const adapter = { getCapabilities: () => mockCapabilities({ supportsVision: true, supportsToolCalling: true }) } as any
+    const adapter = { getCapabilities: () => mockCapabilities({ supportsVision: true, supportsToolCalling: true }) } as unknown as TransportAdapter
     registry.registerAdapter("openai", "OpenAI", adapter, "https://api.openai.com/v1")
     registry.discoverModelsFromAdapter("openai", [{ id: "gpt-4o", name: "GPT-4o" }])
 
@@ -584,7 +583,7 @@ describe("ProviderRegistry", () => {
   })
 
   it("empty request with no preferences results in match", () => {
-    const adapter = { getCapabilities: () => mockCapabilities() } as any
+    const adapter = { getCapabilities: () => mockCapabilities() } as unknown as TransportAdapter
     registry.registerAdapter("openai", "OpenAI", adapter, "https://api.openai.com/v1")
     registry.discoverModelsFromAdapter("openai", [{ id: "gpt-4o", name: "GPT-4o" }])
 
