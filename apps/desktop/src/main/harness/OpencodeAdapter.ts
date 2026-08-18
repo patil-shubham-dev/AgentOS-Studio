@@ -29,6 +29,27 @@ const SDK_PERMISSION: Record<string, SdkPermissionResponse> = {
   reject: "reject",
 }
 
+const PERMISSION_REPLY_TIMEOUT_MS = 20_000
+const PERMISSION_EXPIRE_REJECT_TIMEOUT_MS = 5_000
+
+/** Thrown when a permission reply did not reach serve within the timeout. */
+export class PermissionReplyTimeoutError extends Error {
+  constructor(
+    readonly permissionId: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`permission reply for ${permissionId} timed out after ${timeoutMs}ms`)
+    this.name = "PermissionReplyTimeoutError"
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, makeTimeoutError: () => Error): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(makeTimeoutError()), ms)),
+  ])
+}
+
 interface RunningWorkspace {
   port: number
   child: ChildProcess
@@ -77,8 +98,14 @@ export class OpencodeAdapter implements HarnessAdapter {
   private readonly workspaces = new Map<string, RunningWorkspace>()
   private readonly listeners = new Set<(event: NormalizedEvent) => void>()
   private readonly sseStreams = new Set<AsyncGenerator<GlobalEvent, void, void>>()
+  private readonly pendingPermissionRequests = new Map<string, PermissionRequest>()
 
   private constructor() {}
+
+  private permissionReplyTimeoutMs(): number {
+    const raw = process.env.AGENTIC_HARNESS_PERMISSION_TIMEOUT_MS
+    return raw && Number(raw) > 0 ? Number(raw) : PERMISSION_REPLY_TIMEOUT_MS
+  }
 
   static create(): OpencodeAdapter {
     return new OpencodeAdapter()
@@ -188,10 +215,64 @@ export class OpencodeAdapter implements HarnessAdapter {
     response: "once" | "always" | "reject",
   ): Promise<void> {
     const runtime = this.requireServer(session.workspacePath)
-    await runtime.client.postSessionIdPermissionsPermissionId({
-      path: { id: session.sessionId, permissionID: requestId },
-      body: { response: SDK_PERMISSION[response] },
+    const timeoutMs = this.permissionReplyTimeoutMs()
+    try {
+      await withTimeout(
+        runtime.client.postSessionIdPermissionsPermissionId({
+          path: { id: session.sessionId, permissionID: requestId },
+          body: { response: SDK_PERMISSION[response] },
+        }),
+        timeoutMs,
+        () => new PermissionReplyTimeoutError(requestId, timeoutMs),
+      )
+    } catch (error) {
+      if (error instanceof PermissionReplyTimeoutError) {
+        await this.expirePermission(session, requestId)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * The reply never reached serve. Surface it as permission.expired (never a
+   * silent swallow), then best-effort reject the still-pending serve-side
+   * request so the model is not left hanging on the tool call. The caller
+   * still receives the original error — expiry is reported, not hidden.
+   */
+  private async expirePermission(session: SessionHandle, requestId: string): Promise<void> {
+    const request = this.pendingPermissionRequests.get(requestId)
+    if (request) {
+      this.pendingPermissionRequests.delete(requestId)
+    }
+    this.emit({
+      type: "permission.expired",
+      session,
+      permissionId: requestId,
+      request: request ?? {
+        id: requestId,
+        sessionId: session.sessionId,
+        type: "unknown",
+        title: requestId,
+        createdAt: Date.now(),
+      },
+      timestamp: Date.now(),
     })
+    this.debug(`[opencode] permission ${requestId} expired; rejecting serve-side request`)
+    try {
+      const runtime = this.requireServer(session.workspacePath)
+      await withTimeout(
+        runtime.client.postSessionIdPermissionsPermissionId({
+          path: { id: session.sessionId, permissionID: requestId },
+          body: { response: "reject" },
+        }),
+        PERMISSION_EXPIRE_REJECT_TIMEOUT_MS,
+        () => new Error(`expire-reject for ${requestId} timed out after ${PERMISSION_EXPIRE_REJECT_TIMEOUT_MS}ms`),
+      )
+    } catch (error) {
+      this.debug(
+        `[opencode] expire-reject for ${requestId} failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
   }
 
   async resumeSession(sessionId: string, workspacePath: string): Promise<SessionHandle> {
@@ -390,16 +471,19 @@ export class OpencodeAdapter implements HarnessAdapter {
     if (!session) return
     switch (payload.type) {
       case "permission.asked": {
+        const request = this.normalizePermission(payload.properties as WirePermissionRequest)
+        this.pendingPermissionRequests.set(request.id, request)
         this.emit({
           type: "permission.requested",
           session,
-          request: this.normalizePermission(payload.properties as WirePermissionRequest),
+          request,
           timestamp: Date.now(),
         })
         break
       }
       case "permission.replied": {
         const properties = payload.properties as WirePermissionReplied
+        this.pendingPermissionRequests.delete(properties.requestID)
         this.emit({
           type: "permission.replied",
           session,

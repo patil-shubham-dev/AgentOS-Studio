@@ -46,6 +46,7 @@ export type NormalizedEvent =
   | { type: "tool.error"; session: SessionHandle; callId: string; tool: string; error: string; timestamp: number }
   | { type: "permission.requested"; session: SessionHandle; request: PermissionRequest; timestamp: number }
   | { type: "permission.replied"; session: SessionHandle; permissionId: string; response: PermissionResponse; timestamp: number }
+  | { type: "permission.expired"; session: SessionHandle; permissionId: string; request: PermissionRequest; timestamp: number }
   | { type: "step.started"; session: SessionHandle; stepId: string; timestamp: number }
   | { type: "step.finished"; session: SessionHandle; stepId: string; reason: string; cost?: number; timestamp: number }
   | { type: "file.edited"; session: SessionHandle; path: string; timestamp: number }

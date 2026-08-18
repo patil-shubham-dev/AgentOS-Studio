@@ -16,6 +16,10 @@
  *   5. tool.completed + message.complete + session.idle arrive
  *   6. getHistory returns the persisted user + assistant messages
  *   7. reject path: a second run where the permission is denied
+ *   8. timeout path: a permission reply that never reaches serve surfaces
+ *      as permission.expired and a catchable PermissionReplyTimeoutError,
+ *      and the pending serve-side request is rejected so the model is not
+ *      left hanging
  *
  * Uses the free opencode/deepseek-v4-flash-free model (already configured
  * in this machine's ~/.local/share/opencode/auth.json).
@@ -24,8 +28,9 @@
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, it, expect, afterEach } from "vitest"
-import { OpencodeAdapter } from "./OpencodeAdapter"
+import { describe, it, expect, afterEach, vi } from "vitest"
+import { OpencodeClient } from "@opencode-ai/sdk"
+import { OpencodeAdapter, PermissionReplyTimeoutError } from "./OpencodeAdapter"
 import type { NormalizedEvent, SessionHandle } from "@agentic-os/shared"
 
 const MODEL = process.env.AGENTIC_HARNESS_MODEL ?? "opencode/deepseek-v4-flash-free"
@@ -88,6 +93,8 @@ function transcript(events: NormalizedEvent[]): string {
           return `[${new Date(e.timestamp).toISOString()}] permission.req  ${e.request.type} ${JSON.stringify(e.request.pattern)} ${JSON.stringify(e.request.title)}`
         case "permission.replied":
           return `[${new Date(e.timestamp).toISOString()}] permission.repl ${e.response} ${e.permissionId}`
+        case "permission.expired":
+          return `[${new Date(e.timestamp).toISOString()}] permission.expired ${e.permissionId} request=${JSON.stringify(e.request.title)}`
         case "step.started":
           return `[${new Date(e.timestamp).toISOString()}] step.started    ${e.stepId}`
         case "step.finished":
@@ -133,12 +140,7 @@ async function runTurn(
       if (pending) {
         responded.add(pending.request.id)
         console.error(`[runTurn] answering ${permissionResponse} for ${pending.request.id}`)
-        await Promise.race([
-          adapter.respondToPermission(session, pending.request.id, permissionResponse),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error(`respondToPermission timed out for ${pending.request.id}`)), 20_000),
-          ),
-        ])
+        await adapter.respondToPermission(session, pending.request.id, permissionResponse)
         console.error(`[runTurn] answered ${permissionResponse} for ${pending.request.id}`)
         continue
       }
@@ -260,6 +262,88 @@ describeLive("OpencodeAdapter (live opencode serve)", () => {
         expect(
           events.some((e) => e.type === "permission.replied" && e.response === "reject"),
         ).toBe(true)
+      }
+    },
+  )
+
+  it(
+    "surfaces an unanswered permission reply as permission.expired and a catchable error, then rejects serve-side",
+    { timeout: 240_000 },
+    async () => {
+      const workspace = makeWorkspace()
+      const originalTimeout = process.env.AGENTIC_HARNESS_PERMISSION_TIMEOUT_MS
+      process.env.AGENTIC_HARNESS_PERMISSION_TIMEOUT_MS = "2000"
+      const events: NormalizedEvent[] = []
+      const off = adapter.onEvent((e) => events.push(e))
+      let session: SessionHandle | null = null
+      try {
+        session = await adapter.startSession(workspace)
+        await adapter.sendMessage(session, PROMPT)
+
+        const deadline = Date.now() + 120_000
+        let permissionId: string | null = null
+        while (Date.now() < deadline) {
+          const requested = events.find(
+            (e): e is Extract<NormalizedEvent, { type: "permission.requested" }> =>
+              e.type === "permission.requested",
+          )
+          if (requested) {
+            permissionId = requested.request.id
+            break
+          }
+          await new Promise((resolve) => setTimeout(resolve, 250))
+        }
+        expect(permissionId).not.toBeNull()
+
+        const spy = vi
+          .spyOn(OpencodeClient.prototype, "postSessionIdPermissionsPermissionId")
+          .mockImplementationOnce(() => new Promise(() => {}))
+
+        const replyStart = Date.now()
+        await expect(
+          adapter.respondToPermission(session!, permissionId!, "once"),
+        ).rejects.toBeInstanceOf(PermissionReplyTimeoutError)
+        const replyElapsed = Date.now() - replyStart
+
+        const expired = events.find(
+          (e): e is Extract<NormalizedEvent, { type: "permission.expired" }> =>
+            e.type === "permission.expired",
+        )
+        expect(expired).toBeDefined()
+        expect(expired!.permissionId).toBe(permissionId)
+        expect(expired!.request.type).toBe("bash")
+
+        spy.mockRestore()
+
+        const rejectDeadline = Date.now() + 30_000
+        let serveSideRejected = false
+        while (Date.now() < rejectDeadline) {
+          if (
+            events.some(
+              (e) => e.type === "permission.replied" && e.permissionId === permissionId && e.response === "reject",
+            )
+          ) {
+            serveSideRejected = true
+            break
+          }
+          await new Promise((resolve) => setTimeout(resolve, 250))
+        }
+
+        console.log("── OpencodeAdapter live transcript (permission timeout) ──")
+        console.log(transcript(events))
+        console.log("──────────────────────────────────────────────")
+        console.log(`reply elapsed: ${replyElapsed}ms (adapter timeout was 2000ms)`)
+
+        expect(replyElapsed).toBeGreaterThanOrEqual(1900)
+        expect(replyElapsed).toBeLessThan(10_000)
+        expect(serveSideRejected).toBe(true)
+      } finally {
+        off()
+        if (originalTimeout === undefined) {
+          delete process.env.AGENTIC_HARNESS_PERMISSION_TIMEOUT_MS
+        } else {
+          process.env.AGENTIC_HARNESS_PERMISSION_TIMEOUT_MS = originalTimeout
+        }
       }
     },
   )
