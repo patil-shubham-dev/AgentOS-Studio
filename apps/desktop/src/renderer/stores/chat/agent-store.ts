@@ -1,6 +1,10 @@
 import { create } from "zustand"
 import type { RuntimeRole } from "@/types"
-import type { ChatMessage } from "@agentic-os/providers"
+export interface ChatMessage {
+  role: "user" | "assistant" | "system"
+  content: string
+  timestamp?: number
+}
 
 const MAX_MESSAGES_PER_ROLE = 200
 const MAX_ORCHESTRATION_STEPS = 100

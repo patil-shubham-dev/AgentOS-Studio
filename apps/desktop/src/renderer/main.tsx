@@ -25,7 +25,7 @@ import { bootRuntime, shutdownRuntime, getKernel } from './core/kernel/startup'
 import { isInSafeMode } from './core/crash-handling/safe-mode'
 import { RuntimeCleanupManager } from './runtime/RuntimeCleanupManager'
 import { ExecutionSessionManager } from './runtime/sessions/ExecutionSessionManager'
-import { tauriFetch } from '@agentic-os/providers/http-client'
+
 import { loader } from '@monaco-editor/react'
 import { StartupTiming } from './lib/startup-timing'
 import type { StartupPhase } from './lib/startup-store'
