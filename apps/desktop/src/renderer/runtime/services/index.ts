@@ -72,9 +72,7 @@ export { ObservabilitySDK } from "@/runtime/observability/ObservabilitySDK"
 export { ExecutionReplay } from "@/runtime/observability/ExecutionReplay"
 
 // Persistence
-export { PersistenceManager } from "@/runtime/persistence/persistence-manager"
 export { MigrationRunner } from "@/runtime/persistence/migration-runner"
-export { sessionPersistence } from "@/runtime/persistence/session-store"
 
 // Browser
 export { CodexBrowserManager } from "@/runtime/browser/CodexBrowserManager"
