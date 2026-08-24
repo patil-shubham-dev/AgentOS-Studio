@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from "react"
+﻿import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from "react"
 import { useNavigate } from "react-router-dom"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useAgentStore } from "@/stores/agent-store"
@@ -25,7 +25,6 @@ import { QuickOpen } from "@/components/workspace/QuickOpen"
 
 import { ErrorBoundary } from "@/components/runtime/ErrorBoundary"
 import { WorkspaceErrorBoundary } from "@/components/workspace/WorkspaceErrorBoundary"
-import { ContextRadar } from "@/components/workspace/context-indicator/ContextRadar"
 import { SideChat } from "@/components/workspace/side-chat/SideChat"
 import { SessionSidebar } from "@/components/workspace/timeline/SessionSidebar"
 import { CheckpointTimeline } from "@/components/workspace/CheckpointTimeline"
@@ -74,7 +73,7 @@ function loadPanelState<T>(key: string, defaultVal: T): T {
 function persistPanelState(key: string, value: unknown): void {
   try {
     localStorage.setItem(`${PANEL_STORAGE_KEY_PREFIX}${key}`, JSON.stringify(value))
-  } catch { /* quota exceeded — ignore */ }
+  } catch { /* quota exceeded â€” ignore */ }
 }
 
 export function CodeCanvasPage() {
@@ -109,7 +108,7 @@ export function CodeCanvasPage() {
 
   const unlistenRef = useRef<(() => void) | null>(null)
 
-  // ── Panel state (persisted to localStorage) ──
+  // â”€â”€ Panel state (persisted to localStorage) â”€â”€
   const [explorerOpen, setExplorerOpen] = useState(() => loadPanelState("explorerOpen", true))
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel>(() => loadPanelState("workspacePanel", "code"))
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(() => loadPanelState("workspacePanelOpen", true))
@@ -214,7 +213,7 @@ export function CodeCanvasPage() {
     }
   }, [runtimeStatus, rootPath, initializeRuntime])
 
-  // ── File tree loader: when rootPath is set but fileTree is empty, load it ──
+  // â”€â”€ File tree loader: when rootPath is set but fileTree is empty, load it â”€â”€
   useEffect(() => {
     if (!rootPath) return
     if (fileTree.length > 0) return
@@ -243,7 +242,7 @@ export function CodeCanvasPage() {
         const name = state.activeFilePath.split("/").pop() || state.activeFilePath
         useWorkspaceStore.getState().openFile({ path: state.activeFilePath, name, content, isDirty: false })
       } catch {
-        // File may have been deleted — leave as-is
+        // File may have been deleted â€” leave as-is
       }
     }
     // Defer background tab content loading
@@ -278,7 +277,7 @@ export function CodeCanvasPage() {
     setRecoveredBuffers(prev => prev.filter(b => !paths.includes(b.path)))
   }, [])
 
-  // ── Search index — rebuild when file tree changes ──
+  // â”€â”€ Search index â€” rebuild when file tree changes â”€â”€
   useEffect(() => {
     const rp = useWorkspaceStore.getState().rootPath
     if (fileTree.length > 0 && rp) {
@@ -286,11 +285,11 @@ export function CodeCanvasPage() {
     }
   }, [fileTree])
 
-  // ── Workspace auto-restore on app startup ──
+  // â”€â”€ Workspace auto-restore on app startup â”€â”€
   // Reads agentic-workspace-root from localStorage and re-opens the last workspace
   useEffect(() => {
     if (rootPath) {
-      // rootPath already set — not a cold start
+      // rootPath already set â€” not a cold start
       return
     }
     const storedRoot = localStorage.getItem('agentic-workspace-root')
@@ -324,7 +323,7 @@ export function CodeCanvasPage() {
     })
   }, [loadRestoredFileContent, restoreWorkspaceState, rootPath, setFileTree, setLoading, setRootPath])
 
-  // ── State persistence — persist on changes ──
+  // â”€â”€ State persistence â€” persist on changes â”€â”€
   useEffect(() => {
     if (rootPath) {
       localStorage.setItem('agentic-workspace-root', rootPath)
@@ -340,7 +339,7 @@ export function CodeCanvasPage() {
     persistWorkspaceState()
   }, [openFilesSnapshot, activeFileSnapshot, cursorSnapshot, persistWorkspaceState])
 
-  // ── Workspace operations ──
+  // â”€â”€ Workspace operations â”€â”€
   useEffect(() => {
     refreshRecentWorkspaces()
   }, [])
@@ -384,7 +383,7 @@ export function CodeCanvasPage() {
         const name = path.split("/").pop() || path
         useWorkspaceStore.getState().openFile({ path, name, content, isDirty: false })
       } catch {
-        // File may already be open — just navigate
+        // File may already be open â€” just navigate
         useWorkspaceStore.getState().setActiveFile(path)
       }
     }
@@ -421,7 +420,7 @@ export function CodeCanvasPage() {
     }
   }, [debouncedRefresh, handleFileChange, rootPath])
 
-  // ── Workspace Panel Controller ──
+  // â”€â”€ Workspace Panel Controller â”€â”€
   // Three-layer state: USER_TAB (manual click + timestamp), RUNTIME_TAB (agent step), RESOLVED (final).
   // Manual override window: 5s after any user tab click, auto-routing is suppressed.
   // All event listeners cleaned up via DisposableRegistry on unmount.
@@ -459,7 +458,7 @@ export function CodeCanvasPage() {
     repairAction?: string
   }
 
-  // ── Validation state from preflight ──
+  // â”€â”€ Validation state from preflight â”€â”€
   const [validationIssues, setValidationIssues] = useState<ValidationIssueItem[]>([])
 
   useEffect(() => {
@@ -481,7 +480,7 @@ export function CodeCanvasPage() {
         id: "stale-config",
         severity: "warning",
         category: "configuration",
-        message: "Provider configuration changed — runtime needs refresh",
+        message: "Provider configuration changed â€” runtime needs refresh",
         detail: "Refresh runtime to apply new provider/role configuration",
         repairable: true,
         repairAction: "refresh-runtime",
@@ -502,7 +501,7 @@ export function CodeCanvasPage() {
     setValidationIssues((prev) => prev.filter((i) => i.id !== issue.id))
   }, [refreshRuntime])
 
-  // ── Keyboard shortcuts ──
+  // â”€â”€ Keyboard shortcuts â”€â”€
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
@@ -535,7 +534,7 @@ export function CodeCanvasPage() {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "n" && rootPath) {
         e.preventDefault()
       }
-      // ⌘W — close active tab
+      // âŒ˜W â€” close active tab
       if ((e.metaKey || e.ctrlKey) && e.key === "w") {
         e.preventDefault()
         const state = useWorkspaceStore.getState()
@@ -543,17 +542,17 @@ export function CodeCanvasPage() {
           state.closeFile(state.activeFilePath)
         }
       }
-      // ⌘P — quick open (fuzzy file search)
+      // âŒ˜P â€” quick open (fuzzy file search)
       if ((e.metaKey || e.ctrlKey) && e.key === "p" && !e.shiftKey) {
         e.preventDefault()
         setQuickOpenOpen((p) => !p)
       }
-      // ⌘⇧P — command palette
+      // âŒ˜â‡§P â€” command palette
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "p") {
         e.preventDefault()
         setCommandPaletteOpen((p) => !p)
       }
-      // ⌘S — save (global fallback)
+      // âŒ˜S â€” save (global fallback)
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault()
         // Monaco handles its own save via action, this is a no-op fallback
@@ -562,18 +561,18 @@ export function CodeCanvasPage() {
         e.preventDefault()
         refreshTree()
       }
-      // ⌘⇧F — global search
+      // âŒ˜â‡§F â€” global search
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "f") {
         e.preventDefault()
         setSearchOpen(!useWorkspaceStore.getState().searchOpen)
       }
-      // Esc — dismiss open panels when not in an input
+      // Esc â€” dismiss open panels when not in an input
       if (e.key === "Escape" && !["TEXTAREA", "INPUT"].includes((e.target as HTMLElement).tagName)) {
         if (explorerOpen) { setExplorerOpen(false); e.preventDefault(); return }
         if (sessionSidebarOpen) { setSessionSidebarOpen(false); e.preventDefault(); return }
         if (searchOpen) { setSearchOpen(false); e.preventDefault(); return }
       }
-      // ⌘K — command palette (table-stakes, unless Monaco is editing inline)
+      // âŒ˜K â€” command palette (table-stakes, unless Monaco is editing inline)
       if ((e.metaKey || e.ctrlKey) && e.key === "k" && !e.shiftKey) {
         const target = e.target as HTMLElement
         const isMonaco = target.closest('.monaco-editor')
@@ -584,12 +583,12 @@ export function CodeCanvasPage() {
         // If Monaco is focused, its inline-edit action handles Cmd+K with selection
         return
       }
-      // ⌘⇧S — session sidebar
+      // âŒ˜â‡§S â€” session sidebar
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "s") {
         e.preventDefault()
         setSessionSidebarOpen((p) => !p)
       }
-      // ⌘⇧Z — checkpoint timeline
+      // âŒ˜â‡§Z â€” checkpoint timeline
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "z") {
         e.preventDefault()
         useCheckpointStore.getState().togglePanel()
@@ -599,7 +598,7 @@ export function CodeCanvasPage() {
     return () => window.removeEventListener("keydown", handleKey)
   }, [rootPath, setSessionSidebarOpen])
 
-  // ── Auto-collapse panels on narrow screens ──
+  // â”€â”€ Auto-collapse panels on narrow screens â”€â”€
   useEffect(() => {
     function handleResize() {
       const w = window.innerWidth
@@ -616,13 +615,13 @@ export function CodeCanvasPage() {
     return () => window.removeEventListener("resize", handleResize)
   }, [explorerOpen, workspacePanelOpen])
 
-  // ── Persist panel state on change ──
+  // â”€â”€ Persist panel state on change â”€â”€
   useEffect(() => { persistPanelState("explorerOpen", explorerOpen) }, [explorerOpen])
   useEffect(() => { persistPanelState("workspacePanel", workspacePanel) }, [workspacePanel])
   useEffect(() => { persistPanelState("workspacePanelOpen", workspacePanelOpen) }, [workspacePanelOpen])
   useEffect(() => { persistPanelState("sessionSidebarOpen", sessionSidebarOpen) }, [sessionSidebarOpen])
 
-  // ── Workbench routing: sync AI actions to fixed workspace regions ──
+  // â”€â”€ Workbench routing: sync AI actions to fixed workspace regions â”€â”€
   useEffect(() => {
     if (!lastPaneAction) return
     if ((lastPaneAction.type === "focus" || lastPaneAction.type === "open") && isWorkspacePanel(lastPaneAction.pane)) {
@@ -645,7 +644,7 @@ export function CodeCanvasPage() {
 
   return (
     <div className="flex h-full flex-col bg-[var(--surface-app)]" role="main" aria-label="Code canvas workspace">
-      {/* Compact status bar — single line for active notifications */}
+      {/* Compact status bar â€” single line for active notifications */}
       {(runtimeStatus === "uninitialized" || runtimeStatus === "error" || (runtimeStatus === "ready" && !runtimeReady && rootPath) || (hasStaleConfig && runtimeReady)) && (
         <div className={cn(
           "flex items-center gap-2 border-b px-3 py-1.5 text-[10px]",
@@ -660,17 +659,17 @@ export function CodeCanvasPage() {
             <>Add a provider in Settings to start the AI assistant.</>
           )}
           {hasStaleConfig && runtimeReady && (
-            <>Configuration changed — <button onClick={() => refreshRuntime()} className="underline font-medium hover:text-[var(--color-accent-amber)]">refresh now</button></>
+            <>Configuration changed â€” <button onClick={() => refreshRuntime()} className="underline font-medium hover:text-[var(--color-accent-amber)]">refresh now</button></>
           )}
         </div>
       )}
 
 
 
-      {/* ── AGENTIC.md Init Banner ── */}
+      {/* â”€â”€ AGENTIC.md Init Banner â”€â”€ */}
       <ConfigInitBanner />
 
-      {/* ── MAIN PANEL LAYOUT or Empty State ── */}
+      {/* â”€â”€ MAIN PANEL LAYOUT or Empty State â”€â”€ */}
       <WorkspaceErrorBoundary onOpenFolder={openWorkspace}>
       {rootPath && typeof rootPath === 'string' && rootPath.length > 0 ? (
       <div ref={layoutRef} className="relative flex flex-1 overflow-hidden min-h-0 bg-[var(--surface-app)]">
@@ -764,7 +763,6 @@ export function CodeCanvasPage() {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <ContextRadar />
               <button
                 type="button"
                 onClick={handleToggleDiffReview}
@@ -934,7 +932,7 @@ export function CodeCanvasPage() {
         />
       )}
 
-      {/* Issue → PR Dialog */}
+      {/* Issue â†’ PR Dialog */}
       <IssueToPRDialog />
 
       {/* Missing Workspace Dialog */}

@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect, useMemo, useState, useCallback } from "react"
+﻿import { memo, useRef, useEffect, useMemo, useState, useCallback } from "react"
 import { useShallow } from "zustand/shallow"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { AnimatePresence, motion } from "framer-motion"
@@ -14,7 +14,6 @@ import { ReferenceChipRow } from "@/components/workspace/context-refs/ReferenceC
 import type { UserMessageEvent } from "../timeline/types"
 import { QuickActions } from "../timeline/QuickActions"
 import { ChatTimelineSkeleton } from "@/components/ui/Skeleton"
-import { ContextBreakdown } from "./ContextBreakdown"
 import { useContextPackSlot } from "@/stores/context-pack-slot"
 import { EmptyState } from "./EmptyState"
 import { ANIM } from "./chat-animations"
@@ -64,7 +63,6 @@ const TurnContent = memo(function TurnContent({ turn, isLatest, idx, onSendMessa
             return refs && refs.length > 0 ? <ReferenceChipRow references={refs} /> : null
           })()}
           <UserPill content={turn.userEvent.content} timestamp={turn.userEvent.timestamp} />
-          {currentPack && <ContextBreakdown pack={currentPack} />}
         </>
       )}
       <UnifiedAssistantResponse
