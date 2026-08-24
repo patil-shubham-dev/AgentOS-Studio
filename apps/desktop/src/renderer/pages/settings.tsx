@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+﻿import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { ProvidersTab } from "@/components/settings/providers-tab"
@@ -13,7 +13,6 @@ import { ConnectorsTab } from "@/components/settings/connectors-tab"
 import { UsageTab } from "@/components/settings/usage-tab"
 import { AgentsPage } from "@/pages/agents"
 import { MemoryPage } from "@/pages/memory"
-import { ContextDashboardPage } from "@/pages/context-dashboard"
 import { PersonasPage } from "@/pages/personas"
 import { PluginsPage } from "@/pages/plugins"
 import {
@@ -234,7 +233,7 @@ export function SettingsPage() {
           <motion.span animate={{ opacity: sidebarCollapsed ? 0 : 1 }} className="flex-1 text-left">
             Search settings...
           </motion.span>
-          <kbd className="rounded border border-[var(--border-default)] bg-[var(--border-subtle)] px-1 py-0.5 text-[9px]">⌘K</kbd>
+          <kbd className="rounded border border-[var(--border-default)] bg-[var(--border-subtle)] px-1 py-0.5 text-[9px]">âŒ˜K</kbd>
         </button>
 
         <nav className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -250,7 +249,7 @@ export function SettingsPage() {
                     animate={{ rotate: isCollapsed ? -90 : 0 }}
                     className="text-[8px]"
                   >
-                    ▼
+                    â–¼
                   </motion.span>
                   <motion.span
                     animate={{ opacity: sidebarCollapsed ? 0 : 1, height: sidebarCollapsed ? 0 : "auto" }}
@@ -374,7 +373,6 @@ export function SettingsPage() {
               {activeTab === "completions" && <div className="p-6 max-w-6xl mx-auto"><CompletionSettings /></div>}
               {activeTab === "agents" && <div className="p-6 max-w-6xl mx-auto"><AgentsPage /></div>}
               {activeTab === "memory" && <div className="p-6 max-w-6xl mx-auto"><MemoryPage /></div>}
-              {activeTab === "context" && <div className="p-6 max-w-6xl mx-auto"><ContextDashboardPage /></div>}
               {activeTab === "personas" && <div className="p-6 max-w-6xl mx-auto"><PersonasPage /></div>}
               {activeTab === "plugins" && <div className="p-6 max-w-6xl mx-auto"><PluginsPage /></div>}
               {activeTab === "connectors" && <div className="p-6 max-w-6xl mx-auto"><ConnectorsTab /></div>}

@@ -1,4 +1,4 @@
-import { ReadFileTool } from './ReadFileTool'
+﻿import { ReadFileTool } from './ReadFileTool'
 import { WriteFileTool } from './WriteFileTool'
 import { EditFileTool } from './EditFileTool'
 import { GlobTool } from './GlobTool'
@@ -7,7 +7,6 @@ import { SearchContentTool } from './SearchContentTool'
 import { BashTool } from './BashTool'
 import { WebSearchTool } from './WebSearchTool'
 import { WebFetchTool } from './WebFetchTool'
-import { DelegateSubtaskTool } from './DelegateTool'
 import { RunSkillTool } from './SkillTool'
 import { QueryCodebaseTool } from './QueryCodebaseTool'
 import { QueryGraphTool } from './QueryGraphTool'
@@ -29,7 +28,6 @@ import {
   GithubSearchRepoTool,
 } from './github/github-tools'
 import { GithubReviewPullRequestTool } from './github/GithubReviewPullRequestTool'
-import { BatchParallelTaskTool } from './batch/BatchParallelTaskTool'
 import { MemoryInfoTool } from './MemoryInfoTool'
 import { SaveLearningTool } from './SaveLearningTool'
 
@@ -43,7 +41,6 @@ export const CODING_TOOLS = [
   BashTool,
   WebSearchTool,
   WebFetchTool,
-  DelegateSubtaskTool,
   RunSkillTool,
   QueryCodebaseTool,
   QueryGraphTool,
@@ -63,7 +60,6 @@ export const CODING_TOOLS = [
   GithubSearchIssuesTool,
   GithubSearchRepoTool,
   GithubReviewPullRequestTool,
-  BatchParallelTaskTool,
   MemoryInfoTool,
   SaveLearningTool,
 ]
@@ -78,7 +74,6 @@ export {
   BashTool,
   WebSearchTool,
   WebFetchTool,
-  DelegateSubtaskTool,
   RunSkillTool,
   QueryCodebaseTool,
   QueryGraphTool,
@@ -98,7 +93,6 @@ export {
   GithubSearchIssuesTool,
   GithubSearchRepoTool,
   GithubReviewPullRequestTool,
-  BatchParallelTaskTool,
   MemoryInfoTool,
   SaveLearningTool,
 }

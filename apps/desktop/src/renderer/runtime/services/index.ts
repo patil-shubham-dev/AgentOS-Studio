@@ -1,5 +1,5 @@
-/**
- * Runtime Services — supporting infrastructure (MCP, permissions, sessions,
+﻿/**
+ * Runtime Services â€” supporting infrastructure (MCP, permissions, sessions,
  * streaming, providers, sandbox, reliability, and more).
  *
  * Re-exports from legacy runtime/ subdirectories so consumers can import
@@ -33,7 +33,6 @@ export { alwaysAllowRules } from "@/runtime/permissions/always-allow-rules"
 export { roleToolAllowlist } from "@/runtime/permissions/role-tool-allowlist"
 
 // Sessions
-export { ExecutionSessionManager } from "@/runtime/sessions/ExecutionSessionManager"
 
 // Streaming
 export { StreamManager } from "@/runtime/streaming/StreamManager"
@@ -95,7 +94,6 @@ export { SkillLoader } from "@/runtime/skills/SkillLoader"
 export { SkillMatcher } from "@/runtime/skills/SkillMatcher"
 
 // Sub-agents
-export { SubAgentDelegator } from "@/runtime/sub-agents/sub-agent-delegator"
 export { AgentTask } from "@/runtime/sub-agents/tasks/AgentTask"
 export { TaskRegistry } from "@/runtime/sub-agents/tasks/TaskRegistry"
 export { TaskOutputManager } from "@/runtime/sub-agents/tasks/TaskOutputManager"
@@ -124,7 +122,6 @@ export type { StructuredProjectConfig } from "@/runtime/project-config/ProjectCo
 export { PRWebhookListener } from "@/runtime/github/PRWebhookListener"
 
 // Multi-agent
-export { Orchestrator } from "@/runtime/multi-agent/orchestrator"
 
 // Cost
 export { CostTracker } from "@/runtime/cost/CostTracker"

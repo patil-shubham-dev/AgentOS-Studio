@@ -1,4 +1,4 @@
-// Re-exports from the canonical chat directory
+﻿// Re-exports from the canonical chat directory
 export {
   ConversationTimeline,
   UserPill,
@@ -13,6 +13,5 @@ export {
   ResponseStream,
   SessionCard,
   TerminalPane,
-  ContextBreakdown,
   StableMarkdownRenderer,
 } from "@/components/workspace/chat"

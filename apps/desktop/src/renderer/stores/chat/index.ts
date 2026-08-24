@@ -1,4 +1,4 @@
-export { useSideChatStore } from "./side-chat-store"
+﻿export { useSideChatStore } from "./side-chat-store"
 export type { SideChatMessage, SideChatSession, SideChatStoreState } from "./side-chat-store"
 
 export { useSessionStore } from "./session-store"
@@ -9,8 +9,6 @@ export type { AgentAssignment, OrchestrationStep, AgentTreeNode, AgentStatus, Fi
 
 export { useContextPackSlot } from "./context-pack-slot"
 
-export { useContextUIStore } from "./context-ui-store"
-export type { ContextUIState } from "./context-ui-store"
 
 export { usePermissionModeStore } from "./permission-mode-store"
 export type { PermissionMode } from "./permission-mode-store"

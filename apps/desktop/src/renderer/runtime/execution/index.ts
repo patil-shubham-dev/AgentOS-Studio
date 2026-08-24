@@ -22,12 +22,6 @@ export type { RecoveryAttempt, RecoveryLoopResult, UnhandledRepairAction } from 
 export { PatchQualityAnalyzer } from "./PatchQualityAnalyzer"
 export type { PatchScore, PatchQualityReport } from "./PatchQualityAnalyzer"
 
-export { AutonomousEngineeringLoop } from "./AutonomousEngineeringLoop"
-export type { EngineeringEvent, EngineeringResult, EngineeringStage } from "./AutonomousEngineeringLoop"
-
-export { UnifiedExecutionGateway } from "./UnifiedExecutionGateway"
-export type { GatewayOptions } from "./UnifiedExecutionGateway"
-
 export { EditExecutionController } from "./EditExecutionController"
 export type { EditValidation } from "./EditExecutionController"
 
@@ -66,9 +60,6 @@ export function createBenchmarkRunner(): { runAll: () => Promise<any>; runCatego
   }
 }
 
-export { FastPathExecutor } from "./FastPathExecutor"
-export { AgentPipelineOrchestrator } from "./AgentPipelineOrchestrator"
-export { AutonomousExecutionPath } from "./AutonomousExecutionPath"
 export { ExecutionBudgetManager } from "./ExecutionBudgetManager"
 export { ExecutionQueue } from "./ExecutionQueue"
 export { ExecutionScratchpad } from "./ExecutionScratchpad"

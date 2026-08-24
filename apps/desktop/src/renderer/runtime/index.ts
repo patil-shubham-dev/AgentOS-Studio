@@ -1,5 +1,5 @@
-/**
- * Runtime — root barrel for the AgenticOS runtime subsystem.
+﻿/**
+ * Runtime â€” root barrel for the AgenticOS runtime subsystem.
  *
  * Everything exported here is publicly available to the renderer and
  * core layers. Sub-modules (engine, services) provide finer-grained
@@ -14,7 +14,7 @@
  * @/runtime/services.
  */
 
-// ── Engine (core execution, context, planning, tools) ──
+// â”€â”€ Engine (core execution, context, planning, tools) â”€â”€
 export {
   RuntimeOS,
   EventBus,
@@ -37,28 +37,17 @@ export {
   recordExecutionStage,
   isTauri,
   withTimeoutFallback,
-  runtimeEngine,
   executionMode,
-  UnifiedExecutor,
-  UnifiedExecutionGateway,
-  AutonomousEngineeringLoop,
-  AutonomousExecutionPath,
   ExecutionQueue,
-  ExecutionRouter,
   ExecutionProfiler,
   EditExecutionController,
   WorkspaceSnapshotManager,
   PlanManager,
-  SynthesisEngine,
   StreamManager,
-  ContextManager,
   compressConversationHistory,
-  autoCompact,
-  shouldAutoCompact,
   TokenEstimator,
   PlanGenerator,
   PlanComparisonEngine,
-  AgentExecutor,
   ToolExecutionSandbox,
   ChangeSetManager,
   useChangeSetStore,
@@ -67,17 +56,15 @@ export {
   MemoryArchitecture,
   MemoryObserver,
   VerificationPipeline,
-  managerRoutingEngine,
 } from "./engine"
 
-// ── Services (MCP, permissions, sessions, providers, sandbox, etc.) ──
+// â”€â”€ Services (MCP, permissions, sessions, providers, sandbox, etc.) â”€â”€
 export {
   MCPRegistry,
   MCPServerManager,
   PermissionEngine,
   ApprovalManager,
   PolicyResolver,
-  ExecutionSessionManager,
   ProviderGateway,
   providerGateway,
   ProviderRuntime,
@@ -101,14 +88,12 @@ export {
   SkillRegistry,
   SkillExecutor,
   SkillLoader,
-  SubAgentDelegator,
   FeatureFlagManager,
   LifecycleHookRegistry,
   pluginRegistry,
   PluginLoader,
   configLoader,
   PRWebhookListener,
-  Orchestrator,
   CostTracker,
   PromptCacheManager,
   SandboxAbstraction,
@@ -117,7 +102,7 @@ export {
   FIMFormatter,
 } from "./services"
 
-// ── Runtime types ──
+// â”€â”€ Runtime types â”€â”€
 export type {
   ExecutionEvent,
   RuntimeRole,
