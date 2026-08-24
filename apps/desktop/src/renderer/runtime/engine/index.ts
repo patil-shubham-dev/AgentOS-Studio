@@ -1,5 +1,5 @@
-/**
- * Runtime Engine — core execution, context, planning, and tool orchestration.
+﻿/**
+ * Runtime Engine â€” core execution, context, planning, and tool orchestration.
  */
 
 // Core engine singletons & types
@@ -34,7 +34,6 @@ export { PlanComparisonEngine } from "@/runtime/planning/PlanComparisonEngine"
 export type { ImplementationPlan, PlanStep } from "@/runtime/planning/PlanTypes"
 
 // Tools
-export { ToolExecutionSandbox } from "@/runtime/tools/ToolExecutionSandbox"
 
 // Changeset
 export { ChangeSetManager } from "@/runtime/changeset/ChangeSetManager"

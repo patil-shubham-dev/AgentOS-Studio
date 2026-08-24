@@ -48,7 +48,6 @@ export {
   TokenEstimator,
   PlanGenerator,
   PlanComparisonEngine,
-  ToolExecutionSandbox,
   ChangeSetManager,
   useChangeSetStore,
   summarizeMessages,

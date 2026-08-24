@@ -1,6 +1,6 @@
-import { ToolRegistry } from "@/runtime/tools/registry/ToolRegistry"
+﻿import { ToolRegistry } from "@/runtime/tools/registry/ToolRegistry"
 import { ToolPoolAssembler } from "@/runtime/tools/registry/ToolPoolAssembler"
-import { ToolExecutionPipeline } from "@/runtime/tools/execution/ToolExecutionPipeline"
+import { ToolRegistry } from "@/runtime/tools/registry/ToolRegistry"
 import { ToolFallbackRegistry } from "@/runtime/tools/policies/ToolFallbackRegistry"
 import { createMicroCompactPostHook, createPersistPostHook } from "@/runtime/tools/execution"
 import { ToolExecutionPolicy } from "@/runtime/tools/policies/ToolExecutionPolicy"
@@ -46,7 +46,6 @@ export class RuntimeOS {
   private static instance: RuntimeOS
 
   readonly toolRegistry: ToolRegistry
-  readonly toolPoolAssembler: ToolPoolAssembler
   readonly toolExecutionPipeline: ToolExecutionPipeline
   readonly toolExecutionPolicy: ToolExecutionPolicy
   readonly toolConcurrencyPolicy: ToolConcurrencyPolicy
@@ -71,7 +70,6 @@ export class RuntimeOS {
 
   private constructor() {
     this.toolRegistry = new ToolRegistry()
-    this.toolPoolAssembler = new ToolPoolAssembler(this.toolRegistry)
 
     this.permissionEngine = new PermissionEngine()
     this.policyResolver = this.permissionEngine.getPolicyResolver()
@@ -123,7 +121,7 @@ export class RuntimeOS {
   async initialize(mcpServers?: MCPClientConfig[]): Promise<void> {
     if (this.initialized) return
 
-    // ── Wire prompt cache invalidation to config changes ──
+    // â”€â”€ Wire prompt cache invalidation to config changes â”€â”€
     const cacheManager = PromptCacheManager.getInstance()
     const unsubProviders = useAppStore.subscribe(
       (state) => state.providers,
@@ -201,7 +199,7 @@ export class RuntimeOS {
       await this.memoryArchitecture.initialize()
       await this.diskBackedStore.initialize(rootPath)
 
-      // ── Start config file watcher (needs rootPath) ──
+      // â”€â”€ Start config file watcher (needs rootPath) â”€â”€
       if (isFeatureEnabled('configWatcher')) {
         configWatcher.start(rootPath)
         configWatcher.onChange((_source, _filePath) => {
@@ -210,12 +208,12 @@ export class RuntimeOS {
         })
       }
 
-      // ── Start live graph engine for real-time intelligence sync ──
+      // â”€â”€ Start live graph engine for real-time intelligence sync â”€â”€
       if (isFeatureEnabled('liveGraphEngine')) {
         await liveGraphEngine.start()
       }
 
-      // ── Enhance graph with AST-level edges from TS compiler ──
+      // â”€â”€ Enhance graph with AST-level edges from TS compiler â”€â”€
       if (isFeatureEnabled('astGraph')) {
         try {
           const { ASTEnhancedGraph } = await import('@/runtime/intelligence/ASTEnhancedGraph')
@@ -229,7 +227,7 @@ export class RuntimeOS {
         }
       }
 
-      // ── Initialize reliability suite with circuit breakers ──
+      // â”€â”€ Initialize reliability suite with circuit breakers â”€â”€
       if (isFeatureEnabled('reliabilitySuite')) {
         const reliabilitySuite = ExecutionReliabilitySuite.getInstance()
         reliabilitySuite.createCircuitBreaker("execution", 5)

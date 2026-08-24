@@ -4,7 +4,6 @@ import { EditFileTool } from './EditFileTool'
 import { GlobTool } from './GlobTool'
 import { GrepTool } from './GrepTool'
 import { SearchContentTool } from './SearchContentTool'
-import { BashTool } from './BashTool'
 import { WebSearchTool } from './WebSearchTool'
 import { WebFetchTool } from './WebFetchTool'
 import { RunSkillTool } from './SkillTool'
@@ -38,7 +37,6 @@ export const CODING_TOOLS = [
   GlobTool,
   GrepTool,
   SearchContentTool,
-  BashTool,
   WebSearchTool,
   WebFetchTool,
   RunSkillTool,
@@ -71,7 +69,6 @@ export {
   GlobTool,
   GrepTool,
   SearchContentTool,
-  BashTool,
   WebSearchTool,
   WebFetchTool,
   RunSkillTool,
