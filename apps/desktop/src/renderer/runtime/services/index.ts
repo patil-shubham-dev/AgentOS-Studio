@@ -35,7 +35,6 @@ export { roleToolAllowlist } from "@/runtime/permissions/role-tool-allowlist"
 // Sessions
 
 // Streaming
-export { StreamManager } from "@/runtime/streaming/StreamManager"
 export { EventChannel } from "@/runtime/streaming/EventChannel"
 export { WordBoundaryStreamBuffer } from "@/runtime/streaming/WordBoundaryStreamBuffer"
 

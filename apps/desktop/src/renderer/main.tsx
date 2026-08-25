@@ -18,8 +18,6 @@ import { persistLedger } from './lib/ledger'
 import { useLedgerStore } from './stores/ledger-store'
 import { useAppStore } from './stores/app-store'
 import { useWorkspaceRuntime } from './runtime/workspace-runtime'
-import { useTimelineStore } from './components/workspace/timeline/timeline-store'
-import { persistChatState, clearPersistedChatState, saveToHistory } from './components/workspace/timeline/chat-persistence'
 import { cancelPendingRefresh } from './runtime/runtime-coordinator'
 import { bootRuntime, shutdownRuntime, getKernel } from './core/kernel/startup'
 import { isInSafeMode } from './core/crash-handling/safe-mode'
@@ -103,7 +101,6 @@ function Root() {
       let report
       try {
         report = await bootRuntime()
-        useTimelineStore.getState().clear()
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error('[Boot] Runtime init CRASHED:', msg)
@@ -114,18 +111,6 @@ function Root() {
         unsubs.push(
           useAppStore.subscribe(() => schedulePersist()),
           useLedgerStore.subscribe(() => persistLedger()),
-        )
-
-        let timelineTimer: ReturnType<typeof setTimeout> | null = null
-        unsubs.push(
-          useTimelineStore.subscribe(() => {
-            if (timelineTimer) clearTimeout(timelineTimer)
-            timelineTimer = setTimeout(() => {
-              timelineTimer = null
-              const s = useTimelineStore.getState()
-              persistChatState(s.events, s.agentSessions, s.streamingTexts, s.sessionOrder, s.sessionCreatedAtEventCount, s.collapsedSections)
-            }, 2000)
-          }),
         )
       }
 
@@ -144,27 +129,11 @@ function Root() {
       cancelPersist()
       cancelPendingRefresh()
 
-      const timeline = useTimelineStore.getState()
-      const hasEvents = timeline.events.length > 0
-      const snapshot = hasEvents ? {
-        events: timeline.events.slice(),
-        agentSessions: new Map(timeline.agentSessions),
-        streamingTexts: new Map(timeline.streamingTexts),
-        sessionOrder: timeline.sessionOrder.slice(),
-        sessionCreatedAtEventCount: timeline.sessionCreatedAtEventCount.slice(),
-        collapsedSections: new Set(timeline.collapsedSections),
-      } : null
-
-      if (snapshot) {
-        saveToHistory(snapshot.events, snapshot.agentSessions, snapshot.streamingTexts, snapshot.sessionOrder, snapshot.sessionCreatedAtEventCount, snapshot.collapsedSections)
-      }
-
       const activeSessions = ExecutionSessionManager.getInstance().getActiveSessions()
       for (const s of activeSessions) {
         ExecutionSessionManager.getInstance().cancel(s.id)
       }
 
-      timeline.clear()
       RuntimeCleanupManager.getInstance().shutdown().catch((err) => {
         console.error('[Cleanup] Shutdown error:', err)
       })

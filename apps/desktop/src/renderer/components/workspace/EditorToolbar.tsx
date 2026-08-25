@@ -4,12 +4,11 @@ import { cn } from "@/lib/utils"
 import { Badge, TooltipSimple as Tooltip } from "@agentic-os/ui"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useHistoryStore } from "@/stores/history-store"
-import { useCheckpointStore } from "@/stores/checkpoint-store"
 import {
   WrapText, Minus, Plus, X, FileCode,
   Sparkles, Brain, Check, Save,
   Columns3, FileDown, Pencil, AlertCircle, AlertTriangle, GitBranch,
-  Bug, FileSearch, PanelRight, Logs, History, RotateCcw,
+  Bug, FileSearch, PanelRight, Logs, History,
   Code2, GitCompare, ListTodo, Search, FileText, CheckCheck, XCircle,
   ChevronLeft, ChevronRight, Eye, EyeOff,
 } from "lucide-react"
@@ -37,7 +36,6 @@ interface EditorToolbarProps {
   warningCount: number
   gitInfo: { branch: string; changes: number } | null
   historyOpen: boolean
-  checkpointOpen: boolean
   sessionTokens: number
   sessionChars: number
   onToggleWordWrap: () => void
@@ -50,7 +48,6 @@ interface EditorToolbarProps {
   onToggleAiContext: () => void
   onToggleSplit: () => void
   onToggleHistory: () => void
-  onToggleCheckpoint: () => void
   onSymbolSearch: (symbols: any[]) => void
   onOpenSymbolSearch: () => void
   onSave: () => void
@@ -61,11 +58,11 @@ export const EditorToolbar = memo(function EditorToolbar({
   language, editorRef, monacoRef, wordWrap, fontSize, showMinimap,
   showProblems, showDebugPanel, showGitPanel, showOutput, splitMode,
   liveStreamActive, liveEditingFile, activeFilePath, isInAiContext,
-  errorCount, warningCount, gitInfo, historyOpen, checkpointOpen,
+  errorCount, warningCount, gitInfo, historyOpen,
   sessionTokens, sessionChars,
   onToggleWordWrap, onSetFontSize, onToggleMinimap, onToggleProblems,
   onToggleDebugPanel, onToggleGitPanel, onToggleOutput, onToggleAiContext,
-  onToggleSplit, onToggleHistory, onToggleCheckpoint,
+  onToggleSplit, onToggleHistory,
   onSymbolSearch, onOpenSymbolSearch, onSave, onDownload,
 }: EditorToolbarProps) {
   const { pulse } = useHaptic()
@@ -318,20 +315,6 @@ export const EditorToolbar = memo(function EditorToolbar({
             )}
           >
             <History className="h-3 w-3" />
-          </motion.button>
-        </Tooltip>
-
-        <Tooltip content="Checkpoints — restore previous tool states">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onToggleCheckpoint}
-            className={cn(
-              "rounded p-1 transition-colors",
-              checkpointOpen ? "text-[var(--accent-code)] bg-[var(--accent-code)]/10" : "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]",
-            )}
-          >
-            <RotateCcw className="h-3 w-3" />
           </motion.button>
         </Tooltip>
 

@@ -67,5 +67,5 @@ export { SynthesisEngine } from "./SynthesisEngine"
 export { UnifiedExecutor, resolveExecutionMode } from "./UnifiedExecutor"
 export { assignAgentForTask, orderPipelineRoles, checkWorkspaceRequired, checkMultiAgentEligibility } from "./ExecutionRouter"
 export { runPlanPhase, shouldGeneratePlan, waitForPlanApproval } from "./PlanManager"
-export { mockExecutionPath } from "./MockExecutionEngine"
+
 export { isFileCreationRequest, executeFileCreation } from "./MockFileCreation"

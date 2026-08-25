@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from "react"
 import { EventBus } from "@/runtime/EventBus"
 import { useWorkspaceRuntime } from "@/runtime/workspace-runtime"
-import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
 import { ExecutionSessionManager } from "@/runtime/sessions/ExecutionSessionManager"
 import { getRenderCounts, resetDiagnostics } from "@/runtime/runtime-diagnostics"
 import { getActiveComponentCount, resetLifetimeTracking } from "@/performance/leak-detector"
@@ -30,21 +29,18 @@ export function RuntimeHealthPanel() {
   const listenerCount = (bus as any).listeners?.size ?? 0
 
   const ws = useWorkspaceRuntime()
-  const timeline = useTimelineStore()
   const providers = useAppStore((s) => s.providers)
   const sessions = ExecutionSessionManager.getInstance()
   const activeSessions = sessions.getActiveSessions()
   const recentSessions = activeSessions
-  const allToolCalls = Array.from(timeline.agentSessions.values()).reduce((sum, s) => sum + s.toolCalls.length, 0)
-  const allErrors = Array.from(timeline.agentSessions.values()).filter((s) => s.streamState === "failed").length
   const engineDiagnostics = {
     state: (ws.status === "ready" ? "RUNNING" : "ERROR") as "RUNNING" | "ERROR",
-    totalToolCalls: allToolCalls,
-    totalErrors: allErrors,
+    totalToolCalls: 0,
+    totalErrors: 0,
     avgExecutionMs: 0,
-    historyLength: timeline.events.length,
-    totalTokens: timeline.streamingMetrics.tokensReceived,
-    status: (allErrors > 0 ? "degraded" : "ok") as "ok" | "degraded",
+    historyLength: 0,
+    totalTokens: 0,
+    status: "ok" as "ok" | "degraded",
     activeSessions: activeSessions.length,
     sessionsCreated: sessions.getActiveSessions().length,
   }
@@ -255,13 +251,7 @@ function ProvidersTab({ providers }: { providers: any[] }) {
 }
 
 function ToolsTab() {
-  const timeline = useTimelineStore()
   const allToolCalls: { session: any; tool: any }[] = []
-  for (const session of timeline.agentSessions.values()) {
-    for (const tc of session.toolCalls) {
-      allToolCalls.push({ session, tool: tc })
-    }
-  }
   const recentTools = allToolCalls.slice(-20).reverse()
 
   return (
@@ -288,8 +278,7 @@ function ToolsTab() {
 }
 
 function EventsTab({ bus, eventCount, listenerCount }: { bus: EventBus; eventCount: number; listenerCount: number }) {
-  const timeline = useTimelineStore()
-  const activeSessions = Array.from(timeline.agentSessions.values())
+  const activeSessions: any[] = []
   return (
     <div>
       <div style={{ fontWeight: 600, marginBottom: "6px", color: "var(--text-tertiary)", fontSize: "11px" }}>EventBus State</div>

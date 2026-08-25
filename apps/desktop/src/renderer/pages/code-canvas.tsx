@@ -27,9 +27,7 @@ import { ErrorBoundary } from "@/components/runtime/ErrorBoundary"
 import { WorkspaceErrorBoundary } from "@/components/workspace/WorkspaceErrorBoundary"
 import { SideChat } from "@/components/workspace/side-chat/SideChat"
 import { SessionSidebar } from "@/components/workspace/timeline/SessionSidebar"
-import { CheckpointTimeline } from "@/components/workspace/CheckpointTimeline"
 import { useSessionStore } from "@/stores/session-store"
-import { useCheckpointStore } from "@/stores/checkpoint-store"
 import { usePanelCoordinator } from "@/stores/panel-coordinator"
 import { useDiffStore } from "@/stores/diff-store"
 
@@ -588,11 +586,6 @@ export function CodeCanvasPage() {
         e.preventDefault()
         setSessionSidebarOpen((p) => !p)
       }
-      // âŒ˜â‡§Z â€” checkpoint timeline
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "z") {
-        e.preventDefault()
-        useCheckpointStore.getState().togglePanel()
-      }
     }
     window.addEventListener("keydown", handleKey)
     return () => window.removeEventListener("keydown", handleKey)
@@ -683,8 +676,6 @@ export function CodeCanvasPage() {
             }}
           />
         )}
-        {/* Checkpoint Timeline */}
-        <CheckpointTimeline />
 
         {explorerOpen && (
           <aside

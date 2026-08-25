@@ -2,7 +2,6 @@ import { useState, useCallback, useRef, useMemo, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { WandSparkles, Send, X, Check, FileCode, Loader2, AlertCircle, CheckCheck, GitPullRequest } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useTimelineStore } from "./timeline/timeline-store"
 import { useWorkspaceStore } from "@/stores/workspace-store"
 import { useAgentStore } from "@/stores/agent-store"
 import { ExecutionSessionManager } from "@/runtime/sessions/ExecutionSessionManager"
@@ -53,34 +52,6 @@ export function MultiFileComposerPane() {
         correlationId,
         onPreview: () => {},
       })
-
-      // Collect file edits from the timeline
-      const checkEdits = () => {
-        const timeline = useTimelineStore.getState()
-        const sessionData = timeline.agentSessions.get(correlationId)
-        if (sessionData?.fileEdits) {
-          setFileEdits((prev) => {
-            const existing = new Set(prev.map((e) => e.path))
-            const newEdits = sessionData.fileEdits
-              .filter((e: FileEditRecord) => !existing.has(e.path))
-              .map((e: FileEditRecord) => ({
-                ...e,
-                accepted: false,
-                rejected: false,
-              }))
-            return newEdits.length > 0 ? [...prev, ...newEdits] : prev
-          })
-        }
-      }
-
-      // Poll for edits with a short delay
-      const interval = setInterval(checkEdits, 500)
-      setTimeout(() => clearInterval(interval), 60000)
-
-      // Also check immediately after completion
-      setTimeout(checkEdits, 1000)
-      setTimeout(checkEdits, 3000)
-      setTimeout(checkEdits, 5000)
 
       setIsGenerating(false)
     } catch (err) {

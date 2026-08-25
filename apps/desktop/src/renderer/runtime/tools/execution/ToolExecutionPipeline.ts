@@ -13,7 +13,6 @@ import type { LifecycleHookRegistry } from '../../lifecycle/LifecycleHookRegistr
 import { RuntimeOS } from '../../RuntimeOS'
 import { EventBus } from '../../EventBus'
 import { ToolFallbackRegistry } from '../policies/ToolFallbackRegistry'
-import { ToolRollbackManager } from './ToolRollbackManager'
 import { usePlanStore } from '@/stores/plan-store'
 import { usePermissionModeStore } from '@/stores/chat/permission-mode-store'
 
@@ -172,18 +171,6 @@ export class ToolExecutionPipeline {
       }
     }
 
-    const isWriteTool = WRITE_TOOLS.has(toolName)
-
-    let rollbackPointId: string | null = null
-    if (isWriteTool) {
-      try {
-        const rp = await ToolRollbackManager.getInstance().createPoint(ctx.sessionId ?? toolName, toolName, processedInput)
-        rollbackPointId = rp.id
-      } catch {
-        // Rollback point capture is best-effort
-      }
-    }
-
     try {
       let result: ToolResult
 
@@ -213,10 +200,6 @@ export class ToolExecutionPipeline {
       // ── Lifecycle: postToolUse ──
       if (lifecycleHooks) {
         await lifecycleHooks.dispatchAll('postToolUse', { toolName, toolArgs: input, toolResult: result, sessionId: ctx.sessionId }).catch(() => {})
-      }
-
-      if (rollbackPointId) {
-        ToolRollbackManager.getInstance().confirmPoint(rollbackPointId)
       }
 
       const durationMs = Math.round(performance.now() - startTime)

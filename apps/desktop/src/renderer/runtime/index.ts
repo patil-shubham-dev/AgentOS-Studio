@@ -43,7 +43,6 @@ export {
   EditExecutionController,
   WorkspaceSnapshotManager,
   PlanManager,
-  StreamManager,
   compressConversationHistory,
   TokenEstimator,
   PlanGenerator,

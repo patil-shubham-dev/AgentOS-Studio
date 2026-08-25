@@ -10,7 +10,6 @@ import { MemoryObserver } from "@/runtime/memory/MemoryObserver"
 import { RuntimeOS } from "@/runtime/RuntimeOS"
 import { RuntimeCleanupManager } from "@/runtime/RuntimeCleanupManager"
 import { setLogPersistence, createFilePersistence } from "@/lib/logger"
-import { useTimelineStore } from "@/components/workspace/timeline/timeline-store"
 import { StartupTiming } from "@/lib/startup-timing"
 import { StartupStore } from "@/lib/startup-store"
 import { StartupScheduler } from "@/lib/startup-scheduler"
@@ -173,8 +172,6 @@ export async function bootRuntime(): Promise<BootReport> {
   StartupTiming.mark('tier2:start')
   await StartupScheduler.executeTier2()
   StartupTiming.mark('tier2:complete')
-
-  useTimelineStore.getState().clear()
 
   ReadinessGate.mark('workspace')
 

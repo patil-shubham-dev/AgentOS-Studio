@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import {
   Command, File, Settings, PanelLeft, PanelRight, X,
   Globe, Palette, RefreshCw, Search, GitBranch, LayoutDashboard,
-  History, MessageSquare, Layers, HelpCircle, GitPullRequest,
+  MessageSquare, Layers, HelpCircle, GitPullRequest,
 } from "lucide-react"
 import { ShortcutHint } from "@/components/ui/ShortcutHint"
 
@@ -87,7 +87,6 @@ function HelpOverlay() {
           { keys: "⌘J", desc: "Toggle panel" },
           { keys: "⌘;", desc: "Toggle side chat" },
           { keys: "⌘⇧S", desc: "Session sidebar" },
-          { keys: "⌘⇧Z", desc: "Checkpoint history" },
           { keys: "⌘⇧F", desc: "Search in files" },
           { keys: "⌘W", desc: "Close tab" },
           { keys: "⌘S", desc: "Save file" },
@@ -234,20 +233,6 @@ export function CommandPalette({ open, onClose, context }: CommandPaletteProps) 
         onClose()
       },
       category: "View",
-    },
-    {
-      id: "toggle-history",
-      label: "Checkpoint History",
-      description: "View and restore file snapshots",
-      shortcut: "Ctrl+Shift+Z",
-      icon: <History className="h-3.5 w-3.5" />,
-      action: () => {
-        import("@/stores/checkpoint-store").then(({ useCheckpointStore }) => {
-          useCheckpointStore.getState().togglePanel()
-        })
-        onClose()
-      },
-      category: "System",
     },
   ], [context, onClose])
 

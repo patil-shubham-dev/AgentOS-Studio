@@ -22,7 +22,6 @@ export { ExecutionProfiler } from "@/runtime/execution/ExecutionProfiler"
 export { EditExecutionController } from "@/runtime/execution/EditExecutionController"
 export { WorkspaceSnapshotManager } from "@/runtime/execution/WorkspaceSnapshotManager"
 export { PlanManager } from "@/runtime/execution/PlanManager"
-export { StreamManager } from "@/runtime/streaming/StreamManager"
 
 // Context system
 export { compressConversationHistory } from "@/runtime/context/HistoryCompressor"

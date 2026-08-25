@@ -19,7 +19,6 @@ import { saveFile, getOrCreateModel, editorViewStateCache, isLargeFile, getMonac
 import { dirtyBufferManager } from "@/lib/dirty-buffer-manager"
 import { gitStatus } from "@/lib/git"
 import { useHistoryStore } from "@/stores/history-store"
-import { useCheckpointStore } from "@/stores/checkpoint-store"
 import { useAiChanges } from "./useAiChanges"
 import { EditPredictor } from "./EditPredictor"
 import { InteractiveTerminalPane } from "./InteractiveTerminalPane"
@@ -35,7 +34,6 @@ import { useMonacoMount } from "./useMonacoMount"
 import { LargeFileWarningBanner } from "./LargeFileWarningBanner"
 import { StreamingProgressBar } from "./StreamingProgressBar"
 import { TerminalToggleButton } from "./TerminalToggleButton"
-import { CheckpointPanel } from "./checkpoint-panel"
 
 // EXT_LANG_MAP, getMonacoLang, and DEFAULT_EDITOR_OPTIONS moved to editor-utils.ts
 
@@ -71,8 +69,6 @@ export function CodeWorkspace() {
   const [symbolSearchOpen, setSymbolSearchOpen] = useState(false)
   const historyOpen = useHistoryStore((s) => s.open)
   const toggleHistory = useHistoryStore((s) => s.toggleOpen)
-  const checkpointOpen = useCheckpointStore((s) => s.isOpen)
-  const toggleCheckpoint = useCheckpointStore((s) => s.togglePanel)
   const [currentFileSymbols, setCurrentFileSymbols] = useState<SymbolItem[]>([])
   const [aiChanges, setAiChanges] = useState<AIChange[]>([])
   const [showAiOverlay, setShowAiOverlay] = useState(false)
@@ -403,7 +399,6 @@ export function CodeWorkspace() {
         warningCount={warningCount}
         gitInfo={gitInfo}
         historyOpen={historyOpen}
-        checkpointOpen={checkpointOpen}
         sessionTokens={sessionTokens}
         sessionChars={sessionChars}
         onToggleWordWrap={() => setWordWrap((p) => !p)}
@@ -428,7 +423,6 @@ export function CodeWorkspace() {
             useHistoryStore.getState().loadFileHistory(activeFilePath)
           }
         }}
-        onToggleCheckpoint={toggleCheckpoint}
         onSymbolSearch={(symbols) => {
           setCurrentFileSymbols(symbols)
           setSymbolSearchOpen(true)
@@ -518,9 +512,6 @@ export function CodeWorkspace() {
         onCloseOutput={() => setShowOutput(false)}
         onNavigateToDiagnostic={handleNavigateToDiagnostic}
       />
-
-      {/* Checkpoint overlay panel */}
-      <CheckpointPanel />
 
       {/* Symbol search overlay */}
       <SymbolSearch
