@@ -1,6 +1,5 @@
 import type { RuntimeRole, AgentRoleConfig } from "@/types"
 import { TOKEN_CONFIG, RUNTIME_TOKEN_LIMITS } from "./runtime-token-config"
-import { ContextManager } from "@/runtime/context/ContextManager"
 import { getRolePromptFromCache, ensureInstructionFilesInitialized } from "@/runtime/load-instructions"
 
 export interface RoleDefinition {
@@ -878,19 +877,8 @@ function emitHardcodedFallbackWarning(role: string, stage: string): void {
 }
 
 export function getSystemPromptForRole(role: string): string {
-  try {
-    const cm = ContextManager.getInstance()
-    const input: any = { role, executionMode: undefined, memorySummary: undefined, customInstructions: undefined, environmentInfo: undefined }
-    cm.assembleSystemPrompt(input).then(result => {
-      if (typeof result.systemPrompt === 'string' && result.systemPrompt.length > 0) {
-        CACHED_NEW_PROMPTS.set(role, result.systemPrompt)
-      }
-    }).catch(() => {})
-    const cached = CACHED_NEW_PROMPTS.get(role)
-    if (typeof cached === 'string') return cached
-  } catch {
-    // ContextManager not initialized — fallback to file cache or hardcoded
-  }
+  const cached = CACHED_NEW_PROMPTS.get(role)
+  if (typeof cached === 'string') return cached
   const fileCached = getRolePromptFromCache(role)
   if (fileCached !== null) {
     fileBasedPromptsActive = true
