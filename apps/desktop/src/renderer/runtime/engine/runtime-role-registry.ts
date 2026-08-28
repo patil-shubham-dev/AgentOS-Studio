@@ -876,6 +876,7 @@ function emitHardcodedFallbackWarning(role: string, stage: string): void {
   console.warn(msg, 'background: #ff4444; color: white; font-weight: bold; padding: 2px 4px; border-radius: 2px; font-size: 13px;')
 }
 
+// PERMANENT: ContextManager deleted in PR A (a25b2fd) per 06_MASTER_PLAN Step 1. Harness owns context window; AgenticOS fallback is file-cache/hardcoded only.
 export function getSystemPromptForRole(role: string): string {
   const cached = CACHED_NEW_PROMPTS.get(role)
   if (typeof cached === 'string') return cached
