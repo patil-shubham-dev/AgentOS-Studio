@@ -27,6 +27,7 @@ const api = {
 
   // Workspace
   workspaceListFiles: (dp: string) => ipcRenderer.invoke('workspace-list-files', dp),
+  workspaceBootstrap: (workspaceRoot: string) => ipcRenderer.invoke('workspace:bootstrap', workspaceRoot),
 
   // Git
   gitStatus: (rp: string) => ipcRenderer.invoke('git-status', rp),

@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { resolve, normalize } from 'path'
 import { WorkspaceManager } from '../WorkspaceManager'
 import { setAllowedWorkspacePath, addGitAllowedPath, assertPathAllowed } from './path-utils'
+import { bootstrapWorkspace } from '../services/environment-bootstrapper'
 
 function validatePath(p: unknown, name = 'path'): string {
   if (typeof p !== 'string' || p.length === 0) throw new Error(`Invalid ${name}: must be a non-empty string`)
@@ -31,7 +32,24 @@ export function registerWorkspaceIpcHandlers(): void {
     if (!win) return null
     const folderPath = await wm.openFolderDialog(win)
     setAllowedWorkspacePath(folderPath)
-    if (folderPath) addGitAllowedPath(folderPath)
+    if (folderPath) {
+      addGitAllowedPath(folderPath)
+      // Phase 2: bootstrap harness-agnostic environment files (AGENTS.md, CLAUDE.md, MCP, skills)
+      // Idempotent — safe to run on every open, never clobbers user content outside markers
+      try {
+        const result = bootstrapWorkspace(folderPath)
+        if (!result.ok) {
+          console.warn(`[Workspace] bootstrap failed for ${folderPath}: ${result.error}`)
+        } else {
+          const updated = result.files.filter((f) => f.created || f.updated)
+          if (updated.length > 0) {
+            console.log(`[Workspace] bootstrapped ${updated.length} file(s) for ${folderPath}: ${updated.map((f) => f.file).join(", ")}`)
+          }
+        }
+      } catch (err) {
+        console.warn(`[Workspace] bootstrap error for ${folderPath}:`, err)
+      }
+    }
     return folderPath
   })
 
@@ -40,6 +58,26 @@ export function registerWorkspaceIpcHandlers(): void {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return null
     return wm.openWorkspaceDialog(win)
+  })
+
+  // Bootstrap harness-agnostic environment files (Phase 2) — idempotent
+  // Called on every workspace open (fresh or restored) before harness spawn
+  ipcMain.handle('workspace:bootstrap', async (_event, workspaceRoot: string) => {
+    const validated = validatePath(workspaceRoot, 'workspace root')
+    // Ensure workspace is allowed before writing
+    setAllowedWorkspacePath(validated)
+    addGitAllowedPath(validated)
+    try {
+      const result = bootstrapWorkspace(validated)
+      if (!result.ok) {
+        console.warn(`[Workspace] bootstrap failed for ${validated}: ${result.error}`)
+      }
+      return result
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn(`[Workspace] bootstrap error for ${validated}:`, message)
+      return { workspaceRoot: validated, files: [], ok: false, error: message }
+    }
   })
 
   // Normalize the main-process FileEntry (camelCase) to renderer FileEntry (snake_case)

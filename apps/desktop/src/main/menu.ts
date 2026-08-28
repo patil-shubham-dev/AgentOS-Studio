@@ -2,6 +2,7 @@ import { Menu, app } from 'electron'
 import type { WindowManager } from './window-manager'
 import { sendToWindow } from './ipc/safe-send'
 import { getWorkspaceManager } from './ipc/workspace'
+import { bootstrapWorkspace } from './services/environment-bootstrapper'
 
 export function createAppMenu(windowManager: WindowManager): void {
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -17,6 +18,14 @@ export function createAppMenu(windowManager: WindowManager): void {
             const wm = getWorkspaceManager()
             const folderPath = await wm.openFolderDialog(win)
             if (folderPath) {
+              try {
+                const result = bootstrapWorkspace(folderPath)
+                if (!result.ok) {
+                  console.warn(`[Menu] bootstrap failed for ${folderPath}: ${result.error}`)
+                }
+              } catch (err) {
+                console.warn(`[Menu] bootstrap error for ${folderPath}:`, err)
+              }
               sendToWindow(win, 'open-folder', folderPath)
             }
           }
