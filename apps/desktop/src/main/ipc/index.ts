@@ -11,6 +11,7 @@ import { assertPathAllowed, isPathAllowed, filterDeniedPaths, assertGitRepoPath 
 import { registerHttpProxyHandler } from './http-proxy'
 import { registerViewportHandlers } from './viewport'
 import { registerInstructionFileHandlers } from './instruction-files'
+import { registerHarnessIpcHandlers } from './harness'
 export function registerAllIpcHandlers(
   windowManager: WindowManager,
   browserManager: BrowserManager,
@@ -39,6 +40,7 @@ export function registerAllIpcHandlers(
   registerViewportHandlers(viewportManager, windowManager)
   registerImportSettingsHandlers()
   registerInstructionFileHandlers()
+  registerHarnessIpcHandlers()
 }
 
 function registerDevHandlers(): void {
@@ -623,10 +625,11 @@ function registerBrowserHandlers(bm: BrowserManager): void {
 }
 
 function registerTerminalHandlers(tm: TerminalManager): void {
-  ipcMain.handle('terminal-create', async (_e, opts?: { shellPath?: string; cwd?: string }) => {
+  ipcMain.handle('terminal-create', async (_e, opts?: { shellPath?: string; cwd?: string; args?: string[] }) => {
     if (opts && typeof opts === 'object') {
       if (opts.shellPath) validateString(opts.shellPath, 'shell path', 1024)
       if (opts.cwd) validatePath(opts.cwd, 'working directory')
+      if (opts.args) { if (!Array.isArray(opts.args)) throw new Error('Invalid args: must be string[]'); for (const a of opts.args) validateString(a, 'arg', 1024) }
     }
     return tm.create(opts)
   })
@@ -800,3 +803,6 @@ import { registerReplayHandlers } from './replay'
 import { registerVerificationHandlers } from '../verification/index'
 import { registerImportSettingsHandlers } from './import-settings'
 import { nativeImage } from 'electron'
+
+
+

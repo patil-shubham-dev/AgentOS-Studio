@@ -25,6 +25,7 @@ const api = {
   startFileWatcher: (dp: string) => ipcRenderer.invoke('start-file-watcher', dp),
   stopFileWatcher: (dp: string) => ipcRenderer.invoke('stop-file-watcher', dp),
 
+
   // Workspace
   workspaceListFiles: (dp: string) => ipcRenderer.invoke('workspace-list-files', dp),
   workspaceBootstrap: (workspaceRoot: string) => ipcRenderer.invoke('workspace:bootstrap', workspaceRoot),
@@ -176,6 +177,12 @@ const api = {
   proxyHttpStreamAbort: (streamId: string) =>
     ipcRenderer.invoke('proxy-http-stream-abort', streamId),
 
+  // Harness
+  harnessGetVersion: \(name: string\) => ipcRenderer.invoke\('harness:getVersion', name\),
+  harnessIsInstalled: \(name: string\) => ipcRenderer.invoke\('harness:isInstalled', name\),
+  harnessList: \(\) => ipcRenderer.invoke\('harness:list'\),
+  harnessGetInstallCandidates: \(name: string\) => ipcRenderer.invoke\('harness:getInstallCandidates', name\),
+
   // Workspace
   workspaceOpenFolder: () => ipcRenderer.invoke('workspace:open-folder'),
   workspaceOpenWorkspace: () => ipcRenderer.invoke('workspace:open-workspace'),
@@ -257,3 +264,5 @@ const api = {
 contextBridge.exposeInMainWorld('electronAPI', api)
 
 export type ElectronAPI = typeof api
+
+
