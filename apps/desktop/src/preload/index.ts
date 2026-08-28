@@ -178,10 +178,10 @@ const api = {
     ipcRenderer.invoke('proxy-http-stream-abort', streamId),
 
   // Harness
-  harnessGetVersion: \(name: string\) => ipcRenderer.invoke\('harness:getVersion', name\),
-  harnessIsInstalled: \(name: string\) => ipcRenderer.invoke\('harness:isInstalled', name\),
-  harnessList: \(\) => ipcRenderer.invoke\('harness:list'\),
-  harnessGetInstallCandidates: \(name: string\) => ipcRenderer.invoke\('harness:getInstallCandidates', name\),
+  harnessGetVersion: (name: string) => ipcRenderer.invoke('harness:getVersion', name),
+  harnessIsInstalled: (name: string) => ipcRenderer.invoke('harness:isInstalled', name),
+  harnessList: () => ipcRenderer.invoke('harness:list'),
+  harnessGetInstallCandidates: (name: string) => ipcRenderer.invoke('harness:getInstallCandidates', name),
 
   // Workspace
   workspaceOpenFolder: () => ipcRenderer.invoke('workspace:open-folder'),
