@@ -33,6 +33,7 @@ import { usePanelCoordinator } from "@/stores/panel-coordinator"
 import { useDiffStore } from "@/stores/diff-store"
 
 import { usePaneStore } from "@/stores/pane-store"
+import { recordAttribution } from "@/lib/edit-attribution"
 import { usePanelResize } from "@/hooks/use-panel-resize"
 import { Button } from "@agentic-os/ui"
 import { cn } from "@/lib/utils"
@@ -413,6 +414,10 @@ export function CodeCanvasPage() {
         const relativePath = rootPath
           ? event.path.replace(/\\/g, "/").replace(`${rootPath.replace(/\\/g, "/").replace(/\/$/, "")}/`, "")
           : event.path.replace(/\\/g, "/")
+        // Phase 6 attribution: external write while harness PTY active and editor didn't originate it => agent
+        const hasHarness = typeof window !== "undefined" && !!(window as unknown as Record<string, unknown>).__harnessHasSession
+        // We treat all external modifications as potential agent edits when not dirty; refined via terminal manager later
+        recordAttribution(relativePath, hasHarness ? "agent" : "external", !!hasHarness)
         const openFileEntry = state.openFiles.find((file) => file.path === relativePath)
         if (openFileEntry && !openFileEntry.isDirty && rootPath) {
           const absolutePath = `${rootPath}\\${relativePath.replace(/\//g, "\\")}`

@@ -26,6 +26,7 @@ import { InteractiveTerminalPane } from "./InteractiveTerminalPane"
 import { requestRefresh } from "@/runtime/runtime-coordinator"
 import { useHaptic } from "@/lib/haptics"
 import { unregisterInlineCompletionProvider, cleanupCompletionTracking } from "@/lib/completion/completion-provider"
+import { recordAttribution } from "@/lib/edit-attribution"
 import { EditorArea } from "./EditorArea"
 import { EditorOverlays, type InlineEditState } from "./EditorOverlays"
 import { useStreamingState } from "./use-streaming-state"
@@ -222,13 +223,14 @@ export function CodeWorkspace() {
   // ── Debounced refresh on file content changes ──
   const contentRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ── Content change handler ──
+  // ── Content change handler — Phase 6: Monaco keystroke = user origin ──
   const handleContentChange: OnChange = useCallback((value) => {
     if (!activeFile || value === undefined) return
     const current = useWorkspaceStore.getState().openFiles.find((f) => f.path === activeFile.path)
     if (current && current.content !== value) {
       updateFileContent(activeFile.path, value)
       dirtyBufferManager.markDirty(activeFile.path, value)
+      recordAttribution(activeFile.path, "user", false)
     }
     // Debounced context refresh: AI sees the new content 2s after user stops typing
     if (contentRefreshRef.current) clearTimeout(contentRefreshRef.current)
