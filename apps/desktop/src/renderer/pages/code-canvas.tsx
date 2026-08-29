@@ -9,9 +9,10 @@ import { addRecentWorkspace, getRecentWorkspaces, pickWorkspaceFolder, startWatc
 import { workspaceIndex } from "@/lib/search-index"
 import { Explorer, type ExplorerHandle } from "@/components/workspace/explorer/Explorer"
 import { CodeWorkspace } from "@/components/workspace/code-workspace"
-import { ChatPanel } from "@/components/workspace/chat-panel"
+import { HarnessTerminalPanel } from "@/components/workspace/harness-terminal-panel"
 
 const DesignWorkspace = lazy(() => import("@/components/workspace/design-workspace").then(m => ({ default: m.DesignWorkspace })))
+const BrowserWorkspace = lazy(() => import("@/components/workspace/browser/browser-workspace").then(m => ({ default: m.BrowserWorkspace })))
 import { ConfigInitBanner } from "@/components/workspace/ConfigInitBanner"
 
 import { dirtyBufferManager, type DirtyBuffer } from "@/lib/dirty-buffer-manager"
@@ -31,6 +32,7 @@ import { useSessionStore } from "@/stores/session-store"
 import { usePanelCoordinator } from "@/stores/panel-coordinator"
 import { useDiffStore } from "@/stores/diff-store"
 
+import { usePaneStore } from "@/stores/pane-store"
 import { usePanelResize } from "@/hooks/use-panel-resize"
 import { Button } from "@agentic-os/ui"
 import { cn } from "@/lib/utils"
@@ -46,16 +48,18 @@ import {
   CodePanelIcon,
   DesignPanelIcon,
 } from "@/components/ui/PanelIcons"
+import { Globe } from "lucide-react"
 
 const WORKSPACE_PANEL_OPTIONS: { id: WorkspacePanel; label: string; icon: typeof CodePanelIcon }[] = [
   { id: "code", label: "Code", icon: CodePanelIcon },
   { id: "design", label: "Design & Preview", icon: DesignPanelIcon },
+  { id: "browser", label: "Browser", icon: Globe as unknown as typeof CodePanelIcon },
 ]
 
 const PANEL_STORAGE_KEY_PREFIX = "aos-panel-"
 
 function isWorkspacePanel(panel: string): panel is WorkspacePanel {
-  return panel === "code" || panel === "design"
+  return panel === "code" || panel === "design" || panel === "browser"
 }
 
 function loadPanelState<T>(key: string, defaultVal: T): T {
@@ -107,10 +111,17 @@ export function CodeCanvasPage() {
   const unlistenRef = useRef<(() => void) | null>(null)
 
   // â”€â”€ Panel state (persisted to localStorage) â”€â”€
-  const [explorerOpen, setExplorerOpen] = useState(() => loadPanelState("explorerOpen", true))
+  // Phase 4 dedup: explorer + session sidebar are canonical via pane-store (single source).
+  const explorerOpen = usePaneStore((s) => s.panes.find((p) => p.id === "explorer")?.visible ?? true)
+  const setExplorerOpen = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    const cur = usePaneStore.getState().panes.find((p) => p.id === "explorer")?.visible ?? true
+    const val = typeof next === "function" ? (next as (p: boolean) => boolean)(cur) : next
+    usePaneStore.getState().setPaneVisibility("explorer", val)
+  }, [])
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel>(() => loadPanelState("workspacePanel", "code"))
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(() => loadPanelState("workspacePanelOpen", true))
-  const [sessionSidebarOpen, setSessionSidebarOpen] = useState(() => loadPanelState("sessionSidebarOpen", false))
+  const sessionSidebarOpen = usePaneStore((s) => s.sessionSidebarOpen)
+  const setSessionSidebarOpen = usePaneStore((s) => s.setSessionSidebarOpen)
   const [windowWidth, setWindowWidth] = useState(window.innerWidth)
   const isNarrow = windowWidth < 900
   const searchOpen = useWorkspaceStore((s) => s.searchOpen)
@@ -121,16 +132,18 @@ export function CodeCanvasPage() {
   const lastPaneAction = usePanelCoordinator((s) => s.lastAction)
 
   const layoutRef = useRef<HTMLDivElement>(null)
+  // Per-mode width presets via distinct storage keys so each mode remembers its width
+  const workspaceDefaultWidth = workspacePanel === "browser" ? 640 : workspacePanel === "design" ? 560 : 480
   const explorerResize = usePanelResize(layoutRef, {
     id: "explorer",
-    defaultWidth: 300,
+    defaultWidth: workspacePanel === "browser" ? 220 : 280,
     minWidth: 200,
     maxWidth: 500,
     direction: "horizontal",
   })
   const workspaceResize = usePanelResize(layoutRef, {
-    id: "workspace",
-    defaultWidth: 480,
+    id: `workspace-${workspacePanel}`,
+    defaultWidth: workspaceDefaultWidth,
     minWidth: 380,
     maxWidth: 900,
     direction: "horizontal",
@@ -609,10 +622,9 @@ export function CodeCanvasPage() {
   }, [explorerOpen, workspacePanelOpen])
 
   // â”€â”€ Persist panel state on change â”€â”€
-  useEffect(() => { persistPanelState("explorerOpen", explorerOpen) }, [explorerOpen])
+  // pane-store handles explorer/sessionSidebar persistence; keep only workspace panel keys here
   useEffect(() => { persistPanelState("workspacePanel", workspacePanel) }, [workspacePanel])
   useEffect(() => { persistPanelState("workspacePanelOpen", workspacePanelOpen) }, [workspacePanelOpen])
-  useEffect(() => { persistPanelState("sessionSidebarOpen", sessionSidebarOpen) }, [sessionSidebarOpen])
 
   // â”€â”€ Workbench routing: sync AI actions to fixed workspace regions â”€â”€
   useEffect(() => {
@@ -677,7 +689,7 @@ export function CodeCanvasPage() {
           />
         )}
 
-        {explorerOpen && (
+        {explorerOpen && workspacePanel !== "browser" && (
           <aside
             className={cn(
               "z-30 flex h-full flex-col overflow-hidden bg-[var(--surface-panel)]",
@@ -694,7 +706,7 @@ export function CodeCanvasPage() {
           </aside>
         )}
 
-        {explorerOpen && !isNarrow && (
+        {explorerOpen && workspacePanel !== "browser" && !isNarrow && (
           <div
             className="flex w-1 cursor-col-resize shrink-0 items-center justify-center bg-transparent hover:bg-[var(--border-subtle)] active:bg-[var(--color-accent-blue)]/30 transition-colors group"
             onMouseDown={explorerResize.handleDragStart}
@@ -704,7 +716,7 @@ export function CodeCanvasPage() {
           </div>
         )}
 
-        {isNarrow && explorerOpen && (
+        {isNarrow && explorerOpen && workspacePanel !== "browser" && (
           <button
             type="button"
             className="absolute inset-0 z-20 bg-black/45"
@@ -714,8 +726,11 @@ export function CodeCanvasPage() {
         )}
 
         <section
-          className="flex min-w-[320px] flex-1 flex-col overflow-hidden border-r border-[var(--border-subtle)] bg-[var(--surface-app)]"
-          aria-label="Chat workspace"
+          className={cn(
+            "flex flex-col overflow-hidden border-r border-[var(--border-subtle)] bg-[var(--surface-app)]",
+            workspacePanel === "browser" ? "min-w-[320px] flex-[0.8]" : "min-w-[320px] flex-1"
+          )}
+          aria-label="Harness terminal workspace"
         >
           <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-panel)] px-3">
             <div className="flex min-w-0 items-center gap-2">
@@ -735,7 +750,7 @@ export function CodeCanvasPage() {
               </button>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="truncate text-[11px] font-semibold text-[var(--text-secondary)]">Assistant</span>
+                  <span className="truncate text-[11px] font-semibold text-[var(--text-secondary)]">Terminal</span>
                   <WorkflowModeIndicator />
                   <span
                     className={cn(
@@ -789,7 +804,7 @@ export function CodeCanvasPage() {
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <ErrorBoundary name="ChatPanel"><ChatPanel /></ErrorBoundary>
+            <ErrorBoundary name="HarnessTerminal"><HarnessTerminalPanel /></ErrorBoundary>
           </div>
         </section>
 
@@ -857,6 +872,12 @@ export function CodeCanvasPage() {
             <div className="min-h-0 flex-1 overflow-hidden">
               {workspacePanel === "code" ? (
                 <WorkspaceErrorBoundary><CodeWorkspace /></WorkspaceErrorBoundary>
+              ) : workspacePanel === "browser" ? (
+                <WorkspaceErrorBoundary>
+                  <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--text-tertiary)]">Loading browser...</div>}>
+                    <BrowserWorkspace />
+                  </Suspense>
+                </WorkspaceErrorBoundary>
               ) : (
                 <WorkspaceErrorBoundary>
                   <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--text-tertiary)]">Loading design...</div>}>

@@ -6,7 +6,6 @@ import { ControlCenterPage } from '@/pages/control-center'
 import { CodeCanvasPage } from '@/pages/code-canvas'
 import { SettingsPage } from '@/pages/settings'
 import { GitPage } from '@/pages/git'
-import { RuntimeHealthPanel } from '@/components/runtime/RuntimeHealthPanel'
 import { StressTestPage } from '@/pages/__stress-test'
 import { useLeakTracker } from '@/performance/leak-detector'
 import { ReducedMotionProvider } from '@/lib/reduced-motion'
@@ -163,10 +162,7 @@ export default function App({ startupPhase }: AppProps) {
           <Route path="/git" element={<SafeErrorBoundary name="Git"><RouteContainer><GitPage /></RouteContainer></SafeErrorBoundary>} />
           <Route path="/install" element={<InstallWizard />} />
           {import.meta.env.DEV && (
-            <>
-              <Route path="/__health" element={<SafeErrorBoundary name="Health"><RuntimeHealthPanel /></SafeErrorBoundary>} />
-              <Route path="/__stress" element={<SafeErrorBoundary name="StressTest"><StressTestPage /></SafeErrorBoundary>} />
-            </>
+            <Route path="/__stress" element={<SafeErrorBoundary name="StressTest"><StressTestPage /></SafeErrorBoundary>} />
           )}
           <Route path="*" element={
             startupPhase === 'booting'

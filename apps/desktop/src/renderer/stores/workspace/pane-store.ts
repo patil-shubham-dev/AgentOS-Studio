@@ -6,6 +6,7 @@ export type PaneType =
   | "code"
   | "diff"
   | "design"
+  | "browser"
   | "explorer"
   | "tasks"
   | "terminal"
@@ -107,6 +108,7 @@ const DEFAULT_PANES: PaneInstance[] = [
   { id: "code", type: "code", visible: true, order: 2, size: 480, minSize: 300, maxSize: Infinity, zone: "main" },
   { id: "diff", type: "diff", visible: false, order: 3, size: 480, minSize: 300, maxSize: Infinity, zone: "main" },
   { id: "design", type: "design", visible: false, order: 4, size: 480, minSize: 300, maxSize: Infinity, zone: "main" },
+  { id: "browser", type: "browser", visible: false, order: 5, size: 560, minSize: 320, maxSize: Infinity, zone: "main" },
   { id: "terminal", type: "terminal", visible: false, order: 0, size: 1, minSize: 100, maxSize: Infinity, zone: "bottom" },
   { id: "problems", type: "problems", visible: false, order: 1, size: 1, minSize: 100, maxSize: Infinity, zone: "bottom" },
   { id: "output", type: "output", visible: false, order: 2, size: 1, minSize: 100, maxSize: Infinity, zone: "bottom" },

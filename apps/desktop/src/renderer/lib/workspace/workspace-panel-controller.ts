@@ -1,6 +1,6 @@
 import type { AgentStore, OrchestrationStep, AgentAssignment } from "@/stores/agent-store"
 
-export type WorkspacePanel = "code" | "design"
+export type WorkspacePanel = "code" | "design" | "browser"
 
 export type TabInteractionEvent =
   | { type: "TAB_CLICK"; panel: WorkspacePanel; timestamp: number }
@@ -151,7 +151,7 @@ export class WorkspacePanelController {
     const browserAssignment = agentState.agentAssignments.find(
       (a: AgentAssignment) => a.role === "browser" && a.status === "active",
     )
-    if (browserStep || browserAssignment) return "design"
+    if (browserStep || browserAssignment) return "browser"
 
     const designStep = agentState.orchestrationSteps.find(
       (s: OrchestrationStep) => s.agent === "design" && s.status === "running",
@@ -171,6 +171,7 @@ export class WorkspacePanelController {
 
   private _reasonText(panel: WorkspacePanel): string {
     switch (panel) {
+      case "browser": return "browser agent running"
       case "design": return "design agent running"
       case "code": return "coder agent running"
       default: return ""
