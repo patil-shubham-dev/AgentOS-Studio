@@ -12,7 +12,6 @@ import { useApprovalStore } from '../../runtime/approval-gate'
 import { useAgentStore } from '../../stores/agent-store'
 import { useAppStore } from '@/stores/settings/app-store'
 import { useLeakTracker } from '@/performance/leak-detector'
-import { ExecutionSessionManager } from '@/runtime/sessions/ExecutionSessionManager'
 import { fadeInUp } from '@/lib/motion'
 import { useReducedMotion } from '@/lib/reduced-motion'
 import { QuickStartWizard } from '@/components/workspace/QuickStartWizard'
@@ -102,18 +101,9 @@ function AgentActivityBadge() {
         }}
       />
       <span>Agent working...</span>
-      <button
-        onClick={() => ExecutionSessionManager.cancelCurrent()}
-        className="rounded-full border px-2 py-0.5 text-[11px] transition-colors"
-        style={{
-          borderColor: "var(--border-default)",
-          color: "var(--text-quaternary)",
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--text-quaternary)"; e.currentTarget.style.color = "var(--text-secondary)" }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-default)"; e.currentTarget.style.color = "var(--text-quaternary)" }}
-      >
+      <span className="rounded-full border px-2 py-0.5 text-[11px]" style={{ borderColor: "var(--border-default)", color: "var(--text-quaternary)" }}>
         Cancel
-      </button>
+      </span>
     </div>
   )
 }

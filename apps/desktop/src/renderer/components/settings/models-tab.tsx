@@ -4,8 +4,20 @@ import { cn } from "@/lib/utils"
 import { safeCapitalize } from "@/lib/safeCapitalize"
 import { Badge, TooltipSimple as Tooltip } from "@agentic-os/ui"
 import { useAppStore } from "@/stores/app-store"
-import { useModelBenchmarks, type ModelBenchmarkData } from "@/hooks/use-model-benchmarks"
 import type { ProviderModel, GatewayProvider } from "@/types"
+
+type ModelBenchmarkData = {
+  latencyMs: number | null
+  tokensPerSec: number | null
+  ttftMs: number | null
+  p50Ms: number | null
+  p95Ms: number | null
+  p99Ms: number | null
+  samples: number
+  isHealthy: boolean
+  lastChecked: number
+  providerError: string | null
+}
 import {
   Search, Box, Brain, Code2, Image, Zap,
   Clock, MoveRight, Activity,
@@ -341,8 +353,8 @@ export function ModelsTab() {
   const [sortField, setSortField] = useState<SortField>("contextWindow")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
-  // Real-time benchmark data from observability layer
-  const { benchmarks } = useModelBenchmarks(providers)
+  // Phase 1: benchmark hook deleted — no provider benchmark data
+  const benchmarks: BenchmarkSummary = {}
 
   // Derive all models grouped by provider
   const providerModels = useMemo(() => {

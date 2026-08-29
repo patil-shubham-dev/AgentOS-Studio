@@ -3,7 +3,6 @@ import type { editor } from "monaco-editor"
 import type { OnMount, OnChange } from "@monaco-editor/react"
 import Editor from "@monaco-editor/react"
 import { DiffViewerPane } from "./diff-viewer/DiffViewerPane"
-import { MultiFileComposerPane } from "./MultiFileComposerPane"
 import { SplitEditor } from "./SplitEditor"
 import type { OpenFile } from "@/types"
 
@@ -39,8 +38,6 @@ export function EditorArea({
           onSwitchToEditor={onSwitchToEditor}
           diffReviewFile={diffReviewFile}
         />
-      ) : editorMode === "composer" ? (
-        <MultiFileComposerPane />
       ) : splitMode === "none" ? (
         <Editor
           key="monaco-editor"

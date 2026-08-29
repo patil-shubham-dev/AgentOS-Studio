@@ -5,10 +5,7 @@ import type { GitStatus, GitCommit } from "@/lib/git"
 import { Button, Input } from "@agentic-os/ui"
 import { cn } from "@/lib/utils"
 import { emitTelemetry } from "@/lib/telemetry"
-import { GitBranch, GitCommit as GitCommitIcon, RotateCcw, History, Plus, Check, Upload, Download, ArrowLeftRight, FileCode, List, X, Sparkles, ChevronDown, ChevronRight, AlertTriangle, BugIcon, BookOpen } from "lucide-react"
-import { reviewDiffWithAI } from "@/lib/diff-review-agent"
-import { useDiffReviewStore, type ReviewComment } from "@/stores/diff-review-store"
-import type { DiffFileEntry } from "@/stores/diff-store"
+import { GitBranch, GitCommit as GitCommitIcon, RotateCcw, History, Plus, Check, Upload, Download, ArrowLeftRight, FileCode, List, X } from "lucide-react"
 
 const AI_COMMIT_TEMPLATES = [
   "feat: add ",
@@ -220,103 +217,7 @@ export function GitPanel() {
     setCommitMsg(tpl + name)
   }
 
-  const [reviewing, setReviewing] = useState(false)
-  const [reviewOpen, setReviewOpen] = useState(false)
-  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
-  const abortRef = useRef<AbortController | null>(null)
-  const reviewComments = useDiffReviewStore((s) => s.comments)
-  const reviewInProgress = useDiffReviewStore((s) => s.reviewInProgress)
-  const reviewError = useDiffReviewStore((s) => s.reviewError)
-
-  function countHunks(rawDiff: string): number {
-    return (rawDiff.match(/^@@ /gm) || []).length
-  }
-
-  async function handleReviewAll() {
-    if (!rootPath || !status || status.changes.length === 0) return
-    setReviewOpen(true)
-    setReviewing(true)
-    const abort = new AbortController()
-    abortRef.current = abort
-
-    try {
-      const entries: DiffFileEntry[] = []
-      for (const change of status.changes) {
-        const rawDiff = await git.gitDiff(rootPath, change.path)
-        const hunkCount = countHunks(rawDiff)
-        if (hunkCount === 0 && change.status !== "??") continue
-        entries.push({
-          path: change.path,
-          originalContent: "",
-          modifiedContent: "",
-          rawDiff,
-          hunks: Array.from({ length: hunkCount }, (_, i) => ({
-            hunkIndex: i,
-            header: "",
-            status: "pending" as const,
-            additions: 0,
-            deletions: 0,
-          })),
-          status: "pending" as const,
-          createdAt: Date.now(),
-          source: "manual" as const,
-        })
-      }
-
-      if (entries.length === 0) {
-        setReviewing(false)
-        return
-      }
-
-      await reviewDiffWithAI(entries, abort.signal)
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return
-      console.error("[git-panel] Review failed:", err)
-    } finally {
-      setReviewing(false)
-      abortRef.current = null
-    }
-  }
-
-  function cancelReview() {
-    abortRef.current?.abort()
-    useDiffReviewStore.getState().setReviewInProgress(false)
-  }
-
-  function clearReview() {
-    useDiffReviewStore.getState().clearAll()
-    setReviewOpen(false)
-    setExpandedFiles(new Set())
-  }
-
-  function toggleFile(filePath: string) {
-    setExpandedFiles((prev) => {
-      const next = new Set(prev)
-      if (next.has(filePath)) next.delete(filePath)
-      else next.add(filePath)
-      return next
-    })
-  }
-
-  function groupCommentsByFile(): Map<string, ReviewComment[]> {
-    const grouped = new Map<string, ReviewComment[]>()
-    for (const [, comments] of reviewComments) {
-      for (const c of comments) {
-        const existing = grouped.get(c.filePath) ?? []
-        existing.push(c)
-        grouped.set(c.filePath, existing)
-      }
-    }
-    return grouped
-  }
-
-  function severityIcon(severity: string) {
-    switch (severity) {
-      case "error": return <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
-      case "warning": return <BugIcon className="h-3 w-3 text-amber-400 shrink-0" />
-      default: return <BookOpen className="h-3 w-3 text-blue-400 shrink-0" />
-    }
-  }
+  // Phase 1: AI review deleted — no diff-review-agent
 
   const statusColor: Record<string, string> = {
     "M": "text-yellow-500",
@@ -408,18 +309,7 @@ export function GitPanel() {
           </Button>
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handlePull} disabled={loading} title="Pull">
             <Download className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn("h-6 w-6 p-0", reviewOpen && "text-blue-400")}
-            onClick={reviewOpen ? clearReview : handleReviewAll}
-            disabled={loading || !status || status.changes.length === 0}
-            title={reviewOpen ? "Close review" : "Review code with AI"}
-          >
-            <Sparkles className="h-3 w-3" />
-          </Button>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={refresh} disabled={loading}>
+          </Button><Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={refresh} disabled={loading}>
             <RotateCcw className="h-3 w-3" />
           </Button>
         </div>
@@ -546,112 +436,7 @@ export function GitPanel() {
       </div>
 
       {/* AI Review Results */}
-      {reviewOpen && (
-        <div className="rounded border border-purple-500/20 bg-purple-500/5 overflow-hidden">
-          <div className="flex items-center justify-between px-2 py-1.5 border-b border-purple-500/10">
-            <div className="flex items-center gap-1.5 text-[10px] font-medium text-purple-400">
-              <Sparkles className="h-3 w-3" /> AI Code Review
-            </div>
-            <div className="flex items-center gap-1">
-              {reviewInProgress && (
-                <button
-                  onClick={cancelReview}
-                  className="text-[9px] text-red-400/70 hover:text-red-400 transition-colors"
-                >
-                  Cancel
-                </button>
-              )}
-              <button
-                onClick={clearReview}
-                className="text-[9px] text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="p-2 max-h-52 overflow-y-auto space-y-1">
-            {reviewInProgress && (
-              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                <div className="h-1 flex-1 rounded-full bg-white/[0.05] overflow-hidden">
-                  <div className="h-full w-1/3 rounded-full bg-purple-500 animate-pulse" />
-                </div>
-                <span>Reviewing {status?.changes.length} file(s)...</span>
-              </div>
-            )}
-
-            {reviewError && (
-              <div className="rounded border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-[10px] text-red-400">
-                {reviewError}
-              </div>
-            )}
-
-            {!reviewInProgress && !reviewError && reviewComments.size === 0 && (
-              <div className="text-[10px] text-muted-foreground text-center py-2">
-                No issues found — looking good!
-              </div>
-            )}
-
-            {!reviewInProgress && groupCommentsByFile().size > 0 && (
-              <div className="space-y-1">
-                {Array.from(groupCommentsByFile().entries()).map(([filePath, comments]) => {
-                  const errors = comments.filter((c) => c.severity === "error").length
-                  const warnings = comments.filter((c) => c.severity === "warning").length
-                  return (
-                    <div key={filePath}>
-                      <button
-                        onClick={() => toggleFile(filePath)}
-                        className="flex items-center gap-1.5 w-full text-left rounded px-1.5 py-1 text-[10px] hover:bg-white/[0.04] transition-colors"
-                      >
-                        {expandedFiles.has(filePath)
-                          ? <ChevronDown className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
-                          : <ChevronRight className="h-2.5 w-2.5 text-muted-foreground shrink-0" />}
-                        <span className="truncate flex-1 font-mono">{filePath}</span>
-                        {errors > 0 && <span className="text-red-400 font-medium">{errors} err</span>}
-                        {warnings > 0 && <span className="text-amber-400 font-medium ml-1">{warnings} warn</span>}
-                        <span className="text-muted-foreground">({comments.length})</span>
-                      </button>
-
-                      {expandedFiles.has(filePath) && (
-                        <div className="ml-3 space-y-0.5 mt-0.5">
-                          {comments.map((c, ci) => (
-                            <div
-                              key={`${c.id}-${ci}`}
-                              className="rounded border border-white/[0.04] px-1.5 py-1 text-[9px]"
-                            >
-                              <div className="flex items-center gap-1 mb-0.5">
-                                {severityIcon(c.severity)}
-                                <span className={cn(
-                                  "font-medium uppercase tracking-wider",
-                                  c.severity === "error" && "text-red-400",
-                                  c.severity === "warning" && "text-amber-400",
-                                  c.severity === "info" && "text-blue-400",
-                                )}>
-                                  {c.category}
-                                </span>
-                                <span className="text-muted-foreground">· L{c.lineNumber}</span>
-                              </div>
-                              <p className="text-white/70 leading-relaxed">{c.content}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {!reviewInProgress && !reviewError && reviewComments.size > 0 && groupCommentsByFile().size === 0 && (
-              <div className="text-[10px] text-muted-foreground text-center py-2">
-                No specific issues found
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* History */}
+            {/* History */}
       {commits.length > 0 && (
         <div className="flex-1 overflow-y-auto space-y-1">
           <p className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">

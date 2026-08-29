@@ -13,7 +13,6 @@ import {
   rejectDiffReviewFile,
   rejectDiffReviewHunk,
 } from "@/lib/diff-review"
-import { reviewDiffWithAI } from "@/lib/diff-review-agent"
 import {
   CheckCheck, XCircle, GitBranch,
   Eye, EyeOff, ChevronLeft, ChevronRight, Loader2,
@@ -100,8 +99,7 @@ export function DiffViewerPane({ onSwitchToEditor, diffReviewFile }: DiffViewerP
 
   const handleReview = useCallback(() => {
     if (fileList.length === 0) return
-    setReviewError(null)
-    void reviewDiffWithAI(fileList)
+    setReviewError("AI review removed — use harness terminal directly (Phase 1)")
   }, [fileList, setReviewError])
 
   if (fileList.length === 0) {

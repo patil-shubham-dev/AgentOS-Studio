@@ -19,7 +19,6 @@ import { saveFile, getOrCreateModel, editorViewStateCache, isLargeFile, getMonac
 import { dirtyBufferManager } from "@/lib/dirty-buffer-manager"
 import { gitStatus } from "@/lib/git"
 import { useHistoryStore } from "@/stores/history-store"
-import { useAiChanges } from "./useAiChanges"
 import { EditPredictor } from "./EditPredictor"
 import { InteractiveTerminalPane } from "./InteractiveTerminalPane"
 
@@ -29,7 +28,6 @@ import { unregisterInlineCompletionProvider, cleanupCompletionTracking } from "@
 import { recordAttribution } from "@/lib/edit-attribution"
 import { EditorArea } from "./EditorArea"
 import { EditorOverlays, type InlineEditState } from "./EditorOverlays"
-import { useStreamingState } from "./use-streaming-state"
 import { useDiffNavigation } from "./useKeyboardShortcuts"
 import { useMonacoMount } from "./useMonacoMount"
 import { LargeFileWarningBanner } from "./LargeFileWarningBanner"
@@ -97,7 +95,12 @@ export function CodeWorkspace() {
     viewMode: "edit",
   })
 
-  const { isStreaming: liveStreamActive, streamingFilePath: liveEditingFile, streamProgress, sessionTokens, sessionChars } = useStreamingState()
+  // Phase 1: streaming state deleted with chat cluster — no live stream
+  const liveStreamActive = false
+  const liveEditingFile: string | null = null
+  const streamProgress = 0
+  const sessionTokens = 0
+  const sessionChars = 0
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath)
   const isInAiContext = activeFile ? aiContextFiles.some((f) => f.path === activeFile.path) : false
@@ -280,8 +283,8 @@ export function CodeWorkspace() {
     setShowAiOverlay(false)
   }
 
-  // ── Listen for AI-generated changes from the execution timeline ──
-  useAiChanges(activeFile, setAiChanges, setShowAiOverlay)
+  // Phase 1: AI changes from execution timeline deleted — no ESM stream
+  void activeFile
 
   // Clean up content-change debounce timer and completion provider on unmount
   useEffect(() => {

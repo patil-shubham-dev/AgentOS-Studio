@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useAppStore } from "@/stores/app-store"
-import { validateIntegrity, reconcile, type IntegrityReport, type ValidationIssue, type ReconciliationResult } from "@/runtime/runtime-engine"
+
+// Phase 1: runtime-engine no longer exports validateIntegrity/reconcile — stubbed (integrity now harness-native)
+type ValidationIssue = { severity: "error" | "warn" | "info"; message: string }
+type IntegrityReport = { issues: ValidationIssue[] }
+type ReconciliationResult = { repairsSucceeded: number; providers: unknown[]; roleConfigs: unknown[] }
+function validateIntegrity(): IntegrityReport { return { issues: [] } }
+function reconcile(): ReconciliationResult { return { repairsSucceeded: 0, providers: [], roleConfigs: [] } }
 
 export interface IntegrityState {
   report: IntegrityReport | null

@@ -2,7 +2,6 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Check, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AiChangeOverlay, type AIChange } from "./AiChangeOverlay"
-import { InlineEditOverlay } from "./inline-edit-overlay"
 
 export interface InlineEditState {
   active: boolean
@@ -55,28 +54,6 @@ export function EditorOverlays({
   saved,
   saveMethod,
 }: EditorOverlaysProps) {
-  let inlinePos: { top: number; left: number; width?: number } | null = null
-  if (inlineEdit.active && inlineEdit.selectedRange && editorRef.current) {
-    try {
-      const ed = editorRef.current
-      const selPos = ed.getScrolledVisiblePosition({
-        lineNumber: inlineEdit.selectedRange.startLine,
-        column: inlineEdit.selectedRange.startCol,
-      })
-      if (selPos) {
-        const editorDom = ed.getDomNode()
-        const editorRect = editorDom?.getBoundingClientRect()
-        if (editorRect) {
-          inlinePos = {
-            top: editorRect.top + selPos.top - 40,
-            left: editorRect.left + selPos.left,
-            width: Math.max(320, editorRect.width * 0.45),
-          }
-        }
-      }
-    } catch {}
-  }
-
   return (
     <>
       <AnimatePresence>
@@ -86,36 +63,6 @@ export function EditorOverlays({
             onAccept={onAcceptChange}
             onReject={onRejectChange}
             onTimeout={onTimeoutChange}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {inlineEdit.active && (
-          <InlineEditOverlay
-            state={inlineEdit}
-            position={inlinePos}
-            onStateChange={onInlineEditChange}
-            onApplyEdit={(editedCode) => {
-              const ed = editorRef.current
-              if (!ed) return
-              const selection = ed.getSelection()
-              if (!selection) return
-              const range = new (monacoRef.current!.Range)(
-                selection.startLineNumber,
-                selection.startColumn,
-                selection.endLineNumber,
-                selection.endColumn,
-              )
-              ed.executeEdits("inline-ai-edit", [
-                { range, text: editedCode, forceMoveMarkers: true },
-              ])
-              ed.focus()
-            }}
-            onClose={onInlineEditClose}
-            filePath={activeFile?.path ?? ""}
-            language={language}
-            fullFileContent={activeFile?.content ?? ""}
           />
         )}
       </AnimatePresence>
