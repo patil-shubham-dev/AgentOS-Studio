@@ -22,7 +22,6 @@ import { cancelPendingRefresh } from './runtime/runtime-coordinator'
 import { bootRuntime, shutdownRuntime, getKernel } from './core/kernel/startup'
 import { isInSafeMode } from './core/crash-handling/safe-mode'
 import { RuntimeCleanupManager } from './runtime/RuntimeCleanupManager'
-import { ExecutionSessionManager } from './runtime/sessions/ExecutionSessionManager'
 
 import { loader } from '@monaco-editor/react'
 import { StartupTiming } from './lib/startup-timing'
@@ -129,11 +128,8 @@ function Root() {
       cancelPersist()
       cancelPendingRefresh()
 
-      const activeSessions = ExecutionSessionManager.getInstance().getActiveSessions()
-      for (const s of activeSessions) {
-        ExecutionSessionManager.getInstance().cancel(s.id)
-      }
-
+      // Phase 1 step 7: ExecutionSessionManager deleted — quit cleanup now via RuntimeCleanupManager only
+      // (harness PTY sessions are owned by terminalManager.killAll() in main process)
       RuntimeCleanupManager.getInstance().shutdown().catch((err) => {
         console.error('[Cleanup] Shutdown error:', err)
       })

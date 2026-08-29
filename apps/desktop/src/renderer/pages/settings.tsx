@@ -1,7 +1,6 @@
 ﻿import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
-import { ProvidersTab } from "@/components/settings/providers-tab"
 import { ModelsTab } from "@/components/settings/models-tab"
 import { ToolsTab } from "@/components/settings/tools-tab"
 import { RuntimeTab } from "@/components/settings/runtime-tab"
@@ -39,8 +38,7 @@ interface NavSection {
 }
 
 const coreNavItems: NavItem[] = [
-  { id: "providers", label: "Providers", icon: Cpu, shortcut: "1", description: "AI providers, API keys & endpoints" },
-  { id: "models", label: "Models", icon: Box, shortcut: "2", description: "Model selection, config & benchmarks" },
+  { id: "models", label: "Models", icon: Box, shortcut: "1", description: "Model selection, config & benchmarks" },
   { id: "tools", label: "MCP Servers", icon: Wrench, shortcut: "3", description: "MCP server connections & tools" },
   { id: "runtime", label: "Runtime", icon: Terminal, shortcut: "4", description: "Execution environment & sandbox config" },
   { id: "thinking", label: "Thinking", icon: Sparkles, shortcut: "5", description: "Thinking visualization & budget" },
@@ -72,7 +70,7 @@ const navSections: NavSection[] = [
 
 export function SettingsPage() {
   useLeakTracker("SettingsPage")
-  const [activeTab, setActiveTab] = useState("providers")
+  const [activeTab, setActiveTab] = useState("models")
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -365,7 +363,6 @@ export function SettingsPage() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.15, ease: "easeOut" }}
             >
-              {activeTab === "providers" && <div className="p-6 max-w-6xl mx-auto"><ProvidersTab /></div>}
               {activeTab === "models" && <div className="p-6 max-w-6xl mx-auto"><ModelsTab /></div>}
               {activeTab === "tools" && <div className="p-6 max-w-6xl mx-auto"><ToolsTab /></div>}
               {activeTab === "runtime" && <div className="p-6 max-w-6xl mx-auto"><RuntimeTab /></div>}

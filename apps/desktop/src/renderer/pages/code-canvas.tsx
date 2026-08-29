@@ -26,7 +26,6 @@ import { QuickOpen } from "@/components/workspace/QuickOpen"
 
 import { ErrorBoundary } from "@/components/runtime/ErrorBoundary"
 import { WorkspaceErrorBoundary } from "@/components/workspace/WorkspaceErrorBoundary"
-import { SideChat } from "@/components/workspace/side-chat/SideChat"
 import { SessionSidebar } from "@/components/workspace/timeline/SessionSidebar"
 import { useSessionStore } from "@/stores/session-store"
 import { usePanelCoordinator } from "@/stores/panel-coordinator"
@@ -941,8 +940,7 @@ export function CodeCanvasPage() {
         context={commandPaletteContext}
       />
 
-      {/* Side Chat overlay */}
-      <SideChat />
+      {/* Side Chat removed in Phase 1 — harness terminal owns interaction */}
 
       {/* Dirty Buffer Recovery Dialog */}
       {recoveredBuffers.length > 0 && (
