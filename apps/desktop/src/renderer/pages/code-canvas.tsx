@@ -122,7 +122,12 @@ export function CodeCanvasPage() {
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel>(() => loadPanelState("workspacePanel", "code"))
   const [workspacePanelOpen, setWorkspacePanelOpen] = useState(() => loadPanelState("workspacePanelOpen", true))
   const sessionSidebarOpen = usePaneStore((s) => s.sessionSidebarOpen)
-  const setSessionSidebarOpen = usePaneStore((s) => s.setSessionSidebarOpen)
+  const setSessionSidebarOpenRaw = usePaneStore((s) => s.setSessionSidebarOpen)
+  const setSessionSidebarOpen = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    const cur = usePaneStore.getState().sessionSidebarOpen
+    const val = typeof next === "function" ? (next as (p: boolean) => boolean)(cur) : next
+    setSessionSidebarOpenRaw(val)
+  }, [setSessionSidebarOpenRaw])
   const [windowWidth, setWindowWidth] = useState(window.innerWidth)
   const isNarrow = windowWidth < 900
   const searchOpen = useWorkspaceStore((s) => s.searchOpen)
@@ -175,7 +180,7 @@ export function CodeCanvasPage() {
 
   const commandPaletteContext = useMemo(() => ({
     navigate,
-    toggleExplorer: () => setExplorerOpen((p) => !p),
+    toggleExplorer: () => setExplorerOpen((p: boolean) => !p),
     toggleTerminal: () => setWorkspacePanelOpen((p) => {
       const next = !p
       panelCtrlRef.current?.syncOpenState(next)
@@ -522,7 +527,7 @@ export function CodeCanvasPage() {
     function handleKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault()
-        setExplorerOpen((p) => !p)
+        setExplorerOpen((p: boolean) => !p)
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "j") {
         e.preventDefault()
@@ -602,7 +607,7 @@ export function CodeCanvasPage() {
       // âŒ˜â‡§S â€” session sidebar
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "s") {
         e.preventDefault()
-        setSessionSidebarOpen((p) => !p)
+        setSessionSidebarOpen((p: boolean) => !p)
       }
     }
     window.addEventListener("keydown", handleKey)
@@ -741,7 +746,7 @@ export function CodeCanvasPage() {
             <div className="flex min-w-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => setExplorerOpen((open) => !open)}
+                onClick={() => setExplorerOpen((open: boolean) => !open)}
                 className={cn(
                   "grid h-7 w-7 place-items-center rounded-md border border-transparent text-[var(--text-tertiary)] transition-colors",
                   explorerOpen
