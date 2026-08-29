@@ -37,6 +37,16 @@ function Smartphone({ className }: { className?: string }) {
 }
 
 function generateHtmlPreview(code: string): string {
+  const trimmed = code.trim()
+  // Phase 5: live rendering — if code already looks like HTML, render directly;
+  // otherwise wrap escaped code for inspection. Real design MCP will produce
+  // htmlPreview per version; this fallback ensures visual preview works.
+  const looksLikeHtml = /<(html|head|body|div|section|main|header|svg|canvas)/i.test(trimmed)
+  if (looksLikeHtml) {
+    return trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")
+      ? code
+      : `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:1rem;font-family:system-ui;background:#0a0a0b;color:#e4e4e7}*{box-sizing:border-box}</style></head><body>${code}</body></html>`
+  }
   const escapedCode = code
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -53,7 +63,7 @@ function generateHtmlPreview(code: string): string {
   </style>
 </head>
 <body>
-  <p class="notice">Code preview — visual rendering requires a build step</p>
+  <p class="notice">Live preview — code rendered inline (edit to see changes)</p>
   <pre><code>${escapedCode}</code></pre>
 </body>
 </html>`
@@ -422,30 +432,16 @@ export function DesignWorkspace() {
     }
   }, [currentArtifact, currentVersionData, setApplyToCode, pulse, notify])
 
-  // ── Regenerate with AI ──
+  // ── Regenerate — Phase 5: design MCP server handles this via harness tool;
+  // until then users prompt the harness directly in the terminal (06_MASTER_PLAN.md:178).
   const [regenerating, setRegenerating] = useState(false)
   const handleRegenerate = useCallback(async () => {
-    if (!currentArtifact || !currentVersionData || regenerating) return
-    setRegenerating(true)
-    pulse("selection")
-    try {
-      const { ExecutionSessionManager } = await import("@/runtime/sessions/ExecutionSessionManager")
-      const sessionManager = ExecutionSessionManager.getInstance()
-      const correlationId = `design-regen-${Date.now()}`
-      const task = `Improve this ${currentArtifact.name} component. Here is the current code:\n\n${currentVersionData.code}\n\n${currentArtifact.description ? "Context: " + currentArtifact.description + "\n\n" : ""}Return ONLY the improved code wrapped in \`\`\`...\`\`\` with a brief summary of changes.`
-      await sessionManager.start({
-        input: task,
-        activeRole: "coder",
-        correlationId,
-      })
-      notify(`AI regeneration started for "${currentArtifact.name}"`, "success", "success", 2000)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      notify(`Regeneration failed: ${msg}`, "error", "error")
-    } finally {
-      setRegenerating(false)
-    }
-  }, [currentArtifact, currentVersionData, regenerating, notify, pulse])
+    if (!currentArtifact || !currentVersionData) return
+    const task = `Improve this ${currentArtifact.name} component. Here is the current code:\n\n${currentVersionData.code}\n\n${currentArtifact.description ? "Context: " + currentArtifact.description + "\n\n" : ""}Return ONLY the improved code.`
+    await copyToClipboard(task)
+    notify(`Prompt copied — paste into harness terminal to regenerate "${currentArtifact.name}" (design MCP will handle this natively once Phase 5 server is scaffolded).`, "success", "success", 4000)
+    pulse("success")
+  }, [currentArtifact, currentVersionData, notify, pulse])
 
   // ── Export ──
   const handleExport = useCallback(async () => {

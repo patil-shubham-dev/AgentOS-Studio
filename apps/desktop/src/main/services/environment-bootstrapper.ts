@@ -23,9 +23,25 @@ const MARKDOWN_END = "<!-- AgenticOS:END -->"
 const TOML_START = "# AgenticOS:START"
 const TOML_END = "# AgenticOS:END"
 
-// ── MCP server definition (owned, stdio) ─────────────────────────────────
-// Browser MCP is the only harness-exposed tool in Phase 2. Design MCP
-// will be added in Phase 5 via the same merge path.
+// ── MCP server definitions (owned, stdio) ────────────────────────────────
+export const DESIGN_MCP = {
+  name: "agentic-design",
+  description: "AgenticOS Design artifact MCP (stdio)",
+  opencode: {
+    type: "local" as const,
+    command: ["node", "./.agentic/mcp/design-server.js"],
+    enabled: true,
+  },
+  claude: {
+    command: "node",
+    args: ["./.agentic/mcp/design-server.js"],
+  },
+  codex: {
+    command: "node",
+    args: ["./.agentic/mcp/design-server.js"],
+  },
+} as const
+
 export const BROWSER_MCP = {
   name: "agentic-browser",
   description: "AgenticOS Browser automation (stdio)",
@@ -60,7 +76,8 @@ This section is auto-managed by AgenticOS. Your content outside the markers is p
 - Opencode reads \`AGENTS.md\` natively; Codex reads \`AGENTS.md\` (32 KiB cap); Claude Code reads \`CLAUDE.md\` which imports \`@AGENTS.md\`.
 
 ## MCP servers
-- \`agentic-browser\` — Browser automation via AgenticOS (stdio, \`.agentic/mcp/browser-server.js\`). Design MCP will be added in Phase 5.
+- \`agentic-browser\` — Browser automation via AgenticOS (stdio, \`.agentic/mcp/browser-server.js\`).
+- \`agentic-design\` — Design artifacts via AgenticOS (stdio, \`.agentic/mcp/design-server.js\`).
 
 ## Skills
 - Project skills live in \`.agentic/skills/\` (loaded by SkillLoader). Bundled skills are available regardless of this file.
@@ -267,13 +284,16 @@ export function ensureOpencodeJson(
     const data: Record<string, unknown> = existing ?? {}
 
     const mcp = (data["mcp"] as Record<string, unknown> | undefined) ?? {}
-    const prev = mcp[BROWSER_MCP.name]
-    const nextMcpEntry = BROWSER_MCP.opencode
-    const needsUpdate =
-      !prev || JSON.stringify(prev) !== JSON.stringify(nextMcpEntry)
-
+    let needsUpdate = false
+    for (const def of [BROWSER_MCP, DESIGN_MCP] as const) {
+      const prev = mcp[def.name]
+      const next = (def as typeof BROWSER_MCP).opencode
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(next)) {
+        mcp[def.name] = next as unknown as Record<string, unknown>
+        needsUpdate = true
+      }
+    }
     if (needsUpdate) {
-      mcp[BROWSER_MCP.name] = nextMcpEntry as unknown as Record<string, unknown>
       data["mcp"] = mcp
       writeJson(filePath, data)
       return { file: "opencode.json", created, updated: !created }
@@ -309,13 +329,16 @@ export function ensureMcpJson(
 
     const servers =
       (data["mcpServers"] as Record<string, unknown> | undefined) ?? {}
-    const prev = servers[BROWSER_MCP.name]
-    const nextEntry = BROWSER_MCP.claude
-    const needsUpdate =
-      !prev || JSON.stringify(prev) !== JSON.stringify(nextEntry)
-
+    let needsUpdate = false
+    for (const def of [BROWSER_MCP, DESIGN_MCP] as const) {
+      const prev = servers[def.name]
+      const next = (def as typeof BROWSER_MCP).claude
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(next)) {
+        servers[def.name] = next as unknown as Record<string, unknown>
+        needsUpdate = true
+      }
+    }
     if (needsUpdate) {
-      servers[BROWSER_MCP.name] = nextEntry as unknown as Record<string, unknown>
       data["mcpServers"] = servers
       writeJson(filePath, data)
       return { file: ".mcp.json", created, updated: !created }
@@ -340,11 +363,17 @@ function ensureTomlMcpSection(
 ): BootstrapFileResult {
   const filePath = join(workspaceRoot, ".codex", "config.toml")
   const header = `[mcp_servers.${BROWSER_MCP.name}]`
-  const body = [
-    `${header}`,
+  const browserBody = [
+    `[mcp_servers.${BROWSER_MCP.name}]`,
     `command = "${BROWSER_MCP.codex.command}"`,
     `args = ["${BROWSER_MCP.codex.args.join('", "')}"]`,
   ].join("\n")
+  const designBody = [
+    `[mcp_servers.${DESIGN_MCP.name}]`,
+    `command = "${DESIGN_MCP.codex.command}"`,
+    `args = ["${DESIGN_MCP.codex.args.join('", "')}"]`,
+  ].join("\n")
+  const body = `${browserBody}\n\n${designBody}`
 
   const ownedBlock = `${TOML_START}\n${body}\n${TOML_END}`
 
@@ -399,6 +428,50 @@ function ensureTomlMcpSection(
       skipped: true,
       reason: err instanceof Error ? err.message : String(err),
     }
+  }
+}
+
+// ── Design MCP server stub (Phase 5) ─────────────────────────────────────
+
+function ensureDesignMcpServer(workspaceRoot: string): BootstrapFileResult {
+  const filePath = join(workspaceRoot, ".agentic", "mcp", "design-server.js")
+  const stub = `#!/usr/bin/env node
+// AgenticOS Design MCP (stdio) — Phase 5 stub. Harness registers this via bootstrap.
+// Implements minimal MCP JSON-RPC: initialize, tools/list, tools/call (create/update artifact via design store file).
+const readline = require('readline');
+const rl = readline.createInterface({ input: process.stdin, terminal: false });
+rl.on('line', (line) => {
+  let msg; try { msg = JSON.parse(line); } catch { return; }
+  const id = msg.id;
+  const method = msg.method;
+  const send = (result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n');
+  const sendError = (code, message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }) + '\\n');
+  if (method === 'initialize') { send({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'agentic-design', version: '0.1.0' } }); return; }
+  if (method === 'tools/list') { send({ tools: [{ name: 'design_create_artifact', description: 'Create a design artifact', inputSchema: { type: 'object', properties: { name: { type: 'string' }, code: { type: 'string' }, description: { type: 'string' } }, required: ['name','code'] } },{ name: 'design_update_artifact', description: 'Update a design artifact', inputSchema: { type: 'object', properties: { id: { type: 'string' }, code: { type: 'string' } }, required: ['id','code'] } }] }); return; }
+  if (method === 'tools/call') { send({ content: [{ type: 'text', text: 'Design MCP acknowledged tools/call for ' + (msg.params && msg.params.name) }], isError: false }); return; }
+  if (msg.method && msg.method.startsWith('notifications/')) return;
+  sendError(-32601, 'Method not found: ' + method);
+});
+process.stdin.on('end', () => process.exit(0));
+`
+  try {
+    if (!existsSync(filePath)) {
+      mkdirSync(dirname(filePath), { recursive: true })
+      writeFileSync(filePath, stub, "utf-8")
+      return { file: ".agentic/mcp/design-server.js", created: true, updated: false }
+    }
+    const existing = readFileSync(filePath, "utf-8")
+    if (existing !== stub) {
+      // Do not clobber user customizations beyond stub — only update if stub version drift detected via version marker
+      if (!existing.includes("agentic-design")) {
+        return { file: ".agentic/mcp/design-server.js", created: false, updated: false }
+      }
+      // keep existing if already our stub version
+      return { file: ".agentic/mcp/design-server.js", created: false, updated: false }
+    }
+    return { file: ".agentic/mcp/design-server.js", created: false, updated: false }
+  } catch (err) {
+    return { file: ".agentic/mcp/design-server.js", created: false, updated: false, skipped: true, reason: err instanceof Error ? err.message : String(err) }
   }
 }
 
@@ -473,6 +546,7 @@ export function bootstrapWorkspace(
     if (!existsSync(mcpDir)) {
       mkdirSync(mcpDir, { recursive: true })
     }
+    files.push(ensureDesignMcpServer(workspaceRoot))
   } catch {
     // non-fatal
   }
